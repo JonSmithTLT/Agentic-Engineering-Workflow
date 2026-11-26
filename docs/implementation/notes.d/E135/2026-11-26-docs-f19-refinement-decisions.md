@@ -4,11 +4,11 @@ operator, as the third of seven questions on [the F19 refinement proposal](../..
 report the shared one? I recommend yes; otherwise it copies about 100 lines and becomes the fourth walker." The
 operator answered all seven at once: "Yes to all 7 on the F19 proposal".
 
-So #607's two hooks in F19's runner are allowed under F19's freeze, and its schedule walker and paired report become
-the shared one for F19's feature cells. The fifth question was "Cap: does the approved cap cover F19 feature cells as
-a class, with the skill evaluation's $10 beside it? I recommend yes.", with the same answer: this row's limit of USD
-10 stays its own, beside the feature cells' cap. In the order the operator agreed (the fourth question, on F19's
-note), skills come third, after the pack pilot and the E368 deciding run.
+So #607's two hooks in F19's frozen runner are allowed, and its walker and report are made the shared one. The fifth
+question was "Cap: does the approved cap cover F19 feature cells as a class, with the skill evaluation's $10 beside
+it? I recommend yes.", with the same answer. In the order the operator agreed (the fourth question, on F19's note),
+skills come third, after the pack pilot and the E368 deciding run. What the hooks are, and what sharing the walker
+and report would mean for #607, is the proposal's account (its section 3.5), not part of the answer.
 
 Not decided here: when the walker and report move into `eval/aew_eval/` and in which pull request, and the
 proposal's other suggestions for #607 (its section 3.5: the board entry, the four outcomes in its report). This

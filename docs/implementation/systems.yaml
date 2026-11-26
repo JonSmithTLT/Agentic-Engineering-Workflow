@@ -80,10 +80,11 @@ systems:
       into E97, the relay''s meter, as a note'
     row: F19
     estimate: 3-5 PRs (estimate); frozen
-  - slice: 'Feature cells, unfrozen (operator, 2026-11-26): the role-run arm, which waits on the designer''s answer on
-      how a feature cell expresses its treatment; then the shared walker and report; then the cells in the order the
-      operator agreed, which F19''s note of 2026-11-26 records (the pack pilot, the E368 deciding run, skills, the recovery
-      section, maps, the verifier)'
+  - slice: 'Feature cells, unfrozen (operator, 2026-11-26): the role-run arm, the shared walker and report, and the cells.
+      The operator agreed the order of the cells, which F19''s note of 2026-11-26 records (the pack pilot, the E368 deciding
+      run, skills, the recovery section, maps, the verifier). The order of building is not decided. It is the suggestion
+      of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3: the role-run arm first, once the designer has
+      settled how a feature cell expresses its treatment, then the shared walker and report, then the first cell'
     row: F19
     estimate: 3 PRs to the first cell (the estimate of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3)
   decision: 'decided: frozen except feature cells (operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the first

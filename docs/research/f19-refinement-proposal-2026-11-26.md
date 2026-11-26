@@ -2,13 +2,17 @@
 
 > **Filing status (2026-11-26).** Research proposal, not adopted design (ledger FRP). Filed as the analyst wrote it;
 > only this block was added. It is what E389 asked for, and E389 closed into F19 with it. The operator answered seven
-> questions the Lead put on it, on 2026-11-26, in the words "Yes to all 7 on the F19 proposal"; each question and that
-> answer are recorded in [F19's note of 2026-11-26](../implementation/notes.d/F19/2026-11-26-docs-f19-refinement-decisions.md),
-> and nothing else here is decided. The designer's points D-1 to D-8 (section 6) are open, and so are the operator's
+> questions the Lead put on it, on 2026-11-26, in the words "Yes to all 7 on the F19 proposal". Each question and that
+> answer are recorded in three places: questions 1, 3, 4, 5 and 6 in
+> [F19's note of 2026-11-26](../implementation/notes.d/F19/2026-11-26-docs-f19-refinement-decisions.md), question 2 in
+> E389's closing (the register's §9, and
+> [its note](../implementation/notes.d/E389/2026-11-26-docs-f19-refinement-decisions.md)), and question 7 in
+> [E198's note](../implementation/notes.d/E198/2026-11-26-docs-f19-refinement-decisions.md). Nothing else here is
+> decided. The designer's points D-1 to D-8 (section 6) are open, and so are the operator's
 > items that were not among the seven: the worker profile and its re-qualification (O-6), and whether E368's rewrite is
 > held as the treatment (O-7, first half). O-9 was not among the seven either: section 3.2's three blockers were
 > checked against the register and the board when this was filed, and SYS-01's entry was corrected, as fact, for what
-> was verified. A recommendation below is the analyst's unless that note says the operator took it.
+> was verified. A recommendation below is the analyst's unless one of those records says the operator took it.
 
 **For:** the operator and the designer. **Date:** 2026-11-26. **Status:** a proposal from a read-only study. Nothing was
 built, run, pushed or changed.

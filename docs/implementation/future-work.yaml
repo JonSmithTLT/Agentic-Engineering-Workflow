@@ -3018,12 +3018,12 @@ sections:
   - '#': E210
     Work: 'Reach the Lead''s OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`).
       The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that
-      server is inside the Lead''s sandbox. Built by steering PR 2: AEW starts that server, and the broker reaches it. What
-      is left is Windows, where no wake has been run, and steering PR 3''s switch'
+      server is inside the Lead''s sandbox. Built on Linux by steering PR 2 (AEW starts that server, and the broker reaches
+      it), and switched on by steering PR 3 (#405). What is left is Windows: one real wake run there, where none has been
+      run, which also shows a server lost under a real TUI (only a fake TUI has been run)'
     Source: Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves
       the Lead's server, and `adapter.py` declared so
-    When: '**Unscheduled** for Windows; steering PR 3 switched the wake on (#405) (the designer''s ruling of 2026-11-08:
-      AEW starts the Lead''s server)'
+    When: '**Unscheduled**, the Windows half (the designer''s ruling of 2026-11-08: AEW starts the Lead''s server)'
     Notes: Filed by the push wake's builder. It corrects a false capability declaration
 
   - '#': E211
@@ -5257,9 +5257,10 @@ sections:
       ADR-0009''s "workers use the named export" and `login.py`''s "OAuth is never used by workers"'
     Source: 'The operator''s grant of 2026-11-11: "i wanted teh ability to choose which usage pot is being used"; the designer''s
       ruling of the same day on the usage pot (revision 2, `RULING-usage-pot.md`), parts 1 and 2'
-    When: '**Unscheduled** as a row: briefed (2026-11-11), after PR 1 (E354, merged as #453); the operator: "yup i think
-      i have a chain that can do it and get it merged before expect rev is done so why not". Then a keyless qualification
-      the operator is asked for once it is green, and `plan_login` is refused at adoption until it is marked qualified'
+    When: '**Unscheduled** as a row: PR 1 (E354) merged as #453 and this PR 2 as #468, with the offline qualification tool''s
+      fixes as #471 (the operator, 2026-11-11: "yup i think i have a chain that can do it and get it merged before expect
+      rev is done so why not"). What is left is the keyless qualification the operator is asked for, which records the pinned
+      version in `capabilities.PLAN_LOGIN_QUALIFIED_VERSIONS`; until then `plan_login` is refused at adoption'
     Notes: 'Filed by the register PR of 2026-11-11. `aew-reviewer` reviews it: it touches credentials'
 
   - '#': E356
@@ -5417,9 +5418,13 @@ sections:
     Work: 'Pin the provider request surfaces that the relay''s body scope rests on: fixtures of each provider''s request
       types (OpenAI''s Responses and Chat Completions, Anthropic''s Messages, Google''s generateContent), with a test that
       every field and place in them that names a stored object, a file by reference or a tool the client does not run is
-      held by `relay.BODY_FIELDS` or judged not to need it, so a provider''s new field is seen when its pinned surface moves'
+      held by `relay.BODY_FIELDS` or judged not to need it, so a provider''s new field is seen when its pinned surface moves.
+      With it, the residual body-field shapes #551''s merge comment left on E361: each place in those types that can carry
+      a held field and that a route''s walk (`relay._ROUTES`) does not yet descend into gets a refused case in the relay''s
+      tests, or a stated reason it needs none'
     Source: 'The review of #551 (E361), its m7, recorded on E361''s note `2026-11-24-relay-body-scope-request-surfaces.md`;
-      carried here when E361 closed (the register reconcile of 2026-11-26)'
+      and the residual body-field shapes that #551''s merge comment lists as tracked on E361, which no note there carried;
+      both carried here when E361 closed (the register reconcile of 2026-11-26)'
     When: '**Unscheduled**; the operator places it'
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation

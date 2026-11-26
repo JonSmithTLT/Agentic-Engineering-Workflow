@@ -43,6 +43,15 @@ item's exact `ref.id` and `ref.revision`. Omit the revision parameter when that 
 The approval record location is `$XDG_STATE_HOME/aew/g3/requests/`, with `~/.local/state` as the default state
 directory. The service's own confirmer continues to show pending approvals.
 
+For Q02, run this inventory from the disposable project's root before and after the route loop. Replace
+`before` with `after` on the second pass, then compare the two files with `cmp`.
+
+```sh
+set -o pipefail
+{ find .aew/state .aew/local -type f -print0; git ls-files -z -- .aew; } \
+  | LC_ALL=C sort -zu | xargs -0 -r sha256sum > "$evidence/q02-before.sha256"
+```
+
 ## Record the host gate
 
 Generate a record template with the installed interpreter. Redirect only to the operator's evidence directory.
@@ -63,3 +72,8 @@ Install the completed record as the operator in `$XDG_DATA_HOME/aew/g4/qualifica
 `~/.local/share/aew/g4/qualification.json` when unset). Keep the source evidence in the operator's host evidence
 directory. Withdraw the record when an invalidation trigger occurs and qualify the new configuration. The reader only
 checks the record and never creates, copies or repairs it.
+
+```sh
+g4_record=$(python -c 'from aew.stg02.outage_host import record_path; print(record_path())')
+install -D -m 0600 "$evidence/g4-qualification.json" "$g4_record"
+```

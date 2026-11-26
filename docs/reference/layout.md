@@ -66,7 +66,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `local`
 
-- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
+- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `control_lock_visible`, `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
   - Written by
     - `aew.dashboard.service:Service._write_endpoint`
     - `aew.engine.custody_ops:spawn_worker`
@@ -686,7 +686,6 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.snapshot.fingerprint`: `_staged_index` (Path.exists), `_staged_index` (shutil.copy2), `_working_index` (Path.exists), `_working_index` (shutil.copy2), `relevant_inputs_fingerprint` (Path.exists)
 - `aew.stg02.adopted`: `load` (Path.read_bytes)
 - `aew.stg02.g3_overlay`: `_document` (Path.read_text)
-- `aew.stg02.outage`: `_project_root` (Path.lstat)
 - `aew.stg02.outage_host`: `binding` (Path.is_file), `binding` (Path.read_bytes), `binding` (Path.rglob), `g3_present` (Path.exists), `qualified` (Path.lstat), `qualified` (Path.read_bytes)
 - `aew.stg02.outage_store`: `OutageStore.attention` (Path.exists)
 - `aew.stg02.server`: `_main` (Path.read_text)

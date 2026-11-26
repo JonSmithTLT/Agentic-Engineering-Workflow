@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -87,7 +86,7 @@ def refuse(reason: str, title: str = "", **details: Any) -> OutageReadRefused:
 
 def _project_root(start: Path, *, listing: bool) -> Path | None:
     from aew.engine.base import Kernel
-    from aew.engine.store import LOCK_REL
+    from aew.engine.store import control_lock_visible
 
     # Session markers can refuse only. The actual project lock is masked from contained processes.
     if any(os.environ.get(name) for name in (process_kind.AGENT_ENDPOINT_ENV, process_kind.LEAD_CONTAINED_ENV,
@@ -99,11 +98,7 @@ def _project_root(start: Path, *, listing: bool) -> Path | None:
         if listing:
             return None  # this is the static command profile, which contains no project data
         raise refuse("authentication_unqualified", REFUSAL) from None
-    try:
-        visible = stat.S_ISREG((root / LOCK_REL).lstat().st_mode)
-    except OSError:
-        visible = False
-    if not visible:
+    if not control_lock_visible(root):
         raise refuse("authentication_unqualified", REFUSAL)
     return root
 

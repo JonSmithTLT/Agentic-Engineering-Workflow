@@ -57,6 +57,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import stat
 import sys
 from collections import Counter
 from collections.abc import Mapping
@@ -630,6 +631,15 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
             except OSError:
                 continue  # gone since it was listed
     in_place = [p for p in dict.fromkeys(in_place) if not os.path.islink(p)]  # a link's target is named itself
+    # Fail closed in the run's own tree (the quick check of #592): a secret there that cannot be checked (its directory
+    # cannot be searched, so it reads as absent) is masked by its directory whole, unless that holds what the run needs
+    for path in [p for p in in_place if within(os.path.dirname(p), written) and _unchecked(p)]:
+        parent = os.path.dirname(path)
+        if not _held(parent, needed) and parent not in dirs:
+            by.setdefault(parent, by[path])
+            what.setdefault(parent, f"the directory of {what[path]}")
+            dirs.append(parent)
+            in_place.remove(path)
     in_tree = [p for p in in_place if within(os.path.dirname(p), written)]  # the rest: under / or unlistable
     files = [p for p in in_place if os.path.lexists(p) and not os.path.isdir(p)]
     tree_dirs = [d for d in dirs if within(d, written)]
@@ -663,6 +673,14 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str],
     return [(path, source, secret) for path, (source, secret) in seen.items()]
 
 
+def _unlistable(root: str, exc: OSError) -> ContainmentUnavailable:
+    """The refusal of a project the `.env` scan cannot list or check: AEW reads its store there, so it is never masked
+    whole."""
+    return ContainmentUnavailable(f"the project {root} cannot be listed or checked ({exc.strerror}); give this account "
+                                  "read and search permission on it and on what it holds", project=root,
+                                  reason="project_unlistable")
+
+
 class EnvScan(NamedTuple):
     """What :func:`project_env_masks` finds: the `.env` files to mask in place, and the directories to mask whole."""
 
@@ -683,15 +701,22 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
     own), and follows no link to a directory, so it ends: a directory outside the project that a link inside it points
     at is not walked. Its cost is the tree's size (about 0.3 s for 200,000 entries in ignored vendored directories).
 
-    It fails closed, and never refuses for it (the quick check of #592): a directory the walk cannot list, or one
-    holding an entry whose type it cannot read, is in ``dirs``, masked whole by an empty directory as a containment.hide
-    directory is, as a `.env` file in it may still be read by name; one whose path is too long to list, its deepest
-    directory the walk reached. One gone during the walk is not there to hide. The project itself must be listable:
-    AEW reads its store there. Present at the launch only: a file first created, or replaced by rename on the host,
-    during the session is seen inside until the next launch, as a containment.hide entry in the run's own tree is."""
+    It fails closed, and never refuses for it (the quick checks of #592): every entry is checked by its own stat,
+    never by the listing alone, and a directory the walk cannot list, or one holding an entry it cannot stat (a
+    directory that can be listed but not searched), is in ``dirs``, masked whole by an empty directory as a
+    containment.hide directory is, as a `.env` file in it may still be read by name; one whose path is too long to
+    list, its deepest directory the walk reached. One gone during the walk is not there to hide. The project itself
+    must be listable and searchable: AEW reads its store there. Present at the launch only: a file first created, or
+    replaced by rename on the host, during the session is seen inside until the next launch, as a containment.hide
+    entry in the run's own tree is."""
     root = _real(project)
-    if not os.path.isdir(root):  # no project directory to show, so nothing in it to hide
+    try:
+        if not stat.S_ISDIR(os.stat(root).st_mode):
+            return EnvScan([], [])
+    except FileNotFoundError:  # no project directory to show, so nothing in it to hide
         return EnvScan([], [])
+    except OSError as exc:
+        raise _unlistable(root, exc) from exc
     files: set[str] = set()
     dirs: set[str] = set()
     stack = [root]
@@ -704,35 +729,39 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
             continue
         except OSError as exc:
             if top == root:
-                raise ContainmentUnavailable(f"the project {root} cannot be listed ({exc.strerror}); give this account "
-                                             "read and search permission on it", project=root,
-                                             reason="project_unlistable") from exc
+                raise _unlistable(root, exc) from exc
             dirs.add(os.path.dirname(top) if exc.errno == errno.ENAMETOOLONG else top)
             continue
         below: list[str] = []
-        for entry in entries:
-            try:
-                if entry.is_dir(follow_symlinks=False):
+        found: list[str] = []
+        try:
+            for entry in entries:
+                # every entry's type by its own lstat, never the listing's: a directory that can be listed but not
+                # searched lists its names, and only a stat of one finds that nothing in it can be checked
+                try:
+                    mode = entry.stat(follow_symlinks=False).st_mode
+                except FileNotFoundError:  # gone during the walk
+                    continue
+                if stat.S_ISDIR(mode):
                     if entry.name != ".git" and not (top == root and entry.name == ".aew"):
                         below.append(entry.path)
                     continue
-            except FileNotFoundError:
-                continue
-            except OSError:  # an entry of unknown type: its directory whole
-                if top == root:
-                    raise ContainmentUnavailable(f"an entry of the project {root} cannot be read ({entry.name!r}); "
-                                                 "give this account read permission on it", project=root,
-                                                 reason="project_unlistable") from None
-                dirs.add(top)
-                break
-            name = entry.name
-            if not any(fnmatchcase(name, p) for p in ENV_FILES) or any(fnmatchcase(name, p) for p in ENV_DOCS):
-                continue
-            real = _real(entry.path)
-            if os.path.isfile(real) and not _sandbox_own(real):
-                files.add(real)
-        else:
-            stack += below
+                name = entry.name
+                if not any(fnmatchcase(name, p) for p in ENV_FILES) or any(fnmatchcase(name, p) for p in ENV_DOCS):
+                    continue
+                try:
+                    target = os.stat(entry.path).st_mode  # a link's target, which the mask covers
+                except FileNotFoundError:  # a link to nothing: nothing to read there
+                    continue
+                if stat.S_ISREG(target):
+                    found.append(_real(entry.path))
+        except OSError as exc:  # an entry this scan cannot check: its directory whole
+            if top == root:
+                raise _unlistable(root, exc) from exc
+            dirs.add(top)
+            continue
+        files.update(f for f in found if not _sandbox_own(f))
+        stack += below
     hidden = sorted(dirs)
     return EnvScan(sorted(f for f in files if not any(_within(f, d) for d in hidden)), hidden)
 
@@ -784,6 +813,17 @@ def _left_out(raw: str) -> list[str]:
             break
         path = _real(entry)
     return out
+
+
+def _unchecked(path: str) -> bool:
+    """Whether ``path`` cannot be checked: ``lstat`` fails for another reason than its absence."""
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return False
 
 
 def _first_absent(path: str) -> str | None:

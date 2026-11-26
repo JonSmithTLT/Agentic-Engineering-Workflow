@@ -1954,30 +1954,47 @@ def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_pa
 
 def test_a_directory_the_env_scan_cannot_read_is_masked_whole_and_named_and_the_run_still_launches(
         tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
-    """The scan fails closed: a directory it cannot list (searchable but not readable, as 0311 is on POSIX), one
-    holding an entry whose type it cannot read, and the deepest directory reached on a path too long to list are each
-    masked whole by an empty directory, as a `.env` file in it may still be read by name, and named on the Lead's
-    launch line. None refuses the launch, so a Lead cannot stop the next one by changing a mode. The listing is
-    refused by name, so the test runs on every platform."""
+    """The scan fails closed: a directory it cannot list (searchable but not readable, as 0311 is on POSIX), one it can
+    list but not search (0400), one holding an entry whose type it cannot read, and the deepest directory reached on a
+    path too long to list are each masked whole by an empty directory, as a `.env` file in it may still be read by name,
+    and named on the Lead's launch line. None refuses the launch, so a Lead cannot stop the next one by changing a mode.
+    The listing is refused by name, so the test runs on every platform."""
     repo = tmp_path / "repo"
-    for d in ("locked", "odd", "deep/long", "fine"):
+    for d in ("locked", "listed", "odd", "deep/long", "fine"):
         (repo / d).mkdir(parents=True)
         (repo / d / ".env").write_text("SYNTHETIC=1\n")
     (repo / "odd" / "entry").write_text("x\n")
     real = os.path.realpath(repo)
     # refused by name, so it holds on every platform (Windows' chmod cannot take a directory's list permission away)
     with listing_as_unprivileged(monkeypatch, unlistable=(os.path.join(real, "locked"),),
+                                 unsearchable=(os.path.join(real, "listed"),),
                                  unreadable=(os.path.join(real, "odd", "entry"),),
                                  too_long=(os.path.join(real, "deep", "long"),)):
         scan = L.project_env_masks(repo)
         layout = lead_layout(tmp_path)
-    dirs = [os.path.join(real, d) for d in ("deep", "locked", "odd")]
+    dirs = [os.path.join(real, d) for d in ("deep", "listed", "locked", "odd")]
     assert scan == L.EnvScan([os.path.join(real, "fine", ".env")], dirs)
     assert set(layout.env_dirs) == set(dirs) and set(layout.hide_dirs) >= set(dirs)
     assert {p: by for p, by in layout.tree_masks if p in dirs} == dict.fromkeys(dirs, L.PROJECT_ENV_DIR)
     argv = C.bwrap_argv(layout, ["agent"])
     assert all(argv[argv.index(d) - 1] == "--tmpfs" for d in dirs)
     assert all(d in C.tree_masks_line(layout) for d in dirs)
+
+
+def test_a_containment_hide_entry_in_the_leads_tree_that_cannot_be_checked_masks_its_directory_whole(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+    """The same rule for a containment.hide entry in the Lead's own tree: one whose directory cannot be searched reads
+    as absent, so it is not left unmasked as absent at the launch, but its directory is masked whole and named."""
+    repo = tmp_path / "repo"
+    (repo / "keys").mkdir(parents=True)
+    (repo / "keys" / "deploy.key").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(repo)
+    keys = os.path.join(real, "keys")
+    with listing_as_unprivileged(monkeypatch, unsearchable=(keys,)):
+        layout = lead_layout(tmp_path, policy={"containment": {"hide": [str(repo / "keys" / "deploy.key")]}})
+    assert keys in layout.hide_dirs and keys in dict(layout.tree_masks)
+    assert not [p for p, _ in layout.tree_absent if p.startswith(keys)]
+    assert C.bwrap_argv(layout, ["agent"]).count(keys) >= 2  # the mask, and its remount read-only
 
 
 def test_a_project_the_env_scan_cannot_list_is_refused_naming_it(tmp_path, fake_bwrap, monkeypatch):

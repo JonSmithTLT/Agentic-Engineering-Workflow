@@ -1,9 +1,11 @@
-"""A directory listing as an unprivileged account sees it, for the tests of the project's `.env` scan.
+"""Listing and stat as an unprivileged account sees them, for the tests of the project's `.env` scan.
 
-These tests may run as root, which lists every directory whatever its mode. Installed with
-:func:`listing_as_unprivileged`, ``os.scandir`` refuses a directory its owner may not read, as it would for an account
-that is not root. It can also make one entry's type unreadable. Only the layout is built with it installed: the sandbox
-itself runs as it always does.
+These tests may run as root, which lists and searches every directory whatever its mode. Installed with
+:func:`listing_as_unprivileged`, ``os.scandir`` refuses a directory its owner may not read, and ``os.stat``,
+``os.lstat`` and a listed entry's ``stat`` refuse a path whose directory its owner may not search, as they would for
+an account that is not root: a directory that can be read but not searched (0400, 0600, 0444) lists its names, and
+nothing in it can be checked. Named paths can also be refused whatever their mode, as Windows' ``chmod`` cannot take a
+directory's permissions away. Only the layout is built with it installed: the sandbox itself runs as it always does.
 """
 
 from __future__ import annotations
@@ -17,28 +19,37 @@ from typing import Any
 
 import pytest
 
-_REAL = os.scandir
+_SCANDIR, _STAT, _LSTAT = os.scandir, os.stat, os.lstat
 
 
-class _Unreadable:
-    """A directory entry whose type cannot be read: ``is_dir`` and ``is_file`` raise as a failed ``stat`` does."""
+def _refused(path: str) -> PermissionError:
+    return PermissionError(errno.EACCES, "Permission denied", path)
 
-    def __init__(self, entry: os.DirEntry[str]) -> None:
+
+class _Entry:
+    """A listed entry whose ``stat`` is checked as :func:`listing_as_unprivileged` checks one."""
+
+    def __init__(self, entry: os.DirEntry[str], check: Any) -> None:
+        self._entry, self._check = entry, check
         self.name, self.path = entry.name, entry.path
 
-    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
-        raise PermissionError(errno.EACCES, "Permission denied", self.path)
+    def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+        self._check(self.path)
+        return self._entry.stat(follow_symlinks=follow_symlinks)
 
-    is_file = is_dir
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        return self._entry.is_dir(follow_symlinks=follow_symlinks)
+
+    def is_file(self, *, follow_symlinks: bool = True) -> bool:
+        return self._entry.is_file(follow_symlinks=follow_symlinks)
 
     def is_symlink(self) -> bool:
-        raise PermissionError(errno.EACCES, "Permission denied", self.path)
+        return self._entry.is_symlink()
 
 
 class _Listing:
-    def __init__(self, path: Any, unreadable: set[str]) -> None:
-        self._it = _REAL(path)
-        self._unreadable = unreadable
+    def __init__(self, path: Any, check: Any) -> None:
+        self._it, self._check = _SCANDIR(path), check
 
     def __enter__(self) -> _Listing:
         return self
@@ -48,7 +59,7 @@ class _Listing:
 
     def __iter__(self) -> Iterator[Any]:
         for entry in self._it:
-            yield _Unreadable(entry) if entry.path in self._unreadable else entry
+            yield _Entry(entry, self._check)
 
     def close(self) -> None:
         self._it.close()
@@ -56,24 +67,44 @@ class _Listing:
 
 @contextmanager
 def listing_as_unprivileged(monkeypatch: pytest.MonkeyPatch, *, unreadable: tuple[str, ...] = (),
-                            too_long: tuple[str, ...] = (), unlistable: tuple[str, ...] = ()) -> Iterator[None]:
+                            too_long: tuple[str, ...] = (), unlistable: tuple[str, ...] = (),
+                            unsearchable: tuple[str, ...] = ()) -> Iterator[None]:
     """``os.scandir`` refuses a directory whose owner has no read permission, and each of ``unlistable`` whatever its
-    mode (EACCES: Windows' ``chmod`` cannot take a directory's list permission away), and each of ``too_long``
-    (ENAMETOOLONG); each entry at a path in ``unreadable`` has a type that cannot be read."""
+    mode (EACCES), and each of ``too_long`` (ENAMETOOLONG); a stat of a path whose directory its owner has no search
+    permission on, or that is in ``unsearchable`` whatever its mode, or of a path in ``unreadable``, is refused
+    (EACCES)."""
     bad = {os.fspath(p) for p in unreadable}
+    closed = {os.fspath(p) for p in unsearchable}
     long = {os.fspath(p) for p in too_long}
     refused = {os.fspath(p) for p in unlistable}
 
+    def check(path: Any) -> None:
+        where = os.fspath(path)
+        if where in bad:
+            raise _refused(where)
+        parent = os.path.dirname(where)
+        if parent in closed or (parent and parent != where and not _STAT(parent).st_mode & stat.S_IXUSR):
+            raise _refused(where)
+
     def scandir(path: Any = ".") -> Any:
         if isinstance(path, int):  # a directory already open: its permissions were checked when it was opened
-            return _REAL(path)
+            return _SCANDIR(path)
         where = os.fspath(path)
         if where in long:
             raise OSError(errno.ENAMETOOLONG, "File name too long", where)
-        if where in refused or not os.stat(where).st_mode & stat.S_IRUSR:
-            raise PermissionError(errno.EACCES, "Permission denied", where)
-        return _Listing(path, bad)
+        if where in refused or not _STAT(where).st_mode & stat.S_IRUSR:
+            raise _refused(where)
+        return _Listing(path, check)
+
+    def checked(real: Any) -> Any:
+        def call(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+            if not isinstance(path, int):
+                check(path)
+            return real(path, *args, **kwargs)
+        return call
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "scandir", scandir)
+        patch.setattr(os, "stat", checked(_STAT))
+        patch.setattr(os, "lstat", checked(_LSTAT))
         yield

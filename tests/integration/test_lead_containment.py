@@ -518,20 +518,22 @@ def test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_howe
 
 def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch(lead_lab, monkeypatch):
     """A Lead that takes a directory's permissions away in one session cannot read a `.env` file there in the next by
-    giving them back: the next launch's scan cannot list the directory, so it masks it whole, and the launch still
-    starts. Each mode the Lead could set is tried. Synthetic values only."""
+    giving them back or moving the directory: the next launch's scan cannot list the directory, or can list it but not
+    check what it holds, so it masks it whole, and the launch still starts. Each mode the Lead could set is tried, the
+    readable but unsearchable ones (400, 600, 444) among them. Synthetic values only."""
     lab = lead_lab
     sec = lab.repo / "sec"
     sec.mkdir()
     (sec / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
     try:
-        for mode in ("000", "300", "100"):
+        for mode in ("000", "300", "100", "400", "600", "444"):
             first = lab.sh(lab.layout(env={"HOME": str(lab.home)}), f"chmod {mode} sec; echo rc=$?")
             assert "rc=0" in first.stdout, first.stdout + first.stderr
             with listing_as_unprivileged(monkeypatch):
                 layout = lab.layout(env={"HOME": str(lab.home)})
             assert str(sec.resolve()) in layout.env_dirs, mode
-            done = lab.sh(layout, "chmod 700 sec; cat sec/.env; grep -rh SYNTHETIC sec 2>/dev/null; echo end")
+            done = lab.sh(layout, "chmod 700 sec; cat sec/.env; grep -rh SYNTHETIC sec 2>/dev/null; "
+                                  "mv sec sec2 && cat sec2/.env && mv sec2 sec; echo end")
             assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
             assert "SYNTHETIC-ENV-VALUE" not in done.stdout, (mode, done.stdout)
             sec.chmod(0o700)

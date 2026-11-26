@@ -248,20 +248,23 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
 
 def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch):
     """The scan fails closed for a worker too: a project directory it cannot list as the launching account (searchable
-    but not readable, 0311) is masked whole, so a `.env` file there cannot be read by absolute path. The layout is built
-    as an unprivileged account lists (``listing_as_unprivileged``), as these tests may run as root. Synthetic values
-    only."""
-    locked = lab.repo / "locked"
-    locked.mkdir()
-    (locked / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    but not readable, 0311), or can list but not search (0400), is masked whole, so a `.env` file there cannot be read
+    by absolute path. The layout is built as an unprivileged account lists (``listing_as_unprivileged``), as these tests
+    may run as root. Synthetic values only."""
+    locked, listed = lab.repo / "locked", lab.repo / "listed"
+    for d in (locked, listed):
+        d.mkdir()
+        (d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
     try:
         locked.chmod(0o311)
+        listed.chmod(0o400)  # listed, but nothing in it can be checked
         with listing_as_unprivileged(monkeypatch):
             layout = lab.layout("implementer")
-        done = lab.sh(layout, f"cat {locked}/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; echo end")
+        done = lab.sh(layout, f"cat {locked}/.env {listed}/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; echo end")
     finally:
         locked.chmod(0o700)
-    assert str(locked.resolve()) in layout.env_dirs
+        listed.chmod(0o700)
+    assert {str(locked.resolve()), str(listed.resolve())} <= set(layout.env_dirs)
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
 

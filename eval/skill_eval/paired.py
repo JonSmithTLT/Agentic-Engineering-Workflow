@@ -25,6 +25,7 @@ from typing import Any
 
 from aew_eval import fixture
 from aew_eval.ledger import AttemptLedger
+from aew_eval.schemas import Invalid
 
 from skill_eval.walk import blocks, caps, charged, of_cell, record_of
 
@@ -125,14 +126,20 @@ def cost(found: list[dict[str, Any]], sides: dict[str, str]) -> dict[str, Any]:
 
 
 def load_grades(path: Path) -> dict[str, Any]:
-    """The grader's file: one ``{"run_id", "task_correct"}`` object per line. A run graded twice is refused."""
+    """The grader's file: one ``{"run_id", "task_correct"}`` object per line. A line that is not such an object, or
+    a run graded twice, is refused."""
     out: dict[str, Any] = {}
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
-        entry = json.loads(line)
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            entry = None
+        if not isinstance(entry, dict) or not isinstance(entry.get("run_id"), str):
+            raise Invalid(f"{path} line {n} is not a JSON object with a run_id")
         if entry["run_id"] in out:
-            raise ValueError(f"{path} line {n}: {entry['run_id']} is graded twice")
+            raise Invalid(f"{path} line {n}: {entry['run_id']} is graded twice")
         out[entry["run_id"]] = entry.get("task_correct")
     return out
 

@@ -312,7 +312,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** Staged
 
-**Acceptance evidence / next action:** Cards name skills. M3 exposes none: a run records its card's skills as unavailable (ADR-0006 M3 amendment). Reachable skills come through the capability registry (`future-work.md` D3, F12, F13)
+**Acceptance evidence / next action:** Cards name skills, and a run is offered the ones AEW's install ships (`src/aew/skills/manifest.json`), each labelled unevaluated (ADR-0006 and its amendments); what is left, and the evaluation's qualification, are on the board's SYS-22 and register rows E136 and E135
 
 ### Host/container tools
 

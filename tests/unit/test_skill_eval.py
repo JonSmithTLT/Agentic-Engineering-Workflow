@@ -178,7 +178,7 @@ def test_every_public_candidates_cases_materialize_as_f19_cases(tmp_path):
 def test_the_pair_is_named_from_the_two_arms_exposure_and_the_mode_from_where_the_candidate_is(lane):
     selection = plan.shape(freeze(lane))
     assert selection == {"baseline": "baseline", "candidate_arm": "candidate", "candidate": CANDIDATE,
-                         "kind": "scripted", "mode": "selection", "also_exposed": [OTHER],
+                         "kind": "scripted", "mode": "selection", "also_exposed": [OTHER], "told_differs": False,
                          "caps": {"baseline": 0.0, "candidate": 0.0},
                          "candidate_bytes": skills.plan([CANDIDATE])["delivered"][0]["bytes"]}
     assert plan.shape(freeze(lane, mode="procedure"))["mode"] == "procedure"
@@ -368,7 +368,16 @@ def test_a_lane_whose_evaluator_material_was_once_readable_stays_a_pilot(lane):
     assert lane_run.claim(lane["lane"], frozen, True)["evaluator_material_hidden"] is True
     assert lane_run.claim(lane["lane"], frozen, False)["evaluator_material_hidden"] is False
     assert lane_run.claim(lane["lane"], frozen, True)["evaluator_material_hidden"] is False
-    assert report.report(frozen, lane["lane"])["pilot"] is True
+    assert report.report(frozen, lane["lane"])["evaluator_material_hidden"] is False
+
+
+def test_every_report_is_a_pilot_while_only_public_cases_can_run(lane):
+    """Even a lane whose record says the evaluator's material was hidden: the cases a model arm can run today are
+    public, so their oracles are (review of #607, 1). The filesystem fact is reported beside it, not instead."""
+    frozen = freeze(lane)
+    lane_run.claim(lane["lane"], frozen, True)
+    out = report.report(frozen, lane["lane"])
+    assert out["pilot"] is True and out["evaluator_material_hidden"] is True
 
 
 def test_a_skill_that_does_not_arrive_whole_is_an_error_before_the_arm_runs(lane, monkeypatch):
@@ -376,8 +385,12 @@ def test_a_skill_that_does_not_arrive_whole_is_an_error_before_the_arm_runs(lane
     real = skills.deliver
     monkeypatch.setattr(skills, "deliver", lambda planned, root: {
         **real(planned, root), "exposed": [], "reasons": {CANDIDATE: skills.COPY_FAILED}})
-    out = run_all(lane, freeze(lane), limit=1)
-    assert out["ran"][0]["validity"] == {"status": "invalid_measurement", "reason_code": "RUNNER_ERROR:Invalid"}
+    out = run_all(lane, freeze(lane))
+    assert out["ran"] == [{"run_id": "skill-eval-offline/r001", "charged_usd": 0.0, "validity": {
+        "status": "invalid_measurement", "reason_code": "RUNNER_ERROR:Invalid"}}]
+    # Every later cell would fail the same way, so the walk stops there and spends no other cell (review of #607, 2).
+    assert out["stopped"] == "lane_error" and out["reason_code"] == "RUNNER_ERROR:Invalid"
+    assert walk.lane_error("ARM_ERROR") and walk.lane_error("RUNNER_ERROR:OSError") and not walk.lane_error(None)
 
 
 def test_the_evaluators_material_must_be_hidden_from_a_contained_arm(lane, tmp_path, monkeypatch):
@@ -460,7 +473,7 @@ def test_cost_is_the_paired_difference_in_usage_and_an_unknown_is_missing_never_
                              "loaded_bytes_lower_bound": 3 * size}
     # The unknown baseline was charged its cap, so the budget never undercounts it.
     assert cost["counted_runs_charged_usd"]["baseline"] == pytest.approx(0.1 + 0.1 + 0.5)
-    assert out["decision"] is None and out["pilot"] is True
+    assert out["decision"] is None and out["pair"]["told_differs"] is False
 
 
 def test_selection_sets_what_was_loaded_beside_the_cases_expected_activation(lane, observed):
@@ -503,9 +516,34 @@ def test_benefit_is_paired_counts_from_the_graders_file_and_no_decision(lane, ob
                                                                 "baseline_only": 0, "neither": 0, "ungraded": 1}}
     assert out["decision"] is None
     assert report.report(observed, lane["lane"])["benefit"]["graded"] is False
-    grades.write_text(grades.read_text(encoding="utf-8") * 2, encoding="utf-8")
-    with pytest.raises(ValueError, match="graded twice"):
-        report.load_grades(grades)
+    good = grades.read_text(encoding="utf-8")
+    for bad, says in ((good * 2, "graded twice"), (good + "not json\n", "line 6 is not a JSON object"),
+                      (good + '{"task_correct": true}\n', "with a run_id"), (good + "[1]\n", "not a JSON object")):
+        grades.write_text(bad, encoding="utf-8")
+        with pytest.raises(Invalid, match=says):
+            report.load_grades(grades)
+
+
+def test_a_finished_lane_is_still_reported_after_the_skills_shipped_text_changes(lane, observed, monkeypatch, capsys):
+    """The report reads the pair from the frozen plan and the sizes from the run records, never from today's install
+    (review of #607, 6). A new run of the same plan is still refused: a changed skill is another experiment."""
+    before = report.report(observed, lane["lane"], key=lane["key"])
+    changed = json.loads(json.dumps(skills.manifest()))
+    changed["skills"][CANDIDATE]["sha256"] = "0" * 64
+    monkeypatch.setattr(skills, "manifest", lambda: changed)
+    with pytest.raises(Invalid, match="aew.skills|ships|not the frozen one"):
+        plan.shape(observed)
+    assert report.report(observed, lane["lane"], key=lane["key"]) == before
+    assert len(report.packets(observed, lane["lane"] / "ledger", lane["manifests"])) == 6
+    assert before["cost"]["loads"]["skill_md_bytes"] > 0
+
+
+def test_a_bad_grades_file_is_refused_by_the_command_line_not_thrown(lane, observed, tmp_path, capsys):
+    frozen, grades = tmp_path / "frozen.yaml", tmp_path / "grades.jsonl"
+    prereg.dump(observed, frozen)
+    grades.write_text("not json\n", encoding="utf-8")
+    assert cli.main(["report", str(frozen), "--lane", str(lane["lane"]), "--grades", str(grades)]) == 1
+    assert "refused" in capsys.readouterr().err
 
 
 def test_a_run_without_its_arms_frozen_exposure_leaves_its_pair_incomplete_and_listed(lane, monkeypatch):
@@ -545,7 +583,7 @@ def test_the_command_line_walks_a_dry_lane_from_cases_to_report(lane, tmp_path, 
     assert len(json.loads(capsys.readouterr().out)) == 2
     assert cli.main(["report", str(frozen), "--lane", str(tmp_path / "cli-lane"), "--evaluator", str(evaluator)]) == 0
     told = json.loads(capsys.readouterr().out)
-    assert told["pairs"]["complete"] == 1 and told["pilot"] is True
+    assert told["pairs"]["complete"] == 1 and told["pilot"] is True and told["cost"]["loads"]["skill_md_bytes"] > 0
     assert cli.main(["materialize", str(lane["source"]), "--cases", str(out), "--evaluator", str(evaluator)]) == 1
     assert "refused" in capsys.readouterr().err
 
@@ -579,7 +617,9 @@ def test_what_an_arm_is_told_is_appended_to_the_task_verbatim_and_only_when_the_
 def test_the_walk_and_the_paired_report_know_no_skill(lane, observed):
     """The walk and the paired report read a frozen preregistration, the ledger and the run records alone, so they can
     be lifted into the instrument as they are: neither module imports a skill-specific one, and the pairs they give
-    for two named arms carry no skill fact."""
+    for two named arms carry no skill fact. The import check reads absolute ``import`` and ``from`` statements; it
+    does not see a relative import (``from . import arms``) or one made through ``importlib``, of which there is
+    none (review of #607, 11)."""
     for module in (walk, paired):
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
         imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}

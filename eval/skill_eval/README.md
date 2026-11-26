@@ -2,7 +2,7 @@
 
 Register E135 (SYS-22). It runs the paired comparison of the [skill evaluation guide](../../docs/skills/evaluation-guide.md) for one skill that AEW's install ships, on F19's instrument (`eval/aew_eval`). It answers the row's three questions as far as a machine can: whether the skill helps a weaker model, whether such a model picks it from its description, and what its listing and its loads cost.
 
-**Running it for real is not part of this directory.** The qualification is a release gate on E135's row, and it is the operator's act: a keyed, paid model they approve for that event, never a free one, within their limit of USD 10. No test here calls a provider.
+**Running it for real is not part of this directory.** The qualification is a release gate on E135's row, and it is the operator's act: a keyed, paid model they approve for that event, never a free one. The runner refuses a preregistration whose budget is above their limit of USD 10. That bounds one preregistration only: it sums nothing across experiments or lanes, so the total spent on the evaluation is the operator's to keep. No test here calls a provider.
 
 ## What is whose
 
@@ -43,6 +43,8 @@ python -m skill_eval report ~/skill-eval/plan.frozen.yaml --lane ~/skill-eval/la
     --evaluator ~/skill-eval/evaluator --grades ~/skill-eval/grades.jsonl
 ```
 
+**Keeping the grading blind.** Give the grader a copy of each packet's `export` directory (check it against `export_sha256`), the task and the rubric, and nothing else. The lane and the frozen plan are the unblinding key: `work/<run>/skills/` shows a run's exposure, `ledger/runs/` names its arm, and the plan's `assignment.order` maps every `rNNN` to its arm. Keep all three away from the grader until the grades file is final.
+
 A dry run with no model uses two `scripted` arms (`kind: scripted`, `steps: []` and the same three exposure keys). It qualifies the schedule, the delivery, the budget and the report, and its report is always a pilot.
 
 ## What the pair is
@@ -61,7 +63,8 @@ Each case and repetition is one block holding both arms, in an order drawn from 
 - **Cost.** The candidate run's usage minus the baseline's, pair by pair: first-step input tokens, each token category, reported cost, steps and wall time. All complete pairs, then split by whether the candidate was loaded. An unknown value is counted as missing, never as zero. `loads` gives the candidate's loads and the bytes of its `SKILL.md` they brought in, a lower bound.
 - **Selection.** Each candidate run's `loaded` beside the case's expected activation (`use`, `skip` or `abstain`) from the key: false activations, missed activations, loads of another exposed skill, and `skill` calls that loaded nothing.
 - **Benefit.** Paired counts from a grader's file: both right, the candidate alone, the baseline alone, neither.
-- **`pilot`.** True unless both arms ran a model, contained, with the evaluator's material hidden from them. A pilot qualifies the instrument and decides nothing.
+- **`pilot`** is always true today, because the only cases a model arm can run are public ones (Limits). A pilot qualifies the instrument and decides nothing. `evaluator_material_hidden` says separately whether the lane's record knows the evaluator's paths were hidden from every arm.
+- **`pair.told_differs`** says whether the two arms were told different text.
 - **`decision`** is always `null`.
 
 ## What the runner leaves open
@@ -78,7 +81,10 @@ These change what the evaluation means, so the runner does not choose them. Each
 ## Limits
 
 - **Public cases make a pilot.** The cases under `docs/skills/candidates/` are development material and their oracles are public. F19 refuses a held-out case on a model arm until its evaluator/arm-host split exists, so a benefit claim on private cases waits for that.
-- **Hidden means the filesystem.** On Linux a contained arm is refused unless its layout hides the evaluator's directory, the cases and the directory the cases' source file is in (its oracles and rubric). An arm that is not contained (Windows, or `contain: false`) can read what its user can, and its lane is a pilot. Nothing here limits an arm's network.
+- **Hidden means the filesystem.** On Linux a contained arm is refused unless its layout hides the evaluator's directory, the cases and the directory the cases' source file is in (its oracles and rubric). An arm that is not contained (Windows, or `contain: false`) can read what its user can, and `evaluator_material_hidden` is false. Nothing here limits an arm's network. The check is computed from the lists F19's layout hides; it does not open the paths from inside a layout.
+- **The baseline can reach the candidate's shipped text on disk.** The check above covers the evaluator's paths, not AEW's own install. The shipped skills sit in the installed package, under the interpreter's prefix, which a contained arm's layout keeps readable, and an arm that is not contained can read them anywhere. So "absent" for the baseline means not listed, not offered and not copied into its run; a baseline that went looking through the interpreter's files could find the text. The guide's "A has no access to it" (§5, step 4) is not met to that extent.
+- **The budget counts what the harness reports.** A reported cost of 0 is charged 0. A run's cap is enforced by the arm between polls, so one run can end somewhat above it. The sums are floating point, so a pair that fits the budget exactly can be refused; that errs on the safe side.
+- **A host-side failure stops the walk, and still costs its attempt.** A failed delivery, a refused session or any error around the arm ends the walk at that cell (it resumes once the host is fixed). The attempt it stopped on is counted, and under `max_retries: 0` that cell is not run again.
 - **The listing is not read back.** A run records what was delivered and re-hashed, and what the session loaded. It does not ask the server what the `skill` tool listed. The first live step of a qualification is a model-free check that the pinned OpenCode lists exactly an arm's exposed ids under these rules; no OpenCode binary was at hand when this was built, and the tests use the repository's fake server, which applies no skill rules.
 - **A case with no artifact files cannot run.** F19 builds a case from a fixture tree and refuses an empty one, so `materialize` refuses such a case by name; leave it out with `--only`.
 - **One candidate per experiment.** A bundle of skills is another experiment (guide §3).

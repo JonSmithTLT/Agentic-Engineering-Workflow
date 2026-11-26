@@ -9,11 +9,13 @@ what a skill evaluation needs around it.
 * **Budget.** Every attempt is charged: its reported cost, or its arm's cap when the cost is unknown or the attempt
   was lost (``aew_eval.raw.charged``). A cell starts only while what is spent, plus the caps of every cell its block
   still needs, fits ``budget_usd``; otherwise the walk stops with nothing started, so a block is never begun that the
-  budget cannot finish.
+  budget cannot finish. Two limits: the charge is the cost the harness reports, so a reported 0 is charged 0, and a
+  run's cap is enforced by the arm between polls, so one run can end somewhat above its cap.
 * **Retries** are the frozen policy's, which the ledger enforces: a cell whose latest attempt is valid, or whose
   policy allows no further one, is left as it is. A model's failure is an outcome, never retried into a pass.
-* **A lane error stops the walk.** An attempt that measured the host and not the model (:data:`LANE_ERRORS`) would
-  repeat in every later cell, so the walk ends there and says why, as the lower-bound lane's does.
+* **A lane error stops the walk.** An attempt that measured the host and not the model (:func:`lane_error`: the
+  host-side reasons, an arm that raised, a runner error) would repeat in every later cell, so the walk ends there
+  and says why, as the lower-bound lane's does. The attempt it stopped on is still counted, under the frozen policy.
 * **Names.** A run is named for its place in the schedule (``r007``), so under a randomized order neither a run's
   id nor its folder names its arm.
 * **Resumable.** What has run is the ledger's, so a second walk continues where the first stopped.
@@ -28,9 +30,16 @@ from typing import Any
 from aew_eval import raw, runner
 from aew_eval.ledger import Attempt, AttemptLedger
 
-# Why an attempt cannot count that every later cell would meet too (``raw.raw_invalid``'s host-side reasons, and the
-# runner's own for a model that is not the pinned one): the host or the key needs fixing, not another attempt.
-LANE_ERRORS = ("CONTAINMENT_FAILED", "HARNESS_MISMATCH", "NO_MODEL_STEP", "PROVIDER_KEY_RETAINED", "PROFILE_MISMATCH")
+# Why an attempt cannot count that every later cell would meet too (``raw.raw_invalid``'s host-side reasons, the
+# runner's own for a model that is not the pinned one, and an arm or a runner that raised: ``ARM_ERROR`` and every
+# ``RUNNER_ERROR:<type>``): the host or the key needs fixing, not another attempt. The walk resumes once it is.
+LANE_ERRORS = ("CONTAINMENT_FAILED", "HARNESS_MISMATCH", "NO_MODEL_STEP", "PROVIDER_KEY_RETAINED", "PROFILE_MISMATCH",
+               "ARM_ERROR")
+RUNNER_ERROR = "RUNNER_ERROR:"  # the runner's prefix for an exception around the arm (aew_eval.runner.run_cell)
+
+
+def lane_error(reason_code: str | None) -> bool:
+    return bool(reason_code) and (reason_code in LANE_ERRORS or str(reason_code).startswith(RUNNER_ERROR))
 
 
 def blocks(frozen: dict[str, Any]) -> list[list[dict[str, Any]]]:
@@ -117,6 +126,6 @@ def walk(frozen: dict[str, Any], *, cases: dict[str, Path], ledger_dir: Path, wo
                                          deadline_s=deadline_s, defer_scoring=True)
                 ran.append({"run_id": record["run_id"], "validity": record["validity"],
                             "charged_usd": charged(record, arm_caps[entry["arm"]])})
-                if record["validity"]["reason_code"] in LANE_ERRORS:
+                if lane_error(record["validity"]["reason_code"]):
                     return out("lane_error", reason_code=record["validity"]["reason_code"], cell=cell)
     return out("done")

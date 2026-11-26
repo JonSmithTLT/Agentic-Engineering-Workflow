@@ -152,7 +152,8 @@ def test_the_two_arms_differ_in_the_delivered_skill_alone_and_what_was_loaded_is
         "use": {"loaded": 1, "not_loaded": 0, "unknown": 0}}
     assert out["selection"]["skill_calls_that_loaded_nothing"] == {"baseline": 1, "candidate": 0}
     assert out["cost"]["candidate_minus_baseline"]["first_step_input_tokens"]["n"] == 1
-    assert out["pair"]["kind"] == "raw" and out["pilot"] is True  # not contained: the arm could read the key
+    assert out["pair"]["kind"] == "raw" and out["pilot"] is True and out["pair"]["told_differs"] is True
+    assert out["evaluator_material_hidden"] is False  # not contained: the arm could read the key
     [first, second] = report.packets(frozen, lane["lane"] / "ledger", lane["manifests"])
     assert (Path(first["export"]) / "ANSWER.md").read_text(encoding="utf-8") == "add() subtracts.\n"
     assert first["changed_paths"] == second["changed_paths"] == ["ANSWER.md"]
@@ -167,6 +168,25 @@ def test_a_model_that_needs_no_key_is_refused_before_anything_is_registered(lane
     with pytest.raises(runner.Refused, match="keyed, paid model"):
         lane_run.run(frozen, cases=lane["manifests"], lane=lane["lane"], evaluator=[lane["evaluator"]], limit=1)
     assert not (lane["lane"] / "ledger" / "attempts.jsonl").exists()
+
+
+def test_a_skill_that_fails_to_arrive_on_the_model_arm_is_charged_nothing_and_stops_the_walk(lane, monkeypatch):
+    """The arm's configuration is built before the run counts as launched, so a delivery that fails is an arm error
+    with nothing started and nothing charged. Every later cell would fail the same way, so the walk stops there and
+    the rest of the schedule is not spent (review of #607, 2 and 7)."""
+    real = skills.deliver
+    monkeypatch.setattr(skills, "deliver", lambda planned, root: {
+        **real(planned, root), "exposed": [], "reasons": {name: skills.COPY_FAILED for name in planned["exposed"]}})
+    frozen = prereg.freeze(lane["draft"], by="integration test")
+    (lane["scripts"] / "default.json").write_text(json.dumps({"steps": [ANSWER], "effective": EFFECTIVE}),
+                                                  encoding="utf-8")
+    out = lane_run.run(frozen, cases=lane["manifests"], lane=lane["lane"], evaluator=[lane["evaluator"]],
+                       deadline_s=120)
+    assert out["stopped"] == "lane_error" and out["reason_code"] == "ARM_ERROR" and len(out["ran"]) == 1
+    assert out["ran"][0]["charged_usd"] == 0.0 and out["spent_usd"] == 0.0
+    [first] = [json.loads(p.read_text(encoding="utf-8")) for p in (lane["lane"] / "ledger" / "runs").glob("*.json")]
+    assert first["outcome"]["launched"] is False and "not delivered" in first["outcome"]["arm_error"]
+    assert not list((lane["lane"] / "work").glob("*/harness/harness/fake-server.json"))  # no server ever started
 
 
 def test_the_raw_arm_alone_is_configured_as_before(lane, tmp_path):

@@ -5,7 +5,7 @@ claims the lane for that one experiment, installs the two skill arms for the wal
 (guide §5, steps 4 to 7). The budget, the retries, the lane errors, the run names and the resumption are the walk's.
 
 **The evaluator's material.** A contained arm (Linux) is refused unless every evaluator path is hidden by its layout;
-the lane's record (``lane.json``) says whether it was, and a lane where it was not is a pilot (README).
+the lane's record (``lane.json``) says whether it was. It covers the evaluator's paths only (README, Limits).
 """
 
 from __future__ import annotations

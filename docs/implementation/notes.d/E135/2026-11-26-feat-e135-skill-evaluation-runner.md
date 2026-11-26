@@ -4,6 +4,7 @@
 
 - **A model-free live check on the pinned OpenCode** that the `skill` tool lists exactly an arm's exposed ids under the session rules the arm sends. No OpenCode binary was at hand when the runner was built, and the fake server applies no skill rules.
 - **The choices the runner leaves to the plan** (the README's "What the runner leaves open"): who grades and by what rubric, the model and its effort, the sample and the decision rule, and what the arm is told.
+- **What the limit of USD 10 covers.** The runner refuses a preregistration whose budget is above it, and sums nothing across experiments, skills or lanes. Whether the limit is for each experiment or for the whole evaluation is the operator's to say; until then the total is theirs to keep.
 - **Private cases.** The public cases are development material, so every run on them is a pilot. F19 refuses a held-out case on a model arm until its evaluator/arm-host split is finished, and F19 is frozen.
 - **The agent.** The model arm is OpenCode's own `build` agent with the skill exposed, not a worker under an AEW role card; that needs F19's `aew` arm, which is not built.
 

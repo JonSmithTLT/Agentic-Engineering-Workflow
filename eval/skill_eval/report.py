@@ -55,14 +55,17 @@ def loads_of(candidate: str) -> paired.Facts:
         exposure = _exposure(record)
         counted = exposure.get("loaded")
         loaded: dict[str, Any] | None = counted if isinstance(counted, dict) else None
+        size = next((d.get("bytes") for d in exposure.get("delivered") or [] if d.get("name") == candidate), None)
         return {"loaded": loaded, "skill_other": exposure.get("skill_other"),
-                "candidate_loaded": None if loaded is None else bool(loaded.get(candidate))}
+                "candidate_loaded": None if loaded is None else bool(loaded.get(candidate)),
+                "candidate_bytes": size}
     return facts
 
 
 def pairs(frozen: dict[str, Any], ledger_dir: Path) -> list[dict[str, Any]]:
-    """Every block of the schedule as a baseline and candidate pair, in schedule order."""
-    pair = plan.shape(frozen)
+    """Every block of the schedule as a baseline and candidate pair, in schedule order. The pair is read from the
+    frozen record and the runs, never from today's install, so a lane stays reportable after a skill's text changes."""
+    pair = plan.shape(frozen, installed=False)
     return paired.pairs(frozen, ledger_dir, sides(pair), problem=exposure_problem, facts=loads_of(pair["candidate"]))
 
 
@@ -72,12 +75,15 @@ def cost(found: list[dict[str, Any]], pair: dict[str, Any]) -> dict[str, Any]:
     not_loaded = [p for p in complete if p["candidate"]["candidate_loaded"] is False]
     loads = [int(p["candidate"]["loaded"].get(pair["candidate"], 0)) for p in complete
              if p["candidate"]["loaded"] is not None]
+    # the candidate's SKILL.md size as the runs that had it recorded it; unknown when none did
+    size = next((p["candidate"]["candidate_bytes"] for p in complete
+                 if isinstance(p["candidate"]["candidate_bytes"], int)), None)
     return {**paired.cost(found, sides(pair)),
             "when_the_candidate_was_loaded": {"pairs": len(loaded), **paired.deltas(loaded)},
             "when_it_was_not": {"pairs": len(not_loaded), **paired.deltas(not_loaded)},
             "loads": {"runs_with_loaded_known": len(loads), "loads": sum(loads),
-                      "skill_md_bytes": pair["candidate_bytes"],
-                      "loaded_bytes_lower_bound": sum(loads) * pair["candidate_bytes"]}}
+                      "skill_md_bytes": size,
+                      "loaded_bytes_lower_bound": None if size is None else sum(loads) * size}}
 
 
 def selection(found: list[dict[str, Any]], pair: dict[str, Any], key: dict[str, Any] | None) -> dict[str, Any]:
@@ -108,20 +114,23 @@ def selection(found: list[dict[str, Any]], pair: dict[str, Any], key: dict[str, 
 
 def packets(frozen: dict[str, Any], ledger_dir: Path, cases: dict[str, Path]) -> list[dict[str, Any]]:
     """The blind grading packets of each complete pair: the shared ones, which carry no arm, exposure, load or cost."""
-    return paired.packets(frozen, ledger_dir, cases, pairs(frozen, ledger_dir), sides(plan.shape(frozen)))
+    return paired.packets(frozen, ledger_dir, cases, pairs(frozen, ledger_dir),
+                          sides(plan.shape(frozen, installed=False)))
 
 
 def report(frozen: dict[str, Any], lane: Path, *, key: dict[str, Any] | None = None,
            grades: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The lane's report. ``pilot`` is true unless the lane's record says the evaluator's material was hidden from
-    every arm: a pilot qualifies the instrument and decides nothing (guide §5)."""
-    pair = plan.shape(frozen)
+    """The lane's report. ``pilot`` is always true today: the only cases a model arm can run are public ones, whose
+    oracles anyone can read, and F19 refuses a held-out case on a model arm. A pilot qualifies the instrument and
+    decides nothing (guide §5). ``evaluator_material_hidden`` says what the lane's record knows of the filesystem."""
+    pair = plan.shape(frozen, installed=False)
     found = pairs(frozen, lane / "ledger")
     mark = json.loads((lane / LANE_FILE).read_text(encoding="utf-8")) if (lane / LANE_FILE).exists() else {}
     hidden = bool(mark.get("evaluator_material_hidden"))
     return {"schema": REPORT, "experiment": frozen["experiment"],
             "preregistration_sha256": frozen["canonical_sha256"],
-            "pair": {k: pair[k] for k in ("baseline", "candidate_arm", "candidate", "mode", "kind", "also_exposed")},
-            "pilot": pair["kind"] != "raw" or not hidden, "evaluator_material_hidden": hidden,
+            "pair": {k: pair[k] for k in ("baseline", "candidate_arm", "candidate", "mode", "kind", "also_exposed",
+                                          "told_differs")},
+            "pilot": True, "evaluator_material_hidden": hidden,
             "pairs": paired.summary(found), "cost": cost(found, pair), "selection": selection(found, pair, key),
             "benefit": paired.benefit(found, grades, sides(pair)), "decision": None, "runs": found}

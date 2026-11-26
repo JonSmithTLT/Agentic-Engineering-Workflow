@@ -8,7 +8,9 @@ purpose: qualification            # or treatment_effect: the guide's benefit cla
 question: REQUIRED one falsifiable claim for this skill, this model and these cases (guide §1)
 profiles:
   roles: {worker: REQUIRED provider/model#effort}   # a keyed, paid model the operator approves for this event
-  budget_usd: 10                  # at most the operator's limit, USD 10 (register E135)
+  # This experiment's own budget: small, and never above USD 10, the operator's limit (register E135). The runner
+  # bounds this one preregistration and sums nothing across experiments: the total is the operator's to keep.
+  budget_usd: 1
 runs_per_cell: 1                  # the paired repeats per case; the count and its reason are the owner's (guide §1)
 assignment: {method: randomized_blocked, seed: 0}   # the seed is recorded before any run; the order comes from it
 primary_measure: REQUIRED one primary measure with its unit and denominator (guide §6)

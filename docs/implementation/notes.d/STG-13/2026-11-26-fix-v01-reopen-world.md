@@ -23,7 +23,9 @@ clusters C7 and C8 of the V-01 re-measure of 2026-11-26.
   running`). The alpha's V2-forced line is gone.
 
 **The rows.** C7's and C8's register rows, E376 and E377, are filed by #601, not on this branch. Whichever of #601
-and #603 merges second closes both rows and marks C7 and C8 `done` on `v01-burn-down.md`.
+and #603 merges second closes both rows and marks C7 and C8 `done` on `v01-burn-down.md`. #601 also files the row
+for the open question above, which this branch cannot cite before #601 merges: the second to merge adds "(E382)" to
+that bullet.
 
 **What remains** of STG-13 is V-01's other clusters. The alpha gate still fails on its V1 decisions line (C1, E335),
 and every V2 case still fails strict on C12's fallbacks, the C1 to C4 counters and `pin_reentries` 1.

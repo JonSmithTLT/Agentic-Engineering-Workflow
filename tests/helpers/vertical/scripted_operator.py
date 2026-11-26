@@ -468,11 +468,11 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
 def settle_tool_offers(lab: HarnessLab, ledger: Ledger) -> list[str]:
     """Setup's fixture of the offline world: AEW's tool offers settled before the first open, so a reopen on the
     operator's terminal meets no consent screen. The operator's ruling of 2026-11-26 (question Q5 of the V-01
-    re-measure): "setup fixture that is recorded but not counted. [...] Aew saying a critical item is missing isnt a
-    ux failure its common sense." The world has no route to a tool's source, so it answers the screen ``none``: each
-    needed tool is declined and no optional one, which is what :func:`consent.ask` gives for that answer, in the
-    register the world's ``aew`` reads. Each decline is recorded, never counted. AEW's line at the start naming a
-    declined needed tool stays, and counts nothing. Returns the tools declined.
+    re-measure), in part: "setup fixture that is recorded but not counted. [...] Aew saying a critical item is missing
+    isnt a ux failure its common sense. [...]" The world has no route to a tool's source, so it answers the screen
+    ``none``: each needed tool is declined and no optional one, which is what :func:`consent.ask` gives for that
+    answer, in the register the world's ``aew`` reads. Each decline is recorded, never counted. AEW's line at the
+    start naming a declined needed tool stays, and counts nothing. Returns the tools declined.
 
     Setup only: its one vertical caller is ``configure``, before the first open, and it records under ``init``
     whenever it is called. A tool that becomes needed after setup is not settled: its screen meets the next reopen."""

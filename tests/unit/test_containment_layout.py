@@ -1863,11 +1863,16 @@ def plant_env_files(repo: Path) -> None:
         (repo / name).write_text("SYNTHETIC=1\n")
 
 
+def env_path(repo: str, name: str) -> str:
+    """``name`` (written with `/`) under ``repo``, as the platform spells a path."""
+    return os.path.join(repo, *name.split("/"))
+
+
 def env_masked(layout: C.Layout, repo: str, names: tuple[str, ...]) -> set[str]:
     """Which of ``names`` (relative to ``repo``) the layout masks in place by the empty file, from its argv."""
     argv = C.bwrap_argv(layout, ["agent"])
     binds = {argv[i + 2] for i, a in enumerate(argv[:-2]) if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
-    return {n for n in names if os.path.join(repo, n) in binds}
+    return {n for n in names if env_path(repo, n) in binds}
 
 
 def test_the_contained_leads_layout_masks_the_projects_env_files_at_any_depth_and_keeps_env_example(
@@ -1878,7 +1883,7 @@ def test_the_contained_leads_layout_masks_the_projects_env_files_at_any_depth_an
     plant_env_files(tmp_path / "repo")
     layout = lead_layout(tmp_path)
     repo = os.path.realpath(tmp_path / "repo")
-    want = {os.path.join(repo, n) for n in ENV_NAMES}
+    want = {env_path(repo, n) for n in ENV_NAMES}
     assert set(layout.env_masks) == want and set(layout.hide_files) >= want
     assert {p: by for p, by in layout.tree_masks if p in want} == dict.fromkeys(want, L.PROJECT_ENV)
     assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES)
@@ -1894,7 +1899,7 @@ def test_a_workers_layout_masks_the_projects_env_files_in_place_at_any_depth(tmp
         layout = run_layout(tmp_path / role, role)
         repo = os.path.realpath(tmp_path / role / "repo")
         assert repo in layout.visible
-        assert set(layout.env_masks) == {os.path.join(repo, n) for n in ENV_NAMES}, role
+        assert set(layout.env_masks) == {env_path(repo, n) for n in ENV_NAMES}, role
         assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES), role
         assert not [d for d in layout.left_out_of if L._within(d, repo)], role
         assert not [n for n in os.listdir(tmp_path / role / "ws") if n.startswith(".env")], role

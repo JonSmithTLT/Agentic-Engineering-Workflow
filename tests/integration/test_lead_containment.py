@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from host_env import GUARDED
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
@@ -489,6 +490,53 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
     assert (lab.repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+def test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_however_its_mode_is_set(
+        lead_lab, monkeypatch):
+    """The scan fails closed: a directory it cannot list as the launching account (searchable but not readable, 0311),
+    and one holding an entry whose type it cannot read, are masked whole, so a `.env` file in either cannot be read by
+    name from the Lead's sandbox, nor its mode changed back. The layout is built as an unprivileged account lists
+    (``listing_as_unprivileged``), as these tests may run as root. Synthetic values only."""
+    lab = lead_lab
+    for d in ("locked", "odd"):
+        (lab.repo / d).mkdir()
+        (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "odd" / "entry").write_text("x\n")
+    try:
+        (lab.repo / "locked").chmod(0o311)
+        with listing_as_unprivileged(monkeypatch, unreadable=(str(lab.repo / "odd" / "entry"),)):
+            layout = lab.layout(env={"HOME": str(lab.home)})
+        done = lab.sh(layout, "cat locked/.env odd/.env; chmod 700 locked; echo rc=$?; cat locked/.env; "
+                              "grep -rh SYNTHETIC . 2>/dev/null; echo end")
+    finally:
+        (lab.repo / "locked").chmod(0o700)
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
+    assert (lab.repo / "locked" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch(lead_lab, monkeypatch):
+    """A Lead that takes a directory's permissions away in one session cannot read a `.env` file there in the next by
+    giving them back: the next launch's scan cannot list the directory, so it masks it whole, and the launch still
+    starts. Each mode the Lead could set is tried. Synthetic values only."""
+    lab = lead_lab
+    sec = lab.repo / "sec"
+    sec.mkdir()
+    (sec / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    try:
+        for mode in ("000", "300", "100"):
+            first = lab.sh(lab.layout(env={"HOME": str(lab.home)}), f"chmod {mode} sec; echo rc=$?")
+            assert "rc=0" in first.stdout, first.stdout + first.stderr
+            with listing_as_unprivileged(monkeypatch):
+                layout = lab.layout(env={"HOME": str(lab.home)})
+            assert str(sec.resolve()) in layout.env_dirs, mode
+            done = lab.sh(layout, "chmod 700 sec; cat sec/.env; grep -rh SYNTHETIC sec 2>/dev/null; echo end")
+            assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+            assert "SYNTHETIC-ENV-VALUE" not in done.stdout, (mode, done.stdout)
+            sec.chmod(0o700)
+    finally:
+        sec.chmod(0o700)
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

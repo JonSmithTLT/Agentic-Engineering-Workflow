@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 from host_env import GUARDED, launching_names
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.harness import containment as C
 from aew.harness import procs
@@ -243,6 +244,26 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
     assert (repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch):
+    """The scan fails closed for a worker too: a project directory it cannot list as the launching account (searchable
+    but not readable, 0311) is masked whole, so a `.env` file there cannot be read by absolute path. The layout is built
+    as an unprivileged account lists (``listing_as_unprivileged``), as these tests may run as root. Synthetic values
+    only."""
+    locked = lab.repo / "locked"
+    locked.mkdir()
+    (locked / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    try:
+        locked.chmod(0o311)
+        with listing_as_unprivileged(monkeypatch):
+            layout = lab.layout("implementer")
+        done = lab.sh(layout, f"cat {locked}/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; echo end")
+    finally:
+        locked.chmod(0o700)
+    assert str(locked.resolve()) in layout.env_dirs
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):

@@ -2281,7 +2281,14 @@ system text that said the same: the guarantee is containment's, and the `read` d
   it (the quick check of #592). That covers tracked, untracked and ignored files alike, and a nested repository's or a
   submodule's own, as each is in the tree a run sees. It skips each `.git` directory and the project's `.aew`, and
   follows no link to a directory, so it ends. Its cost is the tree's size: about 0.3 s for 200,000 entries in ignored
-  vendored directories. A directory this account cannot list is skipped, as no run can list it either.
+  vendored directories.
+- **It fails closed** (the quick check of #592). A directory the walk cannot list (one searchable but not readable,
+  say), or one holding an entry whose type it cannot read, is masked whole by an empty directory, as a
+  `containment.hide` directory is, because a `.env` file in it could still be read by name. For a path too long to
+  list, the deepest directory the walk reached is masked. Each is named on the Lead's launch line ("a project
+  directory the .env scan cannot read"), and none refuses the launch, so a Lead that takes a directory's
+  permissions away in one session finds it empty from the next. Only the project itself must be listable, since
+  AEW reads its store there; one that is not is refused (`project_unlistable`).
 - **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
   in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
   bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
@@ -2311,10 +2318,14 @@ system text that said the same: the guarantee is containment's, and the `read` d
 - **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
   - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
   - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked;
+  - a directory the scan cannot read is masked whole and the run still launches, and a project it cannot list is
+    refused;
   - a project with too many files to mask is refused;
   - the read rules derive from the names.
 
   In a real sandbox on Linux, `tests/integration/test_lead_containment.py` and `tests/integration/test_containment.py`
   check the Lead's sandbox and a worker's. A read by name or by absolute path, a search of the tree and another
   program's read find no nested or top-level `.env` file's content, while each `.env.example` reads as it is. The
-  same holds in a nested repository, in a submodule's checkout, and for names that begin or end with a space.
+  same holds in a nested repository, in a submodule's checkout, and for names that begin or end with a space. It also
+  holds in a directory the scan cannot read, for the Lead and a worker, and for a Lead that takes a directory's
+  permissions away in one session and gives them back in the next.

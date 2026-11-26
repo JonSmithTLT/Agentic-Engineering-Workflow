@@ -54,6 +54,7 @@ the operator's account can read.
 
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 import sys
@@ -62,7 +63,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from aew import hoststate
 from aew.errors import ContainmentUnavailable
@@ -222,6 +223,7 @@ class Layout:
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``: a secret file in a tree the run writes
     env_masks: tuple[str, ...] = ()          # the project's `.env` files among them, in every layout
+    env_dirs: tuple[str, ...] = ()           # the project's directories its .env scan could not read, in hide_dirs
     left_out: tuple[str, ...] = ()           # absent inside: left out of their directories, ``left_out_of``
     left_out_of: tuple[str, ...] = ()        # empty tmpfs at its depth, its other entries put back, then read-only
     put_back: tuple[str, ...] = ()           # those other entries, bound back read-only at their depth
@@ -273,6 +275,7 @@ class Layout:
                 "tools_first": self.tools_first, "tools_last": self.tools_last,
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files, *self.left_out],
                 "left_out_of": list(self.left_out_of), "env_masks": list(self.env_masks),
+                "env_dirs": list(self.env_dirs),
                 "tree_masks": [{"path": p, "by": by} for p, by in self.tree_masks],
                 "tree_absent": [{"path": p, "by": by} for p, by in self.tree_absent],
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
@@ -361,7 +364,7 @@ def _refuse_too_many_arguments(layout: Layout, argv: list[str]) -> None:
     held = Counter(os.path.dirname(p) for p in (*layout.put_back, *(p for p, _ in layout.put_back_links))
                    if os.path.dirname(p) in masked).most_common()
     listed = ", ".join(f"{d} ({n} entries)" for d, n in held) or "none"
-    envs = len(layout.env_masks)
+    envs = len(layout.env_masks) + len(layout.env_dirs)
     # the step for whichever takes more of the arguments: the entries put back, or the project's .env files
     step = (f"keep fewer .env files in the project (it has {envs}, each masked on its own)"
             if envs and envs >= sum(n for _, n in held) else
@@ -510,6 +513,8 @@ ENV_FILES = ("*.env", "*.env.*")
 ENV_DOCS = ("*.env.example",)
 PROJECT_ENV = "the project's .env files"  # what puts each there, on the launch line
 ENV_WHAT = "a project .env file"  # what each is, for a refusal that names one
+PROJECT_ENV_DIR = "a project directory the .env scan cannot read"  # one masked whole, on the launch line
+ENV_DIR_WHAT = "a project directory that may hold a .env file"
 
 
 def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None, needed: list[tuple[str, str]],
@@ -658,7 +663,14 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str],
     return [(path, source, secret) for path, (source, secret) in seen.items()]
 
 
-def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
+class EnvScan(NamedTuple):
+    """What :func:`project_env_masks` finds: the `.env` files to mask in place, and the directories to mask whole."""
+
+    files: list[str]
+    dirs: list[str]
+
+
+def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
     """Every `.env` file in ``project``, at any depth (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), at its real
     path, sorted: what :func:`for_run` masks in place by the empty read-only file in every layout, so containment hides
     the project's `.env` files from every tool. A directory is not one: `.env` is also a virtual environment's usual
@@ -669,37 +681,60 @@ def project_env_masks(project: str | os.PathLike[str]) -> list[str]:
     files alike, and a nested repository's or a submodule's own, as each is in the tree a run sees. It skips each
     ``.git`` directory and the project's ``.aew`` (the store, and the runs' own directories, which have masks of their
     own), and follows no link to a directory, so it ends: a directory outside the project that a link inside it points
-    at is not walked. Its cost is the tree's size (about 0.3 s for 200,000 entries in ignored vendored directories). A
-    directory this account cannot list is skipped, as nothing inside can list it either. Present at the launch only: a
-    file first created, or replaced by rename on the host, during the session is seen inside until the next launch, as
-    a containment.hide entry in the run's own tree is."""
+    at is not walked. Its cost is the tree's size (about 0.3 s for 200,000 entries in ignored vendored directories).
+
+    It fails closed, and never refuses for it (the quick check of #592): a directory the walk cannot list, or one
+    holding an entry whose type it cannot read, is in ``dirs``, masked whole by an empty directory as a containment.hide
+    directory is, as a `.env` file in it may still be read by name; one whose path is too long to list, its deepest
+    directory the walk reached. One gone during the walk is not there to hide. The project itself must be listable:
+    AEW reads its store there. Present at the launch only: a file first created, or replaced by rename on the host,
+    during the session is seen inside until the next launch, as a containment.hide entry in the run's own tree is."""
     root = _real(project)
     if not os.path.isdir(root):  # no project directory to show, so nothing in it to hide
-        return []
-    out: set[str] = set()
+        return EnvScan([], [])
+    files: set[str] = set()
+    dirs: set[str] = set()
     stack = [root]
     while stack:
         top = stack.pop()
         try:
             with os.scandir(top) as it:
                 entries = list(it)
-        except OSError:  # not listable by this account, so not by a run either
+        except FileNotFoundError:  # gone during the walk
             continue
+        except OSError as exc:
+            if top == root:
+                raise ContainmentUnavailable(f"the project {root} cannot be listed ({exc.strerror}); give this account "
+                                             "read and search permission on it", project=root,
+                                             reason="project_unlistable") from exc
+            dirs.add(os.path.dirname(top) if exc.errno == errno.ENAMETOOLONG else top)
+            continue
+        below: list[str] = []
         for entry in entries:
-            name = entry.name
             try:
                 if entry.is_dir(follow_symlinks=False):
-                    if name != ".git" and not (top == root and name == ".aew"):
-                        stack.append(entry.path)
+                    if entry.name != ".git" and not (top == root and entry.name == ".aew"):
+                        below.append(entry.path)
                     continue
-            except OSError:
+            except FileNotFoundError:
                 continue
+            except OSError:  # an entry of unknown type: its directory whole
+                if top == root:
+                    raise ContainmentUnavailable(f"an entry of the project {root} cannot be read ({entry.name!r}); "
+                                                 "give this account read permission on it", project=root,
+                                                 reason="project_unlistable") from None
+                dirs.add(top)
+                break
+            name = entry.name
             if not any(fnmatchcase(name, p) for p in ENV_FILES) or any(fnmatchcase(name, p) for p in ENV_DOCS):
                 continue
             real = _real(entry.path)
             if os.path.isfile(real) and not _sandbox_own(real):
-                out.add(real)
-    return sorted(out)
+                files.add(real)
+        else:
+            stack += below
+    hidden = sorted(dirs)
+    return EnvScan(sorted(f for f in files if not any(_within(f, d) for d in hidden)), hidden)
 
 
 def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:
@@ -708,15 +743,19 @@ def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:
     return tuple(p for p in paths if p not in plan.files and not any(_within(p, c) for c in covered))
 
 
-def _env_fields(plan: MaskPlan, env_files: tuple[str, ...], written: list[str]) -> dict[str, Any]:
+def _env_fields(plan: MaskPlan, env_files: tuple[str, ...], env_dirs: tuple[str, ...],
+                written: list[str]) -> dict[str, Any]:
     """The :class:`Layout` fields of ``plan`` with the project's `.env` files (:func:`project_env_masks`) masked in
-    place among ``hide_files``, and named on the launch line (``tree_masks``) where they lie in a tree the run writes:
-    the Lead's project."""
+    place among ``hide_files``, the directories its walk could not read masked whole among ``hide_dirs``, and each
+    named on the launch line (``tree_masks``) where it lies in a tree the run writes: the Lead's project."""
     fields = plan.fields()
     fields["hide_files"] = (*plan.files, *env_files)
+    fields["hide_dirs"] = (*plan.dirs, *env_dirs)
     fields["env_masks"] = env_files
-    fields["tree_masks"] = (*plan.tree_masks, *((p, PROJECT_ENV) for p in env_files
-                                                 if any(_within(p, w) for w in written)))
+    fields["env_dirs"] = env_dirs
+    fields["tree_masks"] = (*plan.tree_masks, *((p, by) for paths, by in ((env_dirs, PROJECT_ENV_DIR),
+                                                                          (env_files, PROJECT_ENV))
+                                                 for p in paths if any(_within(p, w) for w in written)))
     return fields
 
 
@@ -1502,12 +1541,14 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     _refuse_masks(plan.refused, home)
     # The project's `.env` files, in place in every layout, as every layout shows the project: one bind of the empty
     # file each, no directory emptied and refilled (the review of #592).
-    env_files = _unmasked(plan, project_env_masks(project))
+    scan = project_env_masks(project)
+    env_dirs = _unmasked(plan, scan.dirs)
+    env_files = _unmasked(plan, scan.files)
     hide_host = host_masks()
-    secret = {**dict(plan.what), **dict.fromkeys(env_files, ENV_WHAT)}
+    secret = {**dict(plan.what), **dict.fromkeys(env_files, ENV_WHAT), **dict.fromkeys(env_dirs, ENV_DIR_WHAT)}
     guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir,
-                       masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files, *env_files)), host=hide_host,
-                       net_dir=net_dir, left_out=tuple((p, secret[p]) for p in plan.left_out))
+                       masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files, *env_dirs, *env_files)),
+                       host=hide_host, net_dir=net_dir, left_out=tuple((p, secret[p]) for p in plan.left_out))
     operator = []
     for raw, path in roots:
         _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
@@ -1546,8 +1587,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
         hide_runs.append(_real(runs))
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
-                    visible=tuple(visible), hide_runs=tuple(hide_runs), **_env_fields(plan, env_files, writable),
-                    mask_file=str(mask),
+                    visible=tuple(visible), hide_runs=tuple(hide_runs),
+                    **_env_fields(plan, env_files, env_dirs, writable), mask_file=str(mask),
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,

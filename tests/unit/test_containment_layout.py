@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from host_env import GUARDED
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
@@ -1921,9 +1922,9 @@ def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole
         (repo / hidden).mkdir()
         (repo / hidden / ".env").write_text("SYNTHETIC=1\n")
     real = os.path.realpath(repo)
-    assert L.project_env_masks(repo) == sorted([os.path.join(real, "secrets", "app.cfg"),
-                                                os.path.join(real, "svc", "deep", "x.env")])
-    assert L.project_env_masks(tmp_path / "missing") == []
+    assert L.project_env_masks(repo) == L.EnvScan(sorted([os.path.join(real, "secrets", "app.cfg"),
+                                                         os.path.join(real, "svc", "deep", "x.env")]), [])
+    assert L.project_env_masks(tmp_path / "missing") == L.EnvScan([], [])
     # In a git work tree too: a link to a directory is not masked, nor one to nothing, and a non-ASCII name is found
     tree, _ = repo_with_worktree(tmp_path / "git")
     (tree / "venv").mkdir()
@@ -1934,8 +1935,8 @@ def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole
     (tree / "caf\u00e9").mkdir()
     (tree / "caf\u00e9" / ".env").write_text("SYNTHETIC=1\n")
     real = os.path.realpath(tree)
-    assert L.project_env_masks(tree) == sorted([os.path.join(real, "caf\u00e9", ".env"),
-                                                os.path.join(real, "svc", ".env")])
+    assert L.project_env_masks(tree) == L.EnvScan(sorted([os.path.join(real, "caf\u00e9", ".env"),
+                                                         os.path.join(real, "svc", ".env")]), [])
 
 
 def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_path, fake_bwrap, tmp_unmasked):
@@ -1949,6 +1950,49 @@ def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_pa
         run_layout(tmp_path, "reviewer")
     assert refused.value.details["reason"] == "bwrap_argument_limit"
     assert refused.value.details["env_masks"] == 3100
+
+
+def test_a_directory_the_env_scan_cannot_read_is_masked_whole_and_named_and_the_run_still_launches(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+    """The scan fails closed: a directory it cannot list (searchable, but not readable, as 0311 is), one holding an
+    entry whose type it cannot read, and the deepest directory reached on a path too long to list are each masked
+    whole by an empty directory, as a `.env` file in it may still be read by name, and named on the Lead's launch line.
+    None refuses the launch, so a Lead cannot stop the next one by changing a mode."""
+    repo = tmp_path / "repo"
+    for d in ("locked", "odd", "deep/long", "fine"):
+        (repo / d).mkdir(parents=True)
+        (repo / d / ".env").write_text("SYNTHETIC=1\n")
+    (repo / "odd" / "entry").write_text("x\n")
+    real = os.path.realpath(repo)
+    try:
+        (repo / "locked").chmod(0o311)
+        with listing_as_unprivileged(monkeypatch, unreadable=(str(repo / "odd" / "entry"),),
+                                     too_long=(str(repo / "deep" / "long"),)):
+            scan = L.project_env_masks(repo)
+            layout = lead_layout(tmp_path)
+    finally:
+        (repo / "locked").chmod(0o700)
+    dirs = [os.path.join(real, d) for d in ("deep", "locked", "odd")]
+    assert scan == L.EnvScan([os.path.join(real, "fine", ".env")], dirs)
+    assert set(layout.env_dirs) == set(dirs) and set(layout.hide_dirs) >= set(dirs)
+    assert {p: by for p, by in layout.tree_masks if p in dirs} == dict.fromkeys(dirs, L.PROJECT_ENV_DIR)
+    argv = C.bwrap_argv(layout, ["agent"])
+    assert all(argv[argv.index(d) - 1] == "--tmpfs" for d in dirs)
+    assert all(d in C.tree_masks_line(layout) for d in dirs)
+
+
+def test_a_project_the_env_scan_cannot_list_is_refused_naming_it(tmp_path, fake_bwrap, monkeypatch):
+    """The project itself is never masked whole: AEW reads its store there, so a project this account cannot list is
+    refused, with the typed refusal that says what to do."""
+    repo, _ = repo_with_worktree(tmp_path)
+    try:
+        repo.chmod(0o311)
+        with listing_as_unprivileged(monkeypatch), \
+                pytest.raises(ContainmentUnavailable, match="cannot be listed") as no:
+            L.project_env_masks(repo)
+    finally:
+        repo.chmod(0o700)
+    assert no.value.details["reason"] == "project_unlistable"
 
 
 def test_the_projections_env_read_rules_name_what_containment_masks():

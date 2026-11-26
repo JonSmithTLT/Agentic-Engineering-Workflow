@@ -313,6 +313,10 @@ skipped:
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
       tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
+      tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
@@ -558,6 +562,12 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_in_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_however_its_mode_is_set: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout is tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata: >-

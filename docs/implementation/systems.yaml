@@ -2343,10 +2343,13 @@ systems:
     checks the absolute `skills` path and a colliding id; exercised in a real Lead run. AEW-declared MCP servers are not
     in the Lead''s alpha.'
   remaining:
-  - slice: 'E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text
-      check; after E142'
+  - slice: 'E136: what its three batches left, each waiting on the operator: the two security skills on `security_reviewer`
+      (the designer''s fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds
+      it) once their drafts are updated; `empirical-evaluation`, `ci-evidence-triage` and
+      `frontend-design`, which no decision places on a card; and a foundational skill in `skills:` per role, its cost measured
+      first'
     row: E136
-    estimate: about 3 batched PRs (estimate)
+    estimate: 1 or 2 batched PRs after the operator's answers (estimate)
   - slice: 'E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate
       on E135''s row, outside this finish line'
     row: E135
@@ -2366,18 +2369,20 @@ systems:
   recommendation: finish
   who: Lead
   reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
-    E136's first batch adds two optional ones, E161 the Lead's three and E136's second batch two more, so thirteen ship
-    (as of a66de36f). The system stays staged for the rest of the rollout; E136's other five optional skills follow, and
+    E136's first batch adds two optional ones, E161 the Lead's three, E136's second batch two more and its third `technical-writing`,
+    with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
+    staged for the rest of the rollout. Of E136's skills, the two security ones wait on the operator's update of their
+    drafts and three on a card fit nobody has decided, and
     E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
-  - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
-    verifier.yaml:11 cards request skills
+  - src/aew/roles/cards/code_reviewer.yaml:16, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
+    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`)
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
-    lists thirteen as of a66de36f, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
-    python-development, E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis,
-    test-design and mechanical-enumeration, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
+    lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
+    E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,
+    mechanical-enumeration and technical-writing, and E161''s delegation-handoffs, engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills
@@ -4083,6 +4088,7 @@ systems:
   - src/aew/engine/authority.py
   - src/aew/roles/archetypes/investigator.yaml
   - src/aew/roles/cards/code_reviewer.yaml
+  - src/aew/roles/cards/technical_writer.yaml
   - src/aew/engine/history_ops.py
   - src/aew/cli/main.py
   - src/aew/cli/commands.py
@@ -4092,13 +4098,12 @@ systems:
   - docs/implementation/surface-map.yaml
   touches_new:
   - src/aew/roles/cards/branch_reviewer.yaml
-  - src/aew/roles/cards/technical_writer.yaml
   - tests/unit/test_ref_review.py
   depends_on:
   - SYS-22
   state:
-    board_state: designed_only
-    built: 'no'
+    board_state: partly_built
+    built: partly
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
@@ -4109,10 +4114,6 @@ systems:
     moved' without gating, under a `branch_reviewer` card on the investigator archetype; exercised in a real run that ends
     with a document the operator reads.
   remaining:
-  - slice: the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills
-      design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches)
-    row: E167
-    estimate: inside SYS-22's estimate
   - slice: raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c))
     row: E170
     estimate: 1 small PR (estimate; the designer's reading, skills design (e))
@@ -4120,18 +4121,24 @@ systems:
       archetype''s new kind, the `branch_reviewer` card and its skill-fit check (skills design (d))'
     row: E168
     estimate: 1-2 PRs (estimate; the designer's reading, skills design (e))
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
+  decision: 'decided: it holds a slot while it is worked toward testing and sign-off (the operator, 2026-11-26, on its
+    move to partly_built: "Sure thats fine as long as its being actively worked towards being ready to be tested and signed
+    off on and not just partially built and left in that state."). Before that it waited until the limit''s count was
+    under N = 12 (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
     pointer on item 4)'
   recommendation: finish
   who: Lead
-  reason: Placed in the alpha after the first-use list with the Lead's other items (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
+  reason: The writer card landed through SYS-22's third skills batch (E167); the raw-body read (E170) and the review of
+    a named ref (E168) are what is left. Placed in the alpha after the first-use list with the Lead's other items (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
     item 8; BOARD v2 §2); the writer card rides the skills batches; the other rows are the Lead's to file (the designer's
     reading, workspace record, 'How it is applied'). The skills design (e) had recommended the ref review after first use
     unless wanted for the alpha's SPT work; BOARD v2 §2 places it with the other 11-06 designs, in the alpha after first
     use.
   evidence:
   - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md (c), (d), (e)
+  - 'src/aew/roles/cards/technical_writer.yaml: the card, on the implementer archetype with `skills: [technical-writing]`;
+    src/aew/roles/cards/code_reviewer.yaml offers `technical-writing` in `optional_skills` (E167, closed with E136''s
+    third batch); no run has used the card'
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md item 8
   - 'src/aew/engine/nonmutating_ops.py:250-260: `dispatch_observer` already allocates a read-only observation at any given
     commit'
@@ -4143,7 +4150,7 @@ systems:
   - 'src/aew/engine/history_ops.py:132-164: `history_show` returns the record inside a structured result, found through
     the archive index (:107-119)'
   - 'src/aew/cli/main.py:25-27: `emit` prints any non-string result as JSON, so a body comes out as an escaped string'
-  - src/aew/roles/cards/ holds no technical_writer or branch_reviewer card at c11a61ea; no match for ref_review in src/
+  - src/aew/roles/cards/ holds no branch_reviewer card; no match for ref_review in src/
 - id: SYS-46
   name: The V-01 command wire after I-6 (I-7's O-01 0.9, and the I-1 to I-5 commands in O-01 0.7 and 0.8)
   purpose: Give every operator and Lead action V-01 needs a typed O-01 command with its refusals, so the slice is driven

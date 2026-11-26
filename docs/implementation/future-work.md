@@ -65,7 +65,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
 | 32 | E161 | The Lead's skills, after E127 |
 | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-| 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+| 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -1901,18 +1901,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. The profiles serve E164 and E165, and the trigger levels serve E159
 
 *Later notes: `notes.d/E166/`, oldest first (`python tools/register.py show E166`).*
-
-### E167
-
-**Work:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
-
-**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work (v2), (c)
-
-**When:** **Now.** Item 34 of the Now list, with E136's batches. Part of E168's new system, under the same limit
-
-**Notes:** Filed by the Lead. Data, the designer's reading
-
-*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
 
 ### E168
 
@@ -5067,6 +5055,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #340 (`e945b3ca`), with ADR-0009's amendment of 2026-11-06. Owed after it: the VM live check, on a keyed, paid model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`'s two "free model" texts were reworded in the change that closed this row
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
+
+### E167
+
+**Was:** A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`, with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the operator
+
+**Closed:** 2026-11-26
+
+**By:** #611, E136's third batch: `technical-writing` ships from AEW's install, labelled unevaluated; the `technical_writer` card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006, amendment 2026-11-26; the row's note of 2026-11-26). A project's document checks stay its own configuration. No model has run the card: a real run that ends with a document the operator reads is SYS-45's finish line, and qualification stays owed (E135)
+
+*Later notes: `notes.d/E167/`, oldest first (`python tools/register.py show E167`).*
 
 ### E171
 

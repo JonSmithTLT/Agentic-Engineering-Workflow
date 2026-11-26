@@ -1616,7 +1616,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E135
 
-**Work:** The skill evaluation: whether a skill helps the weaker models AEW's workers would use, whether such a model picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs' usage. Its runner is not built
+**Work:** The skill evaluation: whether a skill helps the weaker models AEW's workers would use, whether such a model picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs' usage. Its runner is built (`eval/skill_eval/`); the qualification itself has not run
 
 **Source:** The evaluation plan of 2026-10-28, with the operator's limit of USD 10; the designer's decisions of 2026-11-04
 
@@ -3990,30 +3990,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E374/`, oldest first (`python tools/register.py show E374`).*
 
-### E376
-
-**Work:** V2's reopen reaches the seat resume: the vertical's offline world settles AEW's tool offers before the first open, as a setup fixture that is recorded and never counted (the operator's answer to the plan's Q5); the seat-resume code still counts under `pin_reentries`. Today only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`, `_tools_before_the_tui`; `src/aew/capability/consent.py:401-405`) for a needed tool missing on the host; the screen waits on the terminal for `src/aew/operator.py:28`'s timeout, the driver's own session bound, and the scripted operator answers only the seat-resume code (`scripted_operator.py:316-321`). The takeover fallback then interrupts the implementer, so E330's resume (#447) has not been exercised by any V2 case
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C7), from the vertical's re-measure of 2026-11-26 at `3640b585`: every fresh-terminal reopen (V2's four cases and the forced one) went silent at the consent screen, then took the counted takeover
-
-**When:** **V-01**, the alpha track of the burn-down, after E335: with E335 it is expected to make the alpha gate pass, which a rerun confirms. The operator answered Q5 on 2026-11-26: a setup fixture, recorded but not counted ("The vertical was meant to fix ux issues. Aew saying a critical item is missing isnt a ux failure its common sense")
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed, with E377 in the same pull request
-
-*Later notes: `notes.d/E376/`, oldest first (`python tools/register.py show E376`).*
-
-### E377
-
-**Work:** The scripted Lead's first words are the readable text of `resume`: the MCP result's `content[0].text` (`src/aew/surface/mcp.py:240-247`, `readable.render`), not only `structuredContent` (`tests/helpers/vertical/lead.py:254`), whose fields `_words` looks for (`:710-715`) and does not find. If the rendered resume does not say where T-0001 stands, that part is a product gap, recorded on this row
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C8), from the vertical's re-measure of 2026-11-26 at `3640b585`: V2's "told where things stand in words" read nothing in every V2 case
-
-**When:** **V-01**, the alpha track of the burn-down, in E376's pull request
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E377/`, oldest first (`python tools/register.py show E377`).*
-
 ### E378
 
 **Work:** A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED), with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today `_ticket_actions` emits no decision there (`src/aew/surface/projection.py:246-299`), the only guidance is a hint to `aew integrate requeue` (`src/aew/engine/resume_ops.py:471-476`), and after each requeue `ticket_prepare` is projected AVAILABLE and refused `ILLEGAL_TRANSITION`. The scripted Lead's gap key includes the revision (`tests/helpers/vertical/lead.py:510-525`), so it loops on that hint until its step budget ends: this row also gives it a loop breaker
@@ -5431,6 +5407,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #627: with steering on, the scripted Lead ends its turn on a `woken` wait until a wake reaches the fake TUI's session on the Lead's server or the operator speaks, and takes a BLOCKED stop as a decline only once its blocker still stands after the run ends, read with the loop's own selection; `vertical-uat.md` §2 and §3 amended with the operator's answers to the plan's Q1 and Q10 (2026-11-26). `mechanical_calls` fell from 5, 5 and 4 to 0 in the steering-on V1, V2-exit and V2-kill cases
 
 *Later notes: `notes.d/E375/`, oldest first (`python tools/register.py show E375`).*
+
+### E376
+
+**Was:** V2's reopen reaches the seat resume: the vertical's offline world settles AEW's tool offers before the first open, as a setup fixture that is recorded and never counted (the operator's answer to the plan's Q5); the seat-resume code still counts under `pin_reentries` (cluster C7 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)
+
+**Closed:** 2026-11-26
+
+**By:** PR #603 (`1b854d6b`): `scripted_operator.settle_tool_offers` answers the consent screen before the first open from the owner (`consent.ask`), each decline recorded as a `setup_fixture` and never counted, and `vertical-uat.md`'s setup boundary quotes the ruling. In its vertical run at `637bc652` the five fresh-terminal reopens reached E330's seat resume with no takeover; they still fail strict on other clusters, among them C12's fallbacks and C1 to C4's counters. Whether the alpha gate now passes is for a rerun of the vertical to confirm
+
+*Later notes: `notes.d/E376/`, oldest first (`python tools/register.py show E376`).*
+
+### E377
+
+**Was:** The scripted Lead's first words are the readable text of `resume`: the MCP result's `content[0].text`, not only `structuredContent` (cluster C8 of the V-01 burn-down)
+
+**Closed:** 2026-11-26
+
+**By:** PR #603 (`1b854d6b`): the scripted Lead keeps the MCP `content` text and takes its first words from the readable head, never the JSON. The rendered resume names T-0001 through its run line in the vertical world, so no product gap was found; a Ticket assigned with no harness run is named only through its runs or decisions, recorded on #603 as an observation
+
+*Later notes: `notes.d/E377/`, oldest first (`python tools/register.py show E377`).*
 
 ### E385
 

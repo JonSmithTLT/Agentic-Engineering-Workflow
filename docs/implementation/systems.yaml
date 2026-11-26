@@ -779,10 +779,11 @@ systems:
     row: E367
     estimate: 1-2 PRs (estimate)
   - slice: 'Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator,
-      2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now");
-      the rewrite is held as the treatment of the brief-effectiveness experiment, and is measured there'
+      2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now").
+      The Lead''s plan, not an operator ruling: the rewrite is written as a draft and held unmerged until it can be measured;
+      whether it waits for the refined F19 is the operator''s to confirm'
     row: E368
-    estimate: 1 PR, after the experiment (estimate)
+    estimate: 1 PR (estimate)
   decision: 'decided: finished by the finish line''s own alternative, HOLD-06 recorded as staying held (the operator,
     2026-11-25: "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); the worker-side
     role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen

@@ -330,7 +330,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 44
 
-**Own slices left:** 4 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator, 2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now"); the rewrite is held as the treatment of the brief-effectiveness experiment, and is measured there (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
+**Own slices left:** 4 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator, 2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now"). The Lead's plan, not an operator ruling: the rewrite is written as a draft and held unmerged until it can be measured; whether it waits for the refined F19 is the operator's to confirm (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
 

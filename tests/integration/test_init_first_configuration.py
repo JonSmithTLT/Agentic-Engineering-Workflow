@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 from pathlib import Path
 from typing import Any
@@ -342,8 +343,9 @@ def test_the_contained_tuis_childdiag_directory_is_a_writable_root_the_real_path
 
 def test_the_offline_world_settles_its_tool_offers_in_setup_recorded_and_never_counted(tmp_path):
     """The operator's ruling on Q5 (2026-11-26): AEW's tool offers are a setup fixture of the offline world, recorded
-    but not counted. Each tool offered is declined in the register the world's own `aew` reads, so a reopen on the
-    operator's terminal meets no consent screen; where AEW places no tools, nothing is offered or recorded."""
+    but not counted. Each needed tool is declined, and no optional one, as the screen's `none` answers, in the register
+    the world's own `aew` reads, so a reopen on the operator's terminal meets no consent screen; where AEW places no
+    tools, nothing is offered or recorded."""
     from aew.capability import consent
 
     op = operator(tmp_path)
@@ -356,10 +358,13 @@ def test_the_offline_world_settles_its_tool_offers_in_setup_recorded_and_never_c
     if not consent.binds_here():
         assert declined == [] and recorded == []
         return
-    assert "ripgrep" in declined and [o["fixture"] for o in recorded] == [f"tool offer declined: {n}" for n in declined]
+    assert [o["fixture"] for o in recorded] == [f"tool offer declined: {n}" for n in declined]
+    # The register's own entries, as the world's child `aew` reads them: the needed tool declined, no optional one.
     listed = run_aew("-C", str(op.root), "capability", "list", "--json", env=op.lab.env)
     assert listed.returncode == 0, listed.stderr
-    assert "the operator declined to download it" in listed.stdout, listed.stdout[-2000:]
+    said_no = {c["provider"] for c in json.loads(listed.stdout)["capabilities"]
+               if "the operator declined to download it" in (c.get("cause") or "")}
+    assert said_no == {"ripgrep"} == set(declined), listed.stdout[-2000:]
 
 
 def test_a_fixture_is_checked_with_the_bytes_it_changes(tmp_path):

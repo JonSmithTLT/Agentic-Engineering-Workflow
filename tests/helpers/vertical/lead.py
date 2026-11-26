@@ -719,7 +719,10 @@ def _text(result: Any) -> str | None:
 
 def _words(text: str | None) -> str | None:
     """What the result says in words, as a person reads it: the text's first paragraph (up to its first blank line),
-    which the data it carries for a model follows. None when it has none (V-01 re-measure of 2026-11-26, C8)."""
+    which the data it carries for a model follows. None when it has none (V-01 re-measure of 2026-11-26, C8).
+
+    The cut is the blank line ``readable.render`` puts before its JSON marker, pinned by the unit test against
+    ``readable.JSON_MARKER``. A readable body that ever held a blank line of its own would end the words there."""
     head = (text or "").split("\n\n", 1)[0].strip()
     return head or None
 

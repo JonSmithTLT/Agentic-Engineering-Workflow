@@ -60,12 +60,15 @@ internals.
   `raw_yaml`; one edited after setup counts. Everything else in setup (an acquire, a credential, a separate adopt) is
   counted like any other step.
 - **AEW's tool offers are settled in setup.** This is a fixture of the offline world: it is recorded, and it is never
-  counted. Before the first open, the world declines each tool AEW offers, `ripgrep` among them, because it has no route
-  to their source (`scripted_operator.settle_tool_offers`). A reopen on the operator's terminal then meets no consent
-  screen. AEW's start line that names a needed tool the operator declined counts nothing. The seat-resume
-  confirmation code at a reopen still counts under `pin_reentries` on Linux. The operator ruled on 2026-11-26 (Q5 of
-  the V-01 re-measure): "setup fixture that is recorded but not counted... AEW saying a critical item is missing isnt
-  a ux failure its common sense. And yes it should count".
+  counted. Before the first open, the world answers AEW's consent screen `none`, because it has no route to a tool's
+  source (`scripted_operator.settle_tool_offers`): each needed tool is declined, which today is `ripgrep`, and no
+  optional one. A reopen on the operator's terminal then meets no consent screen. AEW's start line that names a
+  needed tool the operator declined counts nothing. The seat-resume confirmation code at a reopen still counts under
+  `pin_reentries` on Linux. The operator ruled on 2026-11-26 (Q5 of the V-01 re-measure): "Q5 yup setup fixture that
+  is recorded but not counted. The vertical was meant to fix ux issues. Aew saying a critical item is missing isnt a
+  ux failure its common sense. And yes it should count but is that how aew works? I thought at that point it would
+  automatically reattach already?" The closing question is open: STG-13's note
+  `2026-11-26-fix-v01-reopen-world.md` records it.
 - **Terminal channels.** A decision AEW confirms at the operator's own terminal (a policy adoption, a takeover, a
   steering raise) runs with the terminal channel substituted in-process, the channel AT-1 uses on Windows, on every
   platform. The steering raise goes through the real operator endpoint and its real one-time code.

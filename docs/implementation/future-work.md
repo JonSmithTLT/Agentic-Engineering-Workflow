@@ -4508,7 +4508,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-20
 
-**By:** #378 (`ee3f0737`), #441 (`39de9d9f`) and #480 (`434f8a2a`): the matched scope of 2026-11-06, maps on for every card. Every worker archetype's pack carries the bounded structural slice, each card's added bytes recorded (#378); a Lead's dispatch refreshes a STALE or absent map at use, with no manual step (#441, ADR-0015's amendment of 2026-11-11); and `maps.pack_slices: structural` is a new project's default, offered to an existing one (#480). The regenerate-on-publish half had already left the row (its note of 2026-11-06): freshness is computed against the work's base at use
+**By:** #378 (`ee3f0737`), #441 (`39de9d9f`) and #480 (`434f8a2a`): the matched scope of 2026-11-06, maps on for every card. Every worker archetype's pack carries the bounded structural slice, each card's added bytes recorded (#378); a Lead's dispatch refreshes a STALE or absent map at use, with no manual step (#441, ADR-0015's amendment of 2026-11-11); and `maps.pack_slices: structural` is a new project's default, offered to an existing one (#480). Restored from HOLD-14 by the hold match (`2026-11-06-operator-hold-match-batches.md`), whose matched scope this is; the regenerate-on-publish half left the row then (its note of 2026-11-06), since freshness is computed against the work's base at use
 
 *Later notes: `notes.d/E62/`, oldest first (`python tools/register.py show E62`).*
 

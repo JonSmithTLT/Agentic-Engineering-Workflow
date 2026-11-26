@@ -235,15 +235,11 @@ TOOLS: dict[str, Tool] = _catalog(
          "Rebuild the Lead's context from durable state: objective, active work, runs, contradictions, next actions. "
          "Call it first after any restart.",
          _obj({})),
-    Tool("work_show", QUERY, MECHANICAL, "One work unit: its record, plans, evidence, gates and integration.",
-         _obj({"work_id": WORK_ID}, ("work_id",))),
-    # M4-E E4: with `stage` (and that stage's `arguments`, expect_rev aside), each of the stage's steps instead, from
-    # the guards its steps' commits evaluate. The adapter checks the stage, its arguments and that the call names a
-    # unit, an invocation or a stage (frozen decision 8), so the schema stays small (plan v3 §2.6).
-    Tool("explain", QUERY, MECHANICAL,
-         "What a dispatch, or each step of a stage, would be decided now (allowed or not, with every blocking "
-         "condition), by the predicate its commit uses.",
-         _obj({"work_id": WORK_ID,
+    # E157: fold the dispatch and stage explanations into the work read. The adapter checks which arguments each
+    # form takes, including a stage's own arguments (M4-E E4; plan v3 §2.6).
+    Tool("work_show", QUERY, MECHANICAL,
+         "Inspect a work unit, or set explain to true for dispatch or stage availability and blockers.",
+         _obj({"work_id": WORK_ID, "explain": {"type": "boolean"},
                "entrypoint": {"type": "string", "enum": EXPLAINABLE,
                               "description": "which dispatch; default: the unit's next one"},
                "role": {"type": "string", "enum": ["implementer", "reviewer", "verifier"]},
@@ -263,7 +259,7 @@ TOOLS: dict[str, Tool] = _catalog(
          _obj({"runs": {**_strings("run ids, e.g. R-INV-0003-1", min_items=1, max_items=16), "uniqueItems": True},
                "timeout_s": {"type": "integer", "minimum": 1, "maximum": 600,
                              "description": "default 600"}}, ("runs",))),
-    # ---- the one normal-profile mutation: a single engine transaction, so no stage intent (§3.4)
+    # ---- single engine transactions, without a stage intent (§3.4)
     Tool("checkpoint", STAGE, MECHANICAL,
          "Record a checkpoint note and your next intended action (before a pause or a handoff).",
          _obj({"expect_rev": EXPECT_REV,
@@ -271,6 +267,9 @@ TOOLS: dict[str, Tool] = _catalog(
                "next": {**TEXT, "maxLength": NEXT_MAX, "description": "the next intended action"}},
               ("expect_rev",)),
          expands_to=("checkpoint",), mutates=True),
+    Tool("report_write", STAGE, MECHANICAL, "Save a Lead report and return its read command.",
+         _obj({"expect_rev": EXPECT_REV, "title": TEXT, "body": TEXT}, ("expect_rev", "title", "body")),
+         expands_to=("report.write",), mutates=True),
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
     Tool("steering", STAGE, MECHANICAL, STEERING_TEXT,
@@ -388,7 +387,8 @@ TOOLS: dict[str, Tool] = _catalog(
 )
 
 
-NON_PROGRESSION_STAGES = {"checkpoint": "records a note", "steering": "changes the steering mode",
+NON_PROGRESSION_STAGES = {"checkpoint": "records a note", "report_write": "records a Lead report",
+                          "steering": "changes the steering mode",
                          "message_send": "records a message"}
 
 

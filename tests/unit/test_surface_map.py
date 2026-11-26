@@ -137,7 +137,7 @@ tool:ticket_draft|tool:ticket_prepare|tool:ticket_request_review|tool:ticket_req
 tool:ticket_start|tool:work_show
 """.replace("\n", "|").strip("|").split("|"))
 FROZEN_DIGEST = "1b32b35999eb5a75aeda9ec3723275afa2d6f439de42469d864ab19914ce5d81"
-GRADUATED: frozenset[str] = frozenset()  # entries that left the baseline (their disposition decided and honoured)
+GRADUATED: frozenset[str] = frozenset({"tool:explain"})  # E157 folded it into work_show.
 BASELINE = FROZEN - GRADUATED
 
 # The A1 slice plan's dispositions (reviewed CLEAR, §2.1 item 1): the rows that carry `planned`, and the proposed tools
@@ -1331,6 +1331,7 @@ class Sample:
     ticket: str
     invocation: str
     invocation_token: str
+    report: str
 
 
 def _git(root: Path, *args: str) -> str:
@@ -1416,7 +1417,9 @@ def build_sample(base: Path) -> Sample:
     engine = Engine.discover(root)
     engine.message_record_lead(token=token, expect_rev=engine.store.read()["revision"], to="INV-0001",
                                 body="The probe's worker reads its own coordination thread.")
-    s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token)
+    report = engine.report_write(token=token, expect_rev=engine.store.current()["revision"],
+                                 title="Sample report", body="Report text")
+    s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token, report["id"])
     # Settle it: the first read after a commit deletes the spent redo records of the commits before it
     # (ControlStore._recover); that housekeeping belongs to the setup's commits, not to the first surface probed.
     for _ in range(3):
@@ -1461,7 +1464,7 @@ def probes(e: dict[str, Any]) -> list[list[str]]:
 
 def fill(argv: list[str], s: Sample) -> list[str]:
     values = {"{token}": s.token, "{ticket}": s.ticket, "{invocation}": s.invocation,
-              "{invocation_token}": s.invocation_token}
+              "{invocation_token}": s.invocation_token, "{report}": s.report}
     out = []
     for a in argv:
         for k, v in values.items():

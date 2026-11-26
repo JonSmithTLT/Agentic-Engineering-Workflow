@@ -205,7 +205,8 @@ def test_no_false_advance(tmp_path, monkeypatch, name):
         held = set(engine.store.read().get("stage_intents") or {})  # a seed's own unfinished stage stays as it was
         arguments = {"expect_rev": rev, **_bind(case["arguments"], wid, rev, EVIDENCE.get(str(p.root)))}
         explain_args = {k: v for k, v in arguments.items() if k != "expect_rev"}
-        explained = R.run_tool(engine, CTX, "explain", {"stage": case["stage"], "arguments": explain_args})
+        explained = R.run_tool(engine, CTX, "work_show",
+                               {"explain": True, "stage": case["stage"], "arguments": explain_args})
         assert explained["ok"], explained["stopped"]
         assert explained["result"]["availability"] == expect["availability"], explained["result"]
         if "reason_codes" in expect:

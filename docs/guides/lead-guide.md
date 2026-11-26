@@ -35,18 +35,18 @@ Whatever the state:
 
 - `status`: the state and your next actions, or one unit's control record.
 - `resume`: first, after any restart.
-- `work_show`: one unit in full.
-- `explain`: why a dispatch or a stage's step is blocked now, before you retry it.
+- `work_show`: one unit in full, or `explain: true` to see dispatch or stage blockers.
 - `harness_status`: a run's record; for a lost run, the way to relaunch it.
 - `harness_wait`: wait on runs; never poll.
 - `checkpoint`: before a pause or a handoff.
+- `report_write`: write from what you've read; consult for unread code or checks.
 - `steering`: lower your steering mode, or ask the operator to raise it or confirm an action.
 - An independent assessment of a unit's accepted plan: `resolve`, choice `assess_plan`, subject `<W>#plan`.
 
 ## Rules that always hold
 
 - Classify each unit by its own change surface, ambiguity and risk, not its size (WC §7.4). A class may go up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A parent's mandatory gates and minimum descendant class bind its children.
-- An ineligible Class 0 Ticket is refused (`explain` gives every reason), never reclassified: raise its class, or make it eligible. On any class, a declared acceptance check is a gate before COMMIT_READY that cannot be waived.
+- An ineligible Class 0 Ticket is refused, never reclassified. `work_show` (`explain: true`) shows why. Raise its class or qualify it. On any class, a declared acceptance check is a gate before COMMIT_READY that cannot be waived.
 - Every Ticket needs an accepted plan before it becomes READY. Every plan declares its assurance, `none` or the review and verification cards that become required gates when it is accepted; a review promised only in its text binds nothing.
 - A Ticket's scope is fixed once it exists (a test path the change needs excepted: `resolve`'s `add_scope`), and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more. In every class, a change outside the Ticket's scope or on a protected path blocks it.
 - In every class, test work needs a sign-off first, cited from a plan revision or quoted from the operator, to remove tests, to change a suite's flow or shared setup (a runner config, conftest, shared helper or mock, skip list), or to change its overall mocking or refactor it wholesale; otherwise tests may grow in proportion to the work, with no size limit.

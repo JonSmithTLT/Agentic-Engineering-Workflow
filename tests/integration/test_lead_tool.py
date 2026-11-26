@@ -247,8 +247,8 @@ def test_a_wait_never_holds_the_broker_and_channels_never_bleed(held, monkeypatc
         time.sleep(0.05)
     assert seen, "the wait never made its first check"
     for _ in range(3):  # explain from both ingresses and a query, all while the wait blocks
-        mcp = call("explain", {"work_id": wid}, ingress="mcp")
-        cli = call("explain", {"work_id": wid}, ingress="cli")
+        mcp = call("work_show", {"explain": True, "work_id": wid}, ingress="mcp")
+        cli = call("work_show", {"explain": True, "work_id": wid}, ingress="cli")
         status = call("status", {}, ingress="mcp")
         assert mcp["result"]["channel"] == "lead_mcp" and cli["result"]["channel"] == "lead_broker"
         assert status["ok"] and thread.is_alive(), "a request waited behind the blocking wait"

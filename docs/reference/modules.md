@@ -252,6 +252,7 @@ None.
 - `aew.doctor`
 - `aew.engine.api`
 - `aew.engine.first_configuration`
+- `aew.engine.reports`
 - `aew.errors`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
@@ -596,6 +597,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.queue_ops`
 - `aew.engine.readiness`
+- `aew.engine.reports`
 - `aew.engine.resume_ops`
 - `aew.engine.role_ops`
 - `aew.engine.scope_ops`
@@ -1153,6 +1155,15 @@ None.
 - `aew.policy.execution`
 - `aew.util`
 
+### `aew.engine.reports`
+
+- `aew.coordination.render`
+- `aew.engine.base`
+- `aew.errors`
+- `aew.harness.contract`
+- `aew.schemas`
+- `aew.util`
+
 ### `aew.engine.request_ids`
 
 - `aew.engine.outbox`
@@ -1177,6 +1188,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.priority`
 - `aew.engine.queue_ops`
+- `aew.engine.reports`
 - `aew.engine.scope_ops`
 - `aew.engine.seams`
 - `aew.engine.transitions`
@@ -2494,6 +2506,7 @@ None.
 - `aew.engine.hierarchy`
 - `aew.engine.primitives`
 - `aew.engine.queue_ops`
+- `aew.engine.reports`
 - `aew.engine.scope_ops`
 - `aew.engine.transitions`
 - `aew.errors`

@@ -40,7 +40,7 @@ def test_queries_return_a_valid_result_and_commit_nothing(lab):
     p, wid, engine = lab
     rev = p.rev()
     for name, args in (("status", {}), ("status", {"work_id": wid}), ("resume", {}), ("work_show", {"work_id": wid}),
-                       ("explain", {"work_id": wid}), ("harness_status", {})):
+                       ("work_show", {"explain": True, "work_id": wid}), ("harness_status", {})):
         out = run.run_tool(engine, CTX, name, args, token=p.token)
         validate("surface", out, source=name)
         assert out["ok"] and out["stopped"] is None and out["completed_steps"] == [], (name, out["stopped"])

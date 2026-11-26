@@ -574,8 +574,8 @@ def _rules(gates_policy: dict[str, Any], post_verify: bool, post_checks: list[st
         Rule("Classify each unit by its own change surface, ambiguity and risk, not its size (WC §7.4). A class may go "
              "up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A "
              "parent's mandatory gates and minimum descendant class bind its children."),
-        Rule("An ineligible Class 0 Ticket is refused (`explain` gives every reason), never reclassified: raise its "
-             "class, or make it eligible. On any class, a declared acceptance check is a gate before COMMIT_READY "
+        Rule("An ineligible Class 0 Ticket is refused, never reclassified. `work_show` (`explain: true`) shows why. "
+             "Raise its class or qualify it. On any class, a declared acceptance check is a gate before COMMIT_READY "
              "that cannot be waived."),
         Rule("Every Ticket needs an accepted plan before it becomes READY. Every plan declares its assurance, `none` "
              "or the review and verification cards that become required gates when it is accepted; a review promised "

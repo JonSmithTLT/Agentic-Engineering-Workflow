@@ -46,8 +46,8 @@ def check_call(name: Any, arguments: Any, profile: str, switches: frozenset[str]
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
     if t.name == "steering":
         _check_steering(arguments)
-    if t.name == "explain":
-        _check_explain(arguments)
+    if t.name == "work_show":
+        _check_work_show(arguments)
     if t.name == "resolve":
         _check_resolve(arguments)
     return t
@@ -87,8 +87,19 @@ def _check_steering(arguments: dict[str, Any]) -> None:
                         *(f"{a}: not taken by {arguments['action']}" for a in extra)])
 
 
+def _check_work_show(arguments: dict[str, Any]) -> None:
+    if arguments.get("explain"):
+        _check_explain(arguments)
+        return
+    extra = sorted(arguments.keys() - {"work_id", "explain"})
+    if "work_id" not in arguments or extra:
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: inspect a work_id, or set explain to true",
+                                violations=[*([] if "work_id" in arguments else ["work_id: required"]),
+                                            *(f"{key}: requires explain" for key in extra)])
+
+
 def _check_explain(arguments: dict[str, Any]) -> None:
-    """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
+    """`work_show` with `explain` names a unit, invocation or stage; `arguments` match the stage's schema, its
     `expect_rev` aside, and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
     out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
     if not {"work_id", "invocation", "stage"} & set(arguments):

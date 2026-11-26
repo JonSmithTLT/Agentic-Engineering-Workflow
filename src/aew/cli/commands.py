@@ -133,6 +133,13 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     _add_json(p)
     p.set_defaults(handler=_guide)
 
+    p = sub.add_parser("report", help="read a Lead-authored report")
+    rsub = p.add_subparsers(dest="report_cmd", required=True)
+    q = rsub.add_parser("show", help="show a Lead-authored report by id")
+    q.add_argument("report_id")
+    _add_json(q)
+    q.set_defaults(handler=_report_show)
+
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
     p.add_argument("--note-file", action=fields.FileInput, help="checkpoint notes (file or - for stdin)")
     p.add_argument("--next", dest="next_action", help="the Lead's next intended action")
@@ -567,6 +574,13 @@ def _resume(args: argparse.Namespace) -> Any:
     report = engine.resume(session=lead_broker.session_authority())
     report["stage_intents"] = stage.unfinished(engine)  # as the typed `resume` lists them (M4-E E3c)
     return report if args.json else engine.render_resume(report)
+
+
+def _report_show(args: argparse.Namespace) -> Any:
+    from aew.engine import reports
+
+    report = _engine(args).report_show(args.report_id)
+    return report if args.json else reports.render(report)
 
 
 def _status(args: argparse.Namespace) -> Any:

@@ -199,6 +199,7 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message lost", _LOCAL),
     ("message thread", _LOCAL),
     ("plan lint", _LOCAL), ("role list", _LOCAL), ("role show", _LOCAL), ("role validate", _LOCAL),
+    ("report show", _LOCAL),
     ("settings show", _LOCAL), ("work list", _LOCAL), ("work ready", _LOCAL), ("work roles", _LOCAL),
     ("work show", _LOCAL), ("work tree", _LOCAL),
     ("capability list", "a read of the operator's capability register, which the sandbox shows read-only"),
@@ -588,7 +589,7 @@ class LeadBroker:
 
     def _session(self, problem: str | None) -> dict[str, Any]:
         out: dict[str, Any] = {"holds": problem is None, "generation": self.generation,
-                               "session_label": self.session_label}
+                               "session_label": self.session_label, "session_id": self.session_id}
         if problem:
             out["detail"] = problem
         return out

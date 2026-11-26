@@ -65,7 +65,7 @@ def ready(tmp_path):
 def test_explain_answers_a_stage_per_step_from_its_guards(ready):
     """`explain` with a stage: each step's guard, with what it takes as produced by earlier steps (M4-E E4)."""
     p, wid, engine = ready
-    out = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})
+    out = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_start", "work_id": wid})
     assert out["ok"] and out["completed_steps"] == [] and out["revision"] == p.rev()
     result = out["result"]
     assert result["stage"] == "ticket_start" and [s["primitive"] for s in result["steps"]] == [
@@ -73,7 +73,7 @@ def test_explain_answers_a_stage_per_step_from_its_guards(ready):
     assert result["steps"][0]["availability"] == AVAILABLE  # the assignment's dispatch decision
     assert result["steps"][1]["covered_by"] == 1  # the launch is the assignment's
     assert result["steps"][2]["produced_by"] == {"state": 1, "implementer": 1}
-    prepare = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+    prepare = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_prepare", "work_id": wid,
                                                   "arguments": {"verification_evidence": "EV-0001"}})["result"]
     assert prepare["availability"] == BLOCKED and prepare["steps"][0]["reason_codes"] == ["NOT_FOUND"]  # E4b
 
@@ -133,7 +133,8 @@ def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_prod
     out = R.run_tool(engine, CTX, "status", {"work_id": wid})
     [start] = [a for a in out["projection"]["actions"] if a["action"] == "ticket_start"]
     assert start["availability"] == AVAILABLE and start["auto_runnable"]  # built (E5a) and policy-resolved
-    explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_start", "work_id": wid})["result"]
+    explained = R.run_tool(engine, CTX, "work_show",
+                           {"explain": True, "stage": "ticket_start", "work_id": wid})["result"]
     assert [s["availability"] for s in explained["steps"]] == [AVAILABLE] * 3
     assert engine.store.read()["work"][wid]["state"] == "READY"  # asking changed nothing
 
@@ -281,8 +282,9 @@ def test_guard_query_matches_execute_review_current(implemented):
 
 
 def _verification_stage(engine: Engine, wid: str, evidence: str) -> dict[str, Any]:
-    return R.run_tool(engine, CTX, "explain", {"stage": "ticket_request_verification", "work_id": wid,
-                                              "arguments": {"review_evidence": evidence}})["result"]
+    return R.run_tool(engine, CTX, "work_show",
+                      {"explain": True, "stage": "ticket_request_verification", "work_id": wid,
+                       "arguments": {"review_evidence": evidence}})["result"]
 
 
 def test_ticket_request_verification_is_composed_from_the_ingest_and_what_it_produces(implemented):
@@ -394,10 +396,10 @@ def test_ticket_draft_is_composed_from_the_creation_and_the_unit_it_produces(rea
     p, _wid, engine = ready
     draft = {"title": "Add multiply()", "risk_class": 1, "scope": ["calc/**"], "goal": ["multiply works"]}
     before = engine.store.read()
-    ok = R.run_tool(engine, CTX, "explain", {"stage": "ticket_draft", "arguments": {
+    ok = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_draft", "arguments": {
         **draft, "plan": {"body": "1. Add multiply.\n", "assurance": "none"}}})["result"]
     assert ok["availability"] == AVAILABLE and ok["steps"][1]["produced_by"] == {"unit": 1}
-    undeclared = R.run_tool(engine, CTX, "explain", {"stage": "ticket_draft", "arguments": {
+    undeclared = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_draft", "arguments": {
         **draft, "plan": {"body": "1. Add multiply.\n", "assurance": {}}}})["result"]
     assert [s["availability"] for s in undeclared["steps"]] == [AVAILABLE, BLOCKED]
     assert undeclared["availability"] == BLOCKED and undeclared["reason_codes"] == ["USAGE"]
@@ -695,7 +697,7 @@ def test_ticket_prepare_is_composed_from_the_ingest_the_acceptance_and_the_prepa
     p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
     report = verify(p, wid)
     check = untouched(p)
-    found = R.run_tool(engine, CTX, "explain", {"stage": "ticket_prepare", "work_id": wid,
+    found = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_prepare", "work_id": wid,
                                                 "arguments": {"verification_evidence": report}})["result"]
     check()
     assert engine.validation_mode(wid) == "verifier"  # the default policy
@@ -778,7 +780,7 @@ def test_guard_query_matches_execute_integrate_publish(tmp_path):
         answer["blocking_conditions"][0]["message"])
     check()
     p.lead("verify", "ingest", wid, "--evidence", verify(p, wid, scope="integration"))
-    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+    explained = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "integration_publish", "work_id": wid,
                                                     "arguments": {"prepared_candidate": "c"}})["result"]
     assert explained["availability"] == AVAILABLE
     args: dict[str, Any] = {}
@@ -812,7 +814,7 @@ def test_a_moved_head_is_blocked_and_the_publish_publishes_nothing(tmp_path):
     # `explain`, the projection's blockers beside the PUBLISH decision, and `resume`'s recheck.
     assert answer["disposition"] == "rebuild"
     assert answer["blocking_conditions"][0]["details"]["disposition"] == "rebuild"
-    explained = R.run_tool(engine, CTX, "explain", {"stage": "integration_publish", "work_id": wid,
+    explained = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "integration_publish", "work_id": wid,
                                                     "arguments": {"prepared_candidate": "c"}})["result"]
     # The publish is step 2 since E6a, after the acceptance of a named integration verification (unplanned here).
     assert explained["availability"] == BLOCKED and explained["steps"][1]["disposition"] == "rebuild"

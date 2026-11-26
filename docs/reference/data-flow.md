@@ -34,6 +34,7 @@ flowchart LR
             path_pricing["pricing"]
             path_project_yaml["project.yaml"]
             path_records["records"]
+            path_reports["reports"]
             path_roles["roles"]
             path_work["work"]
         end
@@ -67,6 +68,7 @@ flowchart LR
     no_writer --> path_local
     no_writer --> path_pricing
     no_writer --> path_records
+    no_writer --> path_reports
     no_writer --> path_state
     no_writer --> path_work
     path_coordination -.-> proc_aew
@@ -94,6 +96,7 @@ flowchart LR
     path_pricing -.-> no_reader
     path_project_yaml -.-> no_reader
     path_records -.-> no_reader
+    path_reports -.-> no_reader
     path_state -.-> no_reader
     path_work -.-> no_reader
 ```
@@ -126,6 +129,7 @@ flowchart LR
 | `pricing` | other entries of .aew | - | - | yes | yes |
 | `project.yaml` | other entries of .aew | `aew`, `aew.kit.__main__` | - | - | yes |
 | `records` | other entries of .aew | `aew` | `aew` | yes | yes |
+| `reports` | other entries of .aew | - | - | yes | yes |
 | `roles` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | - |
 | `state` | the control store | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | yes | yes |
 | `work` | other entries of .aew | `aew` | `aew` | yes | yes |
@@ -150,6 +154,7 @@ The `writers` fact of the `writers` records.
 - `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.reports:Reports.write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.scope_ops:ScopeCorrections._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer

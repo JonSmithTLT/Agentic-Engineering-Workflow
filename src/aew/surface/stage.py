@@ -304,7 +304,8 @@ def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
         shape = SA.planned_shape(engine, name, a)
         if not any(shape.values()) and not _always(name):
             raise errors.IllegalTransition(f"{name} has nothing to do for {a.get('work_id')} now: read its "
-                                           "projection (`explain` with this stage)", reason="nothing_planned")
+                                           "projection (`work_show` with `explain: true` and this stage)",
+                                           reason="nothing_planned")
         keywords["shape"] = shape
     if name in SA.CARDS:
         found = SA.stage_cards(engine, name, a)

@@ -6,7 +6,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-40, SYS-47, SYS-48
 
 **partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
 
@@ -16,9 +16,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
+**designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-40, SYS-47, SYS-48
 
 **Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-51, SYS-53
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-43, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-42, SYS-43, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-40, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -67,18 +67,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
-
-### SYS-40 — Lead reports (report_write)
-
-**Board state:** designed_only
-
-**Who:** Lead
-
-**Now:** 27
-
-**Own slices left:** 1 — report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) (E157) — **Next:** report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) — E157 — 1 PR (estimate; the designer's reading, small-changes design §6)
-
-**Wired:** none
 
 ### SYS-42 — Lead small change (operator-approved, light review at class 1)
 
@@ -219,6 +207,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
 **Wired:** cli:integrate prepare, cli:integrate publish, cli:integrate validate, cli:integrate reconcile, cli:integrate defer, cli:integrate reorder, cli:integrate requeue, cli:integrate custody, cli:integrate breaker status, cli:integrate breaker reset, tool:integration_publish, tool:ticket_prepare
+
+### SYS-40 — Lead reports (report_write)
+
+**Board state:** awaiting_signoff
+
+**Who:** Lead
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** tool:report_write, cli:report show
 
 ### SYS-46 — The V-01 command wire after I-6 (I-7's O-01 0.9, and the I-1 to I-5 commands in O-01 0.7 and 0.8)
 

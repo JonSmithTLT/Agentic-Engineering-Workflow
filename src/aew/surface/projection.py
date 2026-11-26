@@ -30,7 +30,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from aew.engine import approval
+from aew.engine import approval, reports
 from aew.engine import hierarchy as H
 from aew.engine import queue_ops as Q
 from aew.engine import scope_ops as SC
@@ -588,6 +588,8 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         ids = [m["id"] for m in coordination["awaiting_lead"]]
         if ids:
             hints.append(f"{len(ids)} worker message(s) await the Lead: {', '.join(ids)}")
+    if found := reports.summaries(Path(engine.aew_root), part["revision"]):
+        out["reports"] = found
     return out
 
 

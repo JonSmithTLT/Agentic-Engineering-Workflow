@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 5
+version: 6
 
 vocabulary:
   homes:
@@ -827,7 +827,7 @@ commands:
       - [dispatch, explain, "{ticket}"]
       - [dispatch, explain, "{ticket}", --role, implementer]
     door: typed
-    via: [explain]
+    via: [work_show]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: role list
     home: diagnostic
@@ -837,6 +837,14 @@ commands:
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [role, list]
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: report show
+    home: product
+    users: [operator, lead]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "reads an immutable Lead report by id"
+    probe: [report, show, "{report}"]
+    refusals: [PROJECT_NOT_FOUND, USAGE, NOT_FOUND, INTEGRITY_ERROR]
   - name: role show
     home: diagnostic
     users: [operator, lead]
@@ -1858,20 +1866,14 @@ tools:
   - name: work_show
     home: product
     users: [lead]
-    journeys: []
-    mutates: "no"
-    mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}']
-    refusals: []
-  - name: explain
-    home: recovery
-    users: [lead]
     journeys: [V1, V2]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, explain, --arguments, '{"work_id": "{ticket}"}']
+    probe:
+      - [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}']
+      - [lead, tool, work_show, --arguments, '{"work_id": "{ticket}", "explain": true}']
     refusals: []
-    note: "the Lead's counted fallback when nothing is offered"
+    note: "explain: true is the Lead's counted fallback when nothing is offered"
   - name: harness_status
     home: diagnostic
     users: [lead]
@@ -1897,6 +1899,15 @@ tools:
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION]
+  - name: report_write
+    home: product
+    users: [lead]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: contract.Tool.mutates
+    owner: lead
+    refusals: [PERMISSION_DENIED, STALE_AUTHORITY, STALE_REVISION, USAGE, INTEGRITY_ERROR, MIGRATION_REQUIRED]
+    note: "records a session-bounded Lead report and returns its explicit read command"
   - name: steering
     home: product
     users: [lead]

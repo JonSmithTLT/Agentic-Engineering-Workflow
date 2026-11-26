@@ -746,6 +746,7 @@ None.
 - `aew.process_kind`
 - `aew.roles`
 - `aew.skills`
+- `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
 

@@ -1,0 +1,6 @@
+**The operator on the USD 10 limit (2026-11-26, evening).** #607's full review found that the runner checks the limit
+per preregistration, not across the evaluation, and the operator was asked whether USD 10 is a total for the skill
+evaluation or a cap per experiment. The answer: "It depends usually even intensive experiments were only a couple
+dollars so it can be either or depending on value." So the runner's check stays per preregistration, and whether the
+experiments together may go past USD 10 is judged by the operator from what each is worth. No cross-experiment check
+is owed.

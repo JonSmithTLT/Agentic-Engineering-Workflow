@@ -153,8 +153,10 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
 
 
 def main(argv: list[str] | None = None) -> int:
+    from aew import process_kind
+
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not profile.cli_start():
+    if process_kind.cli_entry_point(argv, os.environ) == process_kind.OUTAGE_READER or not profile.cli_start():
         return _main(argv)
     code = 1
     try:
@@ -169,8 +171,9 @@ def _main(argv: list[str]) -> int:
 
     # Before anything can open the store (STG-05 CB-09). Scoped, since tests call `main` in-process.
     with process_kind.declared_as(process_kind.cli_entry_point(argv, os.environ)):
+        entry_point = process_kind.declared()
         code = _run_main(argv)
-    if os.environ.get("AEW_LEAD_BROKER"):  # a Lead session whose guide reads are not relayed counts them here (E231)
+    if entry_point != process_kind.OUTAGE_READER and os.environ.get("AEW_LEAD_BROKER"):
         from aew.harness import lead_broker
 
         if lead_broker.notes_guide_read(argv):
@@ -179,8 +182,10 @@ def _main(argv: list[str]) -> int:
 
 
 def _run_main(argv: list[str]) -> int:
+    from aew import process_kind
+
     _utf8_streams()
-    if os.environ.get("AEW_LEAD_BROKER"):  # a Lead session counts its help lookups (E231's failure criterion)
+    if process_kind.declared() != process_kind.OUTAGE_READER and os.environ.get("AEW_LEAD_BROKER"):
         from aew.harness import lead_broker
 
         if lead_broker.is_help_lookup(argv):
@@ -194,6 +199,12 @@ def _run_main(argv: list[str]) -> int:
         sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
         return exc.exit_code
     args = parser.parse_args(argv)
+    if args.command == "read":
+        # No credentials, broker, or dispatch channel. Even the refusal is a local D-01 response.
+        try:
+            return args.handler(args)
+        except KeyboardInterrupt:
+            return 130
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()

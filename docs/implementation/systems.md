@@ -6,7 +6,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-47, SYS-48
 
 **partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-45, SYS-51, SYS-53
 
@@ -16,9 +16,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
+**designed_only:** 17 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-47, SYS-48
 
 **Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-45, SYS-51, SYS-53
 
@@ -220,15 +220,15 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-32 — Independent outage reader (aew read)
 
-**Board state:** designed_only
+**Board state:** awaiting_signoff
 
 **Who:** Lead
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — E108: the aew read command over the store, reusing the D-01 wire's stamps without the server; the eight served reads not yet built anywhere; the non-writer declaration and tests; the surface-map entry (E108); G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there (E108) — **Next:** E108: the aew read command over the store, reusing the D-01 wire's stamps without the server; the eight served reads not yet built anywhere; the non-writer declaration and tests; the surface-map entry — E108 — 2-3 PRs (estimate; BOARD v2 §2)
+**Own slices left:** 1 — G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there (E108) — **Next:** G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there — E108 — a per-host run, no PR (estimate)
 
-**Wired:** none
+**Wired:** cli:read
 
 ### SYS-39 — Integration pipeline (ADR-0004 queue, custody worker, workspaces)
 

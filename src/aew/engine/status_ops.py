@@ -18,13 +18,29 @@ class StatusViews:
         self.k = k
 
     def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
-                       housekeeping: bool = True) -> list[str]:
+                       housekeeping: bool = True, pinned_failures: list[str] | None = None) -> list[str]:
         """Detected inconsistencies the Lead must resolve rather than silently pick a side (KC §15.1). A lock-free
         reader passes the manifest it read with ``state``, so the check never takes the control lock. Without
         ``housekeeping``, the lines that report the engine's own retried cleanup (a retired observation's worktree
         still on disk, pruned by a later operation) are left out: they heal themselves, so they are never recorded as
-        anomalies (M4-E E5b; PR 182 review, m1)."""
-        found = []
+        anomalies (M4-E E5b; PR 182 review, m1). A caller supplying ``pinned_failures`` has already checked the
+        files in its own read. It evaluates those findings and contradictions within control state."""
+        found = (list(pinned_failures) if pinned_failures is not None
+                 else self._file_contradictions(state, manifest, housekeeping))
+        for inv_id, inv in sorted(state["invocations"].items()):
+            if inv["status"] == "active" and state["lead"]["status"] == "vacant":
+                found.append(f"{inv_id}: active invocation but no Lead holds authority")
+            obs = inv.get("observation") or {}
+            if pinned_failures is None and housekeeping and obs and obs.get("status") != "active" \
+                    and Path(obs["path"]).exists():
+                found.append(f"{inv_id}: retired observation worktree still on disk at {obs['path']} (it is pruned by "
+                             "the next non-mutating operation)")
+        found.extend(self._hierarchy_contradictions(state))
+        return found
+
+    def _file_contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None,
+                             housekeeping: bool) -> list[str]:
+        found: list[str] = []
         if not self.k.manifest_pin_ok(state):
             found.append("project.yaml does not match its pinned hash (modified outside AEW)")
         found += [f"policy file {rel} does not match its pinned hash (modified outside AEW)"
@@ -54,14 +70,13 @@ class StatusViews:
             if Path(o["path"]).exists():
                 found.append(f"{o['invocation']}: retired observation worktree still on disk at {o['path']} (its "
                              "removal is retried at every Lead commit)")
-        for inv_id, inv in sorted(state["invocations"].items()):
-            if inv["status"] == "active" and state["lead"]["status"] == "vacant":
-                found.append(f"{inv_id}: active invocation but no Lead holds authority")
-            obs = inv.get("observation") or {}
-            if housekeeping and obs and obs.get("status") != "active" and Path(obs["path"]).exists():
-                found.append(f"{inv_id}: retired observation worktree still on disk at {obs['path']} (it is pruned by "
-                             "the next non-mutating operation)")
+        return found
+
+    @staticmethod
+    def _hierarchy_contradictions(state: dict[str, Any]) -> list[str]:
         from aew.engine import hierarchy as H
+
+        found = []
         for wid, unit in sorted(state["work"].items()):
             if unit["kind"] != "ticket" and unit["state"] != "OPEN":
                 derived = H.derive_parent(state, wid)["state"]

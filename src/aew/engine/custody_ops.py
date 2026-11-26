@@ -165,10 +165,11 @@ REGISTER_READ = "`aew capability list` reads the register here"
 # its refusal adds. `integrate custody` stays outside this list: it is the one internal command, started by the engine,
 # and not the operator's to run. The command's own check and the Lead broker's channels both take the text
 # from here, so a Lead is told the same way to ask whichever way it asked, never "run this one directly" (#272 QC3;
-# #286 review F1).
+# #286 review F1). The outage reader's direct CLI uses A-45's D-01 Problem instead.
 LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {
     ("capability", "check"): REGISTER_READ,
     ("capability", "fetch"): REGISTER_READ,
+    ("read",): "in a Lead session use `aew status`",
     # No typed tool asks for a confirmation (register E183: the steering tool hides `request_confirmation`), so a
     # Lead names what it needs approved in its own reply.
     ("g3", "request"): "no tool asks for it: name the action you need approved in your reply, and the operator's "

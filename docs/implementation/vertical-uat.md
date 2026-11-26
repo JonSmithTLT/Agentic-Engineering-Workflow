@@ -527,6 +527,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `STALE_POLICY` | The legality policy in force is not the one a staged action was bound to | `policy_changed` | Lead |
 | `STALE_REVISION` | Only a CAS mismatch. After A3, `CHANGED_SINCE_READ` carries the named semantic change | `cas_mismatch` | Lead |
 | `PERMISSION_DENIED` | Only an authority that actually denied the caller. Never "seat held", and never "input not set or malformed" | `authority_denied` | operator |
+| `OUTAGE_READ_REFUSED` | The independent outage reader carries this internal refusal as a D-01 Problem | `authentication_unqualified`, `invalid_request`, `not_found_or_not_disclosable`, `cursor_stale_or_unauthorized`, `owner_unavailable` | operator |
 | `CAPABILITY_UNAVAILABLE` | A capability switched off for the project, or refused where it was called | `capability_off` | operator |
 | `OPERATOR_AUTHORIZATION_REQUIRED` | The operation needs the operator's out-of-band authorization | `operator_authorization_missing` | operator |
 | `REF_OUT_OF_SCOPE` | A worker's message ref names something outside its own unit, thread, Ticket and runs | `ref_out_of_scope` | Lead |

@@ -2372,14 +2372,16 @@ systems:
     with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
     staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
     second also on the Lead's list. Of E136's skills, the two security ones wait on the operator's update of their
-    drafts, `frontend-design` waits for its own card (E395), every card's one foundational skill waits on the operator's
-    approval of the mapping, and
+    drafts and `frontend-design` waits for its own card (E395). Every card but `researcher` requests one foundational skill
+    (the operator, 2026-11-26); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
+    hold interim ones (E397, E398). Also
     E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:16, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
-    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`)
+    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`); from E136's fourth batch
+    every built-in card but `researcher` requests exactly one
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
     lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
     E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,

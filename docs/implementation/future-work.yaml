@@ -5400,6 +5400,44 @@ sections:
     When: '**Unscheduled.** After the designer shapes the card; E136 leaves `frontend-design` to this row'
     Notes: Filed by E136's fourth batch
 
+  - '#': E396
+    Work: 'A source-research skill, the `researcher` card''s one foundational skill. It must cover: finding and preferring
+      primary sources; naming the subject, its version and the source for every conclusion; provenance, so a reader can
+      find the source again; and stated uncertainty where the sources are silent or disagree. `researcher` holds no skill
+      in `skills:` until it exists, and takes it there when it ships. The operator creates the skill: it is authored outside
+      this repository''s builders unless the operator says otherwise, and reaches the repository as a candidate with its
+      public-text check'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created."'
+    When: '**Unscheduled.** When the operator has created the skill'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E397
+    Work: 'A general implementation skill, the `engineer` card''s one foundational skill, replacing `test-design`, which
+      it holds in the interim. It must cover how an implementer proceeds whatever the language: reading the Ticket, the
+      plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally and running
+      the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan. When it ships,
+      `engineer` requests it and offers `test-design` again. The operator creates the skill: it is authored outside this
+      repository''s builders unless the operator says otherwise'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created."; asked whether to track a general implementation skill and
+      a standalone plan-review skill, "Yes to both"'
+    When: '**Unscheduled.** When the operator has created the skill'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E398
+    Work: 'A standalone plan-review skill, the `plan_assessor` card''s one foundational skill, replacing `adversarial-review`,
+      which it holds in the interim. It is split from `adversarial-review`''s plan-review reference, so an assessor does
+      not load the code-review procedure to reach it. It must cover judging a plan before the work starts: whether the plan
+      meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers, and whether its
+      tests and verification can show the work done. When it ships, `plan_assessor` requests it. The operator creates the
+      skill: it is authored outside this repository''s builders unless the operator says otherwise'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created."; asked whether to track a general implementation skill and
+      a standalone plan-review skill, "Yes to both"'
+    When: '**Unscheduled.** When the operator has created the skill'
+    Notes: Filed by E136's fourth batch
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

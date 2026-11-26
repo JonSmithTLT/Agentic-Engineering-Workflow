@@ -3954,6 +3954,42 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E395/`, oldest first (`python tools/register.py show E395`).*
 
+### E396
+
+**Work:** A source-research skill, the `researcher` card's one foundational skill. It must cover: finding and preferring primary sources; naming the subject, its version and the source for every conclusion; provenance, so a reader can find the source again; and stated uncertainty where the sources are silent or disagree. `researcher` holds no skill in `skills:` until it exists, and takes it there when it ships. The operator creates the skill: it is authored outside this repository's builders unless the operator says otherwise, and reaches the repository as a candidate with its public-text check
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created."
+
+**When:** **Unscheduled.** When the operator has created the skill
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E396/`, oldest first (`python tools/register.py show E396`).*
+
+### E397
+
+**Work:** A general implementation skill, the `engineer` card's one foundational skill, replacing `test-design`, which it holds in the interim. It must cover how an implementer proceeds whatever the language: reading the Ticket, the plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally and running the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan. When it ships, `engineer` requests it and offers `test-design` again. The operator creates the skill: it is authored outside this repository's builders unless the operator says otherwise
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created."; asked whether to track a general implementation skill and a standalone plan-review skill, "Yes to both"
+
+**When:** **Unscheduled.** When the operator has created the skill
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E397/`, oldest first (`python tools/register.py show E397`).*
+
+### E398
+
+**Work:** A standalone plan-review skill, the `plan_assessor` card's one foundational skill, replacing `adversarial-review`, which it holds in the interim. It is split from `adversarial-review`'s plan-review reference, so an assessor does not load the code-review procedure to reach it. It must cover judging a plan before the work starts: whether the plan meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers, and whether its tests and verification can show the work done. When it ships, `plan_assessor` requests it. The operator creates the skill: it is authored outside this repository's builders unless the operator says otherwise
+
+**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created."; asked whether to track a general implementation skill and a standalone plan-review skill, "Yes to both"
+
+**When:** **Unscheduled.** When the operator has created the skill
+
+**Notes:** Filed by E136's fourth batch
+
+*Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

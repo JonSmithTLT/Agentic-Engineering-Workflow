@@ -274,9 +274,11 @@ def test_a_run_gets_a_copy_of_the_skills_its_card_is_offered_and_its_record_says
     lab.wait(run)
     record = lab.record(run)
     planned = record["contract"]["extra"]["skills"]
-    assert planned["requested"] == []
-    assert planned["offered"] == sorted(roles.builtin_cards()["engineer"].meta["optional_skills"])  # the card's list
-    assert planned["exposed"] == planned["offered"] and planned["unavailable"] == [] and planned["reasons"] == {}
+    engineer = roles.builtin_cards()["engineer"].meta  # the card owns its lists: its one skill, and what it offers
+    assert planned["requested"] == sorted(engineer["skills"])
+    assert planned["offered"] == sorted(engineer["optional_skills"])
+    assert planned["exposed"] == sorted(planned["requested"] + planned["offered"])
+    assert planned["unavailable"] == [] and planned["reasons"] == {}
     assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
     contained = record["containment"]["filesystem"] == "os_readonly_roots"
     assert planned["copy"] == ("read_only_bind" if contained else "rules_only")

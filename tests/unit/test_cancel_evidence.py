@@ -585,6 +585,101 @@ def test_empty_canceled_attempt_records_the_unavailable_cause_without_inventing_
     assert "[cancel-reason]" in payload[0]["output"]["summary"]
 
 
+# PR #601's run 45786034180: cancelled after ten minutes with no job and no `cancelled_by`, its one successor created
+# a second before it concluded.
+JOBLESS = {**OLD, "path": ".github/workflows/ci.yml", "conclusion": "cancelled", "status": "completed",
+           "updated_at": "2026-11-15T19:29:01Z", "pull_requests": [{"number": 480}]}
+
+
+def _record_jobless(monkeypatch, run, history):
+    """Record a cancelled run with no job against a run history; return the check and the history queries made."""
+    record = _load("record_cancel_evidence")
+    monkeypatch.setattr(record, "inspect_run", lambda *args: [])
+    monkeypatch.setattr(record, "run_jobs", lambda *args: [])
+    monkeypatch.setattr(record, "_pages", lambda *args: [])
+    asked = []
+    monkeypatch.setattr(CANCEL, "candidates", lambda *args: asked.append(args) or [run, *history])
+    monkeypatch.setattr(CANCEL, "commit_pulls", lambda repo, sha: [])
+    payload = []
+    monkeypatch.setattr(record, "_gh_read", lambda *args: payload.append(json.loads(Path(args[-1]).read_text())))
+    assert record.record("test/repo", run) == []
+    return payload[0], asked
+
+
+def test_a_run_superseded_before_any_job_names_its_unique_successor_and_is_no_gap(monkeypatch):
+    check, asked = _record_jobless(monkeypatch, JOBLESS, [NEW])
+    assert check["conclusion"] == "success" and check["output"]["title"].endswith("0 red jobs, 0 evidence gaps")
+    summary = check["output"]["summary"]
+    assert f"Superseded before any job was recorded, by run {NEW['id']} at f558023460af (pull_request)." in summary
+    assert "[cancel-reason]" not in summary and "evidence defect" not in summary
+    # The successor is looked for only within the cancelled run's own life, in its own workflow, branch and event.
+    assert asked == [("test/repo", OLD["workflow_id"], "feature", "pull_request", JOBLESS["created_at"],
+                      JOBLESS["updated_at"])]
+
+
+def test_a_jobless_cancel_with_two_possible_successors_stays_an_attribution_gap(monkeypatch):
+    check, asked = _record_jobless(monkeypatch, JOBLESS, [NEW, {**NEW, "id": NEW["id"] + 1}])
+    assert asked and check["conclusion"] == "failure"
+    assert "Cancelled before any job was recorded" in check["output"]["summary"]
+    assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
+    assert "Superseded" not in check["output"]["summary"]
+
+
+@pytest.mark.parametrize("history", [
+    [],
+    [{**NEW, "pull_requests": [{"number": 910}]}],  # another pull request's run of the same branch
+    [{**NEW, "head_repository": {"id": 2}}],  # a fork's run
+    [{**NEW, "event": "push"}],
+    [{**NEW, "workflow_id": 1}],
+    [{**NEW, "created_at": "2026-11-15T18:00:00Z"}],  # created before the cancelled run: it cannot have replaced it
+    [{**NEW, "pull_requests": []}],  # its group cannot be established
+    # Created in the cancelled run's own second with a lower id: its predecessor, never its successor (#615, finding 2).
+    [{**NEW, "id": OLD["id"] - 1, "created_at": OLD["created_at"]}],
+], ids=["none", "other-pr", "fork", "push", "other-workflow", "earlier", "no-group", "same-second-predecessor"])
+def test_a_jobless_cancel_with_no_established_successor_stays_an_attribution_gap(monkeypatch, history):
+    check, asked = _record_jobless(monkeypatch, JOBLESS, history)
+    assert asked and check["conclusion"] == "failure"
+    assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
+    assert "Superseded" not in check["output"]["summary"]
+
+
+def test_a_same_second_run_with_a_higher_id_is_still_the_jobless_runs_successor(monkeypatch):
+    # The other side of the id order: created in the same second, after the cancelled run.
+    check, _ = _record_jobless(monkeypatch, JOBLESS, [{**NEW, "created_at": JOBLESS["created_at"]}])
+    assert check["conclusion"] == "success" and f"by run {NEW['id']} at" in check["output"]["summary"]
+
+
+def test_a_jobless_re_run_attempt_is_never_attributed_from_history(monkeypatch):
+    # A re-run keeps the first attempt's created_at, so a run that is newer than the first attempt and older than the
+    # re-run would fall inside its window; it cannot have replaced the re-run (#615, finding 1).
+    rerun = {**JOBLESS, "run_attempt": 2, "run_started_at": "2026-11-15T20:00:00Z",
+             "updated_at": "2026-11-15T20:05:00Z"}
+    check, asked = _record_jobless(monkeypatch, rerun, [NEW])
+    assert NEW["created_at"] < rerun["run_started_at"]
+    assert not asked and check["conclusion"] == "failure"
+    assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
+    assert "Superseded" not in check["output"]["summary"]
+
+
+@pytest.mark.parametrize("change", [
+    {"path": ".github/workflows/evidence-proof.yml"},  # ci_group names ci.yml's group only
+    {"event": "workflow_dispatch"},
+    {"event": "push"},  # a push run's group is its own commit: nothing supersedes it
+    {"conclusion": "failure"},
+    {"pull_requests": [{"number": 480}, {"number": 481}]},  # two groups: neither is established
+], ids=["other-workflow", "dispatch", "push", "not-cancelled", "two-prs"])
+def test_a_jobless_run_outside_a_pull_requests_ci_group_is_never_attributed_from_history(monkeypatch, change):
+    check, asked = _record_jobless(monkeypatch, {**JOBLESS, **change}, [NEW])
+    assert not asked and check["conclusion"] == "failure"
+    assert "[cancel-reason] no available cancellation attribution" in check["output"]["summary"]
+
+
+def test_a_jobless_manual_cancel_keeps_its_actor_and_asks_no_run_history(monkeypatch):
+    check, asked = _record_jobless(monkeypatch, {**JOBLESS, "cancelled_by": {"login": "operator"}}, [NEW])
+    assert not asked and check["conclusion"] == "success"
+    assert "Actor: operator." in check["output"]["summary"] and "Superseded" not in check["output"]["summary"]
+
+
 def test_oversized_check_keeps_full_scanned_diagnostics_and_links_the_record(monkeypatch, tmp_path):
     record = _load("record_cancel_evidence")
     rows = [{"run": OLD["id"], "job": 7, "kind": "test_failure", "A1": "no", "A2": "n/a", "artifacts": [],

@@ -1660,6 +1660,31 @@ entries:
     cause: The latest attempt is the cell's last registration in ledger order, never its stamp.
     test: tests/unit/test_eval_instrument.py::test_a_cells_latest_attempt_is_its_last_registered_never_its_latest_stamp
     proof: fault injection
+- id: windows-serial-job-deadline
+  scope: session
+  lane: serial
+  platforms:
+  - windows
+  status: open
+  class: session failure
+  cause: >-
+    Cause unestablished. The Windows serial session reached the job's deadline (exit 70) 1154 s into a lane that
+    took 4 to 5 minutes on main's and the branch's earlier runs that morning, with 60 results printed and no failure.
+    No test failed by name at --test-timeout 600, so either the tests before the 61st ran slowly or the watchdog fired
+    and could not fail the test in place; the session's autopsy and its watchdog artifact say which. Linux ran the
+    same lane at the same commit in 196 s.
+  owner: CI flake triage
+  row: E3
+  evidence:
+  - run: 45781663365
+    job: 139779706740
+    at: '2026-11-26T08:50:03Z'
+    nodes:
+    - tests/unit/test_dashboard_static.py::test_the_request_log_never_blocks_a_request_on_a_stalled_terminal
+    note: >-
+      serial 1/1 (windows-latest) on PR 597 at 72461d35, which changes no dashboard code. The node is the 61st of
+      the lane's collection order, worked out from the progress line; the bundle (autopsy session-2044-b089d1f6) was
+      not read when this was recorded.
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

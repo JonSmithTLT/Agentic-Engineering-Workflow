@@ -21,7 +21,8 @@ how their answer can change:
 
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
-never for a query or a wait, never dependent on the profile). Decisions never carry a default.
+never for a query or a wait, never dependent on the profile). Decisions never carry a default, and each states its
+owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from aew.engine.primitives import JUDGMENT_BEARING, spec_for
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
+from aew.owners import OPERATOR, owner_of
 from aew.surface import availability as SA
 from aew.surface import contract, stage
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
@@ -100,11 +102,39 @@ def _action(name: str, arguments: dict[str, Any], *, kind: str, availability: st
             "reason_codes": sorted(set(reason_codes)), "cli_fallback": cli_fallback}
 
 
+# The primitives each decision kind carries out, from which its one owner is read (register E335; the designer's
+# ruling of 2026-11-11: one owner per decision kind, from one table of primitive owners,
+# ``owners.PRIMITIVE_OWNERS``). PUBLISH accepts the integration verifier's report and publishes, or publishes a
+# validated candidate.
+DECISION_PRIMITIVES: dict[str, tuple[str, ...]] = {
+    "ACCEPT_REVIEW_EVIDENCE": ("review.ingest",),
+    "ACCEPT_VERIFICATION": ("verify.ingest",),
+    "PUBLISH": ("integrate.publish", "verify.ingest.integration"),
+    "FINISH_PUBLISH": ("integrate.reconcile",),
+    "CLASSIFY_FAILURE": ("verify.classify",),
+    "RECONCILE": ("work.reconcile",),
+    "RESOLVE_STAGE": ("stage.resolve",),
+    "DISPOSE_ANOMALY": ("work.dispose",),
+    "DISPOSE_FINDING": ("work.dispose",),
+    "DISPOSE_CLAIM": ("work.dispose",),
+    "REPLACE_GATE": ("work.gate_replace",),
+    "ADD_SCOPE": ("work.scope_add",),
+}
+
+
+def decision_owner(name: str) -> str:
+    """A decision kind's one owner, read from its primitives' owners. A kind with no primitives here, or whose
+    primitives name different owners, is the operator's: an unstated owner never falls to the Lead."""
+    owners = {owner_of(p) for p in DECISION_PRIMITIVES.get(name, ())}
+    return owners.pop() if len(owners) == 1 else OPERATOR
+
+
 def _decision(name: str, subject: str, *, tool: str | None, arguments: dict[str, Any] | None,
               cli_fallback: list[str] | None, evidence: list[str] | None = None,
               availability: str = UNKNOWN) -> dict[str, Any]:
-    return {"decision": name, "subject": subject, "evidence": list(evidence or []), "tool": tool,
-            "arguments": arguments, "availability": availability, "default": "NONE", "cli_fallback": cli_fallback}
+    return {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
+            "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
+            "cli_fallback": cli_fallback}
 
 
 def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -193,11 +223,11 @@ def _anomaly_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any])
 
 
 def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], subject: str) -> None:
-    """A parent's mandatory gate that no unit type under it can satisfy is the Lead's to replace on the record (ITEMS
-    55; designer, addendum 4): a decision naming the item, whose replacement gate is the Lead's judgment (no default),
-    and a blocker whose details say why, the candidates, the units stuck on it and the live invocations a replacement
-    would make stale (its preview, addendum 3). A gate some unit type can satisfy is the operator's (addendum 5): the
-    decision is blocked, and the blocker names those unit types."""
+    """A parent's mandatory gate that no unit type under it can satisfy is replaced on the record (ITEMS 55; designer,
+    addendum 4): a decision naming the item, whose replacement gate is a judgment (no default) and whose owner is the
+    owner table's (``decision_owner``), and a blocker whose details say why, the candidates, the units stuck on it and
+    the live invocations a replacement would make stale (its preview, addendum 3). A gate some unit type can satisfy
+    is the operator's (addendum 5): the decision is blocked, and the blocker names those unit types."""
     try:
         items = engine.gate_items(subject, state=state)
     except AEWError:  # the catalogue or policy cannot be read now: doctor says so
@@ -590,7 +620,8 @@ def _scope_decisions(engine: Any, part: dict[str, Any], subject: str,
                      blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """A test path the Ticket's change touches outside its scope can be added to the scope on the record (register
     E126; the designer's decisions of 2026-11-03, §2, "The door"): one decision per such path, while the gate context
-    reports it, with the add's own query for its availability. Its rationale is the Lead's, so it has no default; a
+    reports it, with the add's own query for its availability. Its rationale is a judgment, so it has no default, and
+    its owner is the owner table's (``decision_owner``); a
     path the add would refuse, one that needs a sign-off included, is BLOCKED and adds the refusal to ``blockers``.
     Read now: it reads the workspace. A path that is not test code, or not one exact printable path (rule 1), is not
     offered: the guardrail's refusal says what to do with it."""

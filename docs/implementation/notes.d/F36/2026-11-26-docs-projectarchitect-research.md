@@ -12,7 +12,8 @@ untracked at dispatch, labelled as an observation and never a claim. It is a nar
 
 The operator's view, 2026-11-26: "There is benefit to starting fresh cintext workers. That case above does not seem to
 be one kf them. Aew kind of forces replacement or follow on workers to kind of rediscover whats already been done which
-ks not optimal". And the operator's decision the same day: "Yes recovery for replacement workers is a defect in current
+ks not optimal". The operator was then asked whether to build the recovery section (D1) now as a direct fix, and
+answered the same day: "Yes recovery for replacement workers is a defect in current
 aew. Or i guess the mkre correct phrasing is it is an oversight". So D1 is built directly, as a slice of this row, in
 its own pull request. E389's Experiment C then measures how much it helps; it no longer decides whether to build it.
 This note builds nothing itself.

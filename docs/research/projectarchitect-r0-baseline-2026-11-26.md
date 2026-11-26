@@ -13,7 +13,9 @@ to be done when I get back home anyways". So three things are decided, and nothi
 - E368 ships its truth fixes now (§"Where E368's rewrite should use C1");
 - the cap is approved as proposed below, and paid runs wait until the operator is home.
 
-The fixture set, the worker profile and the decision thresholds are still proposals.
+The operator separately decided the same day that D1 is built directly, as a slice of F36 (F36's note of 2026-11-26).
+So Experiment C measures D1's benefit and does not decide whether it is built. The fixture set, the worker profile and
+the decision thresholds are still proposals.
 
 **Basis.** AEW `main` at `eece01e5`, the revision the plan itself pins. Every `file:line` below is at that commit.
 

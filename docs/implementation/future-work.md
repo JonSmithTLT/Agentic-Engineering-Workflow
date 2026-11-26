@@ -3986,7 +3986,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Evaluation.** The operator, 2026-11-26, on R0 ("Yes start R1 prep, ship truth fixes now, cap is fine but will only be able to be done when I get back home anyways"): R1 preparation starts now, with no model run and no spend; the paid runs wait until the operator is home, within the cap R0 proposed and the operator approved ($0.50 and 20 minutes per attempt, at most 132 top-level attempts, a hard total of $75 with a stop for review at half). Proposed, not decided: that each experiment is preregistered on F19's instrument, and R0's fixture set, worker profile and decision thresholds
 
-**Notes:** Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), and its instrument is used as it stands. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26). R0's findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built directly, so Experiment C measures its benefit) and E198 (D2)
+**Notes:** Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), and R0 proposes using its instrument as it stands. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26). R0's findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built directly, so Experiment C measures its benefit) and E198 (D2)
 
 *Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
 

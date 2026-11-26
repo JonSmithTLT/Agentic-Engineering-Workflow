@@ -5448,10 +5448,10 @@ sections:
       minutes per attempt, at most 132 top-level attempts, a hard total of $75 with a stop for review at half). Proposed,
       not decided: that each experiment is preregistered on F19''s instrument, and R0''s fixture set, worker profile and
       decision thresholds'
-    Notes: Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), and its instrument
-      is used as it stands. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26). R0's
-      findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built directly,
-      so Experiment C measures its benefit) and E198 (D2)
+    Notes: Filed with the plan and R0. R0 is done (PAE-15). F19 is frozen (the operator, 2026-11-06, item 8), and R0 proposes
+      using its instrument as it stands. R0 recommends C1 as how E368's rewrite is judged, a proposal (E368's note of 2026-11-26).
+      R0's findings are also noted on the rows that own them, F36 (D1, which the operator decided on 2026-11-26 is built
+      directly, so Experiment C measures its benefit) and E198 (D2)
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)

@@ -283,7 +283,9 @@ def test_random_sections_and_budgets_never_cut_a_higher_tier_before_a_lower_one(
             assert {c.section for c in pack.truncations if c.dropped_entirely} >= recall, (seed, budget)
         # 3a. A section that is kept or omitted whole (review of #621): a record's open questions are whole lists, so
         #     no count is shown without its items and no heading without one; an implementer's failure evidence is
-        #     funded before them; and a recovery section is never there in part.
+        #     funded before them, and in these packs, whose failure evidence has only short lines, is whole while they
+        #     are kept (within a tier a cut section still leaves its room to later ones: register F36's note of
+        #     2026-11-26); and a recovery section is never there in part.
         lines = text.split("\n")
         for s in parts:
             if s.name == "open-questions":

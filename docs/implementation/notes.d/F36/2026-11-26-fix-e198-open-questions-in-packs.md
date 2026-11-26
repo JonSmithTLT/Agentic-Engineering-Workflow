@@ -14,4 +14,18 @@ and `test_room_a_whole_section_could_not_use_never_funds_a_lower_tier` holds, fo
 that a historical record is in the pack only when nothing of the source and evidence was cut. The same rule lets a
 consumed record's open questions be kept or omitted as whole lists (the note of this day on E198).
 
-Nothing of this point remains open on this row.
+**What remains, as a tracked minor (the quick check of #621, its m4): the same thing within one tier.** The rule
+stops room passing from a tier to the tiers below it, not between sections of the source-and-evidence tier. A section
+that is cut, or omitted because it is kept whole or not at all, still leaves its unused room to the sections after
+it, so a later, smaller section is kept while an earlier one is given up.
+- Measured in that check: failure evidence with one 1,500-character line was cut to 2 of its 3 lines while the
+  open-questions section after it was kept whole, in 812 budgets; a planner's 8-item list was omitted whole while
+  lines of a 40-row codebase map after it were kept, in 2,008 of 4,436 budgets (103 before lists were kept whole).
+- The recovery section is placed the same way, before the codebase map, so the same code applies to it; that case
+  was not measured.
+- **The suggested fix:** in `assemble`, a section that is cut or omitted also leaves no room for the later sections of
+  its own tier; and `random_inputs` in `tests/unit/test_context_budget.py` gains a long line and a codebase map, so
+  the sweep sees it.
+- **Owner:** nobody today. It is not fixed in #621, by the Lead's decision to make no further change to shared
+  budget behaviour there. This row's next slice, the next pull request that changes the recovery section or the
+  recitation, is what fixes it. Production passes no budget today, so no dispatched pack is affected.

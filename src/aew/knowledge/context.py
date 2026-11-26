@@ -923,7 +923,9 @@ def sections(p: PackInputs) -> list[Section]:
     if blocks:
         # After the sections the work is given (an implementer's failure evidence among them), so a budget funds
         # those first; a cut keeps or omits a record's field whole, so no count is shown without its items, and the
-        # notice names each field omitted (register E198; review of #621, m1 and m2).
+        # notice names each field omitted (register E198; review of #621, m1 and m2). Funded first is not kept
+        # first: a section of this tier that is cut leaves its unused room to the ones after it (register F36's note
+        # of 2026-11-26).
         out.append(Section("open-questions", EVIDENCE, ["", *head], blocks, "recorded lists", labels))
     if p.recovery and p.role in RECOVERY_ROLES:
         # Reference data (register F36), after every section the role's work depends on, so a budget funds those

@@ -32,6 +32,12 @@ the consumed inputs", after its consumed inputs and the other sections its work 
   failure evidence. A record's field is kept or omitted whole: no count is shown without its items, no heading
   without an item, and the notice names each field omitted. To make that safe, a tier that gave anything up now
   leaves no room for the tiers below it (the note of this day on F36).
+- **What the budget order does not promise.** Funded first is not kept first. Within the source-and-evidence tier a
+  section that is cut still leaves its unused room to the sections after it, so the smaller one can be kept while the
+  larger one before it is cut. Two cases were measured in the quick check of pull request #621: failure evidence
+  with one 1,500-character line was cut to 2 of its 3 lines while this section was kept whole (812 budgets); and a
+  planner's 8-item list was omitted whole while lines of a 40-row codebase map after it were kept (2,008 of 4,436
+  budgets). The note of this day on F36 tracks it. Production passes no budget today.
 - **A function of the pinned inputs:** it is read from the records the invocation pinned at dispatch, so a
   regenerated pack is the dispatched one.
 - **Independence: no evaluator gets it.** A Story's or an Epic's acceptance reviewer and verifier consume inputs too,

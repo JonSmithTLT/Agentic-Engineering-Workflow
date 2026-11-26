@@ -990,8 +990,12 @@ def test_a_budget_keeps_or_omits_a_records_field_whole_and_names_what_it_omitted
 
 
 def test_a_budget_funds_an_implementers_failure_evidence_before_what_its_inputs_left_open():
-    """Review of #621, m2: the section follows the sections the work is given, so the tier funds them first. The
-    failure evidence a rework is dispatched to address is never omitted or cut while the section is kept."""
+    """Review of #621, m2: the section follows the sections the work is given, so the tier funds them first. What
+    this holds is the order, and for this pack, whose failure evidence fits whenever anything after it does, that the
+    failure evidence is whole while the section is kept. It is not a rule of the budget (quick check of #621, m4): a
+    section that is cut still leaves its unused room to later sections of its own tier, so failure evidence with one
+    line too long for the room is cut by the line while this section, being smaller, is kept; register F36's note of
+    2026-11-26 tracks it."""
     p = consuming("implementer")
     parts = ctx.sections(p)
     funded = [s.name for s in parts if s.tier == ctx.EVIDENCE]

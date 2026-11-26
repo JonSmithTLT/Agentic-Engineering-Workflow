@@ -9,6 +9,7 @@ fake OpenCode server in ``tests/integration/test_skill_eval_opencode.py``.
 
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import sys
@@ -580,11 +581,12 @@ def test_the_walk_and_the_paired_report_know_no_skill(lane, observed):
     be lifted into the instrument as they are: neither module imports a skill-specific one, and the pairs they give
     for two named arms carry no skill fact."""
     for module in (walk, paired):
-        source = Path(module.__file__).read_text(encoding="utf-8")
-        imports = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
-        assert not any(name in line for line in imports for name in ("aew.skills", "skill_eval.arms",
-                                                                    "skill_eval.plan", "skill_eval.cases",
-                                                                    "skill_eval.run", "skill_eval.report")), imports
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+        imported |= {f"{node.module}.{alias.name}" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                     for alias in node.names}
+        ours = {name for name in imported if name.split(".")[0] in ("aew", "skill_eval")}
+        assert all(name.startswith("skill_eval.walk.") for name in ours), ours  # the walk, and nothing else of ours
     sides = {"reference": "baseline", "treatment": "candidate"}
     found = paired.pairs(observed, lane["lane"] / "ledger", sides)
     assert [p["complete"] for p in found] == [True, True, True]

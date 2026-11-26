@@ -422,7 +422,8 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
             continue
         answer = engine.guard_query(primitive, work_id, args, state=scratch)
         steps.append({**entry, **{k: answer[k] for k in ("availability", "reason_codes", "blocking_conditions")},
-                      **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition") if k in answer}})
+                      **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition",
+                                                "post_report_message_pending") if k in answer}})
         done[n] = (primitive, args)
     answers = [s["availability"] for s in steps if s.get("planned", True)]
     held = _held(t, arguments, current)
@@ -431,4 +432,6 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
     reasons = sorted({c for s in steps for c in s.get("reason_codes") or []} | ({RESOLVE_STAGE} if held else set())
                      | ({report["code"]} if report else set()))
     blockers = [*held, *([report] if report else []), *(b for s in steps for b in s.get("blocking_conditions") or [])]
-    return {"stage": stage, "availability": overall, "reason_codes": reasons, "blockers": blockers, "steps": steps}
+    pending = [m for s in steps for m in s.get("post_report_message_pending", ())]
+    return {"stage": stage, "availability": overall, "reason_codes": reasons, "blockers": blockers, "steps": steps,
+            **({"post_report_message_pending": pending} if pending else {})}

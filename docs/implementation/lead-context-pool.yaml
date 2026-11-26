@@ -15,10 +15,10 @@ authority:
 baseline:
   push_wake: true
   switches: [coordination.messaging]
-  system_bytes: 9020
+  system_bytes: 5834
   guide_bytes: 8121
   join_bytes: 2
-  mcp_bytes: 11900
+  mcp_bytes: 11852
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
   # 242 B. The line would be 453 B with all six shipped tools placed.
   containment:
@@ -58,14 +58,14 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-  # The room between the derived ceiling (baseline 29043 + the allocations above 5637 = 34680 B) and the operator's
+  # The room between the derived ceiling (baseline 25809 + the allocations above 5637 = 31446 B) and the operator's
   # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
   # than lowering the cap; any change to the cap itself is the operator's.
   operator_reserve:
-    bytes: 5320
+    bytes: 8554
     kind: reserve
-    source: "E231's guide core lowered the pool; the operator set the cap at 40000 B as an anti-bloat guard, above the 34680 B the pool's rule computes, and this is the difference: 40000 - 34680 = 5320 B, unallocated."
+    source: "E231's guide core lowered the pool; the operator set the cap at 40000 B as an anti-bloat guard, above the 34680 B the pool's rule computes, and this is the difference: 40000 - 34680 = 5320 B, unallocated. E367's rewrite of the system text and the compact tool descriptions then saved a measured 3234 B (below), which this reserve grew by: 5320 + 3234 = 8554 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
@@ -75,6 +75,13 @@ allocations:
 # bytes (16412 - 8291 = 8121), and the derived ceiling to 34680 B (42971 - 8291). The operator chose 40000 B over that
 # figure; the 5320 B between them is the operator_reserve allocation. The 42971 B cap it replaces is in
 # approval_history.
+# E367's rewrite of the system text (every line true and needed; the guide's core owns the facts both stated) and the
+# compact tool descriptions, measured with the pool gate's own render at main d6078d2f and on the PR's branch:
+# messaging on, system 9380 B -> 6194 B and MCP 12022 B -> 11974 B (guide 9154, join 2: 30558 B -> 27324 B); off,
+# system 9121 B -> 6024 B, MCP 12067 B unchanged (the compact descriptions are the on catalog's). The 3234 B
+# messaging-on saving lowers the baseline's system bytes by 3186 (9020 -> 5834) and its MCP bytes by 48 (11900 ->
+# 11852), and the cap stays the operator's 40000 B: the saving grows operator_reserve (5320 -> 8554), as the rule above
+# the reserve says.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
   ceiling_bytes: 40000

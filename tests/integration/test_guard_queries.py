@@ -109,8 +109,8 @@ def test_guard_query_matches_execute_work_transition_and_implementer_active(read
 
 def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path):
     """A non-mutating Ticket replaces `implementer_active` with its own guard, not migrated: its ASSIGNED -> RUNNING
-    is UNKNOWN (never answered by the mutating Ticket's query), and the transition still runs its own guard. Its
-    review ingest is its own kind's, not migrated either."""
+    is UNKNOWN (never answered by the mutating Ticket's query), and the transition still runs its own guard.
+    The migrated review query predicts its own kind's refusal."""
     from aewflow import create_investigation
 
     p = sample_project(tmp_path)
@@ -121,9 +121,9 @@ def test_a_kind_whose_guard_has_no_query_is_unknown_and_still_executes(tmp_path)
     assert answer["availability"] == UNKNOWN and answer["not_queryable"] == "implementer_active"
     engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="RUNNING")
     assert engine.store.read()["work"][wid]["state"] == "RUNNING"
-    # Its ingest is another kind's too (the KindRegistry selects it): not migrated, UNKNOWN.
-    ingest = engine.guard_query("review.ingest", wid, {"evidence": "EV-0001"})
-    assert ingest["availability"] == UNKNOWN and ingest["not_queryable"] == "review.ingest"
+    ingest = equivalent(engine, "review.ingest", wid, {"evidence": "EV-0001"}, lambda rev: engine.review_ingest(
+        token=p.token, expect_rev=rev, work_id=wid, evidence_id="EV-0001"))
+    assert ingest["availability"] == BLOCKED
 
 
 def test_ticket_start_is_composed_from_the_assignment_and_the_transition_it_produces(ready):

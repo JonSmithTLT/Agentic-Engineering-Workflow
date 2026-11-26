@@ -387,9 +387,10 @@ def test_the_lead_is_told_how_to_read_the_project_and_that_a_scope_is_fixed():
     from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
     from aew.surface import lead_text
 
-    assert "read, glob and grep" in projection.LEAD_SYSTEM
     text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
     assert "read, glob and grep" in text and "scope is fixed" in text
+    # The guide's core says it, once, and every Lead's system text carries the core (E367).
+    assert "read, glob and grep" in projection.lead_config(text)["agents"][projection.LEAD_AGENT]["system"]
     assert "authority candidates" in text
 
 

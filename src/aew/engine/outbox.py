@@ -476,6 +476,26 @@ def read_transitions(aew_root: Path, since: int, through: int, *, outbox: dict[s
         yield out
 
 
+def newest_transitions(aew_root: Path, state: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Walk backward from the committed head, resolving sealed copies and checking each link as it is read."""
+    start = (state.get("outbox") or {}).get("since")
+    revision: int = state["revision"]
+    if start is None or revision < start:
+        return
+    view = LogView(aew_root, start)
+    record = view.record(revision)
+    if record["h"] != state["last_transition"]["h"]:
+        raise IntegrityError(f"revision {revision}: the transition log does not match the committed head",
+                             revision=revision)
+    for rev in range(revision, start - 1, -1):
+        parent = view.record(rev - 1) if rev > start else None
+        if record["h"] != transition_hash(parent["h"] if parent else GENESIS_H, record):
+            raise IntegrityError(f"revision {rev}: the transition hash chain is broken", revision=rev)
+        yield dict(record, events=view.events(record))
+        if parent is not None:
+            record = parent
+
+
 def matches(record: dict[str, Any], kinds: set[str] | None) -> dict[str, Any] | None:
     """The record narrowed to ``kinds``; None when it has no event of those kinds."""
     if not kinds:

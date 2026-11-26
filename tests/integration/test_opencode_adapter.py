@@ -1136,7 +1136,8 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     # and the Lead's skills a start would copy, into the folder each start makes (E161): the same plan and folder
     at = opencode_lead.lead_skills_at(engine)
     assert lead["config"] == projection.lead_config(lead_text.guide_for(engine), tools=placed,
-                                                    push_wake=opencode_lead.pushes_wakes(engine), skills_dir=at)
+                                                    push_wake=opencode_lead.pushes_wakes(engine), skills_dir=at,
+                                                    powershell=placed is not None and sys.platform == "win32")
     assert lead["config"]["skills"] == [at.folder] and not os.path.lexists(at.folder)  # nothing copied
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
 

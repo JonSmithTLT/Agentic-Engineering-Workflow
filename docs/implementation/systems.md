@@ -6,9 +6,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
 
-**partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
+**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -18,9 +18,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 5 — SYS-08, SYS-09, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 11 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-13, SYS-19, SYS-22, SYS-43, SYS-51, SYS-53
+**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-51, SYS-53
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 17 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-40, SYS-42, SYS-43, SYS-53, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-43, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -68,18 +68,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
-### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
-
-**Board state:** partly_built
-
-**Who:** Lead (E120, E243)
-
-**Now:** 9
-
-**Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 2, the selector in the validation executor. PR 1 (the coverage declaration in checks policy, frozen with each validation, doctor rows, the guide) merged at a31c6118 (E243's note of 2026-11-11) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
-
-**Wired:** cli:check run, dashboard:/evidence/{id}
-
 ### SYS-40 — Lead reports (report_write)
 
 **Board state:** designed_only
@@ -115,6 +103,20 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
 
 **Wired:** none
+
+### SYS-13 — Lead-worker coordination messaging
+
+**Board state:** awaiting_signoff
+
+**Who:** operator (MS7, the real recorded exchange and sign-off)
+
+**Now:** 40
+
+**Own slices left:** 1 — MS7: operator real-provider qualification and sign-off (E175) — **Next:** MS7: operator real-provider qualification and sign-off — E175 — not sized
+
+**Switch:** coordination.messaging — default: disabled (a new project: enabled) — checked against src/aew/policy/execution.py:STRING_SWITCHES
+
+**Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:message lost, cli:harness send
 
 ### SYS-53 — Per-operation revision check (replacing the project-wide expect_rev)
 
@@ -167,6 +169,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 0 — none — **Next:** none
 
 **Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
+
+### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
+
+**Board state:** awaiting_signoff
+
+**Who:** operator (adopt the project's declaration, exercise the real flow and sign off)
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** cli:check run, cli:integrate validate, cli:status, cli:doctor, cli:harness status, cli:harness wait, dashboard:/evidence/{id}
 
 ### SYS-30 — Research minimum slice, CNI links and PoCs as linked Tickets
 
@@ -244,7 +258,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 11 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-13, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 10 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -307,20 +321,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 3 — the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) (E167); raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) — E167 — inside SYS-22's estimate
 
 **Wired:** none
-
-### SYS-13 — Lead-worker coordination messaging
-
-**Board state:** partly_built
-
-**Who:** Lead (MS5, MS5b); operator (MS7, the real recorded exchange)
-
-**Now:** 40
-
-**Own slices left:** 3 — MS5: live delivery and continuation (E175); MS5b: finality, both timings, recorded harness send and default-on (E175); MS7: separately approved real-provider qualification; not a default-on gate (E175) — **Next:** MS5: live delivery and continuation — E175 — 1 PR
-
-**Switch:** coordination.messaging — default: disabled — checked against src/aew/policy/execution.py:STRING_SWITCHES
-
-**Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:harness send
 
 ### SYS-06 — Typed agent surfaces (the Lead's catalog and transports)
 

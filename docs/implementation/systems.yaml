@@ -130,6 +130,7 @@ systems:
   - E118
   - E143
   - E247
+  - E394
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress

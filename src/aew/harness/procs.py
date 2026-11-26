@@ -216,14 +216,17 @@ class ProcessTree:
         return proc
 
     def _members(self) -> dict[int, str]:  # pragma: posix-only
-        """Linux: each process in the tree's group and its state letter (``Z``: a zombie), read from ``/proc``."""
+        """Linux: each process in the tree's group and its state letter, read from ``/proc``. ``Z`` is a zombie: a
+        process whose main thread has exited while another still runs also reads ``Z`` there, and is given ``R``,
+        since it lists more tasks than its own (review of #608, M1)."""
         out: dict[int, str] = {}
         for name in os.listdir("/proc"):
             if name.isdigit():
                 try:
                     fields = Path("/proc", name, "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()
                     if int(fields[2]) == self._pgid:
-                        out[int(name)] = fields[0]
+                        threads = fields[0] == "Z" and len(os.listdir(Path("/proc", name, "task"))) > 1
+                        out[int(name)] = "R" if threads else fields[0]
                 except (OSError, ValueError, IndexError):
                     continue
         return out
@@ -232,7 +235,11 @@ class ProcessTree:
         """Processes still running in the tree (Windows: the job's count; POSIX: 1 if the group has a member that
         runs). A zombie runs nothing, and one nobody has reaped yet keeps its group: Linux reads the members, so a
         group holding only zombies is not active (register E247). Another POSIX names no member, and answers 1 while
-        the group exists."""
+        the group exists.
+
+        A limit of the reading: a member that ends and is reaped between a listing and its own read is not seen at
+        all, so a chain of members that each fork and are reaped at once can hide a running one from both readings.
+        ``close`` does not rest on this answer to end the tree: its sentinel kills the group whatever it was."""
         if sys.platform == "win32":  # pragma: windows-only
             if not self._job:  # closed: kill-on-close ended everything (a NULL handle would ask about our own job)
                 return 0

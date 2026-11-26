@@ -9,6 +9,7 @@ whole bound on a tree whose every process had ended. Each test holds a member as
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
 import time
@@ -61,3 +62,37 @@ def test_a_tree_with_a_running_member_beside_a_zombie_is_still_active_and_close_
     finally:
         tree.kill()
         leader.wait(EXIT_S)
+
+
+# A member whose main thread ends while another runs on: the kernel shows the process as ``Z`` though it is alive.
+SYS_EXIT = {"x86_64": 60, "aarch64": 93}.get(platform.machine())
+THREADED = ("import ctypes, sys, threading, time; threading.Thread(target=time.sleep, args=(60,)).start(); "
+            "sys.stdout.write('ready\\n'); sys.stdout.flush(); ctypes.CDLL(None).syscall({exit}, 0)")
+
+
+def kernel_state(pid: int) -> bytes:
+    with open(f"/proc/{pid}/stat", "rb") as stat:
+        return stat.read().rsplit(b")", 1)[1].split()[0]
+
+
+@pytest.mark.skipif(not IS_LINUX or SYS_EXIT is None,
+                    reason="a zombie holding its process group, and /proc to read it, are Linux's")
+def test_a_member_whose_main_thread_ended_while_another_runs_is_still_active_and_close_ends_it():
+    """Review of #608, M1: such a process reads ``Z`` in ``/proc/<pid>/stat``, and is no zombie."""
+    tree = ProcessTree()
+    proc = tree.spawn([sys.executable, "-c", THREADED.format(exit=SYS_EXIT)], stdout=subprocess.PIPE)
+    try:
+        assert proc.stdout is not None and proc.stdout.readline() == b"ready\n"
+        deadline = time.monotonic() + EXIT_S
+        while kernel_state(proc.pid) != b"Z":  # what the kernel says of it once its main thread has ended
+            assert time.monotonic() < deadline, "the main thread did not end"
+            time.sleep(0.01)
+        assert proc.poll() is None  # and it has not ended
+        assert tree.active() == 1
+        assert tree.close(EXIT_S) == 1  # it was running, and close ended it
+        assert tree.active() == 0
+    finally:
+        tree.kill()
+        proc.wait(EXIT_S)
+        if proc.stdout is not None:
+            proc.stdout.close()

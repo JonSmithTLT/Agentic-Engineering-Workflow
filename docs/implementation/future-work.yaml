@@ -5415,6 +5415,16 @@ sections:
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
 
+  - '#': E394
+    Work: 'A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session
+      (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor
+      into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree,
+      and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree
+      say it holds one command'
+    Source: 'Found by the builder of #608 while testing E247, 2026-11-26; its review''s M2 asks for the row'
+    When: '**Unscheduled**, in the small-fixes lane'
+    Notes: 'Reproduced at #608''s head: a tree with a sleeping member, then a second `spawn`'
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

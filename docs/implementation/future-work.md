@@ -3954,6 +3954,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E372/`, oldest first (`python tools/register.py show E372`).*
 
+### E394
+
+**Work:** A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree, and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree say it holds one command
+
+**Source:** Found by the builder of #608 while testing E247, 2026-11-26; its review's M2 asks for the row
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Reproduced at #608's head: a tree with a sleeping member, then a second `spawn`
+
+*Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

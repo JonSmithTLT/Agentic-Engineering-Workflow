@@ -60,6 +60,7 @@ def awaiting_acceptance(unit: dict[str, Any]) -> list[dict[str, Any]]:
     current = (unit.get("plan") or {}).get("accepted")
     return [p for p in unit.get("plans") or [] if p.get("status") == "proposed" and p.get("supersedes") == current]
 
+
 # The reason codes (details["reason"]) of a refused entry into a phase through a hub: an escalation return or a
 # reconcile after an interruption (EW-U06.f).
 BEYOND_THE_PHASE_LEFT = "beyond_the_phase_left"  # later than the phase the unit left for the hub

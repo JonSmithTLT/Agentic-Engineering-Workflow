@@ -1573,6 +1573,13 @@ entries:
     The pre-signal warning attach failed; PR 554 records each attempt's typed outcome, so the next sighting names why.
   owner: CI flake triage
   row: E3
+  planned_fix: >-
+    The pull request of branch fix/e3-linux-setup-teardown-stack (the operator, 2026-11-26): the Linux warning's setup
+    or teardown outcome, with its retained stack, is accepted as the Windows collection's is, and the live-stack
+    defect names the typed outcome. This entry closes once a superseded Linux integration run shows the typed outcome
+    accepted: its lanes cancelled in fixture setup or teardown carry no live-stack defect. A defect that names another
+    outcome (a straddled test change, an exit, a dump inside the call) stays a sighting here and is not covered by
+    this fix.
   evidence:
   - run: 45295949117
     job: 138124957110

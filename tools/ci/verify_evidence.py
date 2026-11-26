@@ -26,9 +26,8 @@ from evidence_files import (
     receipt_phases,
     state,
     test_frame,
-    warning_outcome,
 )
-from evidence_problems import evidence_problems
+from evidence_problems import evidence_problems, outcome_note, outside_call
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
 STATE_TWINS = {
@@ -233,18 +232,6 @@ def abrupt_twins(root: Path, kind: str, job: dict) -> list[str]:
     return failures
 
 
-def warning_why(root: Path, row: dict) -> str:
-    """The warning's typed outcome for this observation, so a missing pre-signal stack says why (register E3)."""
-    for path in root.rglob(f"snapshots/{warning_outcome(row['pid'], row['start'])}"):
-        try:
-            outcome = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(outcome, dict) and outcome.get("collect_at") == row.get("collect_at"):
-            return f" ({outcome.get('outcome')})"
-    return ""
-
-
 def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: str | None = None) -> list[str]:
     observed = [json.loads(path.read_text()) for glob in ("cancelled-*.txt", "interrupted-*.txt")
                 for path in root.rglob(glob)]
@@ -256,15 +243,25 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: s
         interrupted = [row for row in observed if row.get("kind") == "interrupted" and row["alive_when_observed"]]
         if len(registered) != 4 or registered != {(row["pid"], row["start"]) for row in interrupted}:
             return ["Linux: cancellation did not observe all four registered workers alive"]
+        snapshots = {path: path.read_text(encoding="utf-8") for path in root.rglob("snapshots/*.txt")}
+        outside = 0
         for row in interrupted:
-            captures = ((sample, frames) for path in root.rglob(f"snapshots/{row['pid']}.txt")
-                        for sample, frames in entries(path.read_text()))
-            if not any(sample.get("reason") == WARNING and sample.get("pid") == row["pid"]
-                       and sample.get("start") == row["start"] and sample.get("node") == row["node"]
-                       and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]
-                       and test_frame(row["node"], frames) for sample, frames in captures):
-                return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"
-                        + warning_why(root, row)]
+            stacks = [(sample["reason"], frames) for path, text in snapshots.items() if path.name == f"{row['pid']}.txt"
+                      for sample, frames in entries(text)
+                      if sample.get("reason") == WARNING and sample.get("pid") == row["pid"]
+                      and sample.get("start") == row["start"] and sample.get("node") == row["node"]
+                      and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]]
+            if any(test_frame(row["node"], frames) for _, frames in stacks):
+                continue
+            # In place of the test's frame, exactly what the evidence check accepts: the plant's Linux cases spend
+            # half their time in a fixture's setup, where a worker has no test frame to give (register E3).
+            if outside_call(snapshots, row, stacks, sampled=True):
+                outside += 1
+                continue
+            return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"
+                    + outcome_note(snapshots, row)]
+        print(f"Linux: {outside} of {len(interrupted)} workers were outside their test's call at the signal, each "
+              "with its typed outcome and the retained stack that bears it out.")
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
         ended = trigger_at or ready.get("completed_at")

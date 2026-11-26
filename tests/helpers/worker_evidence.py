@@ -27,16 +27,16 @@ from evidence_files import (
     INTERRUPTION_REASONS,
     LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
-    OUTSIDE_CALL,
+    OUTCOME_FILES,
     OUTSIDE_TREE,
     PREFIX,
     SAMPLING_GAP,
     SAMPLING_POLICY,
+    STACK_NOT_OWED,
     WARNING,
     WATCHDOG_HEADER,
     WORKER_COUNT,
     WORKER_PHASES,
-    cancel_outcome,
     entries,
     finished_without_tests,
     is_link,
@@ -46,7 +46,6 @@ from evidence_files import (
     receipt_phases,
     sampling_failures,
     test_frame,
-    warning_outcome,
 )
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
@@ -388,9 +387,6 @@ def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
     return json.dumps(row, ensure_ascii=True) + "\n"
 
 
-OUTCOME_FILES = {CANCEL_COLLECTION: cancel_outcome, WARNING: warning_outcome}
-
-
 def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None,
              reason: str) -> None:
     """Name why an interruption's capture kept no test stack for this worker, at this observation (register E3)."""
@@ -414,9 +410,9 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
     # queued workers are skipped; four concurrent readers bound the runner load.
     until = time.monotonic() + CAPTURE_BUDGET_S
     retried = reason in INTERRUPTION_REASONS
-    # Both interruptions name every worker they kept no test stack for (register E3): the cancellation collection in an
-    # outcome the evidence check reads, the Linux pre-signal warning in one that only says why, so its next sighting
-    # names a straddle, an exit or a dump without the test's frame (#561's quick check).
+    # Both interruptions name every worker they kept no test stack for (register E3), in an outcome the evidence check
+    # reads: it accepts the few in STACK_NOT_OWED and names any other in its defect, so a sighting says a straddle, an
+    # exit or a dump without the test's frame (#561's quick check; the operator, 2026-11-26).
     typed = reason in OUTCOME_FILES
     collection = reason == CANCEL_COLLECTION
     policy = sampling_policy(root) if collection else {}
@@ -487,7 +483,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-                if collection and pytest_phase(result[1]) in OUTSIDE_CALL:
+                if pytest_phase(result[1]) in STACK_NOT_OWED[reason]:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
         # The observation stands for the test of the retained dump, or the one first observed when none is kept.
         held = last[3] if last is not None else worker

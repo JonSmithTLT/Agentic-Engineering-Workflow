@@ -2373,7 +2373,7 @@ systems:
     staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
     second also on the Lead's list. Of E136's skills, the two security ones wait on the operator's update of their
     drafts and `frontend-design` waits for its own card (E395). Every card but `researcher` requests one foundational skill
-    (the operator, 2026-11-26); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
+    (the operator, 2026-11-26, a ruling for every role card; its cost is reported for each card and is no longer a precondition); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
     hold interim ones (E397, E398). Also
     E135's evaluation runner is still owed; its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's

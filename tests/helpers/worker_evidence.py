@@ -126,7 +126,9 @@ def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
                     continue
                 prior = [phase for stamp, phase, _ in transitions if stamp <= at_ns]
                 if prior:
-                    row["phase"] = prior[-1]
+                    # How long the process had been collecting at the signal, so a collection that hangs is visible
+                    # in the before-tests record, which otherwise carries no age (review of #616, m2).
+                    row.update(phase=prior[-1], collecting_s=round((at_ns - stamps[0]) / 1e9, 3))
             except (OSError, ValueError):
                 continue
     return rows
@@ -180,6 +182,11 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
     whose controller has no such receipt is not shown to be either. Anything else writes nothing, so the missing
     evidence stays a defect.
 
+    A limit: the record says that no test had started, not that the start-up was healthy. A session stuck in its
+    collection (an import that hangs) and cancelled before its deadline is typed ``before tests`` with no defect and
+    no stack, a serial one now as an xdist one since #579. Each listed process's ``collecting_s``, the seconds since
+    its ``collecting`` stamp at the signal, is what shows a long collection (review of #616, m2).
+
     No session at all is recorded as such: pytest had not registered one under the lane root. That reading of an
     absence rests on every lane command passing ``--session-deadline`` with its hang directory the lane root or one
     level under it, where ``session_directories`` looks; ``test_every_lane_command_keeps_its_sessions_where_the_
@@ -190,6 +197,7 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
     if next(workers(root), None) is not None or running_names(root):
         return False
     rows = phases or []
+    kept = ("worker", "pid", "start", "phase", "collecting_s")  # what the record keeps of each live process
     sessions = []
     for directory in session_directories(root):
         session = {"session": directory.relative_to(root).as_posix()}
@@ -220,14 +228,13 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
                     or mine[0].get("phase") not in BEFORE_EXECUTION):
                 return False
             sessions.append({**session, "serial": True,
-                             "workers": [{key: mine[0].get(key) for key in ("worker", "pid", "start", "phase")}]})
+                             "workers": [{key: mine[0][key] for key in kept if key in mine[0]}]})
             continue
         if (len(registered) > count or sorted(row.get("worker") for row in mine) != registered
                 or any(row.get("phase") not in BEFORE_EXECUTION for row in mine)):
             return False
         sessions.append({**session, "worker_count": count,
-                         "workers": [{key: row.get(key) for key in ("worker", "pid", "start", "phase")}
-                                     for row in mine]})
+                         "workers": [{key: row[key] for key in kept if key in row} for row in mine]})
     row = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": observer, "at": at, "sessions": sessions}
     try:
         with (root / BEFORE_TESTS).open("x", encoding="utf-8") as stream:

@@ -749,8 +749,10 @@ def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_wor
         (directory / "worker-123-456-lifecycle.txt").write_text(history)
     monkeypatch.setattr(ev, "_live_phase_writer", lambda path, pid, birth, fd: (pid, birth, fd) == (123, 456, 7)
                         and identity)
+    # A phase that is read comes with the time since the worker's `collecting` stamp (10 ns before this signal).
+    age = {} if expected == "indeterminate" else {"collecting_s": 0.0}
     assert ev.phases_at_signal(tmp_path, 20) == [
-        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected}]
+        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected, **age}]
 
 
 @pytest.mark.parametrize("failed_phase", session_deadline.WORKER_PHASES)
@@ -839,10 +841,16 @@ def test_a_serial_controllers_receipt_is_read_from_its_live_writer_and_an_xdist_
         for phase in session_deadline.WORKER_PHASES[:-1]:
             controller._record_phase(phase)
             rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())
+            collecting_s = rows[0].pop("collecting_s")
             assert rows == [{"session": "session-serial", "worker": CONTROLLER, "phase": phase, "pid": pid,
                              "start": birth}]
+            assert 0 <= collecting_s < 60
+            rows[0]["collecting_s"] = collecting_s
         assert ev.before_tests(tmp_path, 1.0, rows, observer="warning")
         record = json.loads((tmp_path / BEFORE_TESTS).read_text())
+        # How long the controller had been collecting is kept, so a collection that hangs shows (#616, m2).
+        assert record["sessions"][1]["workers"] == [{"worker": CONTROLLER, "pid": pid, "start": birth,
+                                                     "phase": "collection-ended", "collecting_s": collecting_s}]
         assert [(s["session"], s.get("serial"), len(s["workers"])) for s in record["sessions"]] == [
             ("autopsy/session-xdist", None, 0), ("autopsy/session-serial", True, 1)]
         (tmp_path / BEFORE_TESTS).unlink()

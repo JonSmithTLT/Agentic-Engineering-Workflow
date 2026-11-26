@@ -12,6 +12,8 @@ skipped:
       A graceful interrupt is SIGINT to the session's process group, POSIX's. Covered on Linux; the hosted start-up control in evidence-proof cancels a real Windows lane during start-up.
     tests/integration/test_hang_autopsy.py::test_a_start_up_interrupted_gracefully_is_typed_before_tests_from_its_real_bundle[at the collection]: >-
       A graceful interrupt is SIGINT to the session's process group, POSIX's. Covered on Linux; the hosted start-up control in evidence-proof cancels a real Windows lane during start-up.
+    tests/integration/test_hang_autopsy.py::test_a_real_serial_session_is_typed_before_tests_only_until_its_first_test[interrupted while collecting]: >-
+      A graceful interrupt is SIGINT to the session's process group, POSIX's. Covered on Linux; the test's two killed cases run on Windows, and the hosted start-serial control in evidence-proof cancels a real Windows serial lane during start-up.
     tests/unit/test_evidence_states.py::test_hosted_warning_attach_records_only_process_outcomes: >-
       The hosted Linux sampler retries py-spy through sudo. Linux exercises both routes with real subprocesses.
     tests/integration/test_relay_status.py::test_direct_relay_connect_destinations_match_the_receiver_and_report: >-

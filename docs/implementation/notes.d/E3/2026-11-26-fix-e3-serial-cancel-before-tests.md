@@ -38,6 +38,16 @@ worker observation` and `[running] missing running test name`.
 - **The Windows serial job cancelled in the same second raised no defect** because its lane never started: job
   139788422843 was cancelled during `actions/checkout` (08:55:11Z to 08:55:24Z), and its serial lane step was
   skipped. A job cancelled before its lane owes no lane evidence.
+- **After the review of #616.** A session stuck in its collection (an import that hangs) and cancelled before its
+  deadline is typed `before tests` with no defect and no stack; #579 has the same property for xdist workers, and
+  this extends it to serial lanes. The record says that no test had started, not that the start-up was healthy. So
+  that a long collection is visible, `phases_at_signal` now gives each process read from its live writer a
+  `collecting_s`, the seconds from its `collecting` stamp to the signal, and the before-tests record keeps it (m2).
+  `finished_without_tests`'s refusal of a controller receipt past collection has its test,
+  `test_a_finished_serial_session_is_typed_before_tests_only_by_a_controller_receipt_short_of_its_first_test` (m1),
+  and matches the receipt's name through `lifecycle_receipt` (n1). The real-session test's two killed cases now run on
+  Windows too, ended by `proctree.end`; only its graceful-interrupt case is POSIX's and is pinned in
+  `tests/platform-skips.yaml` (the `static` job's `skip_pins.py` failed on the unpinned skip at 480e914f).
 - **Limits.** A controller that has registered its session and not yet entered `pytest_collection` has no receipt, so
   a cancellation in that window (and an xdist session's before its roster, which cannot be told from it) stays a
   defect. Measured locally on one serial session: the controller registered 0.58 s after its process started and

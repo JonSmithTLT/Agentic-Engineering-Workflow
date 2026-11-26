@@ -965,6 +965,39 @@ def test_a_serial_controller_without_a_receipt_or_past_collection_still_owes_its
     assert any("[running] missing running test name" in d for d in defects)
 
 
+@pytest.mark.parametrize("layout", ["serial executing", "serial collection ended", "serial torn receipt"])
+def test_a_finished_serial_session_is_typed_before_tests_only_by_a_controller_receipt_short_of_its_first_test(
+        tmp_path, monkeypatch, layout):
+    # A finished session is read from its files. Its lane report can show no result while its controller had entered
+    # a test's protocol (interrupted in a session fixture), so the controller's own receipt must stop before its first
+    # test too (review of #616, m1).
+    import evidence_files
+
+    raw = tmp_path / "raw"
+    _starting_lane(raw, "serial collecting" if layout == "serial torn receipt" else layout)
+    session = raw / "autopsy/session-42-abc"
+    if layout == "serial torn receipt":
+        (session / "controller-42-4200-lifecycle.txt").write_text("")
+    (session / "session-finished.txt").write_text("2026-11-26 10:02:37 pid 42: the session finished (exit 2);")
+    (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+    files = {path.name: path.read_text() for path in session.iterdir()}
+    refusal = evidence_files.finished_without_tests(files, [NOTHING_RAN])
+    _collect(raw, [], monkeypatch)  # the controller is gone: no live phase is read
+    check = _load("check_evidence_run")
+    rows = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows)
+    if layout == "serial collection ended":
+        assert refusal is None and defects == []
+        record = json.loads((raw / "runner-resources-before-tests.txt").read_text())
+        assert record["sessions"] == [{"session": "autopsy/session-42-abc", "finished": True, "workers": []}]
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests"
+    else:
+        assert refusal == "its controller's lifecycle receipt does not stop before its first test"
+        assert not (raw / "runner-resources-before-tests.txt").exists()
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']})"
+        assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects)
+
+
 @pytest.mark.parametrize("sign", ["watchdog header", "running name"])
 def test_a_serial_controller_in_a_test_is_never_recorded_as_before_tests(tmp_path, sign):
     # Even against rows that claim it is still collecting: its own watchdog header, or a running name, decides.

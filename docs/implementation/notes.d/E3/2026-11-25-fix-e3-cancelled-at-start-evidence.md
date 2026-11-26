@@ -35,7 +35,8 @@ observation` and `[running] missing running test name` in the evidence check.
   that has not yet written `worker-count` cannot be told from one; neither is recorded before it finishes, so its gap
   stays a defect. (Amended 2026-11-26: the serial half of this limit is removed. A serial controller now keeps the
   receipt and is recorded while it collects; see the note of 2026-11-26, `fix-e3-serial-cancel-before-tests`. What
-  stays is a controller with no receipt yet, serial or xdist.) A registered worker whose receipt cannot be read from its live writer stays indeterminate, with the
+  stays is a controller with no receipt yet, serial or xdist.) A registered worker whose receipt cannot be read from
+  its live writer stays indeterminate, with the
   same result. "No session at all" reads an absence: it holds while every lane command passes `--session-deadline` with
   its hang directory the lane root or one level under it, which
   `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins.

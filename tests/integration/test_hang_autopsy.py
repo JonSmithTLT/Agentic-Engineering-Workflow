@@ -210,14 +210,17 @@ def test_never_reached():
     assert rows[0]["kind"] == "superseded (by run 1) before tests" and rows[0]["A2"] == "yes"
 
 
-@pytest.mark.skipif(IS_WINDOWS, reason="the session is interrupted and killed by its process group, POSIX's")
-@pytest.mark.parametrize("cancelled", ["interrupted while collecting", "killed while collecting", "killed in a test"])
+@pytest.mark.parametrize("cancelled", [
+    pytest.param("interrupted while collecting", marks=pytest.mark.skipif(
+        IS_WINDOWS, reason="a graceful interrupt is SIGINT to the session's process group, POSIX's")),
+    "killed while collecting", "killed in a test"])
 def test_a_real_serial_session_is_typed_before_tests_only_until_its_first_test(tmp_path, monkeypatch, cancelled):
     """A real serial session's controller runs its tests itself and keeps a worker's lifecycle receipt. Cancelled while
     it collects, whether it then ends gracefully or is killed outright, its lane is typed ``before tests`` from the
     record taken off its live receipt and its published bundle. Cancelled inside a test, its receipt stands at
     execution, nothing is recorded, and the lane still owes its worker observation (register E3: PR #608's serial
-    lane, job 139788422783, killed 2.4 s into its pytest step)."""
+    lane, job 139788422783, killed 2.4 s into its pytest step). The killed cases run on every platform: on Windows
+    the receipt's live writer is found by who holds the file, and a hosted cancel there ends the lane outright."""
     import signal
 
     import worker_evidence
@@ -243,27 +246,33 @@ def test_held():
                              "--session-deadline", "120", "--hang-dir", str(root),
                              f"--lane-report={root / 'report.json'}", "--running-tests-dir", str(root), "tests"],
                             cwd=proj, env=env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            start_new_session=True)
+                            **(NO_WINDOW if IS_WINDOWS else {"start_new_session": True}))
     try:
         bounds.bounded_wait("test.inner_started", lambda: any(proj.glob("ready-*")),
                             gone=lambda: proc.poll() is not None)
-        [session] = (root / "autopsy").glob("session-*")
+        session = session_dir(root)
+        # The controller by its own registration, not by the launched pid: a launcher may stand between them.
+        controller = alive_identity(session / "controller-pid.txt")
         rows = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
-        assert [(row["worker"], row["pid"], row["phase"]) for row in rows] == [
-            (CONTROLLER, proc.pid, "execution-started" if in_test else "collecting")], rows
+        assert [(row["worker"], row["pid"], row["start"], row["phase"]) for row in rows] == [
+            (CONTROLLER, *controller, "execution-started" if in_test else "collecting")], rows
         assert not (session / "worker-count.txt").exists()
         assert worker_evidence.before_tests(root, time.time(), rows, observer=WARNING) is not in_test
-        os.killpg(proc.pid, signal.SIGINT if cancelled.startswith("interrupted") else signal.SIGKILL)
-        assert proc.wait(timeout=60) != 0
+        if cancelled.startswith("interrupted"):
+            os.killpg(proc.pid, signal.SIGINT)
+        else:
+            assert proctree.end(controller)  # abrupt, as a hosted cancel ends a lane: no hook runs
+        assert proc.wait(timeout=60) != 0 or not cancelled.startswith("interrupted")
     finally:
         if proc.poll() is None:
-            os.killpg(proc.pid, signal.SIGKILL)
+            proc.kill()
             proc.wait(timeout=60)
     if cancelled.startswith("interrupted"):
         assert (session / "session-finished.txt").is_file()
     else:
-        # The sentinel, in its own process group, sees the controller gone and records it before it exits.
+        # The sentinel sees the controller gone and records it before it exits; nothing then holds the folder.
         bounds.bounded_wait("test.abnormal_exit", (session / "abnormal-exit.txt").is_file)
+        sentinel_ends(session)
         assert not (session / "session-finished.txt").exists()
     assert (root / BEFORE_TESTS).is_file() is not in_test
 
@@ -272,7 +281,7 @@ def test_held():
     import check_evidence_run
     import stage_evidence
 
-    name = "serial 1/1 (ubuntu-latest)"
+    name = f"serial 1/1 ({'windows' if IS_WINDOWS else 'ubuntu'}-latest)"
     (root / "runner-resources-job.txt").write_text(f'{{"job_label": "{name}"}}\n', encoding="utf-8")
     monkeypatch.setattr(stage_evidence, "scan", lambda *args: {})
     published = tmp_path / "published"

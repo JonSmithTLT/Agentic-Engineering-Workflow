@@ -8,6 +8,7 @@ import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 
@@ -147,7 +148,7 @@ def finished_without_tests(files: dict[str, str], reports: list[dict]) -> str | 
     ``files`` maps the
     session directory's file names to their text."""
     for name in sorted(files):
-        if re.fullmatch(rf"{CONTROLLER}-[0-9]+-[0-9]+-lifecycle\.txt", name):
+        if fnmatchcase(name, lifecycle_receipt(CONTROLLER, "*", "*")):
             phases = receipt_phases(files[name])
             if phases is None or WORKER_PHASES[-1] in phases:
                 return "its controller's lifecycle receipt does not stop before its first test"

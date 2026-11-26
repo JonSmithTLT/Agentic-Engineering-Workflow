@@ -143,18 +143,17 @@ def _scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]
     return records, problems
 
 
-def locate(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> tuple[str, Path] | None:
-    """The unit whose evidence directory lists a record of this id, and the record's file, or None when none of them
-    does (register E170). The file is found by listing each directory, never by a path built from ``evidence_id`` (an
-    id is a caller's text). The caller reads it (:func:`read`) and holds it to that unit."""
+def locate(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> list[tuple[str, Path]]:
+    """Each unit whose evidence directory lists a record of this id, with the record's file (register E170); one, for
+    a record AEW wrote, and none when no unit holds it. The file is found by listing each directory, never by a path
+    built from ``evidence_id`` (an id is a caller's text). The caller reads it (:func:`read`) and holds it to its
+    unit."""
+    found = []
     for work_id in work_ids:
         directory = evidence_dir(aew_root, work_id)
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.glob("*.md")):
-            if path.stem == evidence_id:
-                return work_id, path
-    return None
+        if directory.is_dir():
+            found += [(work_id, path) for path in sorted(directory.glob("*.md")) if path.stem == evidence_id]
+    return found
 
 
 def next_seq(aew_root: Path, work_id: str) -> int:

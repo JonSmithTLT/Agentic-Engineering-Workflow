@@ -1396,7 +1396,8 @@ commands:
       archived, as recorded; printed for a person, what could steer a terminal is shown as an escape
       (coordination.render.escaped; invisible characters that steer nothing are not), and --json has the exact text.
       NOT_FOUND carries reason unknown_record or no_body; INTEGRITY_ERROR a record that is not what was recorded
-      (a current one with reason not_text, not_sealed, not_this_units or not_pinned), and says what to do. No typed
+      (a current one with reason not_text, not_sealed, unreadable, not_this_units, not_pinned,
+      listed_twice or pinned_elsewhere), and says what to do. No typed
       tool yet: the structured, bounded Evidence read for the typed surface (the designer's decision of 2026-10-06,
       `aew evidence show`) is E170's follow-on"
   - name: history show

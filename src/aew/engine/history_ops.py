@@ -184,8 +184,12 @@ class HistoryCommands:
         if unit is not None:
             return self._unit_body(record_id, unit, archived=False)
         listed = E.locate(self.k.aew_root, sorted(state["work"]), record_id)
-        if listed is not None:
-            return self._current_evidence_body(state, record_id, *listed)
+        if len(listed) > 1:  # an id is minted once: a second file of that id was put there, and which is the record?
+            raise self._damaged(f"evidence record {record_id} lies in the evidence of more than one unit "
+                                f"({', '.join(w for w, _ in listed)}), and AEW records it once",
+                                reason="listed_twice", held_by=[w for w, _ in listed])
+        if listed:
+            return self._current_evidence_body(state, record_id, *listed[0])
         if record_id in state["invocations"]:
             raise self._no_body(record_id, "an invocation", f"Read its fields with `aew invoke show {record_id}`")
         if record_id in state["tokens"]:
@@ -216,10 +220,11 @@ class HistoryCommands:
             held_as or "", f"a history record of kind `{entry['kind']}`")
         raise self._no_body(record_id, kind, f"Read its fields with `aew history show {record_id}`")
 
-    # What every refusal of a damaged record ends with: nothing here repairs one, and the records are kept in git.
-    DAMAGED = ("Nothing is printed. Its file under `.aew/` was changed outside AEW: tell the operator. The records are "
-               "kept in git, so `git log` on that file shows the change and the recorded content, and `aew history "
-               "audit --full` checks every record of the finished work")
+    # What every refusal of a damaged record ends with: nothing here repairs one. Whether `.aew` is in git is the
+    # project's choice, so the git step is conditional.
+    DAMAGED = ("Nothing is printed. Its file under `.aew/` was changed outside AEW: tell the operator. If the project "
+               "commits `.aew`, `git diff` on that file shows a change not yet committed and `git log` its earlier "
+               "content; `aew history audit --full` checks every record of the finished work")
 
     def _damaged(self, what: str, **details: Any) -> IntegrityError:
         return IntegrityError(f"{what}. {self.DAMAGED}", **details)
@@ -229,8 +234,18 @@ class HistoryCommands:
         """A current unit's evidence record, held to the unit whose directory lists it: a sealed record that names
         that unit and, once the unit ingested it, the content the unit pins."""
         rel = str(path.relative_to(self.k.aew_root)).replace("\\", "/")
+        elsewhere = sorted(w for w, u in state["work"].items()
+                           if w != work_id and any(r["id"] == evidence_id for r in u.get("evidence") or []))
+        if elsewhere:  # the unit that ingested it pins it, and its file is not in that unit's evidence
+            raise self._damaged(f"evidence record {evidence_id} is pinned by {', '.join(elsewhere)}, and the only "
+                                f"file of that id is {rel}, in {work_id}'s evidence", reason="pinned_elsewhere",
+                                path=rel, held_by=elsewhere)
         try:
             meta, body = E.read(path)
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) cannot be read: {exc.strerror or 'an error'}",
+                                reason="unreadable", path=rel) from exc
         except UnicodeDecodeError as exc:
             raise self._damaged(f"evidence record {evidence_id} ({rel}) is not UTF-8 text", reason="not_text",
                                 path=rel) from exc
@@ -242,7 +257,7 @@ class HistoryCommands:
                                 f"{evidence_id} of {work_id}, whose evidence it lies in", reason="not_this_units",
                                 path=rel, held_by=work_id)
         pinned = next((r for r in state["work"][work_id].get("evidence") or [] if r["id"] == evidence_id), None)
-        if pinned is not None and pinned["sha256"] != sha256_bytes(path.read_bytes()):
+        if pinned is not None and pinned["sha256"] != sha256_bytes(raw):
             raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the content its unit recorded",
                                 reason="not_pinned", path=rel, held_by=work_id)
         return self._evidence_body(evidence_id, meta, body, archived=False)

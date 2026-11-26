@@ -133,7 +133,8 @@ NEXT_STEP = "tell the operator"  # every refusal of a damaged record says what t
 def damaged(p, record_id: str, reason: str) -> dict:
     error = refusal(p, record_id)
     assert (error["code"], error["details"].get("reason")) == ("INTEGRITY_ERROR", reason), error
-    assert NEXT_STEP in error["message"] and "git log" in error["message"]
+    assert NEXT_STEP in error["message"] and "aew history audit --full" in error["message"]
+    assert "If the project commits `.aew`, `git diff`" in error["message"]  # a git step only where git has the file
     return error
 
 
@@ -193,11 +194,40 @@ def test_a_record_resealed_under_another_unit_is_refused(tmp_path):
     other = create_unit(p, "ticket", "Another unit", extra=("--scope", "calc/**"))
     path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
     meta, _ = E.read(path)
+    recorded = path.read_bytes()
     for elsewhere in (other, "T-9999"):
         path.write_text(E.seal({**meta, "work_unit": elsewhere}, "A body nobody submitted.\n"), encoding="utf-8",
                         newline="\n")
         error = damaged(p, rec, "not_this_units")
         assert error["details"]["held_by"] == wid and "nobody submitted" not in json.dumps(error)
+    # A copy of that id under another unit, resealed to name it: that unit pins nothing, so only the count and the
+    # pin that the ingesting unit holds can tell (the quick check of #623, q1).
+    path.write_bytes(recorded)
+    assert body_of(p, rec) == DOCUMENT  # restored: the record its unit pins
+    planted = p.root / ".aew" / "evidence" / other / f"{rec}.md"
+    planted.parent.mkdir(parents=True, exist_ok=True)
+    planted.write_text(E.seal({**meta, "work_unit": other}, "A body nobody submitted.\n"), encoding="utf-8",
+                       newline="\n")
+    for mode in ((), ("--json",)):
+        res = p.aew("record", "body", rec, *mode)
+        assert res.returncode != 0 and res.stdout == "" and "nobody submitted" not in res.stderr
+    error = damaged(p, rec, "listed_twice")
+    assert sorted(error["details"]["held_by"]) == sorted([wid, other])
+    path.unlink()  # and the pinned record gone, leaving only the copy
+    error = damaged(p, rec, "pinned_elsewhere")
+    assert error["details"]["held_by"] == [wid] and "nobody submitted" not in json.dumps(error)
+
+
+def test_an_evidence_file_that_cannot_be_opened_is_refused_without_a_traceback(tmp_path):
+    p = sample_project(tmp_path)
+    wid, _, rec = submitted(p, tmp_path)
+    path = p.root / ".aew" / "evidence" / wid / f"{rec}.md"
+    path.unlink()
+    path.mkdir()  # a directory where the record was
+    res = p.aew("record", "body", rec)
+    error = damaged(p, rec, "unreadable")
+    assert error["details"]["path"] == f"evidence/{wid}/{rec}.md"
+    assert "Traceback" not in res.stderr and str(tmp_path) not in res.stderr and res.stdout == ""
 
 
 def test_an_archived_record_that_was_changed_is_refused_with_what_to_do(tmp_path):

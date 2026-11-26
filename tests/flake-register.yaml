@@ -239,6 +239,14 @@ entries:
       full suite 1/8 (windows-latest, py3.11), the nightly's extra matrix entry, not the regression lane (its full
       suite shards are read as regression). Ended cancelled after 69 minutes (timeout-minutes 64 at ca376e88) with
       its pytest step in progress, no log and no evidence. Cause unestablished.
+  - run: 45765023682
+    job: 139724923117
+    at: '2026-11-26T06:28:00Z'
+    note: >-
+      regression 1/3 (windows-latest), PR 601 at 97569fd8. The session reached the job's deadline and ended with
+      exit 70, four workers down, about 74 tests finished. Attributed from the job log to a slow runner (setup-python,
+      the install step and collection each several times slower than in run 45762275321; the run's other 21 Windows
+      jobs passed), not verified from the bundle: artifacts 15093693889, 15094192424 and 15094082856 were not read.
 - id: windows-integration-no-response
   scope: session
   lane: integration

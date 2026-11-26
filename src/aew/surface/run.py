@@ -335,6 +335,7 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
+    payload = _compact(t.name, payload, projection)
     payload, projection = _message_budget(payload, projection)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
     # authored text too (PR #88 review).
@@ -348,6 +349,41 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+# The project reports a typed `status` and `resume` return, without what the Lead reads elsewhere or cannot act on
+# (E367; the audit of 2026-11-25, R1 to R3 and R5: `status` was 7,231 B a call against the shell's 3,520 B, and every
+# result stays in the context until compaction). Each part kept whole is one the Lead acts on; the shell command named
+# in ``FULL`` gives the whole report, as the operator reads it.
+FULL = {"status": "`aew status --json`", "resume": "`aew resume --json`"}
+# The parts cut to what the Lead acts on: the usage report's one line, and the history audit's breaches.
+USAGE_KEPT, AUDIT_KEPT = ("line",), ("over_policy", "over_policy_detail")
+CARD_KEPT = ("id", "extends")  # a card's id to staff by; the guide's staffing section says which fits (E231)
+
+
+def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
+    """``payload`` as a typed ``name`` returns it: a project ``status`` or ``resume`` without its next actions where
+    they are the projection's hints (byte for byte, as they are for the project: ``projection._guidance``), with the
+    usage line, the history audit's breaches, the count of what stands between the project and Run (each problem's fix
+    is for the operator's terminal) and each role card's id; and where the whole report is. Any other result, and a
+    unit's status, is unchanged."""
+    if name not in FULL or not isinstance(payload, dict) or "project" not in payload:
+        return payload
+    out = dict(payload)
+    if "next_actions" in out and out["next_actions"] == projection.get("hints"):
+        del out["next_actions"]
+    if isinstance(out.get("usage"), dict):
+        out["usage"] = {k: out["usage"][k] for k in USAGE_KEPT if k in out["usage"]}
+    if isinstance(out.get("history_audit"), dict):
+        out["history_audit"] = {k: out["history_audit"][k] for k in AUDIT_KEPT if k in out["history_audit"]}
+    steering = out.get("steering")
+    if isinstance(steering, dict) and isinstance(steering.get("run_problems"), list):
+        out["steering"] = {**steering, "run_problems": len(steering["run_problems"])}
+    if isinstance(out.get("role_catalog"), list):
+        out["role_catalog"] = [{k: card[k] for k in CARD_KEPT if k in card} if isinstance(card, dict) else card
+                               for card in out["role_catalog"]]
+    out["full"] = FULL[name]
+    return out
 
 
 def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:

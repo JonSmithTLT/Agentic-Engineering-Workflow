@@ -10,6 +10,7 @@ test is ``tests/live/test_skills_live.py``, on the VM.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import posixpath
 import re
@@ -271,6 +272,16 @@ FOUNDATIONAL = {"engineer": "test-design", "investigator": "codebase-investigati
 # The cards that wait for their foundational skill to be written, each with the register row that tracks it.
 WAITING = {"researcher": "E396"}
 
+
+def open_register_rows() -> set[str]:
+    """The ids of the register's open rows, as `tools/register.py` reads them (its ``rows``: outside §9 *Closed*)."""
+    spec = importlib.util.spec_from_file_location("register", Path(__file__).resolve().parents[2] / "tools/register.py")
+    assert spec is not None and spec.loader is not None
+    register = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(register)
+    return {row["id"] for row in register.rows(register.load()) if row["id"]}
+
+
 # E136's first batch: the two candidates whose text is public in this repository, on the cards they fit, as
 # optional_skills (a foundational skill in a card's skills: came with the fourth batch, by the operator's ruling).
 BATCH_1 = {
@@ -393,11 +404,14 @@ def test_every_built_in_card_requests_exactly_one_foundational_skill_or_waits_fo
     """The operator, 2026-11-26: every role card has one foundational skill, the layer that says how a specialised
     role proceeds. Each built-in card's ``skills:`` holds exactly one shipped skill, and its run is told to load it.
     A card whose skill is not written yet holds none and is named here with the row that tracks the skill, so a new
-    card without one, or a second skill on a card, fails."""
+    card without one, or a second skill on a card, fails. The row is read from the register: a card may wait only
+    while its row is open, so closing the row without giving the card its skill fails here too."""
+    tracked = open_register_rows()
     for card in roles.builtin_cards().values():
         requested = card.meta.get("skills") or []
         if card.id in WAITING:
             assert requested == [], card.id
+            assert WAITING[card.id] in tracked, f"{card.id} waits on {WAITING[card.id]}, which is not an open row"
             continue
         assert len(requested) == 1 and requested[0] in skills.shipped(), card.id
         assert requested[0] == FOUNDATIONAL.get(card.id, requested[0]), card.id

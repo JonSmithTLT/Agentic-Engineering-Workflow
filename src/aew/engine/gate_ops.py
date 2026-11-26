@@ -79,8 +79,8 @@ def remedy(owner: str, gate: str) -> str:
     """How the item is settled: the typed call, and its form from a shell (no shell sees the arguments)."""
     return (f"settle `{item_id(owner, gate)}` with the typed `resolve` tool: choice `{CHOICE}`, the gate that carries "
             "its standard as `replacement`, a `rationale` and the shown `approval_digest`; from a shell, "
-            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. `aew status` lists "
-            "the live invocations it would make stale")
+            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. The typed `status` "
+            "tool shows each replacement's approval digest and the live invocations it would make stale")
 
 
 def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) -> bool:

@@ -303,5 +303,5 @@ def test_a_post_integration_check_counts_only_under_its_current_definition(tmp_p
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
     _redefine_check(p, "unit", command=["{python}", "-c", "raise SystemExit(1)"])
-    refused = p.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "post-integration" in refused.error["message"], refused.stdout

@@ -77,8 +77,8 @@ class World:
         if method == "plan_accept":
             plans = self.e.status(kw["work_id"])["work_unit"]["plans"]
             kw["binding"] = next(p["sha256"] for p in plans if p["revision"] == kw["revision"])
-        elif method == "work_transition":
-            kw["prior_value"] = self.e.prior_value(method, kw["work_id"])
+        elif method in {"work_transition", "harness_launch"} and "prior_value" not in kw:
+            kw["prior_value"] = self.e.prior_value(method, kw.get("work_id") or kw["invocation"])
         return getattr(self.e, method)(token=self.token, **kw)
 
     def send(self, body: str = "Requirement 4 is not met: check shutdown while recv() blocks.", **kw: Any) -> Any:

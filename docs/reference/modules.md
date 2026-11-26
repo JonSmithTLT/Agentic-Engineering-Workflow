@@ -1241,7 +1241,6 @@ None.
 - `aew.engine.base`
 - `aew.engine.primitives`
 - `aew.engine.stage_migration`
-- `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.runlog`

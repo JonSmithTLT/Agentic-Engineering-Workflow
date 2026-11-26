@@ -143,6 +143,9 @@ class Template:
             kw["prior_value"] = self.eng.prior_value(method, kw["work_id"])
         elif method == "integrate_publish":
             kw["candidate"] = self.eng.work_show(kw["work_id"])["control"]["integration"]["candidate"]
+        elif method == "verify_classify" and "binding" not in kw:
+            subject = self.eng.approval_subject(kw["work_id"], "verify.classify", evidence=kw.get("evidence_id"))
+            kw["binding"] = subject["digest"]
         return getattr(self.eng, method)(token=self.token, **kw)
 
     def parent_unit(self, kind: str, title: str, parent: str | None) -> str:

@@ -234,7 +234,8 @@ def test_a_crash_while_archiving_keeps_the_observation_cleanup_until_it_is_done(
     _, out = dispatch(p, wid)
     obs = Path(out["observation"]["path"])
     assert obs.exists() and obs.resolve().as_posix() in worktree_paths(p)
-    res = run_aew("-C", str(p.root), "work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed",
+    argv = p.lead_args("work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed")
+    res = run_aew("-C", str(p.root), *argv,
                   env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "history.after_bundle"})
     assert res.returncode == CRASH_EXIT_CODE
     assert show(p, wid)["state"] == "CANCELLED"  # recovery applies the cancellation and its archival...

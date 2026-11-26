@@ -256,6 +256,9 @@ class Project:
             engine = Engine.discover(self.root)
             plans = engine.status(args[2])["work_unit"].get("plans", [])
             shown = next((r["sha256"] for r in plans if str(r["revision"]) == value("--revision")), None)
+        elif route in {"authority.accept", "authority.reject"}:
+            engine = Engine.discover(self.root)
+            shown = engine.authority_candidate(args[2])["digest"]
         elif route == "stage.continue":
             engine = Engine.discover(self.root)
             shown = stage.assess(engine, engine.stage_intent(args[2]))["approval"]["digest"]
@@ -268,8 +271,9 @@ class Project:
                 return argv
             engine = Engine.discover(self.root)
             op = {"gate.waive": "waive", "work.acknowledge-input": "input.acknowledge"}.get(route, route)
+            evidence = value("--input") if op == "input.acknowledge" else value("--evidence")
             result = engine.approval_subject(args[2], op, gate=value("--gate"),
-                                             evidence=value("--evidence"), source=value("--from"))
+                                             evidence=evidence, source=value("--from"))
             shown = result["digest"] if result else None
         else:
             return argv
@@ -302,6 +306,11 @@ class Project:
         engine = Engine.discover(self.root)
         if method == "manifest_adopt" and "binding" not in kwargs:
             kwargs["binding"] = engine.manifest_approval()
+        elif method in {"authority_accept", "authority_reject"} and "binding" not in kwargs:
+            # Match the terminal's read of the candidate the operator confirms.
+            kwargs["binding"] = engine.authority_candidate(kwargs["candidate_id"])["digest"]
+        elif method == "work_staff" and "prior_value" not in kwargs:
+            kwargs["prior_value"] = engine.prior_value(method, kwargs["work_id"])
         return getattr(engine, method)(token=self.token, authorization={"authorized_by": "operator-tty"}, **kwargs)
 
 

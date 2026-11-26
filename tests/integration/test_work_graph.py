@@ -48,7 +48,7 @@ def test_mutating_dependency_blocks_until_upstream_done(project, tmp_path):
 def test_generic_transition_cannot_impersonate_operations(project, tmp_path):
     wid = make_ticket(project)
     accept_plan(project, tmp_path, wid)
-    res = project.aew("work", "transition", wid, "--to", "ASSIGNED",
+    res = project.aew(*project.lead_args("work", "transition", wid, "--to", "ASSIGNED"),
                       env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5
     assert res.error["code"] == "ILLEGAL_TRANSITION"
@@ -57,7 +57,7 @@ def test_generic_transition_cannot_impersonate_operations(project, tmp_path):
 
 def test_cancel_requires_reason_and_records_decision(project, tmp_path):
     wid = make_ticket(project)
-    res = project.aew("work", "transition", wid, "--to", "CANCELLED",
+    res = project.aew(*project.lead_args("work", "transition", wid, "--to", "CANCELLED"),
                       env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 2 and res.error["code"] == "USAGE"
     out = project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "duplicate")
@@ -99,7 +99,7 @@ def test_story_rollup_and_inherited_policy_representation(project, tmp_path):
     t1 = make_ticket(project, "--parent", story)
     rollup = project.ok("work", "show", story)["rollup"]
     assert rollup["derived_state"] == "IN_PROGRESS" and rollup["children_by_state"] == {"BLOCKED": 1}
-    res = project.aew("work", "transition", story, "--to", "CANCELLED", "--reason", "x",
+    res = project.aew(*project.lead_args("work", "transition", story, "--to", "CANCELLED", "--reason", "x"),
                       env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5  # parent state is derived, never hand-maintained
     assert project.ok("work", "show", t1)["control"]["risk_class"] == 1  # local class is preserved

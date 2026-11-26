@@ -49,7 +49,7 @@ from aew.engine.scope_ops import ScopeCorrections
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
-from aew.engine.steering import OperatorPrincipal, Steering
+from aew.engine.steering import OperatorPrincipal, Steering, check_stage_admission
 from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
 from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
@@ -618,7 +618,8 @@ class Engine:
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
         self._dispositions = dispositions = Dispositions(k, gates=gates, archive=archive, views=views)
         self._stages = stages = StageIntents(
-            k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"])
+            k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"],
+            automation_guard=check_stage_admission)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])

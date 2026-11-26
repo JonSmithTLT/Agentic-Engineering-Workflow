@@ -1140,7 +1140,8 @@ def _interrupt_finish_once(e: Engine, monkeypatch) -> None:
     def finish(token: str, work_id: str, **kw: Any):
         monkeypatch.setattr(e._integration, "_finish_publish", real)
         # A refusal before touching the ref leaves the recorded intent for reconcile.
-        raise IllegalTransition(IO._publish_unfinished(work_id), reason=IO.PUBLISH_UNFINISHED)
+        raise IllegalTransition(f"nothing was published. {IO._publish_unfinished(work_id)}",
+                                reason=IO.PUBLISH_UNFINISHED)
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
 
@@ -1166,14 +1167,13 @@ def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishe
         p.lead("work", "transition", wid, "--to", "COMMIT_READY")
 
     to_ready(first, roles[0], {"calc/one.py": "ONE = 1\n"})
-    prepare_and_validate(p, first)
+    candidate = prepare_and_validate(p, first)["candidate"]
     e = engine(p)
     _interrupt_finish_once(e, monkeypatch)
-    candidate = entry(p, first)["validated"]["candidate"]
     with pytest.raises(IllegalTransition, match="nothing was published"):
         e.integrate_publish(token=p.token, work_id=first, candidate=candidate)
     to_ready(second, roles[1], {"calc/two.py": "TWO = 2\n"})
-    finishes = f"`aew integrate reconcile {first} ` finishes it first"
+    finishes = f"`aew integrate reconcile {first}` finishes it first"
 
     refused = p.aew("integrate", "prepare", second, env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and refused.error["code"] == "LEASE_HELD", refused.error

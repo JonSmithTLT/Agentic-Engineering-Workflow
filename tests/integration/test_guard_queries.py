@@ -245,8 +245,9 @@ def test_guard_query_matches_execute_disposition_required(implemented):
     evidence = review(p, wid, findings=[{"id": "F1", "severity": "minor", "summary": "a nit", "required": False}])
     answer = equivalent(engine, "review.ingest", wid, {"evidence": evidence}, _ingest(engine, p, wid, evidence))
     assert answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
-    engine.work_dispose(token=p.token, subject=f"{evidence}#F1", choice="accept_risk",
-                        rationale="a nit")
+    subject = f"{evidence}#F1"
+    engine.work_dispose(token=p.token, subject=subject, choice="accept_risk", rationale="a nit",
+                        binding=engine.disposition_approval(subject)["digest"])
     assert equivalent(engine, "review.ingest", wid, {"evidence": evidence},
                       _ingest(engine, p, wid, evidence))["availability"] == AVAILABLE
     assert engine.store.read()["work"][wid]["state"] == "REVIEW_PASSED"

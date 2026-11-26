@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
 from invariants import cap_violations, control_violations
+from test_composition_walk import observed_arguments
 
 from aew import operator
 from aew.engine import hierarchy as H
@@ -96,7 +97,7 @@ class HierarchyWalk:
         return state["work"][wid] if wid in state["work"] else self.engine.work_show(wid)["control"]
 
     def lead(self, method: str, **kw: Any) -> Any:
-        return getattr(self.engine, method)(token=self.token, **kw)
+        return getattr(self.engine, method)(token=self.token, **observed_arguments(self.engine, method, kw))
 
     def submit(self, tok: str, kind: str, meta: dict[str, Any]) -> str:
         text = f"---\n{dump_yaml(meta)}---\nwalk\n"

@@ -48,7 +48,7 @@ def entry(p, wid):
 
 
 def refused(p, *args):
-    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -186,7 +186,7 @@ def test_a_stale_candidate_keeps_its_place_and_its_lease(calc, tmp_path):
     (calc.root / "NOTES.md").write_text("an unrelated commit\n", encoding="utf-8", newline="\n")
     git("add", "NOTES.md", cwd=calc.root)
     git("commit", "-q", "-m", "unrelated", cwd=calc.root)
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.json["rebuilt"] is True
     _, after = entry(calc, wid)
     assert after["state"] == "LEASED" and after["seq"] == before["seq"] and after["rebuilds_used"] == 1

@@ -277,7 +277,8 @@ def test_parent_evidence_bound_before_the_migration_stays_current_until_the_chil
     assert gates(Engine.discover(t.root), story) == before
     assert_control_invariants(t)
     # Closing it relies on that evidence; a new child would have made it stale instead.
-    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed")
+    binding = t.eng.approval_subject(story, "work.close")["digest"]
+    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed", "--approval-digest", binding)
     assert closed.returncode == 0, closed.stderr
     assert story not in load_control(t.root)["work"]
     assert_control_invariants(t)
@@ -315,6 +316,7 @@ def test_a_classified_parent_failure_still_needs_a_new_child_after_the_migration
     assert migrate(t).returncode == 0
     t.lead("review_ingest", work_id=story, evidence_id=parent_review(t, story))
     t.lead("verify_ingest", work_id=story, evidence_id=parent_verification(t, story))
-    refused = aew(t, "work", "close", story, "--reason", "gates passed")
+    binding = t.eng.approval_subject(story, "work.close")["digest"]
+    refused = aew(t, "work", "close", story, "--reason", "gates passed", "--approval-digest", binding)
     assert refused.returncode != 0 and "remediation child" in refused.error["message"], refused.stderr
     assert_control_invariants(t)

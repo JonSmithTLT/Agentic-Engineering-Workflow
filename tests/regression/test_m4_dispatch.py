@@ -157,7 +157,7 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     implement(impl, SUBTRACT_PATCH)  # passes `unit`, the policy's local check
 
     def commit_ready_refusal():
-        res = p.aew("work", "transition", wid, "--to", "COMMIT_READY", env={"AEW_LEAD_TOKEN": p.token})
+        res = p.aew(*p.lead_args("work", "transition", wid, "--to", "COMMIT_READY"), env={"AEW_LEAD_TOKEN": p.token})
         assert res.returncode != 0, res.stdout
         return res.error
 
@@ -165,7 +165,7 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     assert missing["code"] == "GATE_UNSATISFIED" and missing["details"]["unmet"] == {"acceptance_checks": "MISSING"}
     assert impl.check("acceptance")["result"] == "fail"
     assert commit_ready_refusal()["details"]["unmet"] == {"acceptance_checks": "FAILED"}
-    waiver = p.aew("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x",
+    waiver = p.aew(*p.lead_args("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x"),
                    env={"AEW_LEAD_TOKEN": p.token})
     assert waiver.returncode != 0 and "non-waivable" in waiver.error["message"]
 

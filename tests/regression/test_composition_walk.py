@@ -53,6 +53,29 @@ PUBLISH_FAULTS = ["integrate.after_publishing_record", "integrate.after_cas", "i
 RECONCILABLE = ("ASSIGNED", "RUNNING", "REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY")
 
 
+def observed_arguments(engine: Engine, method: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Read the scoped observations the simulation gives its Lead before each action."""
+    if method == "plan_accept" and "binding" not in args:
+        plans = engine.work_show(args["work_id"])["control"]["plans"]
+        binding = next((plan["sha256"] for plan in plans if args["revision"] == plan["revision"]), None)
+        return {**args, "binding": binding}
+    if method in {"work_transition", "work_move", "work_promote", "integrate_defer", "integrate_requeue"}:
+        if "prior_value" not in args:
+            return {**args, "prior_value": engine.prior_value(method, args["work_id"])}
+    if method == "integrate_publish" and "candidate" not in args:
+        integration = engine.work_show(args["work_id"])["control"].get("integration") or {}
+        return {**args, "candidate": integration.get("candidate")}
+    operations = {"work_accept": "work.accept", "work_close": "work.close", "work_cancel": "work.cancel",
+                  "plan_reconfirm": "plan.reconfirm", "verify_classify": "verify.classify",
+                  "work_acknowledge_input": "input.acknowledge"}
+    if method in operations and "binding" not in args:
+        op = operations[method]
+        shown = engine.approval_subject(args["work_id"], op, evidence=args.get("evidence_id"),
+                                        source=args.get("source"))
+        return {**args, "binding": shown["digest"] if shown else None}
+    return args
+
+
 class Walk:
     def __init__(self, tmp_path: Path, seed: int, monkeypatch: pytest.MonkeyPatch) -> None:
         self.p = sample_project(tmp_path, checks=FAST_CHECKS)
@@ -82,7 +105,7 @@ class Walk:
         return state["work"][wid] if wid in state["work"] else self.engine.work_show(wid)["control"]
 
     def lead(self, method: str, **kw: Any) -> Any:
-        return getattr(self.engine, method)(token=self.token, **kw)
+        return getattr(self.engine, method)(token=self.token, **observed_arguments(self.engine, method, kw))
 
     def submit(self, inv_token: str, kind: str, meta: dict[str, Any]) -> str:
         text = f"---\n{dump_yaml(meta)}---\nwalk step\n"

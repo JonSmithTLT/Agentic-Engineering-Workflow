@@ -80,8 +80,9 @@ def test_a_second_failing_parent_ingest_waits_for_the_first_requirement(parent, 
     with pytest.raises(GateUnsatisfied, match=requirement) as exc:
         _verify(p, story, held)
     assert first in str(exc.value)
+    binding = Engine.discover(p.root).approval_subject(story, "work.close")["digest"]
     with pytest.raises(GateUnsatisfied, match=requirement):
-        _call(p, "work_close", work_id=story)
+        _call(p, "work_close", work_id=story, binding=binding)
     assert load_control(p.root) == before
 
     if classification == "ENVIRONMENT_OR_EVIDENCE_BLOCKED":

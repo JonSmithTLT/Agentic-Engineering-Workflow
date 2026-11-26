@@ -295,7 +295,7 @@ def test_an_epic_closes_only_once_the_history_is_audited_through_the_current_roo
     p.lead("verify", "ingest", epic, "--evidence", parent_verify(p, epic))
     actions = p.ok("status", "--json")["next_actions"]
     assert any(a.startswith(f"{epic}:") and "aew history audit" in a for a in actions)
-    refused = p.aew("work", "close", epic, "--reason", "done", env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew(*p.lead_args("work", "close", epic, "--reason", "done"), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "GATE_UNSATISFIED" and "history audit" in refused.error["message"]
     audit(p)
     p.lead("work", "close", epic, "--reason", "acceptance gates passed")
@@ -365,7 +365,7 @@ def test_an_audit_covers_the_records_each_unit_pins_and_holds_the_epic_open(tmp_
     assert any(rec in problem or wid in problem for problem in res.error["details"]["audit"]["problems"])
     assert "verified" not in hot(p)["cold"]
     assert ("audit_finding", wid) in [(a["rel"], a["subject"]) for a in hot_annotations(p, wid)]
-    refused = p.aew("work", "close", epic, "--reason", "done", env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew(*p.lead_args("work", "close", epic, "--reason", "done"), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "GATE_UNSATISFIED"
     record.write_bytes(original)
     assert audit(p, "--full")["ok"] is True

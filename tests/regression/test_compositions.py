@@ -94,7 +94,7 @@ def test_regression_after_validation_supersedes_the_candidate_and_the_new_work_i
     assert u["integration"] is None
     assert u["integration_history"][-1]["status"] == "superseded"
     impl = back_to_commit_ready_with(p, wid, MULTIPLY_PATCH)
-    res = p.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION" and impl.workspace.exists()
     new = prepare_and_validate(p, wid)
     assert new["attempt"] == old["attempt"] + 1 and new["binding"]["commit_ready_seq"] == 2
@@ -110,7 +110,7 @@ def test_state_cannot_leave_commit_ready_while_a_publish_is_pending(tmp_path):
     prepare_and_validate(p, wid)
     crash_after_publishing_record(p, wid)
     for to in ("RUNNING", "CANCELLED", "REPLAN_REQUIRED"):
-        res = p.aew("work", "transition", wid, "--to", to, "--reason", "try to abandon the publish",
+        res = p.aew(*p.lead_args("work", "transition", wid, "--to", to, "--reason", "try to abandon the publish"),
                     env={"AEW_LEAD_TOKEN": p.token})
         assert res.error["code"] == "ILLEGAL_TRANSITION", (to, res.stderr)
         assert "integrate reconcile" in res.error["message"]
@@ -144,7 +144,7 @@ def test_candidate_bound_to_an_earlier_acceptance_is_superseded_at_publish(tmp_p
     with engine.store.session() as s:  # simulate a record bound to an earlier COMMIT_READY
         s.state["work"][wid]["commit_ready_seq"] += 1
         s.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
-    res = p.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "STALE_CANDIDATE"
     assert main_commit(p) == integ["base"]
     u = unit(p, wid)
@@ -298,7 +298,7 @@ def test_lead_override_of_an_operator_pin_goes_through_a_recorded_decision(tmp_p
     p.lead("invoke", "cancel", unit(p, wid)["implementer_invocation"], "--reason", "fresh bounded attempt")
     res = p.aew("invoke", "create", wid, "--card", "python_engineer", env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "PERMISSION_DENIED" and "work staff" in res.error["message"]
-    res = p.aew("work", "staff", wid, "--execute", "python_engineer", env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args("work", "staff", wid, "--execute", "python_engineer"), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "PERMISSION_DENIED"  # no reason: the pin stands
     out = p.lead("work", "staff", wid, "--execute", "python_engineer", "--reason", "operator agreed: Python work")
     assert out["decision"]
@@ -325,14 +325,19 @@ def test_long_lived_engine_never_serves_an_older_manifest(tmp_path):
     assert reader.authority_list()["accepted"] == []
     writer = Engine.discover(proj.root)
     writer.authority_accept(token=proj.token, candidate_id=candidate["id"],
-                            klass="decisions", decided_by="lead")
+                            klass="decisions", decided_by="lead",
+                            binding=writer.authority_candidate(candidate["id"])["digest"])
     assert [a["path"] for a in reader.authority_list()["accepted"]] == ["docs/adr/"]
     assert [a["path"] for a in reader.resume()["accepted_authority"]] == ["docs/adr/"]
 
 
 def test_first_resume_after_a_crash_mid_manifest_apply_shows_the_committed_authority(tmp_path):
+    from aew.engine.api import Engine
+
     proj, candidate = _authority_project(tmp_path)
+    shown = Engine.discover(proj.root).authority_candidate(candidate["id"])
     res = proj.aew("authority", "accept", candidate["id"], "--class", "decisions", "--decided-by", "lead",
+                   "--approval-digest", shown["digest"],
                    env={"AEW_LEAD_TOKEN": proj.token, "AEW_FAULT": "txn.mid_apply"})
     assert res.returncode == 86
     first = proj.ok("resume", "--json")
@@ -464,7 +469,7 @@ def test_publication_refuses_a_validation_record_not_produced_for_the_candidate(
     with engine.store.session() as sess:
         sess.state["work"][wid]["integration"]["post_integration_evidence"] = ticket_scope_report
         sess.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
-    res = p.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] in {"GATE_UNSATISFIED"}, res.stderr
     assert main_commit(p) == integ["base"]
 
@@ -546,7 +551,7 @@ def test_publication_enforces_an_obligation_added_after_validation(tmp_path):
     wid, _ = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
     p.as_operator("work_staff", work_id=wid, review=["security_reviewer"], selected_by="operator", pin=True)
-    res = p.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "GATE_UNSATISFIED" and "review_card:security_reviewer" in res.error["details"]["unmet"]
     u = unit(p, wid)
     assert u["state"] == "COMMIT_READY" and u["integration"]["status"] == "validated"

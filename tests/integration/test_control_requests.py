@@ -117,7 +117,8 @@ def test_archiving_prunes_only_receipts_for_the_archived_unit(project):
     args = {"kind": "epic", "title": "Request IDs", "risk_class": 1}
     first = _call(project, "work_create", **args, request_id="archive")
     other = _call(project, "work_create", **args, request_id="keep")
-    _call(project, "work_cancel", work_id=first["id"], reason="archive this fixture")
+    binding = Engine.discover(project.root).approval_subject(first["id"], "work.cancel")["digest"]
+    _call(project, "work_cancel", work_id=first["id"], reason="archive this fixture", binding=binding)
     state = load_control(project.root)
     assert first["id"] not in state["work"]
     [receipt] = state[INDEX]["operations"]["work.create"].values()

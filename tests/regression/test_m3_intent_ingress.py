@@ -118,7 +118,8 @@ def test_reasons_and_notes_through_fields_and_stdin_are_stored_byte_for_byte(tmp
     stored = (p.root / ".aew" / "work" / wid / "plan-v1.md").read_text(encoding="utf-8")
     assert parse_frontmatter(stored, source="plan")[1] == plan
     reason = "\n".join(CORPUS)
-    res = p.aew("work", "transition", wid, "--to", "CANCELLED", "--prior-value", "RUNNING", "--fields", "-",
+    prior = p.ok("status", wid, "--json")["work_unit"]["state"]
+    res = p.aew("work", "transition", wid, "--to", "CANCELLED", "--prior-value", prior, "--fields", "-",
                 input=dump({"reason": reason}), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     res = p.aew("checkpoint", "--fields", "-",

@@ -43,6 +43,7 @@ from aew.engine.api import Engine
 from aew.surface import contract, projection
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
+from aew.surface.errors import AdapterInputError
 
 CTX = SurfaceContext.outside_session()
 MINOR = {"id": "F1", "severity": "minor", "summary": "a naming nit", "required": False}
@@ -150,27 +151,22 @@ def test_ticket_request_verification_goes_on_from_review_passed_accepting_nothin
     assert_control_invariants(p)
 
 
-@pytest.mark.parametrize(("step", "again", "takes_the_report"), [
-    ("review.ingest", "ticket_request_verification", True),
-    ("work.transition", "ticket_request_verification", False),
-    ("invoke.create.mutating", None, False)])  # a launch takes no revision, so nothing stops it stale
-def test_ticket_request_verification_stale_at_each_step_names_only_a_call_that_goes_on(lab_project, tmp_path,
-                                                                                       monkeypatch, step, again,
-                                                                                       takes_the_report):
-    """E133's review, M2: every step, following what the refusal names."""
+@pytest.mark.parametrize("step", ["review.ingest", "work.transition", "invoke.create.mutating"])
+def test_ticket_request_verification_survives_an_unrelated_commit_at_each_step(lab_project, tmp_path,
+                                                                                monkeypatch, step):
+    """An unrelated commit leaves each step's subject unchanged, so the stage completes once without retrying."""
     p, _lab = lab_project
     wid, _impl = implemented(p, tmp_path)
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     report = review(p, wid)
-    intervene(monkeypatch, step)
-    stopped = call(p, "ticket_request_verification", work_id=wid, review_evidence=report)
-    assert not stopped["ok"], step
-    details = stopped["stopped"]["error"]["details"]
-    assert details.get("call_again") == again, stopped["stopped"]
-    if again is not None:
-        followed = call(p, again, work_id=wid, **({"review_evidence": report} if takes_the_report else {}))
-        assert followed["ok"], followed["stopped"]
-        assert_control_invariants(p)
+    entered = intervene(monkeypatch, step)
+    out = call(p, "ticket_request_verification", work_id=wid, review_evidence=report)
+    assert out["ok"] and out["stopped"] is None, out["stopped"]
+    assert len(entered) == 1 and intent(p, out)["status"] == SI.COMPLETED
+    assert [s["primitive"] for s in out["completed_steps"]] == [
+        "review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"]
+    assert unit(p, wid)["state"] == "VERIFY_PENDING"
+    assert_control_invariants(p)
 
 
 def test_ticket_request_verification_accepts_the_review_and_launches_each_verifier(lab_project, tmp_path):
@@ -205,10 +201,11 @@ def test_a_review_that_fails_stops_the_request_after_its_ingest(lab_project, tmp
                                                     "arguments": {"work_id": wid, "review_evidence": evidence}})
     assert explained["result"]["availability"] == "BLOCKED"
     revision = p.rev()
-    stale = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence, prior_value="RUNNING")
-    assert stale["stopped"]["error"]["code"] == "CHANGED_SINCE_READ"
-    assert p.rev() == revision and stale["completed_steps"] == []
-    out = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence, prior_value="REVIEW_PENDING")
+    # This stage's transition uses the recorded result of ingest, never a caller-supplied prior for this shape.
+    with pytest.raises(AdapterInputError, match="arguments do not match"):
+        call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence, prior_value="RUNNING")
+    assert p.rev() == revision
+    out = call(p, "ticket_request_verification", work_id=wid, review_evidence=evidence)
     assert not out["ok"] and out["stopped"]["at"] == "work.transition"
     assert out["stopped"]["error"]["code"] == "ILLEGAL_TRANSITION"
     assert [s["primitive"] for s in out["completed_steps"]] == ["review.ingest"]
@@ -376,8 +373,9 @@ def test_declared_effects_cover_observed_effects(tmp_path, primitive):
     elif primitive == "work.dispose":
         evidence = review(p, wid, findings=[MINOR])
         before = _observe(p)
-        e.work_dispose(token=tok, subject=f"{evidence}#F1", choice="accept_risk",
-                       rationale="a naming nit")
+        subject = f"{evidence}#F1"
+        e.work_dispose(token=tok, subject=subject, choice="accept_risk", rationale="a naming nit",
+                       binding=e.disposition_approval(subject)["digest"])
     elif primitive == "review.ingest":
         evidence = review(p, wid)
         before = _observe(p)
@@ -430,7 +428,9 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
                      {"work_id": wid, "review_evidence": evidence}, token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["code"] == "DISPOSITION_REQUIRED" and not out["completed_steps"]
     assert unit(p, wid)["state"] == "REVIEW_PENDING" and p.rev() == rev + 2  # the intent opened and stopped
-    disposed = R.run_tool(engine, CTX, "resolve", {"subject": f"{evidence}#F1",
+    subject = f"{evidence}#F1"
+    binding = engine.disposition_approval(subject)["digest"]
+    disposed = R.run_tool(engine, CTX, "resolve", {"subject": subject, "approval_digest": binding,
                                                    "choice": "accept_risk", "rationale": "a naming nit"},
                           token=p.token)
     assert disposed["ok"], disposed["stopped"]
@@ -512,11 +512,15 @@ def test_a_disposition_is_refused_unless_it_names_a_marked_open_item(tmp_path, c
         extra = {**extra, "follow_up": done}
     elif extra.get("follow_up") == "$story":
         extra = {**extra, "follow_up": p.lead("work", "create", "story", "--title", "A story", "--class", "1")["id"]}
+    engine = Engine.discover(p.root)
+    # Invalid subjects cannot produce an approval. A well-formed digest lets the test reach the subject check.
+    binding = ("0" * 64 if case in {"required", "unmarked", "no_such"}
+               else engine.disposition_approval(subject)["digest"])
     if case == "twice":
         p.lead("work", "dispose", subject, "--choice", "not_applicable", "--rationale", "out of scope")
     rev = p.rev()
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": subject,
-                                                               "choice": "accept_risk", "rationale": "r", **extra},
+    out = R.run_tool(engine, CTX, "resolve", {"subject": subject, "approval_digest": binding,
+                                            "choice": "accept_risk", "rationale": "r", **extra},
                      token=p.token)
     assert not out["ok"] and p.rev() == rev
     if reason:
@@ -579,9 +583,8 @@ def test_a_reviewer_that_mutates_its_workspace_opens_a_high_anomaly(tmp_path):
     assert len(control(p)["anomalies"]) == 1
     status = R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid})["projection"]
     assert [a["details"]["anomaly"] for a in status["anomalies"]] == [an["id"]]
-    assert any(d["decision"] == "DISPOSE_ANOMALY" for d in status["decisions_required"])
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": an["id"],
-                                                               "choice": "not_applicable",
+    [decision] = [d for d in status["decisions_required"] if d["decision"] == "DISPOSE_ANOMALY"]
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {**decision["arguments"], "choice": "not_applicable",
                                                                "rationale": "the reviewer was replaced"},
                      token=p.token)
     assert out["ok"], out["stopped"]
@@ -628,8 +631,9 @@ def test_a_contradiction_is_recorded_and_disposed_of_only_once_it_is_gone(tmp_pa
         return d
 
     # The decision answers what the disposal's own query answers (PR 182 review, m4): BLOCKED while still live.
-    assert decision()["availability"] == "BLOCKED"
-    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {"subject": an["id"],
+    blocked = decision()
+    assert blocked["availability"] == "BLOCKED"
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", {**blocked["arguments"],
                                                                "choice": "accept_risk", "rationale": "r"},
                      token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "still_live"
@@ -671,7 +675,7 @@ def test_disposed_anomalies_leave_hot_state_and_read_cold_quickly(tmp_path):
     assert len(control(p)["anomalies"]) == 8
     for an in ids:
         engine.work_dispose(token=p.token, subject=an, choice="not_applicable",
-                            rationale="seeded")
+                            rationale="seeded", binding=engine.disposition_approval(an)["digest"])
     state = control(p)
     assert "anomalies" not in state and len(state["work"][wid]["dispositions"]) == 8
     started = time.perf_counter()

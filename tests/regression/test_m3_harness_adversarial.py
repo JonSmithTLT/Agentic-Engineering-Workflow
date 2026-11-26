@@ -821,20 +821,21 @@ def test_an_investigator_cannot_obtain_implementer_authority(lab, tmp_path):
 
 
 def test_a_lead_acting_on_stale_conversational_state_is_refused(lab, tmp_path, sync):
-    """Attack 8: a Lead harness session resumed from an old conversation acts on a revision it remembers; AEW
-    refuses (compare-and-swap), and a relaunched run is rebuilt from durable state, not from its old session."""
+    """The Lead session refuses a transition based on an earlier state of the same Ticket."""
     allow_weaker_lead(lab.project)  # the general Lead command (G3 addendum 7), before the first transition
     wid = create_planned_ticket(lab.project, tmp_path)
     remembered = lab.project.rev()
-    lab.project.lead("checkpoint", "--next", "the state moved on")
+    assert control(lab, wid)["state"] == "READY"
+    lab.project.lead("work", "assign", wid)
     script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
-    script.write_text(json.dumps([{"do": "aew", "args": ["work", "assign", wid, "--launch", ]}]), encoding="utf-8")
+    args = ["work", "transition", wid, "--to", "RUNNING", "--prior-value", "READY"]
+    script.write_text(json.dumps([{"do": "aew", "args": args}]), encoding="utf-8")
     res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),
                   "--transcript", str(transcript), env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token}, timeout=600)
     assert res.returncode == 0, res.stderr
     [step] = [json.loads(line)["result"] for line in transcript.read_text(encoding="utf-8").splitlines()]
     assert error_code(step) == "CHANGED_SINCE_READ", step
-    assert control(lab, wid)["state"] == "READY" and lab.project.rev() == remembered + 1
+    assert control(lab, wid)["state"] == "ASSIGNED" and lab.project.rev() == remembered + 1
     assert_control_invariants(lab.project)
 
 
@@ -847,7 +848,7 @@ def test_model_and_role_configuration_are_pinned_at_dispatch(lab, tmp_path):
     policy = lab.aew_root / "policy" / "execution.yaml"
     policy.write_text(policy.read_text(encoding="utf-8").replace("fake-model", "cheaper-model"), encoding="utf-8")
     lab.project.adopt_policy()
-    assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model",
+    assert lab.aew(*lab.project.lead_args("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model"),
                    env={"AEW_LEAD_TOKEN": lab.project.token}).returncode != 0
     lab.script(R2, [{"do": "aew", "args": ["whoami"]}])
     lab.lead("harness", "launch", out["invocation"])

@@ -135,7 +135,7 @@ def test_a_committed_run_is_reused_only_for_the_exact_identity(calc, tmp_path, c
     assert again["noop"] and again["run"] == first["run"] and again["evidence"] == first["evidence"]
     # Same candidate, changed check definition: a new run, and publish refuses the old evidence meanwhile.
     policy(calc, checks={"smoke": {**SMOKE["smoke"], "timeout_s": 61}})
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     second = validate(calc, wid)
     assert not second.get("noop") and second["run"] != first["run"] and second["result"] == "pass"
@@ -216,7 +216,7 @@ def test_a_diagnostic_run_is_advisory_only(calc, tmp_path):
     assert integ(calc, wid)["status"] == "prepared"
     assert integ(calc, wid)["diagnostic_run"]["state"] == "advisory"  # its own slot (PR #91 review, finding 4)
     assert not [e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"]
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0  # advisory results never satisfy validation
     assert_control_invariants(calc)
 
@@ -790,8 +790,10 @@ def test_clustered_failures_trip_the_breaker_and_only_the_operator_resets_it(cal
         assert out["unavailable"] and out["breaker_open"], out
     res = calc.aew("integrate", "breaker", "reset", "--reason", "fixed", env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0  # no terminal here: the operator's typed-back confirmation is required
-    out = engine(calc).integrate_breaker_reset(token=calc.token, reason="fixed",
-                                               authorization={"authorized_by": "operator-tty", "challenge_code": "T"})
+    e = engine(calc)
+    out = e.integrate_breaker_reset(token=calc.token, reason="fixed",
+                                    authorization={"authorized_by": "operator-tty", "challenge_code": "T"},
+                                    binding=e.integrate_breaker_status()["approval_digest"])
     assert out["was_open"] and not engine(calc).integrate_breaker_status()["open"]
     assert_control_invariants(calc)
 
@@ -805,7 +807,7 @@ def test_the_rebuild_retires_the_validation_and_validate_reruns_on_the_new_candi
     wid = prepared(calc, tmp_path)
     first = validate(calc, wid)
     outside_commit(calc)
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     # The custodian validates (M4-E E6a): the guidance never sends the Lead to `aew integrate validate`.
     assert res.json["rebuilt"] and "custodian validates" in res.json["next"], res.stdout
     assert "aew integrate validate" not in res.json["next"]
@@ -939,7 +941,7 @@ def test_checks_mode_with_no_checks_never_validates(calc, tmp_path, contained):
     with pytest.raises(GateUnsatisfied) as caught:
         validate(calc, wid)
     assert caught.value.details["code_reason"] == "VALIDATION_CHECKS_EMPTY"
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     assert control(calc)["work"][wid]["state"] == "COMMIT_READY"
 
@@ -1001,7 +1003,7 @@ def test_a_checks_validation_never_publishes_once_policy_lists_no_checks(calc, t
     wid = prepared(calc, tmp_path)
     assert validate(calc, wid)["result"] == "pass" and integ(calc, wid)["status"] == "validated"
     _gates(calc, verification=False, checks=[], validation="checks")
-    res = calc.aew("integrate", "publish", wid, env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     assert res.error["details"]["code_reason"] == "VALIDATION_CHECKS_EMPTY", res.error
     assert control(calc)["work"][wid]["state"] == "COMMIT_READY"

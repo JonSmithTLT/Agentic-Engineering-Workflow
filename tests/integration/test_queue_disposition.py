@@ -33,7 +33,7 @@ def entry(p, wid):
 
 
 def run(p, *args, env=None, **kw):
-    return p.aew(*args, env={**(env or {}), "AEW_LEAD_TOKEN": p.token}, **kw)
+    return p.aew(*p.lead_args(*args), env={**(env or {}), "AEW_LEAD_TOKEN": p.token}, **kw)
 
 
 def refused(p, *args):

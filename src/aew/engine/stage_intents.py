@@ -56,13 +56,13 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-from aew.engine import approval, steering
+from aew.engine import approval
 from aew.engine import primitives as P
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, UsageError
@@ -172,11 +172,14 @@ def unit_state(unit: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class StageIntents:
-    def __init__(self, k: Any, *, archive: Any, obligations: Any = None) -> None:
+    def __init__(self, k: Any, *, archive: Any, obligations: Any = None,
+                 automation_guard: Callable[[dict[str, Any], dict[str, str], dict[str, Any],
+                                             list[dict[str, Any]], str], None] | None = None) -> None:
         self.k = k
         self.archive = archive
         # (state, work_id) -> the unit's effective obligations: what a stage that accepts evidence binds (E5b)
         self.obligations = obligations
+        self.automation_guard = automation_guard
 
     # ------------------------------------------------------------------ opening and closing (Lead transactions)
 
@@ -257,7 +260,10 @@ class StageIntents:
             if auto_run is not None:
                 # Admission of this action uses the mode it was projected under. Later mode changes apply to
                 # the next action. This stage retains its legality, generation and scoped step checks.
-                _check_automation(state, d, auto_run, steps, effective_class)
+                if self.automation_guard is None:
+                    raise IllegalTransition("no steering admission guard is available",
+                                            reason="confirmation_unavailable")
+                self.automation_guard(state, d, auto_run, steps, effective_class)
             # A stage that accepts evidence binds the obligations the evidence is judged against (plan v3 E3; M4-E E5b),
             # recorded for attribution like the operational digest.
             obligations = None
@@ -670,22 +676,6 @@ class StageIntents:
     @staticmethod
     def _validate(si: dict[str, Any]) -> None:
         validate("stage-intent", si, source=f"stage intent {si.get('id')}")
-
-
-def _check_automation(state: dict[str, Any], digests: dict[str, str], attribution: dict[str, Any],
-                      plan: list[dict[str, Any]], effective_class: str) -> None:
-    mode = steering.effective(state)
-    bound = (attribution["mode"], attribution["mode_record"], attribution["mode_generation"])
-    current = (mode.get("mode"), mode.get("record"), mode.get("generation"))
-    if bound != current:
-        raise IllegalTransition("steering authority changed after the action was projected", reason="steering_moved")
-    for name in ("legality_digest", "operational_digest"):
-        if digests[name] != attribution[name]:
-            raise StalePolicy("steering policy changed after the action was projected", field=name,
-                              bound=attribution[name], current=digests[name])
-    refusal = steering.confirmation_reason(mode["mode"], [step["primitive"] for step in plan])
-    if refusal or effective_class == P.JUDGMENT_BEARING:
-        raise IllegalTransition("the projected action requires a Lead decision", reason="confirmation_unavailable")
 
 
 def _check_references(n: int, args: dict[str, Any]) -> None:

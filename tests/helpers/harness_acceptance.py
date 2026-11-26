@@ -56,7 +56,7 @@ NEGATIVE_TEST = (SUBTRACT_PATCH["tests/test_subtract.py"] + "\n\ndef test_subtra
 # ---------------------------------------------------------------------------------------------- the Lead's steps
 
 def lead(*args: str) -> dict[str, Any]:
-    """A Lead command at the current revision, through the Lead session's broker."""
+    """A Lead command through the Lead session's broker."""
     return {"do": "lead", "args": list(args)}
 
 

@@ -283,7 +283,7 @@ def test_the_upgrade_refuses_a_cited_check_already_changed(tmp_path, monkeypatch
     t = legacy_migrated(tmp_path, monkeypatch)
     cited = t.root / ".aew" / CITED
     cited.write_bytes(cited.read_bytes() + b"\nedited\n")
-    rev = t.rev()
+    rev = t.eng.store.current()["revision"]
     out = aew(t, "migrate")
     assert out.error["code"] == "INTEGRITY_ERROR" and "INV-0003-check-unit-4" in out.error["message"]
-    assert t.rev() == rev  # nothing recorded
+    assert t.eng.store.current()["revision"] == rev  # nothing recorded

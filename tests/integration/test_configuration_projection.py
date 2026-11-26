@@ -346,7 +346,8 @@ def test_digest_ignores_authority_decision(engine):
     before = {d["document"]: d["digest"] for d in index(e)["documents"]}
     token, rev = lead(e)
     candidate = e.authority_list()["candidates"][0]["id"]
-    e.authority_accept(token=token, candidate_id=candidate, klass="decisions", decided_by="lead")
+    e.authority_accept(token=token, candidate_id=candidate, klass="decisions", decided_by="lead",
+                       binding=e.authority_candidate(candidate)["digest"])
     after = {d["document"]: d["digest"] for d in index(e)["documents"]}
     assert after["execution"] == before["execution"] and doc(e, "execution")["state"] == C.ADOPTED
     assert after["project"] != before["project"]

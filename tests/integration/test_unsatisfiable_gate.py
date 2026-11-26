@@ -53,7 +53,7 @@ def lead_env(p) -> dict[str, str]:
 
 
 def err(p, *args: str) -> dict[str, Any]:
-    res = p.aew(*args, env=lead_env(p))
+    res = p.aew(*p.lead_args(*args), env=lead_env(p))
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -387,8 +387,7 @@ def test_the_open_item_and_the_replacement_judge_condition_2_alike(tmp_path):
 
 def test_a_gate_no_unit_type_can_satisfy_is_replaced_by_following_doctors_remedy_as_printed(tmp_path):
     """The standing rule "follow the message's own advice" (ITEMS 56): doctor's remedy names the item, the choice and a
-    shell form that takes the arguments as JSON on standard input. Run as printed, with the revision from `aew status`
-    as it says, the route accepts the replacement."""
+    shell form that takes the arguments as JSON on standard input. The displayed replacement's digest binds the call."""
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective")
     child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
@@ -398,9 +397,9 @@ def test_a_gate_no_unit_type_can_satisfy_is_replaced_by_following_doctors_remedy
     assert f"settle `{item}`" in detail and f"choice `{gate_ops.CHOICE}`" in detail, detail
     [(command, fenced)] = [(c, f) for c, f in P.commands(detail) if "lead tool resolve" in c]
     P.parse(command, fenced=fenced)
-    arguments = {"subject": item, "choice": gate_ops.CHOICE, "replacement": "check:unit",
-                 "rationale": "the targeted check is that standard, as a configured check",
-                 }
+    [decision] = [d for d in status_items(p) if d["arguments"]["subject"] == item]
+    arguments = {**decision["approval_options"]["check:unit"],
+                 "rationale": "the targeted check is that standard, as a configured check"}
     head, _body = P.split(command, fenced)
     res = p.aew(*shlex.split(head)[1:], input=json.dumps(arguments), env=lead_env(p))
     assert res.returncode == 0, res.stderr or res.stdout
@@ -448,7 +447,9 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     [preview] = status_previews(p)  # what it would make stale, before it is committed (addendum 3)
     [stale] = preview["stale_invocations"]
     assert (stale["invocation"], stale["work_id"]) == (live[0], running)
-    out = resolve(p, item, "check:unit")
+    approved = preview["approval_subjects"]["check:unit"]["digest"]
+    before_revision = p.rev()
+    out = resolve(p, item, "check:unit", binding=approved)
     assert out["ok"], out
     result = out["result"]
     assert result["stale_invocations"] == [stale] and result["mandatory_gates"] == ["check:unit"]
@@ -462,7 +463,8 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     correction = yaml.safe_load((p.root / ".aew" / pointer["path"]).read_text(encoding="utf-8"))
     assert (correction["work_unit"], correction["replaced"], correction["with"]) == (story, PROSE, "check:unit")
     assert correction["reason"] == "the targeted check is that standard, as a configured check"
-    assert correction["by"]["kind"] == "lead" and correction["expected_revision"] + 1 == correction["rev"]
+    assert correction["by"]["kind"] == "lead" and before_revision + 1 == correction["rev"]
+    assert correction["approval_ref"] == f"{item}@record:{approved}" and "expected_revision" not in correction
     assert correction["stale_invocations"] == [stale] and policy["mandatory_gates"] == ["check:unit"]
     assert record.read_bytes() == record_bytes and state["work"][story]["record_sha256"] == record_sha
 

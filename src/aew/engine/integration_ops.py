@@ -53,10 +53,6 @@ if TYPE_CHECKING:
     from aew.engine.ports import DispatchPort, GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
 
 
-# A publish's finish follows the revision across others' commits this many times (E137). A custody worker's
-# registration is one such commit, once per lease, and the one the tool-call log shows in that window both times a
-# publish stopped there; more than this in that window is a busy project, and the refusal then says what finishes the
-# publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
 PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when the Ticket is left `publishing`
 
 # Match the rebuild summary's SHA length in _moved_head.
@@ -638,8 +634,7 @@ class Integration:
         if {"candidate": pinned["candidate"], "snapshot": pinned["snapshot"], "check_set": pinned["check_set"],
                 "binding": pinned["obligation"]["binding"]} != current:
             raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: it "
-                                  f"must be validated again (recovery: `aew integrate validate {work_id} "
-                                  f"`)",
+                                  f"must be validated again (recovery: `aew integrate validate {work_id}`)",
                                   validated=pinned, current=current)
         run = integ.get("current_validation_run") or {}
         if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":

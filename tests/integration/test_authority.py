@@ -276,6 +276,7 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     substituted in-process: no terminal exists here.)"""
     from aew import operator
     from aew.cli.main import main
+    from aew.engine.api import Engine
 
     asked: list[str] = []
     confirmed = {"authorized_by": "operator-tty", "challenge_code": "X"}
@@ -284,11 +285,12 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     monkeypatch.chdir(project.root)
     cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
     wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"]
+    engine = Engine.discover(project.root)
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
     assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by,
-                 ]) == 0
+                 "--approval-digest", engine.authority_candidate(cand)["digest"]]) == 0
     assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by,
-                 ]) == 0
+                 "--prior-value", engine.prior_value("work_staff", wid)]) == 0
     decisions = "".join(f.read_text(encoding="utf-8") for f in (project.root / ".aew/decisions").glob("*.md"))
     if by == "operator":
         assert [a.split(":")[0] for a in asked] == ["RECORD as YOUR decision", "RECORD as YOUR selection"], asked
@@ -375,8 +377,8 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
 def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leaves(tmp_path):
     """The advice follows the takeover's outcome (independent review of #78). An active integration verifier on a
     prepared candidate: the takeover interrupts the Ticket, which retires its entry and lease, so there is nothing to
-    reconcile. A validated candidate with no active role invocation: the lease survives its dead custodian and is
-    reconciled."""
+    reconcile. A prepared candidate with no active role invocation: the lease survives its dead custodian and is
+    reconciled. Once its validation releases the lease, the advice again omits reconcile."""
     from aewflow import prepare_and_validate, sample_project, to_commit_ready
 
     p = sample_project(tmp_path)
@@ -387,12 +389,15 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     assert res.error["details"]["interrupted_work"] == [wid], res.error
     assert "integrate reconcile" not in res.error["message"] and "aew resume" in res.error["message"]
 
-    q = sample_project(tmp_path / "validated")
-    wid2, _ = to_commit_ready(q, tmp_path / "validated")
-    prepare_and_validate(q, wid2)
+    q = sample_project(tmp_path / "prepared")
+    wid2, _ = to_commit_ready(q, tmp_path / "prepared")
+    q.lead("integrate", "prepare", wid2)
     res = q.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
     assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
+    prepare_and_validate(q, wid2)
+    res = q.aew("lead", "acquire")
+    assert "integrate reconcile" not in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):

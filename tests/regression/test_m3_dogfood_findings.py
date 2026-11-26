@@ -164,7 +164,7 @@ def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_p
 
 
 def _refusal(p, *args, stdin=None) -> str:
-    res = p.aew(*args, input=stdin, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), input=stdin, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error["message"]
 

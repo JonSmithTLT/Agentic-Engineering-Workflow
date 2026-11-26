@@ -184,8 +184,7 @@ def rule_retired_input(p, tmp_path, monkeypatch):
 
 
 def rule_intent_first(p, tmp_path, monkeypatch):
-    """Rule 2: the intent is the first commit, and the steps run from the revision it returned (no self-inflicted
-    stale revision); the last step's commit completes the stage."""
+    """Rule 2: the intent is the first commit, each step records its own commit, and the last completes the stage."""
     rev = p.rev()
     out = call(p, "probe_notes", note="probe")
     assert out["ok"] and out["stopped"] is None, out["stopped"]
@@ -237,9 +236,10 @@ def rule_no_replay(p, tmp_path, monkeypatch):
 
 
 def rule_drift(p, tmp_path, monkeypatch):
-    """Rule 6: a legality policy adopted between two steps stops the stage as STALE_POLICY, whether the next step
-    reaches its commit (the journal refuses it) or meets the stale revision the adoption left (the executor checks
-    the binding before any retry)."""
+    """Rule 6: the journal checks the opened legality binding when a step attempts to commit.
+
+    A policy adopted between steps stops the next step with STALE_POLICY.
+    """
     def adopt(c):
         legality_edit(p)
         p.adopt_policy()
@@ -360,10 +360,10 @@ def test_a_pending_policy_edit_leaves_the_intent_for_resolve(project, monkeypatc
 
 
 def test_a_pending_policy_edit_after_an_unrelated_write_preserves_committed_steps(project, monkeypatch):
-    """Another commit lands, then a policy file is edited and not yet adopted: step 2 meets STALE_REVISION (the
-    revision is checked before the policy pins), and reading the binding to decide on a retry is refused
-    (INTEGRITY_ERROR). The stage stops at step 2 on that refusal with step 1 reported, and the stop it cannot record
-    leaves the intent ACTIVE, saying why (#142 review, finding 2)."""
+    """After another commit, an unadopted policy edit blocks step 2 and recording its stop.
+
+    The result reports the committed step and the integrity refusal, and the intent stays ACTIVE (#142, finding 2).
+    """
     p = project
 
     def other_commit_then_edit(c):

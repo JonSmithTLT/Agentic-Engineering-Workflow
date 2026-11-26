@@ -70,6 +70,9 @@ def test_through_the_real_adapter_the_text_is_readable_and_the_structured_conten
 def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(tmp_path):
     p = lead_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
+    blocked = create_planned_ticket(p, tmp_path, title="A running Ticket without report evidence")
+    p.lead("work", "assign", blocked)
+    p.lead("work", "transition", blocked, "--to", "RUNNING")
     rev = _rev(p)
     env_file = tmp_path / "server-env.json"
     argv, transcript = _argv(tmp_path, "lead", [
@@ -84,8 +87,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
         {"call": "checkpoint", "arguments": {"bogus": True}},
         {"server_env": str(env_file)},
         {"call": "status", "arguments": {"work_id": wid}},
-        # M4-E E5b: a request stage through the MCP ingress, on a READY Ticket: its first step refuses
-        {"call": "ticket_request_review", "arguments": {"work_id": wid}},
+        # The binding matches, so the request reaches the step and its ordinary gate refuses the missing evidence.
+        {"call": "ticket_request_review", "arguments": {"work_id": blocked, "prior_value": "RUNNING"}},
     ])
     res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
     assert res.returncode == 0, res.stderr

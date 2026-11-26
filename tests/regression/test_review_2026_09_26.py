@@ -24,6 +24,7 @@ from aewflow import (
 )
 from conftest import IS_WINDOWS, Project, git, make_git_repo
 
+from aew.engine.api import Engine
 from aew.workspace import integration as integration_git
 
 
@@ -39,7 +40,7 @@ def pending_publish(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
-    result = p.aew('integrate', 'publish', wid,
+    result = p.aew(*p.lead_args('integrate', 'publish', wid),
                    env={"AEW_LEAD_TOKEN": p.token, 'AEW_FAULT': 'integrate.after_publishing_record'})
     assert result.returncode == 86
     assert main(p) == integ['base']
@@ -77,7 +78,7 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
     u = unit(p, wid)
     assert (u['commit_ready_snapshot']['relevant_inputs_fingerprint']
             != old['candidate_snapshot']['relevant_inputs_fingerprint'])
-    result = p.aew('integrate', 'publish', wid, env={"AEW_LEAD_TOKEN": p.token})
+    result = p.aew(*p.lead_args('integrate', 'publish', wid), env={"AEW_LEAD_TOKEN": p.token})
     if result.returncode != 0:
         assert impl.workspace.exists()
         return
@@ -188,7 +189,7 @@ def test_assume_unchanged_source_invalidates_verified_gates(tmp_path):
     before = p.ok('gate', 'show', wid)['snapshot']['relevant_inputs_fingerprint']
     (impl.workspace / 'calc/core.py').write_text('def subtract(a, b):\n    return 999\n')
     after = p.ok('gate', 'show', wid)
-    result = p.aew('work', 'transition', wid, '--to', 'COMMIT_READY',
+    result = p.aew(*p.lead_args('work', 'transition', wid, '--to', 'COMMIT_READY'),
                    env={"AEW_LEAD_TOKEN": p.token})
     assert after['snapshot']['relevant_inputs_fingerprint'] != before and result.returncode != 0, (
         'Broken source retained CURRENT evidence and reached COMMIT_READY', after['unmet'], result.stdout)
@@ -216,7 +217,9 @@ def test_first_resume_after_manifest_crash_exposes_recovered_authority(tmp_path)
     candidates = p.ok('init')['authority_candidates']
     candidate = next(c for c in candidates if c['path'] == 'docs/adr/')
     p.token = p.ok('lead', 'acquire')['token']
+    shown = Engine.discover(repo).authority_candidate(candidate['id'])
     result = p.aew('authority', 'accept', candidate['id'], '--class', 'decisions', "--decided-by", "lead",
+                   "--approval-digest", shown["digest"],
                    env={"AEW_LEAD_TOKEN": p.token, 'AEW_FAULT': 'txn.after_replace'})
     assert result.returncode == 86
     first = p.ok('resume', '--json')

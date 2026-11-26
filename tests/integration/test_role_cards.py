@@ -189,10 +189,10 @@ def test_policy_trigger_requires_named_card(tmp_path):
 def test_forbidden_and_pinned_cards(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
     calc.as_operator("work_staff", work_id=wid, forbid=["python_engineer"], selected_by="operator", reason="not Python")
-    fail(calc.aew("work", "staff", wid, "--execute", "python_engineer",
+    fail(calc.aew(*calc.lead_args("work", "staff", wid, "--execute", "python_engineer"),
                   env={"AEW_LEAD_TOKEN": calc.token}), "PERMISSION_DENIED")
     calc.as_operator("work_staff", work_id=wid, execute=["c_engineer"], selected_by="operator", pin=True)
-    fail(calc.aew("work", "staff", wid, "--execute", "calc_engineer",
+    fail(calc.aew(*calc.lead_args("work", "staff", wid, "--execute", "calc_engineer"),
                   env={"AEW_LEAD_TOKEN": calc.token}), "PERMISSION_DENIED")
     out = calc.lead("work", "staff", wid, "--execute", "calc_engineer", "--reason", "calc_engineer fits better")
     decision = (calc.root / f".aew/decisions/{out['decision']}.md").read_text()
@@ -235,7 +235,7 @@ def test_a_card_without_context_read_keeps_its_identity(calc, tmp_path):
 
 def test_slot_archetype_mismatch_rejected(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
-    fail(calc.aew("work", "staff", wid, "--review", "c_engineer",
+    fail(calc.aew(*calc.lead_args("work", "staff", wid, "--review", "c_engineer"),
                   env={"AEW_LEAD_TOKEN": calc.token}), "USAGE")
-    fail(calc.aew("work", "staff", wid, "--execute", "vulnerability_triager",
+    fail(calc.aew(*calc.lead_args("work", "staff", wid, "--execute", "vulnerability_triager"),
                   env={"AEW_LEAD_TOKEN": calc.token}), "USAGE")  # mutating Ticket needs an implementer card

@@ -208,15 +208,18 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     if do == "lead":  # scripted decisions use the subject shown by the same Lead bridge
         argv = list(s["args"])
         if argv[:2] == ["work", "transition"] and "--prior-value" not in argv:
-            shown = json.loads(aew("status", argv[2], env=env)["stdout"])
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
             argv += ["--prior-value", shown["work_unit"]["state"]]
         elif argv[:2] == ["plan", "accept"] and "--approval-digest" not in argv:
-            shown = json.loads(aew("status", argv[2], env=env)["stdout"])
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
             revision = argv[argv.index("--revision") + 1]
             argv = shown["plan_accept_argv"][revision]
         elif argv[:2] == ["integrate", "publish"] and "--candidate" not in argv:
-            shown = json.loads(aew("status", argv[2], env=env)["stdout"])
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
             argv += ["--candidate", shown["approval_subjects"]["integrate.publishing"]["candidate"]]
+        elif argv[:2] == ["harness", "launch"] and "--prior-value" not in argv:
+            shown = json.loads(aew("harness", "status", argv[2], "--json", env=env)["stdout"])
+            argv += shown["launch_argv"][3:]
         return aew(*argv, env=env, input_bytes=stdin)
     if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it
         data = s["text"].encode(s.get("encoding", "utf-8"))  # e.g. "utf-8-sig" or "utf-16": Windows PowerShell 5.1

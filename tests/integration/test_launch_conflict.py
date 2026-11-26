@@ -27,7 +27,7 @@ concurrency = set_mutating_concurrency
 
 def refused(p, *args, env: dict[str, str] | None = None) -> dict:
     rev = p.rev()
-    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token, **(env or {})})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token, **(env or {})})
     assert res.returncode != 0, res.stdout
     assert p.rev() == rev  # a hold changes nothing
     return res.error

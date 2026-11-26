@@ -416,7 +416,7 @@ def test_every_terminal_record_keeps_coverage_without_manufacturing_a_validation
     wid = prepared(p, tmp_path)
     if kind == "abandoned":
         eng = engine(p)
-        run = eng._validation._pin(VO.Principal(VO.LEAD, p.token), p.rev(), wid, attempt=1, diagnostic=False)
+        run = eng._validation._pin(VO.Principal(VO.LEAD, p.token), wid, attempt=1, diagnostic=False)
         eng._validation._abandon(VO.Principal(VO.LEAD, p.token), p.rev(), wid, run["id"],
                                  "VALIDATION_INTERRUPTED", "synthetic executor interruption after the real pin")
     else:
@@ -462,7 +462,7 @@ def test_the_finalizer_records_superseded_coverage_without_claiming_the_unobserv
     policy(p, checks=SMOKE)
     wid = prepared(p, tmp_path)
     eng = engine(p)
-    eng._validation._pin(VO.Principal(VO.LEAD, p.token), p.rev(), wid, attempt=1, diagnostic=False)
+    eng._validation._pin(VO.Principal(VO.LEAD, p.token), wid, attempt=1, diagnostic=False)
     p.lead("integrate", "defer", wid, "--reason", "retire the candidate before execution")
     retired = control(p)["work"][wid]["integration_history"][-1][VO.CURRENT]
     assert retired["state"] == "abandoned" and retired["reason"] == "SUPERSEDED"

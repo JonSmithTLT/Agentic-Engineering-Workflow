@@ -171,16 +171,17 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     assert classify and "aew lead release" in classify[0]
     token = run_aew("-C", str(root), "lead", "acquire").json["token"]
     env = {"AEW_LEAD_TOKEN": token}
+    shown = Engine.discover(root).authority_candidate("C-001")
     accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation",
-                       "--decided-by", "lead", env=env)
+                       "--decided-by", "lead", "--approval-digest", shown["digest"], env=env)
     assert accepted.returncode == 0, accepted.stderr
-    take = ("-C", str(root), "lead", "acquire", )
+    take = ("-C", str(root), "lead", "acquire")
     held = run_aew(*take)
     assert held.returncode != 0 and held.error["code"] == "PERMISSION_DENIED", held.stderr
     released = run_aew("-C", str(root), "lead", "release", env=env)
     assert released.returncode == 0, released.stderr
     assert run_aew("-C", str(root), "status", "--json").json["lead"]["status"] == "vacant"
-    again = run_aew(*take[:-1], "3")
+    again = run_aew(*take)
     assert again.returncode == 0, again.stderr
 
 

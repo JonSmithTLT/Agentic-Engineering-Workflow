@@ -47,6 +47,7 @@ from aew.errors import (
     MigrationRequired,
     PermissionDenied,
     StaleAuthority,
+    StalePolicy,
     SteeringNotConfigured,
     UsageError,
 )
@@ -221,6 +222,25 @@ def confirmation_reason(mode: str | None, primitives: list[str] | tuple[str, ...
         if outside:
             return f"walk: {p} changes {', '.join(outside)}, outside the bookkeeping allow-list (A1 §2)"
     return None
+
+
+def check_stage_admission(state: dict[str, Any], digests: dict[str, str], attribution: dict[str, Any],
+                          plan: list[dict[str, Any]], effective_class: str) -> None:
+    """Check automation authority in the same lock that opens the stage intent."""
+    from aew.engine.primitives import JUDGMENT_BEARING
+
+    mode = effective(state)
+    bound = (attribution["mode"], attribution["mode_record"], attribution["mode_generation"])
+    current = (mode.get("mode"), mode.get("record"), mode.get("generation"))
+    if bound != current:
+        raise IllegalTransition("steering authority changed after the action was projected", reason="steering_moved")
+    for name in ("legality_digest", "operational_digest"):
+        if digests[name] != attribution[name]:
+            raise StalePolicy("steering policy changed after the action was projected", field=name,
+                              bound=attribution[name], current=digests[name])
+    refusal = confirmation_reason(mode["mode"], [step["primitive"] for step in plan])
+    if refusal or effective_class == JUDGMENT_BEARING:
+        raise IllegalTransition("the projected action requires a Lead decision", reason="confirmation_unavailable")
 
 
 def envelope(policy: dict[str, Any] | None) -> dict[str, int]:

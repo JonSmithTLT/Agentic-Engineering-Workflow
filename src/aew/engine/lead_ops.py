@@ -90,8 +90,7 @@ class Lead:
         lease = (after.get("queue") or {}).get("lease")
         if lease:
             work = ((after["queue"]["entries"].get(lease["entry"])) or {}).get("work")
-            interrupts += (f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work} "
-                           f"`")
+            interrupts += f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work}`"
         advice = (f"Cannot resume with `aew opencode`: {resume[1]}. " if resume else
                   "A successor takes it over cooperatively with `aew lead handoff accept`. If the holding session "
                   "is gone (its wrapper exited or crashed and its credential went with it), the seat cannot be "

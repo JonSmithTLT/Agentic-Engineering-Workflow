@@ -126,7 +126,6 @@ OFF_READERS = {
         "in messaging_guidance.",
         {"plant": 1, "stage_named": 1, "known_words": 1, "stray_arguments": 4,
          "test_every_normal_tool_is_named_in_what_the_lead_is_given": 2,
-         "test_the_list_follows_the_catalog_when_a_tool_goes": 1,
          "test_the_text_names_no_tool_the_normal_profile_lacks": 2,
          "test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard": 2,
          "test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_the_guard": 2,
@@ -137,8 +136,9 @@ OFF_READERS = {
         "Off baseline must remain unmodified by compacting.",
         {"test_the_compact_presentation_changes_only_descriptions": 2}),
     "tests/unit/test_messaging_guidance.py": (
-        "Independent switched-row plant copies metadata and mutates the registry, not a live off-only enumeration.",
-        {"test_a_switched_row_omitted_by_the_prose_selector_fails_the_independent_oracle": 2}),
+        "The independent prose oracle's filter of catalog names: every row's name, with the switched rows', never a "
+        "live off-only enumeration (E367 moved it from the system text's tool line to the guide's core).",
+        {"assert_catalog_names": 1}),
     "tests/unit/test_operator_endpoint.py": (
         "Named raise/confirmation tools; message_send is mechanical, with no operator principal.",
         {"test_no_operator_principal_outside_the_endpoint": 2}),

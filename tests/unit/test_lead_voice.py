@@ -7,8 +7,11 @@ is unclear, to say what is happening while work runs, and to report what changed
 
 from __future__ import annotations
 
+import pytest
+
 from aew.harness import contract as K
 from aew.harness.opencode import projection
+from aew.surface.contract import MESSAGING
 
 VOICE = (
     "say in a few lines how you understand it and what you plan to do",
@@ -48,23 +51,35 @@ WAKE_WORDS = ("still working", "times out", "timed out", "when one ends", "when 
               "evidence shows", "Tell the operator")
 
 
-def test_the_lead_s_wake_guidance_is_generated_from_the_wake_guide_and_nowhere_else():
-    lines = projection.LEAD_SYSTEM.split("\n")
-    generated = projection.wake_guide_lines()
-    kinds = K.wake_guidance()
-    # The kinds of return a wait gives today, in the enum's order, then the timeout (no `why`). The guide holds every
-    # `why`; the Lead is told of one only once a wait can return it.
-    assert list(kinds) == [*K.WAITED_ON, K.TIMED_OUT] and K.TIMED_OUT not in K.WAKE_GUIDE
-    assert list(K.WAITED_ON) == [w for w in K.WHY if w in K.WAITED_ON]
-    assert generated == [f"    - {K.wake_line(key)}" for key in kinds]
+@pytest.mark.parametrize("messaging", [False, True], ids=["messaging-off", "messaging-on"])
+@pytest.mark.parametrize("push", [False, True], ids=["waits", "woken"])
+def test_the_lead_s_wake_guidance_is_generated_from_the_wake_guide_and_nowhere_else(messaging, push):
+    """In every variant (a Lead that waits and one AEW wakes; messaging off and on): the entries are the wake guide's,
+    together and in its order, right after the one line that says how to take each return and what to tell the operator
+    (``K.wake_report``, E367: one line for the eight `Tell the operator` lines), and no other line gives such guidance.
+    A woken Lead is told of the reasons only a wake gives, and its own timed-out line (the audit of 2026-11-25, U1)."""
+    system = projection.lead_system(frozenset({MESSAGING}) if messaging else frozenset(), push_wake=push)
+    lines = system.split("\n")
+    generated = projection.wake_guide_lines(messaging, pushed=push)
+    kinds = K.wake_guidance(messaging, pushed=push)
+    # The kinds of return a wait gives today (a wake's own too, where AEW wakes the Lead), in the enum's order, then
+    # the timeout (no `why`). The guide holds every `why`; the Lead is told of one only once it can be returned.
+    whys = [*K.waited_on(messaging), *(K.PUSHED_ONLY if push else ())]
+    assert list(kinds) == [*(w for w in K.WHY if w in whys), K.TIMED_OUT] and K.TIMED_OUT not in K.WAKE_GUIDE
+    assert generated == [f"    - {K.wake_line(key, messaging, pushed=push)}" for key in kinds]
     start = lines.index(generated[0])
     assert lines[start:start + len(generated)] == generated  # the entries, in the table's order, together
-    assert "decision point" in lines[start - 1]  # right after the voice line that introduces them
+    intro = lines[start - 1]
+    assert intro.endswith(f"{K.wake_report()}:")  # right after the line that introduces them
+    assert ("decision point" in intro) is not push and system.lower().count("tell the operator in a line") == 1
     for line in lines:
-        if line not in generated:
+        if line not in generated and line != intro:
             assert not any(w.lower() in line.lower() for w in WAKE_WORDS), line
-    for key, wake in kinds.items():  # every part of every entry reaches the Lead
-        assert all(part in projection.LEAD_SYSTEM for part in (f"`{key}`", wake.means, wake.act[1:], wake.tell))
+    for key, wake in kinds.items():  # what each entry means and asks reaches the Lead
+        assert all(part in system for part in (f"`{key}`", wake.means, wake.act[1:]))
+    assert K.WAKE_GUIDE[K.RUN_ENDED].tell in intro  # an ended run's report names its evidence
+    timed_out = kinds[K.TIMED_OUT].act
+    assert ("otherwise end your turn" in timed_out) is push and K.WAIT_AGAIN in timed_out
 
 
 def test_a_wait_s_returned_steps_take_their_text_from_the_wake_guide():

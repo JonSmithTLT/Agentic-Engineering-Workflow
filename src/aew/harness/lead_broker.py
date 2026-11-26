@@ -59,7 +59,7 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, SEAT_COMMANDS
 from aew.maps.query import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
@@ -79,8 +79,7 @@ COOPERATIVE = frozenset({"lead.tool", "lead.read", "lead.lookup"})
 # Provenance. Its values also pick the refusal text of a command kept out of a Lead session (:func:`run_cli`).
 INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}
 
-CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
-                       frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}),
+CREDENTIAL_EMITTING = (*(frozenset(command.split()[1:]) for command in SEAT_COMMANDS),
                        # the dashboard's one-time session URL (ADR-0005, 2026-10-05; F20.3)
                        frozenset({"dashboard", "serve"}), frozenset({"dashboard", "open"}))
 # Commands the operator confirms with a typed-back code at their own terminal, which a Lead session has none of:

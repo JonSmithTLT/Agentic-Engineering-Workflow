@@ -746,8 +746,11 @@ def register_rows() -> tuple[frozenset[str], frozenset[str]]:
     register = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(register)
     data = register.load()
-    return (frozenset(r["id"] for r in register.rows(data)),
-            frozenset(r["id"] for r in register.rows(data, open_only=False)))
+
+    def ids(**which: Any) -> frozenset[str]:  # `Gate` (a §1 gate) and None are ids of no row
+        return frozenset(r["id"] for r in register.rows(data, **which) if r["id"] and register.ID_RE.fullmatch(r["id"]))
+
+    return ids(), ids(open_only=False)
 
 
 def lands_problems(reg: dict[str, Any]) -> list[str]:

@@ -912,8 +912,9 @@ commands:
     refusals: [CHANGED_SINCE_READ, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND,
                STALE_AUTHORITY, STALE_REVISION, USAGE]
     note: "the Lead's counted shell fallback after the operator approves the plan; its typed home will be a resolve
-          choice (A2). OPERATOR_AUTHORIZATION_REQUIRED: from a Lead session, until the operator confirms the plan with
-          `aew operator confirm plan` (register E350)"
+          choice (A2). The projection offers it, bound to the plan's SHA-256, as the operator's PLAN decision's
+          cli_fallback (register E351). OPERATOR_AUTHORIZATION_REQUIRED: from a Lead session, until the operator
+          confirms the plan with `aew operator confirm plan` (register E350)"
   - name: plan adopt
     home: product
     users: [lead]
@@ -1633,7 +1634,8 @@ commands:
     note: "the operator's ruling of 2026-11-26 (register E350): lead_broker.OPERATOR_CONFIRMS keeps it from a Lead
       session; NOT_FOUND: no operator endpoint runs; ILLEGAL_TRANSITION: no proposed plan or prepared candidate to
       confirm; OPERATOR_AUTHORIZATION_REQUIRED: no terminal to type the code at (no_terminal), or the plan or
-      candidate moved while it was shown (operator_confirmation_moved)"
+      candidate moved while it was shown (operator_confirmation_moved). The projection's PLAN decision names its plan
+      form as `ask_operator` (register E351)"
   - name: operator ping
     home: diagnostic
     users: [operator]

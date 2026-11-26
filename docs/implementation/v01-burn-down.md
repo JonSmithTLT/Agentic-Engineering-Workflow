@@ -46,7 +46,7 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | Cluster | Cause | Class | Rows | Alone it turns green | Still breaks | Size | Depends on | State |
 |---|---|---|---|---|---|---|---|---|
 | **C1** Decision owners | Decisions carry no `owner` (`src/aew/surface/projection.py:246-299`, `_ticket_actions`; `:444-499`, `_decisions`), so the scripted Lead asks every one (`tests/helpers/vertical/lead.py:350-354`, `:392-393`): the review and verification acceptances reach the operator in every case that compares decisions | product | `E335` | No strict case; it clears the alpha's V1 line | Everything else; `reconcile` stays the operator's (E350); `resolve_stage` becomes the Lead's, whose `resolve` is still refused (C5) | M, 1 PR | none | done (#597) |
-| **C2** Plan approval is not a decision | The projection has no plan decision: the proposed plan shows only as blocker `PLAN_NOT_ACCEPTED` with a hint (`projection.py:246-299`), so the Lead's fallback asks and accepts from its shell (`lead.py:617-627`). The recorded label is the kind lowercased (`lead.py:392`), so a kind not named `PLAN` breaks V1's exact list (Q8) | design, then product | `E351`, `E163` | None: E351 alone still runs its `cli_fallback` from the shell; with a typed accept (E163, or the surface map's A1a-2) the shell call goes | The other clusters | 2 PRs | E335; Q8 | open |
+| **C2** Plan approval is not a decision | The projection had no plan decision: the proposed plan showed only as blocker `PLAN_NOT_ACCEPTED` with a hint, so the Lead's fallback asked and accepted from its shell (`gap_plan`, `tests/helpers/vertical/lead.py:779-789`). E351 (done, #628) offers it as the operator's `PLAN` decision (Q8, answered), whose `cli_fallback` the Lead still runs from its shell (`decide` and `without_tool`, `lead.py:544-581`) | design, then product | `E163` (E351 done, #628) | None: E351 alone still runs its `cli_fallback` from the shell; with a typed accept (E163, or the surface map's A1a-2) the shell call goes | The other clusters | 2 PRs | E335 (done); Q8 (answered) | open |
 | **C3** An empty project offers no action | `_control_part` returns the project's part before any action (`projection.py:122`); `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so the built `ticket_draft` (`src/aew/surface/availability.py:173`) is never offered and the Lead guesses it | design | `E373` | None | The other clusters | M, 1 PR | Q4 | open |
 | **C4** `expect_rev` on every call | The revision check is project-wide: every typed tool requires `expect_rev` (`src/aew/surface/contract.py:103`) and the projection supplies it; the driver's hint filler appends it to every hinted command (`tests/helpers/vertical/hints.py:79`), and the Lead's retries strip it (`lead.py:558-563`) | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | in flight (#596) |
 | **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` lists every unfinished stage intent, the steering loop's running one included (`projection.py:233-243`). Its arguments also omit `choice` and `rationale`, which `resolve` requires (`contract.py:285-295`): refused `INVALID_ARGUMENTS`; those arguments are E388's, the row #597 filed | product, design | `E374`, `E388` | None | The other clusters | M, 1 to 2 PRs | E335 (done); Q9 | open |
@@ -149,7 +149,7 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 
 **The strict gate.** The wire track and the rest. In the re-measure's proposed order, each after the alpha track:
 1. **C10** (E379), after Q3: turns V1 compatible-move green.
-2. **C2** (E351, then E163 or A1a-2), with Q8 answered.
+2. **C2** (E351, done; then E163 or A1a-2).
 3. **C3** (E373), after Q4.
 4. **C4** (E329, #596), with its driver change.
 5. **C5** (E374, after Q9, and E388, the `resolve` decisions' arguments, filed by #597).
@@ -167,9 +167,10 @@ G3 #213 and V1 compatible-move.
 
 ## Questions
 
-The operator's four, as they were put, each with the operator's answer of 2026-11-26. The designer's six (Q2 to Q4, Q6,
-Q8 and Q9) are open, and are owned by [what the operator and designer owe](decisions-due.md), each on the row it holds:
-Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`python tools/register.py show <row>`).
+The operator's four, as they were put, each with the operator's answer of 2026-11-26. Of the designer's six, Q8 was
+answered by the operator on 2026-11-26 (after the operator's); Q2 to Q4, Q6 and Q9 are open, and are owned by [what the operator and
+designer owe](decisions-due.md), each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380 and Q9 on
+E374 (`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "For q1 yes. That honestly just seems like a bug and sint how aew works now."
@@ -215,3 +216,10 @@ Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on E351 and Q9 on E374 (`pyth
     steps excused, is the near-term bar; the wire-track rows (C12's) come after it, aligned with STG-14.
 
 Q7 was put before this page filed E381 to E383 and E390 to E393.
+
+The designer's Q8, answered by the operator:
+
+- **Q8 (put to the designer, answered by the operator):** "What is the plan decision kind's name? The vertical records a
+  decision under its kind lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."
+  - **Answered `PLAN`** (operator, 2026-11-26): "6 yeah that seems like jts less a choice and more do you like the
+    name? Which sounds good to me". E351 builds it (its note).

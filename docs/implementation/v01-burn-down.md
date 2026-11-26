@@ -28,8 +28,8 @@ is not done and still names a closed row.
 **What the guard cannot see.**
 - It reads a state only against its rows being open or closed. `open` and `in flight (#N)` are the same to it, and the
   pull request a state names is never read: a fix that merges without closing its row leaves its cluster not done, and
-  nothing fails. C7 and C8 go to `done` when E376 and E377 are closed, by the agreement between #603 and this page's
-  pull request, not by the guard.
+  nothing fails. C7 and C8 went to `done` when E376 and E377 were closed after #603 merged, by the agreement between #603 and this
+  page's pull request, not by the guard.
 - A category's clusters are checked only for existing, except a step's, where one must not be done: a counter's entry
   can go on naming a done cluster.
 - It reads a cluster's rows only from the backticked ids of its Rows cell: an id written without backticks, or
@@ -51,8 +51,8 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | **C4** `expect_rev` on every call | The revision check is project-wide: every typed tool requires `expect_rev` (`src/aew/surface/contract.py:103`) and the projection supplies it; the driver's hint filler appends it to every hinted command (`tests/helpers/vertical/hints.py:79`), and the Lead's retries strip it (`lead.py:558-563`) | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | in flight (#596) |
 | **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` lists every unfinished stage intent, the steering loop's running one included (`projection.py:233-243`). Its arguments also omit `choice` and `rationale`, which `resolve` requires (`contract.py:285-295`): refused `INVALID_ARGUMENTS`; those arguments are E388's, the row #597 filed | product, design | `E374`, `E388` | None | The other clusters | M, 1 to 2 PRs | E335 (done); Q9 | open |
 | **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters | S, 1 PR | Q1, answered yes for the `woken` wait: the amendment of `vertical-uat.md` §2 it approves goes in E375's pull request; Q10 for the BLOCKED stop | open |
-| **C7** The reopen blocks at the tool-consent screen | Only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`; `src/aew/capability/consent.py:401-405`) and waits out `src/aew/operator.py:28`'s timeout; the scripted operator answers only the resume code (`scripted_operator.py:316-321`). The counted takeover follows and interrupts the implementer | oracle | `E376` | No strict case; it clears the alpha's V2-forced line | The resume code counts under `pin_reentries` on Linux (`scripted_operator.py:320`; `Ledger.console_challenge`), reopen stays a G3 fallback (C12) | S, test-only | E335 for the alpha; Q5, answered: the consent screen is a setup fixture, recorded and never counted | in flight (#603) |
-| **C8** Not told where things stand in words | The scripted Lead reads only `structuredContent` (`lead.py:254`), and `_words` looks for fields `resume` does not carry (`lead.py:710-715`); the readable text is the MCP `content[0].text` (`src/aew/surface/mcp.py:240-247`). Unverified: whether the rendered resume names the Ticket | oracle, probably | `E377` | None | As C7 | Part of C7's PR | C7 | in flight (#603) |
+| **C7** The reopen blocks at the tool-consent screen | Only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`; `src/aew/capability/consent.py:401-405`) and waits out `src/aew/operator.py:28`'s timeout; the scripted operator answers only the resume code (`scripted_operator.py:316-321`). The counted takeover follows and interrupts the implementer | oracle | `E376` | No strict case; it clears the alpha's V2-forced line | The resume code counts under `pin_reentries` on Linux (`scripted_operator.py:320`; `Ledger.console_challenge`), reopen stays a G3 fallback (C12) | S, test-only | E335 for the alpha; Q5, answered: the consent screen is a setup fixture, recorded and never counted | done (#603) |
+| **C8** Not told where things stand in words | The scripted Lead reads only `structuredContent` (`lead.py:254`), and `_words` looks for fields `resume` does not carry (`lead.py:710-715`); the readable text is the MCP `content[0].text` (`src/aew/surface/mcp.py:240-247`). Unverified: whether the rendered resume names the Ticket | oracle, probably | `E377` | None | As C7 | Part of C7's PR | C7 | done (#603) |
 | **C9** A semantic conflict has no decision | At COMMIT_READY with the queue entry AWAITING_DISPOSITION, `_ticket_actions` emits no decision (`projection.py:246-299`); the only guidance is a requeue hint (`src/aew/engine/resume_ops.py:471-476`); after it `ticket_prepare` is offered and refused, and the Lead's gap key carries the revision (`lead.py:510-525`), so it loops | design, product, oracle | `E378` | None | Counters and fallbacks of the other clusters | M, 1 to 2 PRs | E335; Q2 | open |
 | **C10** A compatible rebuild asks again | PUBLISH binds the validated candidate (`projection.py:270-289`); the rebuilt, re-verified candidate raises a new PUBLISH, asked again | design | `E379` | V1 compatible-move (its verdict filters counters and fallbacks) | Nothing in that case | M, 1 PR | Q3; W09's approval binding | open |
 | **C11** After the evidence-mismatch refusal, nothing is offered | The gate's refusal for a check that changes a tracked file is BLOCKED with no decision (`projection.py:334-372`); the driver appends `--expect-rev` to a hinted read command too (`hints.py:79`), and that refusal counts | design, oracle | `E380` | None | Counters and fallbacks of the other clusters | M, 1 PR plus a driver line | E335; Q6 | open |
@@ -83,7 +83,7 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | counter | `seat_operations` | C13 | V2's same-shell extra and V4 |
 | counter | `lifecycle_steps` | none | not breached |
 | counter | `manifest_adopts` | C13 | V4 |
-| counter | `pin_reentries` | C7 | not breached; once C7 lands the resume code counts on Linux until REATTACH_LEAD lands (Q5's answer keeps it counted) |
+| counter | `pin_reentries` | C7 | not breached; since C7 (#603) the resume code counts on Linux until REATTACH_LEAD lands (Q5's answer keeps it counted) |
 | counter | `windows_console_challenges` | none | not breached on Linux; Windows is outside the enforced gate |
 | counter | `help_calls` | C5, C7, C9, C11 | the gap ladder's `work_show` with `explain: true` |
 | counter | `guessed_commands` | C3 | `ticket_draft` on an empty project |
@@ -140,8 +140,10 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
 **The alpha gate** is the near-term bar (the operator's answer to Q7). The re-measure's ledgers fail it on two lines, V1's decisions and V2-forced's takeover.
 1. **C15** (E385, done: #602 merged on 2026-11-26). It turns G3 #213 green and does not touch the alpha.
 2. **C1** (E335, done: #597). It clears the alpha's V1 line.
-3. **C7 + C8** (E376 and E377, one test-only pull request, #603). It clears the V2-forced line. **The alpha is then
-   expected to PASS**, which a rerun must confirm: the resume path has not yet been seen to reach a result. Q5's
+3. **C7 + C8** (E376 and E377, done: #603). It clears the V2-forced line. **The alpha is then
+   expected to PASS**, which a rerun must confirm. #603's own run (`637bc652`) saw the five fresh-terminal reopens reach E330's seat
+   resume, with the implementer's run left running and no V2-forced takeover; the alpha then still failed on V1's line
+   (C1), since cleared by #597. Q5's
    answer settles its counting: the consent screen is a setup fixture, and the resume code counts under
    `pin_reentries`.
 

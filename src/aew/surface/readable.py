@@ -168,10 +168,10 @@ def _call(name: Any, arguments: Any) -> str:
 
 def _next(result: dict[str, Any]) -> str:
     """The one next step: what the engine says follows this call, or what the projection offers, in order a decision
-    that can be made now, an action that moves the work, a wait, the engine's own hint, or what blocks it. Whose the
-    decision is comes from its ``owner`` (register E335; the quick check of #597, m1): the Lead is told to decide
-    only its own, and another's is named as theirs, with the call that carries it out. A call or a printed command is
-    never shortened: it must run as printed."""
+    that can be made now, an action that moves the work (never a primitive that carries a judgment, ``_weighed``), a
+    wait, the engine's own hint, or what blocks it. Whose the decision is comes from its ``owner`` (register E335; the
+    quick check of #597, m1): the Lead is told to decide only its own, and another's is named as theirs, with the call
+    that carries it out. A call or a printed command is never shortened: it must run as printed."""
     projection = _projection(result)
     scope = _scope(result)
     if _payload(result).get("next_action"):
@@ -184,7 +184,7 @@ def _next(result: dict[str, Any]) -> str:
             if decision.get("tool"):
                 return what + how + _whole(_call(decision["tool"], decision.get("arguments")))
             return what + how + _whole(_command(decision["cli_fallback"])) if decision.get("cli_fallback") else what
-    offered = [a for a in projection.get("actions") or [] if a.get("availability") == "AVAILABLE"]
+    offered = [a for a in projection.get("actions") or [] if a.get("availability") == "AVAILABLE" and not _weighed(a)]
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
             [a for a in offered if a.get("kind") == "wait"]:
         if action.get("woken"):
@@ -200,6 +200,12 @@ def _next(result: dict[str, Any]) -> str:
     for blocker in projection.get("blockers") or []:
         return _one_line(f"blocked{scope}: {blocker.get('code')}: {blocker.get('message')}")
     return f"next{scope}: nothing offered"
+
+
+def _weighed(action: dict[str, Any]) -> bool:
+    """A primitive that carries the Lead's judgment (a regression or a return, with its reason; register E233) is
+    offered, never the one next step: the engine's hint is, which says what is settled first and names the command."""
+    return action.get("kind") == "primitive" and action.get("operation_class") == "JUDGMENT_BEARING"
 
 
 def _scope(result: dict[str, Any]) -> str:

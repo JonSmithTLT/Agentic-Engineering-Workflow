@@ -9,6 +9,7 @@ flowchart LR
         proc_aew_worker_run["aew (worker run)"]
         proc_aew_dashboard_serve["aew dashboard serve"]
         proc_aew_lead_mcp["aew lead mcp"]
+        proc_aew_read["aew read"]
         proc_aew_stg02_server["aew.stg02.server"]
     end
     subgraph kind_store_writer["kind: store_writer"]
@@ -110,6 +111,7 @@ flowchart LR
 | `aew (worker run)` | non_writer | the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, `check run` and `submit` go through the run's bridge, whose supervisor holds the credential and the lock; nothing else in that process may take the lock |
 | `aew dashboard serve` | non_writer | the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock |
 | `aew lead mcp` | non_writer | the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential |
+| `aew read` | non_writer | the operator's outage reader uses the committed store without a lock, recovery or a running service |
 | `aew.harness.supervisor` | store_writer | a run's supervisor: holds the run's credential and commits through the engine |
 | `aew.kit.__main__` | store_writer | the operator's seeded kit initializes and maps its own repository |
 | `aew.stg02.server` | non_writer | the STG-02 slice's producer: it reads a project's committed state lock-free (dashboard.reader) and writes only its own state directory, never the store |

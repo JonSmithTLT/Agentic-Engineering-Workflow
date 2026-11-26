@@ -5464,34 +5464,6 @@ sections:
       operator''s answer to Q10, which the answer to Q1 does not cover'
     Notes: Filed by the V-01 burn-down PR of 2026-11-26
 
-  - '#': E376
-    Work: 'V2''s reopen reaches the seat resume: the vertical''s offline world settles AEW''s tool offers before the first
-      open, as a setup fixture that is recorded and never counted (the operator''s answer to the plan''s Q5); the seat-resume
-      code still counts under `pin_reentries`. Today only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`),
-      so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`, `_tools_before_the_tui`;
-      `src/aew/capability/consent.py:401-405`) for a needed tool missing on the host; the screen waits on the terminal for
-      `src/aew/operator.py:28`''s timeout, the driver''s own session bound, and the scripted operator answers only the seat-resume
-      code (`scripted_operator.py:316-321`). The takeover fallback then interrupts the implementer, so E330''s resume (#447)
-      has not been exercised by any V2 case'
-    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C7), from the vertical''s re-measure of 2026-11-26
-      at `3640b585`: every fresh-terminal reopen (V2''s four cases and the forced one) went silent at the consent screen,
-      then took the counted takeover'
-    When: '**V-01**, the alpha track of the burn-down, after E335: with E335 it is expected to make the alpha gate pass,
-      which a rerun confirms. The operator answered Q5 on 2026-11-26: a setup fixture, recorded but not counted ("The vertical
-      was meant to fix ux issues. Aew saying a critical item is missing isnt a ux failure its common sense")'
-    Notes: Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed, with E377 in the same
-      pull request
-
-  - '#': E377
-    Work: 'The scripted Lead''s first words are the readable text of `resume`: the MCP result''s `content[0].text` (`src/aew/surface/mcp.py:240-247`,
-      `readable.render`), not only `structuredContent` (`tests/helpers/vertical/lead.py:254`), whose fields `_words` looks
-      for (`:710-715`) and does not find. If the rendered resume does not say where T-0001 stands, that part is a product
-      gap, recorded on this row'
-    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C8), from the vertical''s re-measure of 2026-11-26
-      at `3640b585`: V2''s "told where things stand in words" read nothing in every V2 case'
-    When: '**V-01**, the alpha track of the burn-down, in E376''s pull request'
-    Notes: Filed by the V-01 burn-down PR of 2026-11-26
-
   - '#': E378
     Work: 'A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED),
       with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today
@@ -6809,6 +6781,26 @@ sections:
     By: '#594: the archetype''s text is scope-neutral, `knowledge.context._scope_duties` adds each scope''s duties only
       where the pack delivers their input, and `test_pack_truth`''s scope-fit guard holds it. Parent scope, outside the
       row, gained only the change duty for the child diffs its pack carries, on #594''s review (m1) (`notes.d/E366/`)'
+
+  - '#': E376
+    Was: 'V2''s reopen reaches the seat resume: the vertical''s offline world settles AEW''s tool offers before the first
+      open, as a setup fixture that is recorded and never counted (the operator''s answer to the plan''s Q5); the seat-resume
+      code still counts under `pin_reentries` (cluster C7 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)'
+    Closed: '2026-11-26'
+    By: 'PR #603 (`1b854d6b`): `scripted_operator.settle_tool_offers` answers the consent screen before the first open from
+      the owner (`consent.ask`), each decline recorded as a `setup_fixture` and never counted, and `vertical-uat.md`''s
+      setup boundary quotes the ruling. In its vertical run at `637bc652` the five fresh-terminal reopens reached E330''s
+      seat resume with no takeover; they still fail strict on other clusters, among them C12''s fallbacks and C1 to C4''s
+      counters. Whether the alpha gate now passes is for a rerun of the vertical to confirm'
+
+  - '#': E377
+    Was: 'The scripted Lead''s first words are the readable text of `resume`: the MCP result''s `content[0].text`, not only
+      `structuredContent` (cluster C8 of the V-01 burn-down)'
+    Closed: '2026-11-26'
+    By: 'PR #603 (`1b854d6b`): the scripted Lead keeps the MCP `content` text and takes its first words from the readable
+      head, never the JSON. The rendered resume names T-0001 through its run line in the vertical world, so no product gap
+      was found; a Ticket assigned with no harness run is named only through its runs or decisions, recorded on #603 as
+      an observation'
 
   - '#': E385
     Was: 'The #213 reconstruction sees the contained TUI''s diagnostics: its children directory, which the autopsy names

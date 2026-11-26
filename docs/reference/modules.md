@@ -222,6 +222,7 @@ Imports from the groups:
 - `aew.knowledge`
 - `aew.maps`
 - `aew.policy`
+- `aew.stg02`
 - `aew.surface`
 
 ### `aew.cli`
@@ -250,6 +251,7 @@ None.
 - `aew.cli.message_commands`
 - `aew.cli.notify_commands`
 - `aew.cli.operator_commands`
+- `aew.cli.read_commands`
 - `aew.cli.settings_commands`
 - `aew.cli.usage_commands`
 - `aew.cli.work_commands`
@@ -366,6 +368,13 @@ None.
 - `aew.harness.operator_endpoint`
 - `aew.harness.operator_window`
 - `aew.operator`
+
+### `aew.cli.read_commands`
+
+- `aew.cli.main`
+- `aew.errors`
+- `aew.stg02.outage`
+- `aew.stg02.wire`
 
 ### `aew.cli.settings_commands`
 
@@ -2379,6 +2388,7 @@ Imports from the groups:
 - `aew.dashboard`
 - `aew.engine`
 - `aew.harness`
+- `aew.knowledge`
 
 ### `aew.stg02`
 
@@ -2404,6 +2414,50 @@ None.
 ### `aew.stg02.ledger`
 
 - `aew.stg02.wire`
+
+### `aew.stg02.outage`
+
+- `aew.engine.base`
+- `aew.engine.store`
+- `aew.errors`
+- `aew.harness.operator_client`
+- `aew.knowledge.manifest`
+- `aew.process_kind`
+- `aew.stg02.outage_host`
+- `aew.stg02.outage_store`
+- `aew.stg02.wire`
+
+### `aew.stg02.outage_host`
+
+- `aew`
+- `aew.g3client`
+- `aew.g3standing`
+- `aew.hoststate`
+- `aew.stg02.wire`
+
+### `aew.stg02.outage_store`
+
+- `aew.dashboard.projections`
+- `aew.dashboard.reader`
+- `aew.engine.api`
+- `aew.engine.archive_ops`
+- `aew.engine.base`
+- `aew.engine.gates`
+- `aew.engine.outbox`
+- `aew.engine.store`
+- `aew.errors`
+- `aew.harness.broker_liveness`
+- `aew.harness.contract`
+- `aew.harness.event_spool`
+- `aew.harness.notify`
+- `aew.harness.runlog`
+- `aew.knowledge.manifest`
+- `aew.stg02.outage`
+- `aew.stg02.outage_host`
+- `aew.stg02.reads`
+- `aew.stg02.wire`
+- `aew.stg02.world`
+- `aew.util`
 
 ### `aew.stg02.reads`
 

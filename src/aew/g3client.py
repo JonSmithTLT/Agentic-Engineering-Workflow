@@ -26,6 +26,7 @@ from __future__ import annotations
 import copy
 import http.client
 import json
+import os
 import secrets
 import socket
 import sys
@@ -64,6 +65,13 @@ CONSUME_RESULTS = ("CONSUMED", "ORIGIN_NOT_ESTABLISHED", "CONSENT_ISSUER_UNVERIF
                    "CONSENT_SCOPE_MISMATCH", "CONSENT_ALREADY_USED")
 PROBE_TIMEOUT_S = 5  # the probe's one read: it asks for an approval no one made, which the service answers at once
 PROBE_REF = "g3:approval:probe"  # a well-formed ref (the wire's Ref) that names no approval: the answer is a 404
+
+
+def approval_records_dir() -> Path:
+    """The G3 client's per-host approval record directory (A-44 BOY-05.a)."""
+    setting = os.environ.get("XDG_STATE_HOME", "")
+    state = Path(setting) if Path(setting).is_absolute() else Path.home() / ".local" / "state"
+    return state / "aew" / "g3" / "requests"
 
 
 # ------------------------------------------------------------------------------------------------ the set

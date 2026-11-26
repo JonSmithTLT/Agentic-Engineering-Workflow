@@ -171,10 +171,10 @@ each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380, Q8 on 
 (`python tools/register.py show <row>`).
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
-  - **Answered yes** (operator, 2026-11-26): "That honestly just seems like a bug and isnt how aew works now." With
-    steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. That part of
-    C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which E375's
-    pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
+  - **Answered yes** (operator, 2026-11-26): "For q1 yes. That honestly just seems like a bug and sint how aew works now."
+    With steering on, the scripted Lead ends its turn on a wait marked `woken` instead of calling `harness_wait`. That
+    part of C6 (E375) is an oracle fix, and the operator approves the matching amendment of `vertical-uat.md` §2, which
+    E375's pull request makes. The answer covers the wait Q1 asked about and nothing else: E375's other part is Q10's.
 - **Q10 (operator; vertical-uat.md §3, "Steering on"), open, raised at this page's review:** with steering on, does a
   BLOCKED loop stop count as the loop having declined only once its blocker is still present after the run's end, and
   not at once, as the scripted Lead counts it today? It decides whether the Lead's push after a self-clearing stop is

@@ -3998,7 +3998,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **V-01**, the strict track of the burn-down, after E335 (the owner decides who fills the inputs); whether the loop's running stage is offered at all waits for the designer's answer to the plan's Q9
 
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Narrowed at its review (m2) to the loop's running stage: the arguments of an offered RESOLVE_STAGE are E388's (#597)
+**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Narrowed at its review (m2) to the loop's running stage: the arguments of an offered RESOLVE_STAGE are E388's (#597). Owed at the merge: whichever of #597 and #601 merges second adds `E388` to C5's Rows cell in `docs/implementation/v01-burn-down.md`, which nothing checks
 
 *Later notes: `notes.d/E374/`, oldest first (`python tools/register.py show E374`).*
 
@@ -4008,7 +4008,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C6), from the vertical's re-measure of 2026-11-26 at `3640b585`: `mechanical_calls` in each steering-on V1 and V2 case
 
-**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("That honestly just seems like a bug and isnt how aew works now"). Q1 asked only about the wait marked `woken`, so the answer approves that part and the matching amendment of `vertical-uat.md` §2's Lead policy, which this row's pull request makes with the code. The BLOCKED-stop part and any change to §3 wait for the operator's answer to Q10, which the answer to Q1 does not cover
+**When:** **V-01**, the strict track of the burn-down, beside E338: an oracle fix. The operator answered the plan's Q1 yes on 2026-11-26 ("For q1 yes. That honestly just seems like a bug and sint how aew works now."). Q1 asked only about the wait marked `woken`, so the answer approves that part and the matching amendment of `vertical-uat.md` §2's Lead policy, which this row's pull request makes with the code. The BLOCKED-stop part and any change to §3 wait for the operator's answer to Q10, which the answer to Q1 does not cover
 
 **Notes:** Filed by the V-01 burn-down PR of 2026-11-26
 

@@ -56,7 +56,10 @@ def everything(role: str) -> ctx.PackInputs:
                               "goal_backwards": ["the story works"]}],
                   inherited={"non_waivable": ["review"], "floor": 1},
                   inputs=[{"id": "R-1", "kind": "research_record", "from": "T-0", "freshness": "FRESH",
-                           "basis": "same tree", "summary": ["a finding"]}],
+                           "basis": "same tree", "summary": ["a finding"],
+                           # what the record left open (E198): a section of its own for a role that produces the work
+                           "open": ctx.open_items({"research": {"uncertainties": ["is it stable?", "which version?"],
+                                                                "constraints": ["needs 3.11"]}})}],
                   failure_evidence={"id": "V-1", "result": "fail", "claims": [
                       {"type": "contract", "claim": "c", "result": "fail"}], "suspected_cause": "off by one"},
                   card={"display_name": "Reviewer", "role": role, "version": 1, "extends": role,
@@ -206,6 +209,9 @@ def random_inputs(rng: random.Random) -> ctx.PackInputs:
                  for h in p.history[:rng.randint(0, 3)]]
     p.check_results = p.check_results * rng.randint(0, 30)
     p.open_findings = p.open_findings * rng.randint(0, 6)
+    p.inputs = [dict(i, open=ctx.open_items({"research": {
+        "uncertainties": [f"doubt {'y' * rng.randint(0, 300)}"] * rng.randint(0, 14),
+        "constraints": ["a limit"] * rng.randint(0, 3)}})) for i in p.inputs]
     return p
 
 

@@ -108,6 +108,12 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Acceptance evidence / next action:** An implementer, or the executor of a non-mutating Ticket, dispatched in the place of one that ended without completing gets a "Recovery reference" section that AEW assembles at dispatch and pins on the invocation: the predecessor, its status and recorded reason, its evidence ids (never a verdict), and for an implementer the workspace's paths against its base, bounded and labelled reference data. A reviewer, a verifier and a plan assessor never get it (`tests/integration/test_recovery_section.py`, `tests/unit/test_pack_truth.py`). It is always on when there is a predecessor (operator, 2026-11-26). Its effect on a worker is not measured; widening it to evaluators awaits the operator
 
+### What the consumed inputs left open (register E198, in part)
+
+**Status:** Implemented (the follow-on; the row's M4 inputs and the `open_questions` pin: not built)
+
+**Acceptance evidence / next action:** An implementer, or the executor of a non-mutating Ticket, that consumes a record holding `unresolved_questions`, `uncertainties` or `constraints` gets an "Open questions and known limits recorded in the consumed inputs" section after its consumed inputs: each field under its schema name, per record, bounded (10 items, 240 characters, each cut counted), every item one quoted line, labelled as what the producing agent recorded and AEW has not verified or answered. A pack whose inputs hold none is unchanged, and no reviewer, verifier or plan assessor gets the section (`tests/integration/test_open_questions_in_packs.py`, `tests/unit/test_pack_truth.py`). Its effect on a worker is not measured; widening it to evaluators is the operator's decision.
+
 ### Read-only concurrency
 
 **Status:** Implemented (observation workspaces)

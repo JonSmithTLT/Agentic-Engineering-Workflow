@@ -75,10 +75,14 @@ class ContextPacks:
         return chain, inherited
 
     def _input_summaries(self, inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Each consumed input with what its record holds: the summary lines, and under ``open`` what its author
+        recorded as unresolved, uncertain or a constraint (``ctxmod.open_items``; register E198), absent when it
+        recorded none, so such a pack is what it was."""
         out = []
         for i in inputs:
             ev = next((e for e in E.scan(self.k.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
             summary: list[str] = []
+            left_open = ctxmod.open_items(ev) if ev else []
             if ev:
                 d, r, pr = ev.get("discovery") or {}, ev.get("research") or {}, ev.get("proposal") or {}
                 summary += [f"fact: {f['statement']}" for f in d.get("facts", [])]
@@ -88,7 +92,7 @@ class ContextPacks:
                             for s in r.get("subjects", [])]
                 if pr:
                     summary += [f"objective: {pr.get('objective')}", f"approach: {pr.get('approach')}"]
-            out.append({**i, "summary": summary})
+            out.append({**i, "summary": summary, **({"open": left_open} if left_open else {})})
         return out
 
     def _m2_pack_extras(self, state: dict[str, Any], inv: dict[str, Any], unit: dict[str, Any]) -> dict[str, Any]:

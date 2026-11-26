@@ -34,6 +34,10 @@ def forward(name: str, arguments: Any, *, ingress: str, profile: str) -> dict[st
         reply = bridge.call("lead.tool", {"name": name, "arguments": json.dumps(arguments), "ingress": ingress,
                                           "profile": profile}, env_names=ENV_NAMES)
     except (errors.StaleAuthority, errors.PermissionDenied, errors.UsageError) as exc:
+        if exc.details.get("reason") == bridge.REQUEST_TOO_LARGE:
+            # The caller's own input, refused before anything was sent: the broker is reachable (#610's review, M1)
+            raise AdapterInputError("INVALID_ARGUMENTS", f"{name}: {exc.message}", reason=bridge.REQUEST_TOO_LARGE,
+                                    size=exc.details["size"], limit=exc.details["limit"]) from None
         # Not reached, refused the key, or no bridge at all: the broker said nothing about AEW's state.
         raise AdapterInputError("BROKER_UNREACHABLE", f"the Lead broker could not be reached: {exc.message}",
                                 cause=exc.code) from None

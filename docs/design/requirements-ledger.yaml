@@ -205,6 +205,7 @@ sources:
       "Context": framing (the four consumers and what the log already records); requirements are the decisions
       "Checks before relying on this ADR": reproduction notes for the review workspace's probes, which are not in this repository; the implementation re-measures under OBX-36 to OBX-41
       "Note of 2026-10-10: coordination messages are outside the outbox (F9-A)": a cross-reference; the rule (an append commits nothing, derives no event and only touches the wake) is ADR-0017's D1, CMG-02 and CMG-03
+      "Note of 2026-11-26: the operator's confirmation a commit uses (E350)": a dated note adding one kind to OBX-06's operation-declared list; the confirmation it records is register E350's (the operator's ruling of 2026-11-26), not a requirement of this ADR
   - prefix: KST
     path: docs/implementation/adr/0013-knowledge-storage-placement.md
     role: adr

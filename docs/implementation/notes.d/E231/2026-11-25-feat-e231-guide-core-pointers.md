@@ -9,8 +9,9 @@ contained Lead, so it adds no tool and no bytes to the tool list.
 **Measured with the pool gate's own render**, at main 5649d832, where E160's plan-assessment line, now in the core,
 is part of the guide. With messaging on, the guide went from 17,445 B to 9,123 B, a saving of 8,322 B. With messaging
 off, it went from 17,267 B to 8,903 B. Under the pool's rule, the baseline's guide bytes dropped from 16,412 B to
-8,090 B and the cap from 42,971 B to 34,649 B. The operator approves that cap, or records an allocation from the
-saving.
+8,090 B, and the derived ceiling to 34,649 B. The operator set the cap at 40,000 B on 2026-11-26, as an anti-bloat
+guard; the 5,351 B between the two is the record's `operator_reserve`, which only an operator-attributed reserve may
+hold.
 
 **The failure criterion's counters.** Each line of the broker's typed-tool log now names its Lead session and
 generation. The same log also holds a line for each `aew guide` read and each `--help` lookup the Lead's shell makes:

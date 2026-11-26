@@ -48,11 +48,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E235, H-1); operator (H-1's live re-probe and the real default-flow run)
+**Who:** Lead (H-1); operator (H-1's live re-probe and the real default-flow run)
 
 **Now:** 6
 
-**Own slices left:** 2 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
+**Own slices left:** 1 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
 
@@ -326,11 +326,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E231's next part, E233, E241, E367, E368)
+**Who:** Lead (E231's next part, E233, E367, E368)
 
 **Now:** 44
 
-**Own slices left:** 5 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: four of E133's eleven dead ends are left, each waiting on a decision (the plan route, the wait at RUNNING, the queue disposition), and a project with no execution profile offers no dispatch. The lands guard is E233's other pull request, in the row's notes (E233); The worker route's size check (E241); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator, 2026-11-25) (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
+**Own slices left:** 4 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: four of E133's eleven dead ends are left, each waiting on a decision (the plan route, the wait at RUNNING, the queue disposition), and a project with no execution profile offers no dispatch. The lands guard is E233's other pull request, in the row's notes (E233); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator, 2026-11-25) (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
 

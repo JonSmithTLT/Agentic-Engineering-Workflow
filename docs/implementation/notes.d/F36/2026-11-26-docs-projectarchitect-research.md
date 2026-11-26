@@ -1,0 +1,19 @@
+**Cited, not implemented: R0's finding on this row, a replacement worker is told nothing of its predecessor.**
+[R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) of the ProjectArchitect research (E389) interrupted
+an implementer that had left staged, unstaged and untracked work, reconciled the Ticket and dispatched a replacement.
+The replacement's pack was identical to its predecessor's apart from two lines, the invocation id and the inputs
+fingerprint. Nothing in it said that a predecessor existed, how it ended, or what it left in the workspace (R0's K2 and
+K7, at `eece01e5`). The Lead is told only to "inspect workspace/artifacts and reconcile".
+
+R0's candidate fix is D1: a short recovery section that AEW assembles in a replacement invocation's pack. It names the
+predecessor invocation, how it ended and why, its evidence ids, and the workspace's paths changed against the base and
+untracked at dispatch, labelled as an observation and never a claim. It is a narrow slice of this row's recitation
+("changed files against the planned scope").
+
+The operator's view, 2026-11-26: "There is benefit to starting fresh cintext workers. That case above does not seem to
+be one kf them. Aew kind of forces replacement or follow on workers to kind of rediscover whats already been done which
+ks not optimal". The operator was then asked whether to build the recovery section (D1) now as a direct fix, and
+answered the same day: "Yes recovery for replacement workers is a defect in current
+aew. Or i guess the mkre correct phrasing is it is an oversight". So D1 is built directly, as a slice of this row, in
+its own pull request. A measurement of it on the refined F19 (E389's proposal) would show how much it helps; no
+measurement decides whether it is built. This note builds nothing itself.

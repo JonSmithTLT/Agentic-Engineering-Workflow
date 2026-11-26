@@ -469,7 +469,7 @@ def test_a_lead_owned_decision_with_no_typed_tool_runs_its_fallback_and_is_never
     shelled: list[list[str]] = []
     lead.lead.shell = lambda argv, **kw: shelled.append(argv) or {"ok": True}
     lead.lead.say = lambda *a, **kw: None
-    cli = ["integrate", "reconcile", "T-0001", "--expect-rev", "4"]
+    cli = ["integrate", "reconcile", "T-0001"]
     _ticking(lead, [{"decision": "FINISH_PUBLISH", "owner": "lead", "tool": None, "arguments": None,
                      "cli_fallback": cli}])
     assert lead.asked == [] and shelled == [cli]

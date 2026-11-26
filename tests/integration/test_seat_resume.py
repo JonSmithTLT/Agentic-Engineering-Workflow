@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -263,6 +264,8 @@ def test_resumed_session_refreshes_presentation_after_the_new_seats_switch_offer
     from aew.harness.opencode import projection
 
     project, engine, old, prompts = acquired
+    set_messaging(project.root, None)
+    project.adopt_policy("start with no messaging switch before the offer")
     monkeypatch.setattr(procs, "run_session_tree", lambda *_, **__: (0, "clean"))
     observed = []
 
@@ -295,13 +298,18 @@ def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monk
     from aew.harness.opencode import projection
 
     project, engine, _, _ = acquired
-    captured = []
+    set_messaging(project.root, None)
+    project.adopt_policy("start with no messaging switch before the offer")
+    captured, prompts = [], []
 
-    def offer(token):
-        project.token = token
-        if messaging:
-            set_messaging(project.root, "enabled")
-            project.adopt_policy("enable messaging at the real lead.run offer boundary")
+    def answer(prompt, *, timeout):
+        prompts.append(prompt)
+        code = re.search(r"Type ([0-9A-F]{6}) and Enter to switch to enabled", prompt)
+        assert code is not None and "Lead–worker messaging" in prompt
+        return code[1] if messaging else ""
+
+    monkeypatch.setattr(operator, "discard_typed_ahead", lambda: None)
+    monkeypatch.setattr(operator, "ask", answer)
 
     class Harness:
         def __init__(self, *_, **__):
@@ -332,12 +340,11 @@ def test_lead_run_passes_post_offer_presentation_to_each_tui_path(acquired, monk
     monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **_: None)
     monkeypatch.setattr(lead, "_unrelayed", lambda _: None)
     monkeypatch.setattr(lead, "no_provider_line", lambda *_: None)
-    monkeypatch.setattr(lead, "_switch_offers", lambda _: SimpleNamespace(apply=offer))
     monkeypatch.setattr(lead, "session_services", lambda *_, **__: contextlib.nullcontext(lambda: None))
     monkeypatch.setattr(procs, "run_session_tree", run_tree)
     result = lead.run(engine, acquire=True, session_label="new", keep_seat=False, provider_env=[], extra_args=[],
                       print_config=False)
-    assert result["ok"] and len(captured) == 1
+    assert result["ok"] and len(captured) == len(prompts) == 1
     system = json.loads(captured[0]["OPENCODE_CONFIG_CONTENT"])["agents"][projection.LEAD_AGENT]["system"]
     assert ("`worker_message`" in system) is messaging
     assert ("`message_send`" in system) is messaging

@@ -335,6 +335,8 @@ WAITS: dict[str, dict[str, Any]] = {
     "coverage": {"coverage": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}},
     "validation_coverage": {"validation_coverage": {
         "T-1": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}}},
+    "post_report_messages": {"post_report_message_pending": [
+        {"id": "MSG-INV-1-2", "when": "turn-end", "state": "undelivered"}]},
 }
 SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", "project", "long_stop", *WAITS]
 

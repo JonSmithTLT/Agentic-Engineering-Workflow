@@ -1,0 +1,65 @@
+# AEW execution policy (ADR-0010): which harness, provider, model and effort run each invocation.
+# It is resolved once at dispatch and pinned on the invocation, so editing this file never changes an
+# in-flight invocation. There is no built-in provider or model: until `configured: true`, invocations
+# are dispatched without a pinned execution and `aew harness launch` refuses them. The Lead can still
+# pin one dispatch explicitly with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
+#
+# Secrets never go in this file. `provider_env` lists only the NAMES of environment variables that the
+# harness server process needs (for example a provider API key); the agent's own shell never gets them.
+#
+# Routing, most specific first: cards (role card id), classes (risk class "0".."4"), archetypes
+# (implementer, reviewer, verifier, investigator, researcher, planner), then default. `effort` is the
+# harness's reasoning-effort variant. Write `model` exactly as the harness lists it (`provider/model`); `provider` may
+# then be left out. A model id whose prefix names another provider than `provider` is refused, naming what to write.
+# `aew doctor` shows each profile's model as the harness will be given it.
+#
+# Example (illustrative ids):
+#   configured: true
+#   harness: opencode
+#   profiles:
+#     standard: {model: anthropic/claude-sonnet-5, effort: high}
+#     light: {provider: anthropic, model: claude-haiku-4-5, effort: low}
+#   routing:
+#     default: standard
+#     archetypes: {reviewer: standard}
+#     classes: {"0": light}
+#     cards: {}
+#   provider_env: [ANTHROPIC_API_KEY]
+#
+# Containment (Linux): every harness run and the checks it runs execute in a bubblewrap sandbox that can write
+# only the run's own roots. `containment: {mode: required}` is the default and refuses a launch whose sandbox
+# cannot be established; `mode: allow_weaker` launches it labelled workdir_separation_only. `writable` adds
+# directories every run may write (for example a shared build cache); `hide` masks further secrets.
+schema: aew/execution/v1
+configured: false
+harness: opencode
+profiles: {}
+routing:
+  default: null
+  archetypes: {}
+  classes: {}
+  cards: {}
+provider_env: []
+# Steering (crawl/walk/run): crawl is the standing mode from `aew init`, which pins this policy (a project made before
+# this template: from the adopt that pins it, or its migration to v2). Under crawl the loop runs no step itself: it
+# stops at each step it could take, and the Lead takes that step itself. Until confirmation arrives (E7c), such a stop
+# is held: status shows it, but the notifier below does not, and the Lead is not woken for it. The notifier shows each
+# other stop once. Unattended Run is the operator's to switch on, for one Lead generation, with
+# `aew lead mode raise run` approved at the operator endpoint. It needs the notifier below, and a `deadline_s` on
+# every profile routing can pick (first configuration writes one with its model, provisional until a measured run
+# replaces it, with `deadline_scope: run`: it bounds only runs started under Run).
+steering:
+  mode: crawl
+# The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop
+# notification (notify-send on Linux, a toast on Windows). With no desktop session it is unavailable, and Run refuses
+# it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
+notify:
+  command: [aew, notify, desktop]
+# Project maps (ADR-0015): each worker's pack carries a bounded, fenced slice of the repository's structural map, made
+# from its Git objects, as navigation and never authority, and the Lead's resume view shows the map's freshness. "off"
+# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps. `reads`
+# offers each worker run `aew map show` and `aew map search` through its run's bridge, answered at the run's own base;
+# "off" leaves the worker's prompt and operations as in a project without them.
+maps:
+  pack_slices: structural
+  reads: structural

@@ -102,7 +102,7 @@ class EntryScan(ast.NodeVisitor):
                         self._record(expr, node.lineno, checked=checked)
                 else:
                     self.unreadable.add((self.file, node.lineno, ast.unparse(node)))
-            if name == "_write" and self.checked_revision and self.function:
+            if name in {"_write", "_record_lead"} and self.checked_revision and self.function:
                 self.entries.add(self.function.replace("_", ".", 1))
         self.generic_visit(node)
 

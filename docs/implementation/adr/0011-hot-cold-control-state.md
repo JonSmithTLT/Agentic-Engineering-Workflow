@@ -258,6 +258,16 @@ validates, pins its thread by path and hash (`evidence_pins`), as an evidence re
 --full` covers the thread's bytes. A seal record from a commit that never landed is an unreferenced object, benign as
 above.
 
+## Amendment of 2026-11-25: bounded lost-message recovery in resume
+
+The [adopted MS5b recovery](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b)
+adds one bounded exception to H4. A messaging-on project, or a project that retains a messaging thread, can inspect its
+newest 500 committed transitions for ending-invocation seals. The read stops at seven days or when the 20-entry
+projection has been filled. It reads pinned seal records without sweeping evidence or changing any state. The upper
+bound is independent of lifetime history, but latency can rise as the recent window fills, even with an empty result.
+The explicit `aew message lost` takes a larger bound of 10,000 commits for the same seven days. All other H4 constraints
+still apply.
+
 ## Alternatives considered
 
 - **Deduplicate pinned role cards** (store each card version once). This is smaller in effect (about 14%) and does not address growth. It may be part of the implementation.

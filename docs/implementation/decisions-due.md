@@ -25,6 +25,62 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E351
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q8: "What is the plan decision kind's name? The vertical records a decision under its kind lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."
+
+**Blocks:** -
+
+### E373
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q4: "On a project with no open Ticket, should the projection offer `ticket_draft`, with its judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"
+
+**Blocks:** -
+
+### E374
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q9: "For a stage the steering loop is running, is that decision offered at all, or is it the mechanism's until the loop stops?" E335's branch makes RESOLVE_STAGE the Lead's.
+
+**Blocks:** -
+
+### E375
+
+**Due by:** V-01 · **Owner:** operator · **Needs:** decision
+
+**What:** The V-01 burn-down's Q10, which the operator's answer to Q1 does not cover: with steering on, whether a BLOCKED loop stop counts as the loop having declined only once its blocker is still present after the run's end, and not at once as the scripted Lead counts it today (vertical-uat.md §3, "Steering on": "only when the loop declined")
+
+**Blocks:** -
+
+### E378
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q2: "When an integration candidate conflicts with the moved head and its queue entry awaits disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and through which typed route?"
+
+**Blocks:** -
+
+### E379
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q3: "Does the operator's publish approval cover a compatible rebuild of the same change on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further question. The projection asks again. The operator owns the threshold.
+
+**Blocks:** -
+
+### E380
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which decision does the projection offer, and is it the operator's?"
+
+**Blocks:** -
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design

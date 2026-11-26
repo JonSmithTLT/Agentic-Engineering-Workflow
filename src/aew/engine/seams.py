@@ -148,9 +148,10 @@ class GuardTable:
 GATE_CONTEXT = "gate_context"  # (state, work_id) -> the unit's gate context
 INVOKE = "invoke"  # dispatch a bounded invocation for the unit (keyword arguments of ``invoke create``)
 INGEST = "ingest"  # the Lead ingests a review or verification report (``kind``: review | verification)
+INGEST_QUERY = "ingest_query"  # the read-only guard for the same operation
 CLASSIFY_VERIFICATION = "classify_verification"  # the Lead classifies a failed verification
 NEXT_ACTIONS = "next_actions"  # (state, work_id, unit) -> the unit's next actions for ``resume`` and ``status``
-KIND_OPERATIONS = (GATE_CONTEXT, INVOKE, INGEST, CLASSIFY_VERIFICATION, NEXT_ACTIONS)
+KIND_OPERATIONS = (GATE_CONTEXT, INVOKE, INGEST, INGEST_QUERY, CLASSIFY_VERIFICATION, NEXT_ACTIONS)
 
 
 class KindRegistration(NamedTuple):

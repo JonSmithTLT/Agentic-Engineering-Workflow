@@ -196,7 +196,8 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("invoke show", _LOCAL),
     ("history links", _LOCAL), ("history list", _LOCAL), ("history log", _LOCAL), ("history show", _LOCAL),
     ("history search", _LOCAL + " (its derived index is rebuilt privately)"),
-    ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message thread", _LOCAL),
+    ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message lost", _LOCAL),
+    ("message thread", _LOCAL),
     ("plan lint", _LOCAL), ("role list", _LOCAL), ("role show", _LOCAL), ("role validate", _LOCAL),
     ("settings show", _LOCAL), ("work list", _LOCAL), ("work ready", _LOCAL), ("work roles", _LOCAL),
     ("work show", _LOCAL), ("work tree", _LOCAL),
@@ -1056,7 +1057,7 @@ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     cwd = Path(args.cwd or os.getcwd()).resolve()
     sent, stdin = _as_bytes(argv, args, cwd)
     request = {"argv": sent, "cwd": str(cwd), "stdin": stdin}
-    size = len(json.dumps({"op": "lead.cli", "args": request}).encode("utf-8"))  # as bridge.call sends it, escapes too
+    size = len(bridge.request_bytes("lead.cli", request))  # as bridge.call sends it, escapes too
     if size > bridge.MAX_REQUEST:
         raise errors.UsageError(f"this command and its text make a {size}-byte request, and a Lead session's broker "
                                 f"takes at most {bridge.MAX_REQUEST}: nothing was sent, so split the text or shorten "

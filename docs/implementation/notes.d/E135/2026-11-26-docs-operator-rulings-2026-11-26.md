@@ -4,3 +4,5 @@ evaluation or a cap per experiment. The answer: "It depends usually even intensi
 dollars so it can be either or depending on value." So the runner's check stays per preregistration, and whether the
 experiments together may go past USD 10 is judged by the operator from what each is worth. No cross-experiment check
 is owed.
+
+**Cited, not implemented.** This note records the operator's ruling; it builds nothing. E135's runner is #607.

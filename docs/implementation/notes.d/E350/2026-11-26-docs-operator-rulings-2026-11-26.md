@@ -7,3 +7,5 @@ accepted.
   it was given for and does not end with the Lead's generation. This is #618's behaviour as reviewed, and its module
   docstring and `docs/guides/opencode.md` state it; nothing changes.
 - **The +270 B:** "Sure." The growth #618 records in `lead-context-pool.yaml` is accepted.
+
+**Cited, not implemented.** This note records the operator's ruling; it builds nothing. E350's work is #618 and the rows its note names.

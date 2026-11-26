@@ -543,7 +543,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `WAIT_BINDING_LOST_ON_RECONNECT` | The event stream dropped since the last observed step boundary. Retry from a foreground shell call in a new step | `wait_binding_lost` | engine |
 | `WAIT_OUTSIDE_A_STEP` | No foreground shell call became available within the worker wait's grace | `wait_outside_step` | engine |
 | `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
-| `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |
+| `PENDING_LEAD_MESSAGE` | The run submitted a report while a previously admitted Lead message remained unincorporated into a subsequent worker result. A Lead message recorded before submission is incorporated by a report from the same invocation that lists it as delivered. The definition excludes a forged unposted line, a superseded unposted message and a superseded post never confirmed delivered. | `pending_lead_message` | Lead |
 | `MESSAGING_SNAPSHOT_MISMATCH` | A send to a run whose launch snapshot of the messaging switch disagrees with the project's | `messaging_switch_changed` | Lead |
 | `COORDINATION_LIMIT` | A coordination message beyond one of its bounds | `coordination_bound` | Lead |
 | `LEAD_INBOX_FULL` | The thread already holds the most worker messages not yet shown to the Lead | `inbox_full` | Lead |

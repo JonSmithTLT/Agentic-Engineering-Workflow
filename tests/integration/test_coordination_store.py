@@ -11,6 +11,7 @@ templates), so each test costs one git repository and no CLI process.
 from __future__ import annotations
 
 import ast
+import io
 import json
 import os
 import subprocess
@@ -21,10 +22,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import make_git_repo, policy_pins
+from conftest import make_git_repo, policy_pins, run_aew
 from invariants import assert_control_invariants, load_control
 
-from aew import util
+from aew import switch_offer, util
 from aew.coordination import layout as L
 from aew.engine import coordination_ops as C
 from aew.engine.api import Engine
@@ -47,6 +48,7 @@ from aew.errors import (
     StaleRevision,
     ValidationFailed,
 )
+from aew.policy import execution as X
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "perf"))
@@ -119,16 +121,19 @@ def pin(root: Path) -> None:
 
 
 def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False,
-          model: str | None = None) -> World:
+          model: str | None = None, new_project: bool = False) -> World:
     root = make_git_repo(tmp_path / "repo", CP.FILES)
-    Engine.initialize(root, project_id="calc")
+    with pytest.MonkeyPatch.context() as patch:
+        if not new_project:
+            patch.setattr(X, "TEMPLATE", legacy_execution_template())
+        Engine.initialize(root, project_id="calc")
     if checks:
         (root / ".aew/policy/checks.yaml").write_text(util.dump_yaml(QUICK_CHECKS), encoding="utf-8", newline="\n")
     pin(root)
     e = Engine.discover(root)
     token = e.lead_acquire(expect_rev=0, session_label="lead-a")["token"]
     w = World(root, e, token, "", "", "", root)
-    if messaging is not None:  # the operator's adoption, which also registers the project when it enables (MS2, D-39)
+    if messaging is not None and not new_project:
         set_messaging(root, messaging)
         e.manifest_adopt(token=token, expect_rev=w.rev(), reason=f"messaging {messaging}", authorization=OPERATOR)
 
@@ -141,6 +146,10 @@ def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = F
     w.lead("work_transition", work_id=w.wid, to="RUNNING")
     w.inv, w.worker, w.workspace = out["invocation"], out["invocation_token"], Path(out["workspace"]["path"])
     return w
+
+
+def legacy_execution_template() -> str:
+    return (ROOT / "tests/fixtures/baseline/pre-ms5b-execution.yaml").read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -855,17 +864,14 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 # messaging. The operational digest below is therefore a project's with no table.
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
-    # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR);
-    # its steering comment reworded when init began recording that mode (#432's merge check, N1), and again for the
-    # confirmation stop held until E7c (the quick check of E228's fourth PR, QC-1), and again when that stop became the
-    # Lead's own step (register E183): comments only; and `maps.pack_slices: structural`, a new project's default
-    # (ADR-0015, amended 2026-11-11); and `maps.reads: structural`, the worker's map reads, a new project's default
-    # (register F15.8; the operator, 2026-11-25, O1)
-    "policy/execution.yaml": "8760ad23c0c8bc85d306943aaa6bcb8588d38e8d5658685eb0ec657da47d3ceb",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
+# The frozen fixture precedes E183's steering-comment changes. The shipped template includes E183 and MS5b.
+LEGACY_INIT_EXECUTION_SHA256 = "af6422ad80c6522b0681ed81d5ca3a8e237ca04ef833af5a741ff2a7a7fb2cc0"
+SHIPPED_INIT_EXECUTION_SHA256 = "8602fa3fa52b93772f85830ff39df08d2df142a277faf56843e151254c52546a"
+
 # What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
 # (register E228's third PR): the standing crawl mode and the shipped notifier; and maps on (ADR-0015, amended
 # 2026-11-11), the worker's map reads with them (register F15.8, 2026-11-25).
@@ -884,21 +890,21 @@ INIT_POLICY_DIGESTS = {
 
 
 def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_path, monkeypatch):
-    """D-32 (F8): `aew init`, the shipped default execution policy and `aew migrate` never write `coordination`: the
-    policy bytes and both digests of a new project are the ones from before F9-A, and a migration leaves the policy
-    as it found it. The price table is the shipped one, and moves only the operational digest (A3 §2.1)."""
+    """Legacy projects can retain their pinned policy bytes and both digests through migration (D-32)."""
     from aew.engine import usage_ops as O
     from aew.engine.base import policy_files
     from aew.knowledge.manifest import load_manifest
-    from aew.policy import execution as X
     from aew.util import sha256_file
 
     root = make_git_repo(tmp_path / "fresh", CP.FILES)
+    monkeypatch.setattr(X, "TEMPLATE", legacy_execution_template())
     e = Engine.initialize(root, project_id="golden", name="golden", branch="main")
     aew = root / ".aew"
     table = "policy/pricing.yaml"
     written = [rel for rel in policy_files(load_manifest(aew)) if rel != table]
-    assert {rel: sha256_file(aew / rel) for rel in written} == INIT_POLICY_SHA256
+    assert {rel: sha256_file(aew / rel) for rel in written} == {
+        **INIT_POLICY_SHA256, "policy/execution.yaml": LEGACY_INIT_EXECUTION_SHA256,
+    }
     assert (aew / table).read_bytes() == O.bundled_table() and b"coordination" not in O.bundled_table()
     assert e.policy_digests()["legality_digest"] == INIT_POLICY_DIGESTS["legality_digest"]
     with monkeypatch.context() as no_table:
@@ -918,6 +924,79 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     assert load_control(w.root)["schema"] == "aew/control/v2"
     assert {p: p.read_bytes() for p in (w.root / ".aew/policy").glob("*.yaml")} == policy
     assert not (w.root / ".aew" / L.COORDINATION_DIR).exists()
+
+
+def test_shipped_init_template_and_policy_digests_match_the_goldens(tmp_path, monkeypatch):
+    from aew.engine import usage_ops as O
+    from aew.engine.base import policy_files
+    from aew.knowledge.manifest import load_manifest
+    from aew.util import sha256_file
+
+    assert util.load_yaml(X.TEMPLATE) == {**INIT_EXECUTION_PARSED, "coordination": {"messaging": "enabled"}}
+    monkeypatch.setattr(O, "bundled_table", lambda: None)
+    root = make_git_repo(tmp_path / "new", CP.FILES)
+    engine = Engine.initialize(root, project_id="golden", name="golden", branch="main")
+    aew = root / ".aew"
+    assert {rel: sha256_file(aew / rel) for rel in policy_files(load_manifest(aew))} == {
+        **INIT_POLICY_SHA256,
+        "policy/execution.yaml": SHIPPED_INIT_EXECUTION_SHA256,
+    }
+    assert engine.policy_digests() == {
+        **INIT_POLICY_DIGESTS,
+        "operational_digest": "sha256:c511ecc64ac65c3769ef734d2f549b5dab5369c1990e56e7ffa32c8b2febd6cd",
+    }
+
+
+def test_a_new_project_can_send_a_message_before_any_policy_adoption(tmp_path):
+    w = world(tmp_path, new_project=True)
+    assert load_control(w.root)[L.STORE_KEY] == {"since_rev": 0, "decision": None, "via": "init"}
+    assert w.e.messaging_enabled()
+    assert not w.coordination_files()
+    assert w.send()["message"]["id"] == f"MSG-{w.inv}-1"
+    assert_control_invariants(w)
+
+
+def test_an_engine_before_init_registration_refuses_the_new_control_shape(tmp_path):
+    from jsonschema import Draft202012Validator
+
+    from aew.schemas import _registry
+
+    baseline = ROOT / "tests/fixtures/baseline/control.schema.0f59742.json"
+    old = Draft202012Validator(json.loads(baseline.read_text(encoding="utf-8")), registry=_registry())
+    project = make_git_repo(tmp_path / "new", CP.FILES)
+    engine = Engine.initialize(project, project_id="new")
+    state = engine.store.read_committed()
+    errors = [list(failure.path) for failure in old.iter_errors(state)]
+    assert errors == [[L.STORE_KEY, "since_rev"], [L.STORE_KEY, "via"]]
+    state.pop(L.STORE_KEY)
+    assert list(old.iter_errors(state)) == []
+
+
+def test_first_configuration_preserves_the_new_project_messaging_registration(tmp_path):
+    project = make_git_repo(tmp_path / "configured", CP.FILES)
+    init = run_aew("init", "--model", "opencode/example-model", cwd=project)
+    assert init.returncode == 0, init.stderr
+    state = load_control(project)
+    assert state[L.STORE_KEY] == {"since_rev": 0, "decision": None, "via": "init"}
+    assert Engine.discover(project).messaging_enabled()
+    assert not (project / ".aew" / L.MARKER_REL).exists()
+
+
+@pytest.mark.parametrize("setting", [None, "disabled"])
+def test_the_messaging_offer_only_adopts_an_absent_key(tmp_path, setting):
+    w = world(tmp_path, messaging=setting)
+    assert not w.e.messaging_enabled() and L.STORE_KEY not in load_control(w.root)
+    offers = [standing for standing in switch_offer.standings(w.e)
+              if standing.offer.switch == "coordination_messaging"]
+    if setting is not None:
+        assert offers == []
+        return
+    [standing] = offers
+    assert standing.opening == ("disabled", "enabled")
+    switch_offer._take(w.e, standing.offer, standing.opening, OPERATOR, standing.edits, w.token, io.StringIO())
+    registration = load_control(w.root)[L.STORE_KEY]
+    assert w.e.messaging_enabled() and registration["decision"].startswith("D-")
+    assert w.send()["message"]["id"] == f"MSG-{w.inv}-1"
 
 
 # ---------------------------------------------------------------------------------------------- static
@@ -960,14 +1039,12 @@ def test_legality_modules_never_import_coordination():
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
     # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
-    # MS5: the supervisor uses the leaf bound to limit the number of final admission reads.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
-                         "aew/harness/told_messages.py", "aew/harness/worker_messages.py"}
+                         "aew/harness/told_messages.py"}
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
-    assert {m for m in _imports(src / "aew/harness/worker_messages.py") if _is_coordination(m)} == {
-        "aew.coordination.layout", "aew.coordination.layout.MAX_UNDELIVERED_LEAD"}
+    assert not any(map(_is_coordination, _imports(src / "aew/harness/worker_messages.py")))
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
                       "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",

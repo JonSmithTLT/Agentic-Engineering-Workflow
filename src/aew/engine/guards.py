@@ -138,5 +138,7 @@ class GuardQueries:
             disposition = found.details.get(DISPOSITION)
             return {**out, "availability": BLOCKED, "blocking_conditions": [found.to_dict()],
                     "reason_codes": [found.code], **({DISPOSITION: disposition} if disposition else {})}
-        return {**out, "availability": AVAILABLE, "blocking_conditions": [], "reason_codes": []}
+        advisory = (args.get("found") or {}).get("post_report_message_pending")
+        return {**out, "availability": AVAILABLE, "blocking_conditions": [], "reason_codes": [],
+                **({"post_report_message_pending": advisory} if advisory else {})}
 

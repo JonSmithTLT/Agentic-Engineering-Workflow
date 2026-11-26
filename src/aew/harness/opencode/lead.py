@@ -174,7 +174,8 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     # A Lead that runs here is not contained (the contained Lead's start replaces this configuration): it is told no
     # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
     config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake,
-                                    switches=switches, skills_dir=skills_dir, skills_planned=skills_planned)
+                                    switches=switches, skills_dir=skills_dir, skills_planned=skills_planned,
+                                    powershell=sys.platform == "win32")
     env["OPENCODE_CONFIG_CONTENT"] = json.dumps(config, sort_keys=True)
     env.update(capabilities.FIXED_SWITCHES)  # last, after the provider variables (register E35)
     return env

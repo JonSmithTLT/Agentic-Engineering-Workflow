@@ -613,6 +613,7 @@ None.
 - `aew.errors`
 - `aew.harness.containment`
 - `aew.harness.contract`
+- `aew.harness.delivery`
 - `aew.harness.opencode.lead`
 - `aew.harness.operator_client`
 - `aew.harness.relay_status`
@@ -755,6 +756,7 @@ None.
 - `aew.harness.wake_queue`
 - `aew.history.manifest`
 - `aew.history.store`
+- `aew.knowledge.evidence`
 - `aew.knowledge.manifest`
 - `aew.policy.execution`
 - `aew.schemas`
@@ -1808,7 +1810,6 @@ None.
 - `aew.harness.wake_queue`
 - `aew.skills`
 - `aew.surface`
-- `aew.surface.context`
 - `aew.surface.contract`
 
 ### `aew.harness.operator_autostart`
@@ -2005,9 +2006,9 @@ None.
 
 ### `aew.harness.worker_messages`
 
-- `aew.coordination.layout`
 - `aew.errors`
 - `aew.harness.bridge`
+- `aew.harness.delivery`
 - `aew.harness.supervisor`
 - `aew.harness.wait_binding`
 
@@ -2513,6 +2514,7 @@ None.
 
 ### `aew.surface.run`
 
+- `aew.engine.guide`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
 - `aew.engine.stage_intents`

@@ -842,7 +842,7 @@ class WorkCommands:
             ctx.summary = f"{work_id} {frm} -> {to}"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "from": frm, "to": to, "decision": decision,
-                "revision": ctx.session.committed_revision}
+                "revision": ctx.session.committed_revision, **ctx.result_advisories()}
 
     def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -891,6 +891,8 @@ class WorkCommands:
         threads = self.coordination.unit_threads(state, work_id, unit)
         if threads is not None:
             out["coordination"] = threads
+            if reports := self.coordination.report_view(state, work_id):
+                out["report_finality"] = reports
         return out
 
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:

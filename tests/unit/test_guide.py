@@ -273,6 +273,11 @@ def test_every_typed_tool_the_lead_is_offered_is_named_in_the_core(switches):
     assert set(lead_text.WHEN) <= set(contract.catalog(frozenset(contract.ALL_SWITCHES)))
 
 
+def test_the_core_says_a_refusal_names_the_command_that_applies():
+    """The old guide's cheapest line against `--help` lookups, kept in the core (review of #593, n1)."""
+    assert "a refusal names the command that applies" in lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+
+
 def test_the_core_is_a_fraction_of_the_whole_guide():
     """The point of the split, as a floor: the core is under two thirds of the whole guide (it was all of it). The
     measured bytes and the cap are the pool record's (tests/unit/test_lead_context_pool.py)."""

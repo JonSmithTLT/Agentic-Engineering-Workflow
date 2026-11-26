@@ -671,7 +671,8 @@ def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages
         "## Your tools, and when to use each",
         "",
         "Where a tool covers a move, use it: it makes the whole move, and returns the revision for your next "
-        "`expect_rev`. Use the shell where no tool covers a move, or where a tool refuses.",
+        "`expect_rev`. Use the shell where no tool covers a move, or where a tool refuses; a refusal names the "
+        "command that applies.",
         "",
         *(f"- {rule}" for rule in tool_rules),
         "",

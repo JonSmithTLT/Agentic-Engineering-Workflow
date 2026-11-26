@@ -1652,6 +1652,7 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.broker_liveness`
 - `aew.harness.containment`
+- `aew.harness.contract`
 - `aew.harness.defects`
 - `aew.harness.procs`
 - `aew.harness.runlog`
@@ -1807,7 +1808,6 @@ None.
 - `aew.harness.wake_queue`
 - `aew.skills`
 - `aew.surface`
-- `aew.surface.context`
 - `aew.surface.contract`
 
 ### `aew.harness.operator_autostart`
@@ -2512,6 +2512,7 @@ None.
 
 ### `aew.surface.run`
 
+- `aew.engine.guide`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
 - `aew.engine.stage_intents`

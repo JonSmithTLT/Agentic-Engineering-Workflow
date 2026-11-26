@@ -362,6 +362,8 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
 NO_SEAT_SENTENCE = {
     "lead_ops.py": "a takeover refused on a vacant seat: not a first step, and its reader already holds the route",
     "first_configuration.py": "`post_pin_route` itself: each caller adds the sentence, and the detector checks it",
+    "contract.py": "`SEAT_COMMANDS`, which the Lead's system text names as the operator's and refused there: no step "
+                   "anyone follows (E367)",
 }
 
 

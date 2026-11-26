@@ -473,11 +473,11 @@ WAKE_GUIDE: dict[str, Wake] = {
     RUN_ENDED: Wake(
         means="a run ended",
         act="act on how it ended, as the result's next step says: accept its evidence, or relaunch or cancel it",
-        tell="which run ended and what its evidence shows: the files it changed and the checks it ran, with their "
-             "results"),
+        tell="which run ended and what its evidence shows (the files it changed and the checks it ran, with their "
+             "results)"),
     TEST_FAILED: Wake(
-        means="a test that passed earlier in the run now fails, or the same failure came back three runs in a row "
-              "(seen under the same test command)",
+        means="a test that passed earlier in the run now fails, or the same failure came back three test runs in a "
+              "row (seen under the same test command)",
         act="read `last_test` in the run's digest; let it run if the worker is already on it, or steer it "
             "(`aew harness send`) with what you see",
         tell="which test fails, whether it broke or is stuck, and what you did about it"),
@@ -520,6 +520,12 @@ WAIT_TIMED_OUT = Wake(
     means="the wait's own time ran out and its runs are still working",
     act=f"{WAIT_AGAIN}; {WAIT_OR_ELSE}",
     tell="which runs are still working and what you did about them")
+# Where AEW wakes the Lead (steering design r4 §1), a wait that times out ends the turn, unless a next step said to wait
+# (then no wake is coming). One timed-out line per variant, so no line of the Lead's text overrides another: the system
+# text said "whatever the line above on a timed-out wait says" (E367; the audit of 2026-11-25, U1).
+WAKE_TIMED_OUT = WAIT_TIMED_OUT._replace(
+    act=f"where a next step told you to wait, {WAIT_AGAIN}; otherwise end your turn, and AEW wakes you. "
+        f"{WAIT_OR_ELSE[0].upper()}{WAIT_OR_ELSE[1:]}")
 MESSAGE_READ_COST = ("A message read through a relayed command may be listed again; "
                      "a typed read records it shown durably.")
 
@@ -529,8 +535,9 @@ def waited_on(messaging: bool = False) -> tuple[str, ...]:
     return tuple(why for why in WHY if why in WAITED_ON or messaging and why == WORKER_MESSAGE)
 
 
-def wake_advice(key: str, messaging: bool = False) -> Wake:
-    wake = WAIT_TIMED_OUT if key == TIMED_OUT else WAKE_GUIDE[key]
+def wake_advice(key: str, messaging: bool = False, *, pushed: bool = False) -> Wake:
+    """``key``'s guidance; ``pushed`` where AEW wakes the Lead, which changes only what a timed-out wait asks."""
+    wake = (WAKE_TIMED_OUT if pushed else WAIT_TIMED_OUT) if key == TIMED_OUT else WAKE_GUIDE[key]
     if not messaging:
         return wake
     act = wake.act.replace("`aew harness send`", "`message_send`")
@@ -550,17 +557,27 @@ def wait_rule(messaging: bool = False) -> str:
             if messaging else WAIT_RULE)
 
 
-def wake_guidance(messaging: bool = False) -> dict[str, Wake]:
+def wake_guidance(messaging: bool = False, *, pushed: bool = False) -> dict[str, Wake]:
     """Every kind of return a wait gives today with its guidance, by the field that marks it: the ``why`` values in
-    ``WAITED_ON``, then the wait's ``timed_out``."""
-    return {**{why: wake_advice(why, messaging) for why in waited_on(messaging)},
-            TIMED_OUT: wake_advice(TIMED_OUT, messaging)}
+    ``WAITED_ON``, then the wait's ``timed_out``. ``pushed``: where AEW wakes the Lead, the reasons only a wake gives
+    (``PUSHED_ONLY``) too, in the enum's order, and the timed-out line for that variant."""
+    whys = (*waited_on(messaging), *PUSHED_ONLY) if pushed else waited_on(messaging)
+    return {**{why: wake_advice(why, messaging) for why in WHY if why in whys},
+            TIMED_OUT: wake_advice(TIMED_OUT, messaging, pushed=pushed)}
 
 
-def wake_line(key: str, messaging: bool = False) -> str:
-    """``key``'s guidance as one line (the Lead's system text lists one per kind of return)."""
-    wake = wake_guidance(messaging)[key]
-    return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}. Tell the operator in a line {wake.tell}."
+def wake_line(key: str, messaging: bool = False, *, pushed: bool = False) -> str:
+    """``key``'s guidance as one line: what it means and what to do. What to tell the operator is one line for every
+    kind (:func:`wake_report`), not one per kind (E367: the eight `Tell the operator` lines were 0.8 KB a request)."""
+    wake = wake_guidance(messaging, pushed=pushed)[key]
+    return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}."
+
+
+def wake_report() -> str:
+    """How the Lead takes each return, the line before the kinds (:func:`wake_line`): read it, act, and say what
+    happened. A run's end also names what its evidence shows (``WAKE_GUIDE``'s ``run_ended`` line)."""
+    return (f"read why it returned (`why`, or `{TIMED_OUT}`), act, and tell the operator in a line what you saw and "
+            f"what you did; for `{RUN_ENDED}`, {WAKE_GUIDE[RUN_ENDED].tell}")
 
 
 def steer_commands(text: str, run: str) -> str:
@@ -617,3 +634,10 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
 
 
 MANIFEST_ADOPT = "`aew manifest adopt --reason <reason>`"
+
+
+# The Lead seat's credential-emitting commands, whole (``lead_broker.CREDENTIAL_EMITTING`` takes their paths from here),
+# in the order the Lead's system text names them as the operator's (E367; the audit of 2026-11-25, F3: the text said
+# "handoff", while `aew lead handoff cancel` is Lead-reachable).
+SEAT_COMMANDS = ("aew lead acquire", "aew lead takeover", "aew lead release", "aew lead handoff offer",
+                 "aew lead handoff accept")

@@ -21,28 +21,31 @@ from aew.surface import contract, lead_text, mcp, readable
 ON = frozenset({"coordination.messaging"})
 
 
-def assert_catalog_names(summary, listing):
-    section = re.search(r"Read with (.*?)\. Each returns", summary, re.DOTALL)
-    assert section is not None
-    named = re.findall(r"`([^`]+)`", section[1])
-    assert len(named) == len(set(named))
-    assert set(named) == {t["name"] for t in listing["tools"]}
+def assert_catalog_names(text, listing):
+    """The catalog names ``text`` puts in backticks are exactly the tools the published listing offers."""
+    named = set(re.findall(r"`([a-z_]+)`", text)) & {*contract.TOOLS, *contract.catalog(contract.ALL_SWITCHES)}
+    assert named == {t["name"] for t in listing["tools"]}
+
+
+def lead_system(switches, *, push):
+    guide = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
+    return projection.lead_config(guide, push_wake=push, switches=switches)["agents"][projection.LEAD_AGENT]["system"]
 
 
 @pytest.mark.parametrize("switches", [frozenset(), ON], ids=["off", "on"])
-@pytest.mark.parametrize("profile", ["normal", "recovery"])
-def test_summary_names_match_the_published_wire_catalog_without_reusing_its_selector(switches, profile):
-    assert_catalog_names(projection.lead_tools_text(switches, profile=profile), mcp.tools_list(profile, switches))
+@pytest.mark.parametrize("push", [False, True], ids=["waits", "woken"])
+def test_the_lead_text_names_the_published_wire_catalog_without_reusing_its_selector(switches, push):
+    """The system text no longer summarises the catalog (E367; the audit of 2026-11-25, D1): the guide's core, which it
+    carries, is where the tools are named, and what the Lead reads names every tool the listing offers and no other."""
+    assert_catalog_names(lead_system(switches, push=push), mcp.tools_list("normal", switches))
 
 
-def test_a_switched_row_omitted_by_the_prose_selector_fails_the_independent_oracle(monkeypatch):
-    row = contract.TOOLS["status"]._replace(name="switched_probe", switch="coordination.messaging")
-    monkeypatch.setitem(contract.TOOLS, row.name, row)
-    assert_catalog_names(projection.lead_tools_text(ON), mcp.tools_list("normal", ON))
-    original = projection._named
-    monkeypatch.setattr(projection, "_named", lambda kinds, switches, profile: original(kinds, frozenset(), profile))
+def test_a_switched_row_the_prose_names_with_the_switch_off_fails_the_independent_oracle(monkeypatch):
+    assert_catalog_names(lead_system(frozenset(), push=True), mcp.tools_list("normal", frozenset()))
+    original = lead_text.uses
+    monkeypatch.setattr(lead_text, "uses", lambda profile="normal", switches=frozenset(): original(profile, ON))
     with pytest.raises(AssertionError):
-        assert_catalog_names(projection.lead_tools_text(ON), mcp.tools_list("normal", ON))
+        assert_catalog_names(lead_system(frozenset(), push=True), mcp.tools_list("normal", frozenset()))
 
 
 @pytest.mark.parametrize("messaging", [False, True])

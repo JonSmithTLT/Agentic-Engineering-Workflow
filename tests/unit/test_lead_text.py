@@ -30,7 +30,7 @@ from aew.harness.contract import wake_guidance
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.surface import availability as SA
-from aew.surface import contract, lead_text
+from aew.surface import contract, lead_text, mcp
 from aew.surface import projection as surface
 from aew.surface.context import NORMAL, RECOVERY
 
@@ -190,21 +190,17 @@ def test_the_system_text_teaches_no_step_a_stage_covers_from_the_shell():
 
 def test_the_system_text_says_nothing_of_stages_still_to_come():
     assert "Until typed stages arrive" not in system_text()
-    assert projection.lead_tools_text() in projection.LEAD_SYSTEM
 
 
 @pytest.mark.parametrize("kind", contract.KINDS)
-def test_a_tool_added_to_the_catalog_is_named_with_no_other_edit(monkeypatch, kind):
-    """The guard's plant: a new normal-profile row of any kind is in the line of tools, so a hand-written list, or a
-    grouping that drops a kind, fails here."""
-    assert PLANTED not in projection.lead_tools_text()
+def test_a_tool_added_to_the_catalog_needs_no_edit_of_the_system_text_which_lists_none(monkeypatch, kind):
+    """E130's guarantee, kept by E367 with no list to keep: the system text named every tool by kind, which the model
+    already has in the listing (the audit of 2026-11-25, D1). A new normal-profile row of any kind is in the listing,
+    and the system text, which names no catalog of tools, is byte for byte what it was."""
+    before = projection.lead_system(push_wake=True)
     plant(monkeypatch, kind=kind)
-    assert f"`{PLANTED}`" in projection.lead_tools_text()
-
-
-def test_the_list_follows_the_catalog_when_a_tool_goes(monkeypatch):
-    monkeypatch.setattr(contract, "TOOLS", {k: t for k, t in contract.TOOLS.items() if k != "work_show"})
-    assert "`work_show`" not in projection.lead_tools_text()
+    assert PLANTED in {t["name"] for t in mcp.tools_list(NORMAL)["tools"]}
+    assert projection.lead_system(push_wake=True) == before and PLANTED not in system_text()
 
 
 # --------------------------------------------------------------------------------------- the stage leads what it covers
@@ -385,7 +381,7 @@ def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_gua
 def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
     plant(monkeypatch, "zz_recovery", profiles=(RECOVERY,), expands_to=("plan.accept",))
     plant(monkeypatch, "zz_designed", status=contract.DESIGNED, expands_to=("plan.accept",))
-    text = projection.lead_tools_text() + full()
+    text = system_text() + full()
     assert "zz_recovery" not in text and "zz_designed" not in text
     assert "zz_recovery" in {s.tool for s in lead_text.stages(RECOVERY)}
 

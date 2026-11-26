@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +128,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert sorted(p.name for p in Path(at.folder).iterdir()) == planned["exposed"]
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
         guide_of(lab), tools={"placed": False, "tools": []},  # and no tool of AEW's placed: it is not contained
-        skills_dir=at, skills_planned=planned)
+        skills_dir=at, skills_planned=planned, powershell=sys.platform == "win32")  # its shell's form (E367)
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert [env[n] for n in PROJECT_CONFIG_SWITCHES] == ["1", "1"]  # both names (E35)
@@ -162,12 +163,14 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     # the folder a start would copy the Lead's skills to, and the plan it would copy; nothing is copied (E161)
     at = lead.lead_skills_at(lab)
     assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed,
-                                                     push_wake=lead.wakes_reach_the_lead({}), skills_dir=at)
+                                                     push_wake=lead.wakes_reach_the_lead({}), skills_dir=at,
+                                                     powershell=placed is not None and sys.platform == "win32")
     assert shown["config"]["skills"] == [at.folder] and not Path(at.folder).exists()
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-3:] == ["--server", shim.SERVER_URL, str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]
-    assert system.startswith(projection.LEAD_SYSTEM.split(projection.WAIT_SENTENCE)[0].rstrip())
+    # the Lead's text up to its wait lines, which a woken Lead does not get (E367)
+    assert system.startswith(projection.LEAD_SYSTEM.split(projection.lead_wait_text()[0])[0].rstrip())
     assert "# How work gets done in AEW: the Lead's guide" in system
     assert "OPENAI_API_KEY" not in shown["env_names"] and "AEW_LEAD_BROKER" in shown["env_names"]
     assert SECRET not in res.stdout and lab.project.token not in res.stdout

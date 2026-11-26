@@ -15,10 +15,10 @@ authority:
 baseline:
   push_wake: true
   switches: [coordination.messaging]
-  system_bytes: 8987
+  system_bytes: 5834
   guide_bytes: 8116
   join_bytes: 2
-  mcp_bytes: 10893
+  mcp_bytes: 10845
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
   # 242 B. The line would be 453 B with all six shipped tools placed.
   containment:
@@ -58,14 +58,14 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-  # The room between the derived ceiling (baseline 29043 + the allocations above 5637 = 34680 B) and the operator's
+  # The room between the derived ceiling (baseline 24797 + the allocations above 5637 = 30434 B) and the operator's
   # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
   # than lowering the cap; any change to the cap itself is the operator's.
   operator_reserve:
-    bytes: 6365
+    bytes: 9566
     kind: reserve
-    source: "The operator's E231 cap is 40000 B. E329 saved a further 1045 B after the core landed on main, so the derived ceiling before reserve is 33635 B and the remaining reserve is 6365 B."
+    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
@@ -75,8 +75,16 @@ allocations:
 # bytes (16412 - 8291 = 8121), and the derived ceiling to 34680 B (42971 - 8291). The operator chose 40000 B over that
 # figure; the 5320 B between them is the operator_reserve allocation. The 42971 B cap it replaces is in
 # approval_history.
-# E329 measures after E231 on main 96fc6b5d. With messaging on, system 9380 -> 9347 B, core 9154 -> 9149 B and
-# MCP 12022 -> 11015 B reduce the recorded baseline by 1045 B and add the same amount to the reserve.
+# E367's rewrite of the system text (every line true and needed; the guide's core owns the facts both stated) and the
+# compact tool descriptions, measured with the pool gate's own render at main d6078d2f and on the PR's branch:
+# messaging on, system 9380 B -> 6194 B and MCP 12022 B -> 11974 B (guide 9154, join 2: 30558 B -> 27324 B); off,
+# system 9121 B -> 6024 B, MCP 12067 B unchanged (the compact descriptions are the on catalog's). The 3234 B
+# messaging-on saving lowers the baseline's system bytes by 3186 (9020 -> 5834) and its MCP bytes by 48 (11900 ->
+# 11852), and the cap stays the operator's 40000 B: the saving grows operator_reserve (5320 -> 8554), as the rule above
+# the reserve says.
+# E329 measured again on E367's merged main, 84547df7. Messaging on, the system stays 6194 B, the core goes from
+# 9154 to 9149 B, and MCP from 11974 to 10967 B. The 1012 B saving adds to the reserve. Off, the system stays 6024 B,
+# the core goes from 8934 to 8929 B, and MCP from 12067 to 11167 B. The 40000 B cap stays fixed.
 # Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
   ceiling_bytes: 40000
@@ -106,10 +114,10 @@ approval_history:
   - ceiling_bytes: 42971
     operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
     date: '2026-11-15'
-# Guide bytes in the pool gate's render before the E231 core, and after the E329 scoped commands.
+# E231's guide core and pointers: the guide's bytes in the pool gate's render, before and after, messaging on and off.
 # A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
 guide_core:
-  measured: '2026-11-26'
+  measured: '2026-11-25'
   messaging_on: {before: 17445, after: 9149}
   messaging_off: {before: 17267, after: 8929}
   saving_bytes: 8296

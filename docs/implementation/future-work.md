@@ -3750,18 +3750,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
 
-### E335
-
-**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator's; its gaps are E350 and E351
-
-**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
-
-*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -5147,6 +5135,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #447 (`a41a0866`): plain `aew opencode` takes a vacant seat or resumes an eligible held one on the same host and user, carrying the active invocations, with one terminal confirmation when work is carried or processes are left; the vertical driver starts it on the held seat; the E330 amendments of ADR-0005 and ADR-0009
 
 *Later notes: `notes.d/E330/`, oldest first (`python tools/register.py show E330`).*
+
+### E335
+
+**Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Closed:** 2026-11-26
+
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`primitives.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
 
 ### E337
 

@@ -19,6 +19,10 @@ The runner adds no measuring machinery where an owner already has one.
 | Which skills a session loaded | `adapter.skill_loads`, through `collect` | `harness.exposure.loaded` |
 | What a worker is told about its skills | `projection.skills_text` | `python -m skill_eval told` prints it |
 
+## What is generic
+
+`walk.py` and `paired.py` import nothing of the skill evaluation: they read a frozen preregistration, the ledger and the run records. `walk.py` is the schedule walked block by block under its budget, with the cap charge, the frozen retries, the lane-error stop, the neutral run names and the resumption. `paired.py` is two arms' runs as pairs, their usage differences, the blind grading packets and the paired grades. They are written to be lifted into `eval/aew_eval` as the shared walker and paired report in a following pull request; a test holds that neither imports a skill-specific module. `run.py` and `report.py` keep what is about a skill: the paired plan's check, the lane's claim, the evaluator's material, the arms, the exposure check, the loads and the selection table.
+
 ## The steps
 
 Run from the checkout with `eval/` and `src/` on `PYTHONPATH`. Keep the cases, the evaluator's directory and the lane outside every git work tree and under the home directory.

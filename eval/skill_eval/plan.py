@@ -22,7 +22,7 @@ from typing import Any
 from aew_eval import prereg
 from aew_eval.schemas import Invalid
 
-from skill_eval import arms
+from skill_eval import arms, walk
 
 LIMIT_USD = 10.0  # the operator's limit on this evaluation's spend (register E135, Source)
 KINDS = ("raw", "scripted")
@@ -74,19 +74,9 @@ def shape(frozen: dict[str, Any]) -> dict[str, Any]:
     if budget > LIMIT_USD:
         raise Invalid(f"budget_usd {budget:g} is above the operator's limit for this evaluation, USD {LIMIT_USD:g} "
                       "(register E135): a larger one is the operator's to set, in the register")
-    caps = {a["id"]: float(a["config"].get("cap_usd") or 0.0) for a in (first, second)}
-    return {"baseline": baseline, "candidate_arm": candidate_arm, "candidate": extra[0], "kind": kind, "caps": caps,
+    return {"baseline": baseline, "candidate_arm": candidate_arm, "candidate": extra[0], "kind": kind,
+            "caps": walk.caps(frozen),
             "mode": MODES[0] if extra[0] in plans[candidate_arm]["requested"] else MODES[1],
             "also_exposed": sorted(exposed[baseline]),
             "candidate_bytes": next(d["bytes"] for d in plans[candidate_arm]["delivered"] if d["name"] == extra[0])}
 
-
-def blocks(frozen: dict[str, Any]) -> list[list[dict[str, Any]]]:
-    """The frozen schedule as its blocks: for each case and repetition, its cells in their drawn order."""
-    out: list[list[dict[str, Any]]] = []
-    for entry in frozen["assignment"]["order"]:
-        if out and (out[-1][0]["case"], out[-1][0]["repetition"]) == (entry["case"], entry["repetition"]):
-            out[-1].append(entry)
-        else:
-            out.append([entry])
-    return out

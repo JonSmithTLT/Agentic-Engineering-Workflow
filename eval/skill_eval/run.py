@@ -1,21 +1,11 @@
-"""The schedule, cell by cell, under the preregistered budget (skill evaluation guide §5, steps 4 to 7).
+"""A skill evaluation's lane: the shared walk (:mod:`skill_eval.walk`), with what a skill evaluation adds around it.
 
-:func:`run` walks the frozen schedule in order and gives each cell that still needs an attempt to F19's runner
-(:func:`aew_eval.runner.run_cell`), which registers it before any provider action and finalizes it once. It is
-resumable: what has run is the ledger's, so a second call continues where the first stopped.
+:func:`run` checks that the frozen preregistration is a paired skill evaluation (:func:`skill_eval.plan.shape`),
+claims the lane for that one experiment, installs the two skill arms for the walk's duration, and walks the schedule
+(guide §5, steps 4 to 7). The budget, the retries, the lane errors, the run names and the resumption are the walk's.
 
-* **Budget.** Every attempt is charged: its reported cost, or its arm's ``cap_usd`` when the cost is unknown or the
-  attempt was lost (``aew_eval.raw.charged``). A cell starts only while what is spent, plus the caps of every cell its
-  block still needs, fits ``budget_usd``; otherwise the walk stops with nothing started, so a pair is never begun
-  that the budget cannot finish.
-* **Retries** are the frozen policy's, which the ledger enforces: a cell whose latest attempt is valid, or whose
-  policy allows no further one, is left as it is. A model's failure is an outcome, never retried into a pass.
-* **A lane error stops the walk.** An attempt that measured the host and not the model (:data:`LANE_ERRORS`) would
-  repeat in every later cell, so the walk ends there and says why, as the lower-bound lane's does.
-* **Names.** A run is named for its place in the schedule (``r007``), which is drawn at random inside each block, so
-  neither a run's id nor its folder names its arm.
-* **The evaluator's material.** A contained arm (Linux) is refused unless every evaluator path is hidden by its
-  layout; the lane's record (``lane.json``) says whether it was, and a lane where it was not is a pilot (README).
+**The evaluator's material.** A contained arm (Linux) is refused unless every evaluator path is hidden by its layout;
+the lane's record (``lane.json``) says whether it was, and a lane where it was not is a pilot (README).
 """
 
 from __future__ import annotations
@@ -24,54 +14,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aew_eval import raw, runner
-from aew_eval.ledger import Attempt, AttemptLedger
+from aew_eval import raw
 from aew_eval.schemas import Invalid
 
-from skill_eval import arms, plan
+from skill_eval import arms, plan, walk
 
 LANE = "aew/skill-eval-lane/v1"
 LANE_FILE = "lane.json"
-# Why an attempt cannot count that every later cell would meet too (``raw.raw_invalid``'s host-side reasons, and the
-# runner's own for a model that is not the pinned one): the host or the key needs fixing, not another attempt.
-LANE_ERRORS = ("CONTAINMENT_FAILED", "HARNESS_MISMATCH", "NO_MODEL_STEP", "PROVIDER_KEY_RETAINED", "PROFILE_MISMATCH")
-
-
-def run_name(entry: dict[str, Any], attempts: int) -> str:
-    return f"r{entry['order_index'] + 1:03d}" + (f"-retry{attempts}" if attempts else "")
-
-
-def record_of(ledger: AttemptLedger, attempt: Attempt) -> dict[str, Any] | None:
-    """A finalized attempt's result, or None while it has none (a lost runner)."""
-    if attempt.finalized is None:
-        return None
-    return json.loads((ledger.runs / (attempt.run_id.split("/", 1)[1] + ".json")).read_text(encoding="utf-8"))
-
-
-def charged(record: dict[str, Any] | None, cap: float) -> float:
-    """What an attempt is charged against the budget: its charged cost, else its reported cost, else its cap."""
-    cost = (record or {}).get("cost") or {}
-    if cost.get("charged_usd") is not None:
-        return float(cost["charged_usd"])
-    return raw.charged(cost.get("provider_reported_usd"), cap)
-
-
-def spent(ledger: AttemptLedger, caps: dict[str, float]) -> float:
-    return sum(charged(record_of(ledger, a), caps[a.registered["arm"]]) for a in ledger.attempts().values())
-
-
-def of_cell(ledger: AttemptLedger, cell: str) -> list[Attempt]:
-    """A cell's attempts in the ledger's own order, so the last is its latest (never by their time stamps)."""
-    return [a for a in ledger.attempts().values() if a.registered["assignment"]["cell"] == cell]
-
-
-def needs_attempt(ledger: AttemptLedger, cell: str, policy: dict[str, Any]) -> bool:
-    attempts = of_cell(ledger, cell)
-    if not attempts:
-        return True
-    latest = attempts[-1]
-    return latest.status != "valid" and latest.status in policy["allowed_for"] \
-        and len(attempts) - 1 < int(policy["max_retries"])
 
 
 def claim(lane: Path, frozen: dict[str, Any], hidden: bool) -> dict[str, Any]:
@@ -108,43 +57,16 @@ def hidden_from_arms(frozen: dict[str, Any], work: Path, evaluator: list[Path]) 
 
 def run(frozen: dict[str, Any], *, cases: dict[str, Path], lane: Path, evaluator: list[Path] | None = None,
         deadline_s: float = 3600.0, limit: int | None = None) -> dict[str, Any]:
-    """Run the cells of ``frozen`` that still need an attempt, in schedule order; at most ``limit`` attempts.
+    """Walk the schedule of a paired skill evaluation; at most ``limit`` attempts.
 
     ``lane`` holds the experiment's ledger (``ledger/``) and scratch (``work/``), outside every git work tree;
     ``evaluator`` names what no arm may read (the key's directory, the cases, and the directory their source file
-    is in, which holds its oracles and rubric: the command line passes all three). Returns what happened:
-    ``stopped`` is ``done``, ``limit``, ``budget`` or ``lane_error``. Raises :class:`aew_eval.schemas.Invalid` before
-    anything is registered when the preregistration is not a paired skill evaluation, and F19's ``Refused`` when its
-    runner refuses a cell."""
-    pair = plan.shape(frozen)
+    is in, which holds its oracles and rubric: the command line passes all three). Returns the walk's account
+    (:func:`skill_eval.walk.walk`) with ``evaluator_material_hidden``. Raises :class:`aew_eval.schemas.Invalid` before
+    anything is registered when the preregistration is not a paired skill evaluation."""
+    plan.shape(frozen)
     ledger_dir, work = lane / "ledger", lane / "work"
     mark = claim(lane, frozen, hidden_from_arms(frozen, work, list(evaluator or [])))
-    ledger = AttemptLedger(ledger_dir, frozen)
-    policy = frozen["validity_rules"]["retry_policy"]
-    budget, caps = float(frozen["profiles"]["budget_usd"]), pair["caps"]
-    ran: list[dict[str, Any]] = []
-
-    def out(stopped: str, **more: Any) -> dict[str, Any]:
-        return {"stopped": stopped, "ran": ran, "spent_usd": round(spent(ledger, caps), 6), "budget_usd": budget,
-                "evaluator_material_hidden": mark["evaluator_material_hidden"], **more}
-
     with arms.installed():
-        for block in plan.blocks(frozen):
-            for entry in block:
-                cell = entry["cell"]
-                while needs_attempt(ledger, cell, policy):
-                    if limit is not None and len(ran) >= limit:
-                        return out("limit", next_cell=cell)
-                    owed = sum(caps[e["arm"]] for e in block if needs_attempt(ledger, e["cell"], policy))
-                    if spent(ledger, caps) + owed > budget:
-                        return out("budget", next_cell=cell)
-                    attempts = of_cell(ledger, cell)
-                    record = runner.run_cell(frozen, ledger_dir=ledger_dir, cell=cell, cases=cases, work=work,
-                                             run_name=run_name(entry, len(attempts)),
-                                             retry_of=attempts[-1].run_id if attempts else None,
-                                             deadline_s=deadline_s, defer_scoring=True)
-                    ran.append({"run_id": record["run_id"], "validity": record["validity"],
-                                "charged_usd": charged(record, caps[entry["arm"]])})
-                    if record["validity"]["reason_code"] in LANE_ERRORS:
-                        return out("lane_error", reason_code=record["validity"]["reason_code"], cell=cell)
-    return out("done")
+        out = walk.walk(frozen, cases=cases, ledger_dir=ledger_dir, work=work, deadline_s=deadline_s, limit=limit)
+    return {**out, "evaluator_material_hidden": mark["evaluator_material_hidden"]}

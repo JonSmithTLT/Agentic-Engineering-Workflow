@@ -27,7 +27,7 @@ from aew_eval import fixture, prereg, raw  # noqa: E402
 from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid  # noqa: E402
 from skill_eval import __main__ as cli  # noqa: E402
-from skill_eval import arms, cases, plan, report  # noqa: E402
+from skill_eval import arms, cases, paired, plan, report, walk  # noqa: E402
 from skill_eval import run as lane_run  # noqa: E402
 
 CANDIDATE, OTHER, THIRD = sorted(skills.shipped())[:3]  # any three shipped skills: the runner knows none by name
@@ -321,7 +321,7 @@ def test_a_pair_is_not_started_when_the_budget_cannot_finish_it(lane):
     out = run_all(lane, frozen)
     assert out["stopped"] == "budget" and len(out["ran"]) == 2 and out["spent_usd"] == 0.5
     assert [r["charged_usd"] for r in out["ran"]] == [0.25, 0.25]
-    block = plan.blocks(frozen)[1]
+    block = walk.blocks(frozen)[1]
     assert out["next_cell"] == block[0]["cell"]  # the second pair's first cell: nothing of that pair ran
     assert run_all(lane, frozen)["ran"] == []    # and a rerun does not creep past the budget
     found = report.pairs(frozen, lane["lane"] / "ledger")
@@ -335,7 +335,7 @@ def test_a_lost_attempt_is_charged_its_cap(lane):
     first = frozen["assignment"]["order"][0]
     ledger.register(run_id=f"{frozen['experiment']}/r001", cell=first["cell"],
                     requested_profile=frozen["profiles"]["roles"])  # registered, then the runner died
-    assert lane_run.spent(ledger, plan.shape(frozen)["caps"]) == 0.25
+    assert walk.spent(ledger, walk.caps(frozen)) == 0.25
     out = run_all(lane, frozen)
     assert out["stopped"] == "budget" and len(out["ran"]) == 3  # the lost cell is never retried: 0.25 + 3 × 0.25
     lost = report.pairs(frozen, lane["lane"] / "ledger")[0]
@@ -352,7 +352,7 @@ def test_an_attempt_that_measured_the_host_stops_the_walk(lane, monkeypatch):
     monkeypatch.setattr(arms, "SkillScriptedArm", NoModel)
     out = run_all(lane, freeze(lane))
     assert out["stopped"] == "lane_error" and out["reason_code"] == "NO_MODEL_STEP" and len(out["ran"]) == 1
-    assert "NO_MODEL_STEP" in lane_run.LANE_ERRORS and raw.raw_invalid(leaked=[], facts={"model_steps": 0}) \
+    assert "NO_MODEL_STEP" in walk.LANE_ERRORS and raw.raw_invalid(leaked=[], facts={"model_steps": 0}) \
         == "NO_MODEL_STEP"
 
 
@@ -570,3 +570,26 @@ def test_what_an_arm_is_told_is_appended_to_the_task_verbatim_and_only_when_the_
     plain, told = seen[(OTHER,)], seen[(OTHER, CANDIDATE)]
     assert plain in tasks  # the baseline's task is the case's, byte for byte
     assert told.endswith("\n\n- Told line.\n") and told[: -len("\n- Told line.\n")] in tasks
+
+
+# ---------------------------------------------------------------------------------------------- the shared parts
+
+
+def test_the_walk_and_the_paired_report_know_no_skill(lane, observed):
+    """The walk and the paired report read a frozen preregistration, the ledger and the run records alone, so they can
+    be lifted into the instrument as they are: neither module imports a skill-specific one, and the pairs they give
+    for two named arms carry no skill fact."""
+    for module in (walk, paired):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        imports = [line for line in source.splitlines() if line.startswith(("import ", "from "))]
+        assert not any(name in line for line in imports for name in ("aew.skills", "skill_eval.arms",
+                                                                    "skill_eval.plan", "skill_eval.cases",
+                                                                    "skill_eval.run", "skill_eval.report")), imports
+    sides = {"reference": "baseline", "treatment": "candidate"}
+    found = paired.pairs(observed, lane["lane"] / "ledger", sides)
+    assert [p["complete"] for p in found] == [True, True, True]
+    assert set(found[0]["treatment"]) == {"run_id", "counts", "why", "truncated", "usage", "charged_usd"}
+    out = paired.cost(found, sides)
+    assert out["treatment_minus_reference"] == report.report(observed, lane["lane"])["cost"]["candidate_minus_baseline"]
+    assert list(paired.benefit(found, {}, sides)["complete_pairs"]) == [
+        "both_correct", "treatment_only", "reference_only", "neither", "ungraded"]

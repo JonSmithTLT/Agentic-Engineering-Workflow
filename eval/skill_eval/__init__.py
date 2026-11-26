@@ -14,8 +14,12 @@ OpenCode projection's; ``loaded`` is the adapter's. What it adds:
   the oracle side kept apart in an evaluator's key;
 * :mod:`skill_eval.arms`: the two arms, F19's ``raw`` and ``scripted`` arms with a skill exposure;
 * :mod:`skill_eval.plan`: the rules a paired preregistration meets before anything is registered;
-* :mod:`skill_eval.run`: the schedule, cell by cell, under the preregistered budget;
-* :mod:`skill_eval.report`: the pairs, the blinded grading packets, and the three measures.
+* :mod:`skill_eval.run`: a skill evaluation's lane, around the walk;
+* :mod:`skill_eval.report`: the three measures, from the paired report.
+
+Two modules know no skill and are written to be lifted into the instrument as its shared walker and paired report
+(the operator, 2026-11-26): :mod:`skill_eval.walk` (a frozen schedule, block by block, under its budget) and
+:mod:`skill_eval.paired` (two arms' runs as pairs, their usage differences, blind packets and paired grades).
 
 It is a measuring instrument, never authority: no result here labels a skill, changes a card or satisfies a gate, and
 running it is the operator's act, with a keyed, paid model they approve for that event (register E135's note of

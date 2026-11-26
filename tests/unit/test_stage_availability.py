@@ -33,6 +33,7 @@ class FakeEngine:
         self.answers = answers or {}
         self.found = found or {}
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
+        self.asked: list[tuple[str, dict[str, Any]]] = []
 
     gate_memo = staticmethod(contextlib.nullcontext)
     mode = "verifier"
@@ -51,6 +52,7 @@ class FakeEngine:
 
     def guard_query(self, primitive, work_id, args, *, state=None):
         self.seen.append((primitive, work_id, state))
+        self.asked.append((primitive, dict(args)))
         if primitive in self.found:
             args["found"] = self.found[primitive]
         answer = self.answers.get((primitive, args.get("card")), self.answers.get(primitive, AVAILABLE))
@@ -96,6 +98,7 @@ def test_step_one_is_queried_on_the_current_state_and_a_later_step_with_what_its
     assert s1 is state  # the current state, as committed
     unit = s3["work"]["T-0001"]
     assert unit["state"] == "ASSIGNED" and s3["invocations"][unit["implementer_invocation"]]["status"] == "active"
+    assert dict(engine.asked)["work.transition"]["prior_value"] == unit["state"]
     assert state["work"]["T-0001"]["state"] == "READY" and state["invocations"] == {}  # never the real state
     assert out["steps"][1] == {"n": 2, "primitive": "dispatch.launch", "produced_by": {contract.DISPATCH: 1},
                                "covered_by": 1, "availability": AVAILABLE, "reason_codes": [],
@@ -110,6 +113,7 @@ def test_an_ingest_step_produces_the_state_its_outcome_implies_and_its_evidence_
     assert out["availability"] == AVAILABLE
     seen = {p: s for p, _w, s in engine.seen}
     assert seen["work.transition"]["work"]["T-0001"]["state"] == "REVIEW_PASSED"
+    assert dict(engine.asked)["work.transition"]["prior_value"] == "REVIEW_PASSED"
     assert seen["work.transition"]["work"]["T-0001"]["evidence"] == [ref]
     assert seen["invoke.create.mutating"]["work"]["T-0001"]["state"] == "VERIFY_PENDING"
 
@@ -289,14 +293,18 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
                 out.append(f"{name}: planned {[p['primitive'] for p in plan]}")
                 continue
             for n, step in zip(planned, plan, strict=True):
-                asked, given = SA.STAGES[name][n - 1](call), step.get("args") or {}
-                for key, value in (asked or {}).items():
+                asked, given = SA.STAGES[name][n - 1](call) or {}, step.get("args") or {}
+                dependencies = t.produced_by[n - 1]
+                state_step = dict(dependencies).get(contract.STATE)
+                if step["primitive"] == "work.transition" and state_step in planned:
+                    asked = {**asked, "prior_value": {"$from": [state_step, contract.STATE]}}
+                for key, value in asked.items():
                     got = given.get(key)
-                    produced = isinstance(got, dict) and set(got) == {"$from"} and any(
-                        m == got["$from"][0] for _input, m in t.produced_by[n - 1])
+                    produced = key != "prior_value" and isinstance(got, dict) and set(got) == {"$from"} and any(
+                        m == got["$from"][0] for _input, m in dependencies)
                     if got != value and not produced and not (value is None and key not in given):
                         out.append(f"{name} step {n} {key}: guard asked {value!r}, planner gives {got!r}")
-                for key in sorted(set(given) & GUARD_READS[t.expands_to[n - 1]] - set(asked or {})):
+                for key in sorted(set(given) & GUARD_READS[t.expands_to[n - 1]] - set(asked)):
                     out.append(f"{name} step {n} {key}: planner gives {given[key]!r}, which the guard reads but is "
                                "never asked with")
     return out

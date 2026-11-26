@@ -48,11 +48,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E235, H-1); operator (H-1's live re-probe and the real default-flow run)
+**Who:** Lead (H-1); operator (H-1's live re-probe and the real default-flow run)
 
 **Now:** 6
 
-**Own slices left:** 2 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
+**Own slices left:** 1 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
 

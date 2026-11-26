@@ -2550,18 +2550,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E234/`, oldest first (`python tools/register.py show E234`).*
 
-### E235
-
-**Work:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set. Fix the lookup with a test on the real folder name, and weigh the desktop's `Programs\ai.opencode.desktop\resources\` copy, whose path moved in that update. Read from the code, not yet run
-
-**Source:** Found by the Lead, 2026-11-08; works out of the box is the operator's rule
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
-
 ### E237
 
 **Work:** Two tests in `tests/unit/test_vertical_ledger.py` start `_listen` on a `Lead.__new__` object and leave the thread running: one dies on `server`, the other earlier on `lock`. The tests end their threads. Never add `lead.server = None`: the thread then reaches `os._exit(0)` and kills the test worker
@@ -5211,6 +5199,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #420 (`881bfb97`): the Ticket's priority, set at the draft, and the steering loop's order by it
 
 *Later notes: `notes.d/E227/`, oldest first (`python tools/register.py show E227`).*
+
+### E235
+
+**Was:** `default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`, but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set
+
+**Closed:** 2026-11-26
+
+**By:** #609 (`42a6ea19`): `default_binary()` reads the pinned version's folder under the Desktop's `cli` folder, named for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version's, a pre-release's or another suffix's (#609's review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md` names it. The Desktop's `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine with the Desktop installed: the folder name is the row's. `tests/unit/test_opencode_units.py`
+
+*Later notes: `notes.d/E235/`, oldest first (`python tools/register.py show E235`).*
 
 ### E236
 

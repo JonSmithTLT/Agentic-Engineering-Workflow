@@ -142,7 +142,9 @@ def test_mcp_report_write_uses_the_live_brokers_session_and_returns_an_explicit_
     assert written["ok"] and resumed["ok"]
     report_id = written["result"]["id"]
     assert "-LS-" in report_id
-    assert resumed["result"]["reports"] == {"label": reports.LABEL, "items": [{"id": report_id, "title": "Answer"}]}
+    assert resumed["projection"]["reports"] == {"label": reports.LABEL,
+                                                "items": [{"id": report_id, "title": "Answer"}]}
+    assert "reports" not in resumed["result"]
     assert body.splitlines()[0] not in json.dumps(resumed)
     command = shlex.split(written["result"]["show"])
     assert command[0] == "aew"

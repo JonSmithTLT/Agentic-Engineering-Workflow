@@ -775,9 +775,6 @@ systems:
   - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
     row: E233
     estimate: not sized (estimate)
-  - slice: The worker route's size check
-    row: E241
-    estimate: 1 small PR (estimate)
   - slice: 'The Lead''s system text and tool list made true and smaller, with a Lead-text truth test, after the guide''s
       core plus pointers (the operator, 2026-11-25)'
     row: E367
@@ -791,10 +788,11 @@ systems:
     role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen
     by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E231's next part, E233, E241, E367, E368)
+  who: Lead (E231's next part, E233, E367, E368)
   reason: 'The Lead''s catalog is on and used and needs nothing to work (BOARD v2 §5). What is left inside the finish
-    line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief), E233''s exits and E241''s
-    size check, then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
+    line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief) and E233''s exits (E241''s
+    size check is built and its row closed: bridge.call refuses a request over MAX_REQUEST on every route, in harness/bridge.py),
+    then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
     then the worker packs (E368). The unbuilt worker half (F15.3, F15.8) stays held, as HOLD-06 placed it after first use (BOARD v2 §3),
     and moved to SYS-51 with the other frozen slices. F15.3 changes the form of what workers already have through the
     bridge (whoami, check.run, submit over the aew CLI), not the capability.'

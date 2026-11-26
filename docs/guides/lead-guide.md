@@ -14,7 +14,7 @@ This core comes with every request. It is generated from this project's policy a
 
 Where a tool covers a move, use it: it makes the whole move, and returns the revision for your next `expect_rev`. Use the shell where no tool covers a move, or where a tool refuses.
 
-- Don't make part of a tool's move from the shell first: a tool starts from its first step's state and refuses a Ticket already past it. If a tool stops partway, what it committed stands: read `status`, then take the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a failed report is recorded.
+- Don't make part of a tool's move from the shell first: a tool starts from its first step's state and refuses a Ticket already past it. If a tool stops partway, what it committed stands, a failed report it recorded included: read `status`, then take the Ticket's move below.
 - `resolve` settles only what `resume` or a decision lists. A partial stale stage whose result names `resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.
 
 A mutating Ticket starts with `ticket_draft`, then accept the plan with `aew plan accept <T> --revision <n> --expect-rev <revision from aew status>`. From each state, these are the moves the engine allows (it refuses any other); "transition" means `aew work transition <T> --to <STATE> --expect-rev <revision from aew status>`, and "with a reason" adds `--reason <reason>`:

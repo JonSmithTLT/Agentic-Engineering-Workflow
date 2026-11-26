@@ -618,9 +618,8 @@ def _tool_rules() -> list[Rule]:
     stopped tool committed stands."""
     return [
         Rule("Don't make part of a tool's move from the shell first: a tool starts from its first step's state and "
-             "refuses a Ticket already past it. If a tool stops partway, what it committed stands: read `status`, then "
-             "take the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a "
-             "failed report is recorded."),
+             "refuses a Ticket already past it. If a tool stops partway, what it committed stands, a failed report "
+             "it recorded included: read `status`, then take the Ticket's move below."),
         Rule("`resolve` settles only what `resume` or a decision lists. A partial stale stage whose result names "
              "`resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not."),
     ]

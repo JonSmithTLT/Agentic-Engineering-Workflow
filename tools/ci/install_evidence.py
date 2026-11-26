@@ -24,8 +24,9 @@ GITLEAKS_URL = f"https://github.com/gitleaks/gitleaks/releases/download/v{GITLEA
 # A single attempt stalled with 0 bytes for its whole 20 s on three Windows shards on 2026-11-26 (register E3), and a
 # lane with no scanner withholds its report, so assurance fails although its tests passed. So the download is tried a
 # bounded number of times: each attempt ends after 10 s below 1 KiB/s (a stall) or 20 s in all, and the whole is at
-# most 3 x 25 s + 6 s of backoff. That time comes out of the job's absolute test deadline (AEW_JOB_DEADLINE), never
-# past the lane step's timeout. Only the download is retried: a checksum mismatch is never a reason to try again.
+# most 3 x 25 s + 6 s of backoff. In a lane that time comes out of the job's absolute test deadline (AEW_JOB_DEADLINE);
+# the --scanner-only installs (publish-evidence, the cancel record) have no such deadline, so there it adds to the
+# step's run time. Only the download is retried: a checksum mismatch is never a reason to try again.
 SCANNER_ATTEMPTS = 3
 SCANNER_BACKOFF_S = (2.0, 4.0)
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)

@@ -24,3 +24,12 @@ Designer questions (owners left unstated, so the operator's, until answered):
 
 The decisions the Lead owns but cannot complete from the projection alone (no `choice` or `rationale` offered) are
 E388.
+
+**What remains: the Lead guide's opening line still says the Lead makes every decision** (the quick check of #597 at
+`860c5c0c`, m2). `src/aew/engine/guide.py`, the first rule of `who` (line 658 at that commit), rendered as line 9 of
+`docs/guides/lead-guide.md`: "write and accept plans, … ingest their evidence and make every decision". It says whose
+decisions they are without deriving it from the owner table, and it is always sent. #597 leaves it: rewording it moves
+the guide's bytes and the pool record's `guide_core` figures (`lead-context-pool.yaml`). The change that makes
+`plan accept` and `integrate publish` need the operator's confirmation (E350's interim, branch
+`fix/operator-confirms-plan-and-publish`) rewords it, since that change makes "accept plans" and "make every decision"
+false and must touch the line anyway; it re-measures the guide and updates the pool record with it.

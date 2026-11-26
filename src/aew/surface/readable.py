@@ -34,6 +34,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from aew.harness.contract import redact, wait_rule, wake_step
+from aew.owners import LEAD, whose
 from aew.surface import contract
 from aew.surface.scrubbing import scrub
 
@@ -167,18 +168,22 @@ def _call(name: Any, arguments: Any) -> str:
 
 def _next(result: dict[str, Any]) -> str:
     """The one next step: what the engine says follows this call, or what the projection offers, in order a decision
-    that is the Lead's, an action that moves the work, a wait, the engine's own hint, or what blocks it. A call or a
-    printed command is never shortened: it must run as printed."""
+    that can be made now, an action that moves the work, a wait, the engine's own hint, or what blocks it. Whose the
+    decision is comes from its ``owner`` (register E335; the quick check of #597, m1): the Lead is told to decide
+    only its own, and another's is named as theirs, with the call that carries it out. A call or a printed command is
+    never shortened: it must run as printed."""
     projection = _projection(result)
     scope = _scope(result)
     if _payload(result).get("next_action"):
         return _one_line(f"next: {_payload(result)['next_action']}")
     for decision in projection.get("decisions_required") or []:
         if decision.get("availability") == "AVAILABLE":
-            what = f"decide {_one_line(decision.get('decision'))} on {_one_line(decision.get('subject'))}"
+            name = f"{_one_line(decision.get('decision'))} on {_one_line(decision.get('subject'))}"
+            what, how = (f"decide {name}", ": ") if decision.get("owner") == LEAD else \
+                (f"{whose(decision.get('owner'))} decision, {name}", "; it is carried out by: ")
             if decision.get("tool"):
-                return f"{what}: " + _whole(_call(decision["tool"], decision.get("arguments")))
-            return f"{what}: " + _whole(_command(decision["cli_fallback"])) if decision.get("cli_fallback") else what
+                return what + how + _whole(_call(decision["tool"], decision.get("arguments")))
+            return what + how + _whole(_command(decision["cli_fallback"])) if decision.get("cli_fallback") else what
     offered = [a for a in projection.get("actions") or [] if a.get("availability") == "AVAILABLE"]
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
             [a for a in offered if a.get("kind") == "wait"]:
@@ -231,9 +236,10 @@ def _stopped(result: dict[str, Any]) -> list[str]:
 
 def _waiting(result: dict[str, Any]) -> list[str]:
     """What holds the work up. Decisions are the Lead's or the operator's and have no default, so they are always
-    named. Everything else a person can ask for is in the JSON: other actions, other hints, ids and states."""
+    named, each with whose it is, from its ``owner``. Everything else a person can ask for is in the JSON: other
+    actions, other hints, ids and states."""
     projection = _projection(result)
-    decisions = [f"{d.get('decision')} on {d.get('subject')} ({d.get('availability')})"
+    decisions = [f"{d.get('decision')} on {d.get('subject')}, {whose(d.get('owner'))} ({d.get('availability')})"
                  for d in projection.get("decisions_required") or []]
     problems = [f"{b.get('code')}: {b.get('message')}" for b in projection.get("blockers") or []]
     anomalies = [f"{a.get('code')}: {a.get('message')}" for a in projection.get("anomalies") or []]

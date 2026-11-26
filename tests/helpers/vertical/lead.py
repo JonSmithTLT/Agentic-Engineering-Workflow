@@ -9,9 +9,10 @@ Lead broker), and its shell commands run in the TUI's own environment.
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
 2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
-   stated (every one today), ask the operator and wait for the reply. One whose owner is exactly ``lead`` or
-   ``mechanical``, the Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned
-   decisions only). Any other stated owner is asked too, and recorded as ``unknown_owner``.
+   stated (the projection states each one's since register E335), ask the operator and wait for the reply. One
+   whose owner is exactly ``lead`` or ``mechanical``, the Lead takes itself and never asks (spec v2:
+   ``decisions_required`` counts operator-owned decisions only). Any other stated owner is asked too, and recorded
+   as ``unknown_owner``.
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
@@ -31,8 +32,8 @@ finishes; they are the only place AEW knowledge appears here:
   a tool the projection did not offer (``guessed_commands``), with its own proposition and plan (its judgement);
 - ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
   then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
-- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell; for
-  ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
+- ``decision_without_tool``: a decision with no typed tool, whoever owns it, runs its ``cli_fallback`` from the
+  shell; for ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
 - ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
   - ``hint_command``: the command a projection hint names, run from the shell with its placeholders filled
     (``vertical.hints``: the revision, the subject, a reason), and ``--launch`` added once a refusal asks for it (each a
@@ -405,6 +406,11 @@ class Lead:
             # (judgment inputs are the Lead's, for actions and its own decisions only; review of #213, F3).
             self.call(d["tool"], d["arguments"], offered=True)
             return True
+        return self.without_tool(d)
+
+    def without_tool(self, d: dict[str, Any]) -> bool:
+        """A decision, whoever owns it, with no typed call: its ``cli_fallback`` from the shell, counted, when it is
+        concrete (the gap ``decision_without_tool``), else stuck."""
         cli = list(d.get("cli_fallback") or [])
         if d["decision"] == "RECONCILE" and "<phase>" in cli:
             # The known gap: an INTERRUPTED Ticket is reconciled to the phase it was interrupted from, with a reason,
@@ -450,7 +456,7 @@ class Lead:
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
             self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
             return True
-        return self.stuck(f"decision {d.get('decision')} is the {d.get('owner')}'s and offers no typed call")
+        return self.without_tool(d)
 
     def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         """A decision still required after its answer was acted on (its call refused): one ``explain``, then its

@@ -2646,18 +2646,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E246/`, oldest first (`python tools/register.py show E246`).*
 
-### E247
-
-**Work:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked
-
-**Source:** The review of #394, 2026-11-09
-
-**When:** **Unscheduled**, for checking
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
-
 ### E248
 
 **Work:** A typed `harness_interrupt`. It stays out of push wake PR 3, as `harness_send` does (E131 owns send)
@@ -3522,18 +3510,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
 
-### E335
-
-**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
-
-**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
-
-**When:** **Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator's; its gaps are E350 and E351
-
-**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
-
-*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
-
 ### E336
 
 **Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
@@ -3965,6 +3941,30 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by E136's fourth batch
 
 *Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
+
+### E394
+
+**Work:** A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree, and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree say it holds one command
+
+**Source:** Found by the builder of #608 while testing E247, 2026-11-26; its review's M2 asks for the row
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Reproduced at #608's head: a tree with a sleeping member, then a second `spawn`
+
+*Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
+
+### E388
+
+**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
+
+**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
+
+**When:** **Unscheduled**; the operator places it
+
+**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E373
 
@@ -5264,6 +5264,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E241/`, oldest first (`python tools/register.py show E241`).*
 
+### E247
+
+**Was:** `ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped `Popen` for a tree member waits its full timeout
+
+**Closed:** 2026-11-26
+
+**By:** #608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()` now reads the group's members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`
+
+*Later notes: `notes.d/E247/`, oldest first (`python tools/register.py show E247`).*
+
 ### E251
 
 **Was:** A printed `aew manifest adopt` runs as printed: the switch offer's review counted 21 printed mentions in 8 files of `src/aew` that name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them, and a test follows each printed line to its outcome. The switch offer fixed its own
@@ -5364,6 +5374,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
 
+### E335
+
+**Was:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Closed:** 2026-11-26
+
+**By:** #597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`), and one the table does not state is the operator's; the review and Ticket-verification acceptances are the Lead's and the scripted Lead takes them. `test_decision_owners` pins E350's four gaps; E351 is the plan's own kind
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
+
 ### E337
 
 **Was:** A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may spend the operator's stored OpenCode API-key login for its pinned provider when the policy's `provider_env` names that provider's key variable (the operator's consent for each provider) and the provider's upstream is the built-in one. A usable export where AEW launches wins; otherwise the engine's readiness check and the supervisor read the store on the host, read-only and bounded, and the key goes only to the run's relay, never to the sandbox, a harness configuration, the launch contract, a record, a log or an error. Never off the relay route, never to an upstream override, never a second credential after an upstream rejects one, never a write, and never a refreshing (OAuth) login. `aew doctor` and each launch record name the source, never the value. Each of the designer's seven custody conditions is a planted case with an ablation; a certificate-only provider makes no store read. ADR-0009's dated amendment, the login docstring, the OpenCode guide, the quickstart and init's `next` land in the same PR
@@ -5423,6 +5443,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E389
+
+**Was:** Refine F19, the evaluation instrument, with the ProjectArchitect research plan's concepts: merge the good parts of the plan into F19's architecture and modernise F19 where needed, so that one instrument measures the value of AEW's features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves, its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect code, prompts or runtime. Done when the proposal is adopted and F19's plan and rows carry the result, or the operator refuses it and a note on this row gives the reason
+
+**Closed:** 2026-11-26
+
+**By:** Closed into F19 as F19's feature-cell backlog, where its work continues (the operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the second of the Lead's seven questions was "E389: close it into F19 as F19's feature-cell backlog, or keep the row? I recommend closing it into F19, which matches what you said about not having two systems.", so the yes is to the Lead's stated recommendation). Delivered: [the F19 refinement proposal](../research/f19-refinement-proposal-2026-11-26.md) (research, not adopted; ledger FRP), filed and answered in part, not adopted. What the operator decided and what stays open are in F19's note of 2026-11-26
+
+*Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
 
 ### F1
 

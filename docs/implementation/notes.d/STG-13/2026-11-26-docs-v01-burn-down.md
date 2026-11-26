@@ -5,4 +5,4 @@ clusters, each with its row and state, the order in two tracks (the alpha gate a
 questions for the operator and the designer. `tests/unit/test_v01_burn_down.py` keeps it from going stale: every breach
 category the ledger and the oracle define has an entry, every step the oracle derives as not landed names an open
 cluster, and a cluster's state agrees with its rows' state in the register.
-- **The #213 fixture fix this row's note of 2026-10-30 tracked** now has a row of its own, E385.
+- **The #213 fixture fix this row's note of 2026-10-30 tracked** has a row of its own, E385, closed by #602.

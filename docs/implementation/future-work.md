@@ -4122,18 +4122,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
 
-### E385
-
-**Work:** The #213 reconstruction sees the contained TUI's diagnostics: its children directory, which the autopsy names in the scripts directory (`tests/helpers/autopsy.py:431-442`), is writable inside the contained Lead's sandbox, whose writable roots are only the scripts directory and `sync` (`tests/helpers/vertical/scripted_operator.py:494`): the world's `containment.writable` fixture includes it, or childdiag writes under `sync/` and the autopsy collects it
-
-**Source:** STG-13's note of 2026-10-30 (the failure "tracked for a test-fixture fix in a later pull request", which no row held); the V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C15), from the vertical's re-measure of 2026-11-26 at `3640b585`
-
-**When:** **V-01**, the alpha track of the burn-down, first
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26. Its builder had started when it was filed
-
-*Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
-
 ### E386
 
 **Work:** The forced kill's own refusal is not the Lead's: in V2's forced case, the call in flight when the test kills the session mid-stage (`ticket_start`, refused `BROKER_UNREACHABLE`) is recorded as the scenario's, not counted under the Lead's `refusals`, a one-line rule beside E338's excuses
@@ -5397,6 +5385,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #594: the archetype's text is scope-neutral, `knowledge.context._scope_duties` adds each scope's duties only where the pack delivers their input, and `test_pack_truth`'s scope-fit guard holds it. Parent scope, outside the row, gained only the change duty for the child diffs its pack carries, on #594's review (m1) (`notes.d/E366/`)
 
 *Later notes: `notes.d/E366/`, oldest first (`python tools/register.py show E366`).*
+
+### E385
+
+**Was:** The #213 reconstruction sees the contained TUI's diagnostics: its children directory, which the autopsy names in the scripts directory, was outside the contained Lead's writable roots, so the TUI's childdiag events were lost with the sandbox (cluster C15 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`; the fix STG-13's note of 2026-10-30 tracked)
+
+**Closed:** 2026-11-26
+
+**By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
+
+*Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
 
 ### F1
 

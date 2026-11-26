@@ -1645,6 +1645,7 @@ None.
 - `aew.engine.dispatch`
 - `aew.engine.faults`
 - `aew.engine.first_configuration`
+- `aew.engine.guide`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.agentenv`

@@ -1009,8 +1009,10 @@ sources:
     role: research
     # R0 of PAE (2026-11-26): a read-only baseline at eece01e5, no model run. Its observations and classifications are
     # evidence. What it proposes (fixtures, accounting, criteria) is input to the F19 refinement proposal (E389), not
-    # a plan of record (the operator, 2026-11-26); its cap stays approved, to be carried into F19's metering. Its
-    # deltas go to their owners: D1 is built directly (F36).
+    # a plan of record (the operator, 2026-11-26). The operator approved its cap ("cap is fine") for R0's cells as
+    # then proposed; it is not withdrawn, and whether F19's metering takes it is for the proposal to put to the
+    # operator. Its deltas go to their owners: D1 is built directly (F36); D4's and D5's owners are for the proposal
+    # to name.
     no_requirements:
       "Summary": a digest of the record below
       "Method": how the baseline was rendered, and what was not run

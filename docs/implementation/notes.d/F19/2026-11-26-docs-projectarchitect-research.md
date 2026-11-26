@@ -13,8 +13,9 @@ So E389 is a proposal to refine F19: merge the good parts of the plan into this 
 it where needed, so that one instrument measures the value of AEW's features. The plan's experiments A, B and C, and
 the fixtures, accounting and decision criteria that
 [R0](../../../research/projectarchitect-r0-baseline-2026-11-26.md) lists, are input to that proposal and not a plan of
-record. The cap the operator approved on R0 ($0.50 and 20 minutes per attempt, at most 132 attempts, a $75 hard total)
-stays approved for those cells, and the proposal carries it into F19's metering.
+record. The operator approved R0's cap on 2026-11-26 ("cap is fine") for R0's cells as then proposed ($0.50 and 20
+minutes per attempt, at most 132 attempts, a $75 hard total). It is not withdrawn. Whether F19's metering takes it is
+for the proposal to put to the operator.
 
 This note changes nothing of F19: no instrument code, schema or experiment changes. F19 stays frozen until the operator
 unfreezes it, and nothing is built from the proposal until the operator has read it.

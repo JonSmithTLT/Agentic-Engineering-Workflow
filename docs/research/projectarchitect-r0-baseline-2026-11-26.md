@@ -11,7 +11,7 @@ the experiments, fixtures, accounting and criteria below are input to that refin
 **The operator's reply to R0, 2026-11-26:** "Yes start R1 prep, ship truth fixes now, cap is fine but will only be able
 to be done when I get back home anyways". So three things are decided, and nothing else below is:
 - R1 preparation may start now: fixtures, frozen configurations, oracles and the preregistration, with no model run
-  and no spend;
+  and no spend (**superseded the same day** by the decision below: no separate R1 preparation runs);
 - E368 ships its truth fixes now (§"Where E368's rewrite should use C1");
 - the cap is approved as proposed below, and paid runs wait until the operator is home.
 
@@ -33,9 +33,13 @@ So:
   protocol document and no preregistration are built from this record.
 - **The experiments, fixture lists, accounting and thresholds below are input to the F19 refinement proposal.** They
   are kept as written and marked with their status at the head of each section.
-- **The cap stays approved** for these cells ($0.50 and 20 minutes per attempt, at most 132 attempts, a $75 hard total
-  with a stop at half). The proposal carries it into F19's metering.
+- **The cap.** The operator approved it on 2026-11-26 ("cap is fine") for R0's cells as then proposed ($0.50 and 20
+  minutes per attempt, at most 132 attempts, a $75 hard total with a stop at half). It is not withdrawn. Whether F19's
+  metering takes it is for the proposal to put to the operator.
 - **Unchanged:** E368's truth fixes ship now, D1 is built directly, and the findings below stand.
+- **Reading the Summary and "Candidate deltas" below.** Where they name Experiments A to C, read a measurement on the
+  refined F19, as the proposal would define it. Where they say "resolve at R5" or "a row at R5", read the proposal:
+  D4's and D5's owners are for the proposal to name.
 
 **Basis.** AEW `main` at `eece01e5`, the revision the plan itself pins. Every `file:line` below is at that commit.
 
@@ -239,7 +243,8 @@ envelope and ordinary source reads.
 
 **Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The fixture
 lists for Experiments A, B and C are candidates for one instrument's cells, not a second set of experiments beside
-F19's. Nothing here is built or run from this record. The proposal decides what F19 takes from it.
+F19's. Nothing here is built or run from this record. The proposal says what F19 would take from it, and the operator
+decides.
 
 The plan's planning figure is eight fixtures and three repetitions per arm (§8.1). Each fixture below is public or
 synthetic; held-out material stays under F19's rules. "Existing" means it is in `eval/experiments/` or the test helpers
@@ -303,9 +308,10 @@ Not proposed: a retrieval service, an outline index (C5 stays on F22.2), a decis
 ## Run accounting and resource cap
 
 **Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The
-accounting is a candidate for F19's own metering. The cap stays approved by the operator for these cells, and the
-proposal carries it into F19's metering. Nothing here is built or run from this record. The proposal decides what F19
-takes from it.
+accounting is a candidate for F19's own metering. The operator approved this cap on 2026-11-26 ("cap is fine") for
+R0's cells as then proposed. It is not withdrawn. Whether F19's metering takes it is for the proposal to put to the
+operator. Nothing here is built or run from this record. The proposal says what F19 would take from it, and the
+operator decides.
 
 **Accounting**, per attempt, in F19's attempt ledger (`aew/eval-attempt/v1`), every attempt registered before launch:
 - each participant's calls apart: parent, worker, helper (B1's investigator), verification, downstream consequence run;
@@ -332,7 +338,7 @@ is home; F19 pins budget at preregistration). The worker profile in its first li
 
 **Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** The rules
 and thresholds for Experiments A, B and C are candidates for F19's decision rules, and none is set. Nothing here is
-built or run from this record. The proposal decides what F19 takes from it.
+built or run from this record. The proposal says what F19 would take from it, and the operator decides.
 
 Set before any treatment result is seen (plan §8.5), and proposals until the operator sets them at preregistration.
 Mandatory constraints, evidence and custody are pass or fail. "Not worse" is the quality tolerance: across an arm's 24
@@ -366,7 +372,8 @@ and no task family may have more than one fewer.
 
 **Status (the operator, 2026-11-26): input to the F19 refinement proposal (E389), not a plan of record.** "Experiment
 A" and "until E389 runs" below now mean the refined F19 measuring the rewrite as a treatment. The truth fixes still
-ship now. Nothing here is built or run from this record. The proposal decides what F19 takes from it.
+ship now. Nothing here is built or run from this record. The proposal says what F19 would take from it, and the
+operator decides.
 
 E368 rewrites the worker packs as a core plus pointers, with an estimate of 36 to 42% less per run. C1 says to judge
 that rewrite by what the worker achieves with it:

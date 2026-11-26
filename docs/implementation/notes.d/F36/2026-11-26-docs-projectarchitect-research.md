@@ -15,5 +15,5 @@ be one kf them. Aew kind of forces replacement or follow on workers to kind of r
 ks not optimal". The operator was then asked whether to build the recovery section (D1) now as a direct fix, and
 answered the same day: "Yes recovery for replacement workers is a defect in current
 aew. Or i guess the mkre correct phrasing is it is an oversight". So D1 is built directly, as a slice of this row, in
-its own pull request. E389's Experiment C then measures how much it helps; it no longer decides whether to build it.
-This note builds nothing itself.
+its own pull request. A measurement of it on the refined F19 (E389's proposal) would show how much it helps; no
+measurement decides whether it is built. This note builds nothing itself.

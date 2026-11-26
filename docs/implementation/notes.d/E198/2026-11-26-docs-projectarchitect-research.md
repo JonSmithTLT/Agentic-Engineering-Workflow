@@ -6,7 +6,8 @@ a discovery record's `unresolved_questions` and a research record's `uncertainti
 also a research record's `constraints`. No pack section holds open questions or known limitations (R0's B6).
 
 R0's candidate fix is D2: consumed inputs keep those three fields as labelled lines, and the pack gets an
-open-questions section. E389's Experiment A would test it on fixtures A-F4 and A-F5.
+open-questions section. R0's candidate fixtures A-F4 and A-F5 would test it; they are input to the F19 refinement
+proposal (E389), not a plan of record.
 
 The operator's view of R0's findings, 2026-11-26, said of the replacement-worker case on F36: "There is benefit to
 starting fresh cintext workers. That case above does not seem to be one kf them. Aew kind of forces replacement or

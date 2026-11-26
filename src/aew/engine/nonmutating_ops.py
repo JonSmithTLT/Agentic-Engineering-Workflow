@@ -582,9 +582,10 @@ class NonMutating:
         return inv_id, inv_token
 
     def _end_attempt(self, state: dict[str, Any], unit: dict[str, Any], why: str, status: str, *,
-                     reason: str | None = None) -> None:
+                     reason: str | None = None, decision: str | None = None) -> None:
         """Retire the current attempt into history: its executor ends (credential revoked, observation retired).
-        ``reason``: what its credential's revocation records after the status, when ``why`` would repeat it.
+        ``reason`` and ``decision``: what its credential's revocation records after the status, when ``why`` would
+        repeat it: the Lead's reason, bounded, then the id of the decision that records the supersession.
 
         An attempt whose record was already ingested (or whose executor was cancelled or interrupted) is
         still moved to history, so nothing from it can be mistaken for the next attempt's output.
@@ -594,7 +595,8 @@ class NonMutating:
             return
         inv = state["invocations"].get(execution["invocation"])
         if inv and inv["status"] == "active":
-            self.invocations.complete_invocation(state, execution["invocation"], status, reason=reason or why)
+            self.invocations.complete_invocation(state, execution["invocation"], status, reason=reason or why,
+                                                 decision=decision)
         if not execution.get("ended"):
             execution.update(ended=status if inv and inv["status"] == status else (inv or {}).get("status", status),
                              ended_at=utc_now(), end_reason=why)
@@ -650,7 +652,7 @@ class NonMutating:
                 body=f"Superseded execution: {previous}\n\nNothing produced by the superseded attempt can be ingested "
                      "or satisfy a gate of the new one.\n")
             self._end_attempt(state, unit, f"superseded ({record}): {reason}", "superseded",
-                              reason=f"{reason} ({record})")
+                              reason=reason, decision=record)
             inv_id, inv_token = self._start_attempt(ctx, work_id, unit, decision.facts, commit)
             unit.setdefault("history", []).append(
                 {"from": unit["state"], "to": unit["state"], "at": utc_now(), "event": "attempt_superseded",

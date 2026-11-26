@@ -259,6 +259,12 @@ def test_a_replacement_executor_of_a_read_only_ticket_is_told_of_its_predecessor
     assert recorded.startswith("invocation superseded: looked in the wrong module (D-") and recorded.count("super") == 1
     assert f"(recorded text, quoted): {json.dumps(recorded)}" in found
     assert "Workspace `" not in found and "assembled by AEW from its records at dispatch" in found
+    # A long reason is cut, and the decision that records the supersession is still named after it (quick check, m7).
+    calc.lead("work", "redispatch", wid, "--reason", "y" * 5000)
+    long = reason_of(calc, invocations(calc, wid)[-2])
+    assert long.startswith("invocation superseded: yyy")
+    assert f"[… {5000 - REVOKE_REASON_MAX} more characters] (D-" in long
+    assert long.endswith(")") and len(long) < REVOKE_REASON_MAX + 80
 
 
 def test_a_replacements_pack_regenerates_to_the_same_bytes_after_the_workspace_moves(calc, tmp_path):

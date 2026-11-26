@@ -138,18 +138,20 @@ class Invocations:
                          identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
 
     def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed", *,
-                            reason: str | None = None) -> None:
+                            reason: str | None = None, decision: str | None = None) -> None:
         """``reason``: why it was ended (the Lead's words for `invoke cancel` and a redispatch, the engine's for a
         released workspace), kept with the credential's revocation, the one record of why an invocation's authority
         ended; a replacement's recovery section quotes it (register F36). It is recorded as one line of at most
         ``REVOKE_REASON_MAX`` characters with the cut counted, since the Lead's text is free: the same record is the
         refusal the ended worker's next call gets, the `credential.revoked` event, its run's stop reason and the
-        dashboard's authority line (review of #614, m5)."""
+        dashboard's authority line (review of #614, m5). ``decision``: the id of the decision that records the ending
+        (a redispatch's), appended after the bounded reason, so a long reason never cuts it off (quick check, m7)."""
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
             if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
-                revoke(state, inv["token_id"], f"invocation {status}" + (f": {_one_line(reason)}" if reason else ""))
+                revoke(state, inv["token_id"], f"invocation {status}" + (f": {_one_line(reason)}" if reason else "")
+                       + (f" ({decision})" if decision else ""))
         obs = inv.get("observation")
         if obs and obs.get("status") == "active":
             obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)

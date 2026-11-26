@@ -56,11 +56,13 @@ class _Listing:
 
 @contextmanager
 def listing_as_unprivileged(monkeypatch: pytest.MonkeyPatch, *, unreadable: tuple[str, ...] = (),
-                            too_long: tuple[str, ...] = ()) -> Iterator[None]:
-    """``os.scandir`` refuses a directory whose owner has no read permission (EACCES), and each of ``too_long``
+                            too_long: tuple[str, ...] = (), unlistable: tuple[str, ...] = ()) -> Iterator[None]:
+    """``os.scandir`` refuses a directory whose owner has no read permission, and each of ``unlistable`` whatever its
+    mode (EACCES: Windows' ``chmod`` cannot take a directory's list permission away), and each of ``too_long``
     (ENAMETOOLONG); each entry at a path in ``unreadable`` has a type that cannot be read."""
     bad = {os.fspath(p) for p in unreadable}
     long = {os.fspath(p) for p in too_long}
+    refused = {os.fspath(p) for p in unlistable}
 
     def scandir(path: Any = ".") -> Any:
         if isinstance(path, int):  # a directory already open: its permissions were checked when it was opened
@@ -68,7 +70,7 @@ def listing_as_unprivileged(monkeypatch: pytest.MonkeyPatch, *, unreadable: tupl
         where = os.fspath(path)
         if where in long:
             raise OSError(errno.ENAMETOOLONG, "File name too long", where)
-        if not os.stat(where).st_mode & stat.S_IRUSR:
+        if where in refused or not os.stat(where).st_mode & stat.S_IRUSR:
             raise PermissionError(errno.EACCES, "Permission denied", where)
         return _Listing(path, bad)
 

@@ -1986,7 +1986,7 @@ systems:
   - src/aew/engine/coordination_ops.py:1666 (a revision ref is refused, reason no_ticket_revisions), :1773 (ticket_revision
     written as None)
   - src/aew/engine/stage_intents.py:527 (TRA-25 waits for F4)
-  - src/aew/engine/hierarchy_ops.py:57,170,802 (PROMOTION, and the carry E87 built); src/aew/engine/hierarchy.py:107 (ancestor_obligations)
+  - src/aew/engine/hierarchy_ops.py:58,172,827-828 (PROMOTION, and the carry E87 built); src/aew/engine/hierarchy.py:111 (ancestor_obligations)
   - src/aew/engine/scope_ops.py effective_meta, the one accessor for a Ticket's effective scope (E126, built)
   - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), rows E87 (closed), E88 (closed), and E126'
 - id: SYS-19

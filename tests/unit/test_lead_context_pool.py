@@ -19,8 +19,6 @@ from aew.util import load_yaml
 RECORD_PATH = "docs/implementation/lead-context-pool.yaml"
 RECORD = Path(__file__).resolve().parents[2] / RECORD_PATH
 MESSAGING_ON = frozenset({contract.MESSAGING})
-# TLS-21 as amended by LEAD-CONTEXT-BUDGET-2026-11-10 retains the offered-tool ceiling.
-TOOL_LIMIT = 16
 
 
 @dataclass(frozen=True)
@@ -61,7 +59,7 @@ def operator_count(entry: object, name: str, count_key: str) -> int:
         f"{location} requires exactly {count_key}, operator, and date"
     )
     count = entry[count_key]
-    assert type(count) is int and count > 0, f"{location}.{count_key} must be a positive byte count"
+    assert type(count) is int and count > 0, f"{location}.{count_key} must be a positive count"
     assert isinstance(entry["operator"], str) and entry["operator"].strip(), f"{location} requires the operator's words"
     quoted_date = entry["date"]
     try:
@@ -173,15 +171,22 @@ def test_the_guides_core_is_the_size_the_pool_records(record, switches, host_ind
     assert record["guide_core"]["saving_bytes"] == on["before"] - on["after"]
 
 
-def check_tool_count(count: int) -> None:
-    assert count <= TOOL_LIMIT, f"normal surface offers {count} tools (limit {TOOL_LIMIT})"
+def tool_ceiling(record: dict) -> int:
+    """TLS-21's offered-tool ceiling: the operator-approved count the record holds (the operator, 2026-11-27), with the
+    operator's words and date, so an author cannot raise it without quoting a decision."""
+    return operator_count(record.get("tool_ceiling"), "tool_ceiling", "count")
+
+
+def check_tool_count(count: int, record: dict) -> None:
+    limit = tool_ceiling(record)
+    assert count <= limit, f"normal surface offers {count} tools (limit {limit}, {RECORD_PATH} tool_ceiling)"
 
 
 @pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
-def test_the_normal_surface_stays_within_the_offered_tool_limit(switches):
+def test_the_normal_surface_stays_within_the_offered_tool_limit(record, switches):
     listing = mcp.tools_list(NORMAL, switches=switches)
     assert ("message_send" in {tool["name"] for tool in listing["tools"]}) == bool(switches)
-    check_tool_count(len(listing["tools"]))
+    check_tool_count(len(listing["tools"]), record)
 
 
 @pytest.mark.parametrize("part", ["system_bytes", "guide_bytes", "join_bytes", "mcp_bytes"])
@@ -221,18 +226,44 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     check_pool(smaller, record, switches=MESSAGING_ON)
 
 
-def test_one_tool_over_the_count_limit_fails_independently_of_bytes():
-    check_tool_count(TOOL_LIMIT)
-    with pytest.raises(AssertionError, match=f"{TOOL_LIMIT + 1} tools"):
-        check_tool_count(TOOL_LIMIT + 1)
+def test_one_tool_over_the_count_limit_fails_independently_of_bytes(record):
+    limit = tool_ceiling(record)
+    check_tool_count(limit, record)
+    with pytest.raises(AssertionError, match=rf"{limit + 1} tools \(limit {limit}, {RECORD_PATH} tool_ceiling\)"):
+        check_tool_count(limit + 1, record)
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    ({"operator": None}, "requires exactly count, operator, and date"),
+    ({"date": None}, "requires exactly count, operator, and date"),
+    ({"operator": " "}, "requires the operator's words"),
+    ({"date": load_yaml("date: 2026-11-27")["date"]}, "quoted ISO date"),
+    ({"count": 0}, "positive count"),
+])
+def test_the_tool_ceiling_is_the_operator_approved_count_in_the_pool_record(record, change, message):
+    """The operator, 2026-11-27, raised the ceiling from 16 (the Lead chose 20 of the 18 or 20 allowed). The limit is
+    the record's operator-approved count, never a literal here, and an entry without the operator's words or the
+    date, or no entry at all, fails before any tool is counted."""
+    entry = record["tool_ceiling"]
+    assert tool_ceiling(record) == entry["count"]
+    for key, value in change.items():
+        if value is None:
+            del entry[key]
+        else:
+            entry[key] = value
+    with pytest.raises(AssertionError, match=rf"{RECORD_PATH} tool_ceiling.*{message}"):
+        check_tool_count(1, record)
+    del record["tool_ceiling"]
+    with pytest.raises(AssertionError, match=rf"{RECORD_PATH} tool_ceiling requires exactly"):
+        check_tool_count(1, record)
 
 
 @pytest.mark.parametrize(("change", "message"), [
     ({"operator": " "}, "requires the operator's words"),
-    ({"count": True}, "positive byte count"),
+    ({"count": True}, "positive count"),
     ({"date": "11/11/2026"}, "quoted ISO date"),
     ({"date": load_yaml("date: 2026-11-11")["date"]}, "quoted ISO date"),
-    ({"count": 0}, "positive byte count"),
+    ({"count": 0}, "positive count"),
     ({"extra": "value"}, "requires exactly"),
 ])
 @pytest.mark.parametrize(("name", "count_key"), [("approval", "ceiling_bytes"), ("wip_allowance", "count")])

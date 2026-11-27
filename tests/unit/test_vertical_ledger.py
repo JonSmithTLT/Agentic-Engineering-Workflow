@@ -5,6 +5,7 @@ the document says."""
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -799,21 +800,27 @@ def test_each_open_starts_a_fresh_session_with_no_state_left(tmp_path):
     assert len(ids) == 2 and "" not in ids and op.chat_errors_at_open == 1
 
 
-@pytest.mark.parametrize("windows", [False, True], ids=["posix-group", "windows-proc-kill"])
+# Each kill branch the host can run: os.killpg exists only on POSIX, and the Windows branch's proc.kill() runs anywhere
+@pytest.mark.parametrize("windows", [True] if sys.platform == "win32" else [False, True],
+                         ids=["windows-proc-kill"] if sys.platform == "win32" else ["posix-group", "windows-proc-kill"])
 def test_a_killed_session_tells_the_ledger_its_own_id_and_the_calls_it_had_recorded(tmp_path, monkeypatch, windows):
     """E386 (review of #636, m2): ``open_session`` gives the Session the id its Lead stamps on its events, and
     ``end_session(session, "kill")`` hands that id to the ledger with how many of its calls were recorded before the
-    kill, on both of its kill branches (Windows' ``proc.kill()`` reached through ``IS_WINDOWS``)."""
+    kill, on each kill branch the host can run (Windows' ``proc.kill()`` reached through ``IS_WINDOWS``). A last line
+    the Lead has not finished writing is a call not yet recorded (the quick check of #636, qc3)."""
     import json
     import subprocess
-    import sys
     from types import SimpleNamespace
 
     from vertical import scripted_operator as S
 
+    children: list[subprocess.Popen[bytes]] = []
+
     def start(argv, *, env, stdout, stderr, resume_prompt=False):  # a throwaway child in place of `aew opencode`
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], stdout=stdout, stderr=stderr,
-                                start_new_session=True)
+                                start_new_session=sys.platform != "win32",
+                                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        children.append(proc)
         return proc, None
 
     monkeypatch.setattr(S, "start_on_terminal", start)
@@ -824,13 +831,21 @@ def test_a_killed_session_tells_the_ledger_its_own_id_and_the_calls_it_had_recor
     lab = SimpleNamespace(env={S.SCRIPTS_ENV: str(scripts)}, sessions=[], tmp=tmp_path, root=tmp_path)
     op = S.Operator(lab, L.Ledger("V2-forced-mid-stage"), tmp_path, SimpleNamespace(errors=[]))  # type: ignore[arg-type]
     spec = {"state": str(sync / "lead-state.json"), "pidfile": str(sync / "lead-0.pid")}
-    session = op.open_session("open", ["opencode"], spec)
-    assert session.lead_session == op.session_id != ""
-    events = [{"kind": "call", "session": op.session_id}, {"kind": "say", "session": op.session_id},
-              {"kind": "call", "session": "another"}]
-    (sync / "lead-events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
-    op.end_session(session, "kill")
-    assert session.ended() and op.ledger.killed == {op.session_id: 1}
+    try:
+        session = op.open_session("open", ["opencode"], spec)
+        assert session.lead_session == op.session_id != ""
+        events = [{"kind": "call", "session": op.session_id}, {"kind": "say", "session": op.session_id},
+                  {"kind": "call", "session": "another"}]
+        torn = json.dumps({"kind": "call", "session": op.session_id})[:20]  # a call still being written
+        (sync / "lead-events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events) + torn,
+                                                encoding="utf-8")
+        op.end_session(session, "kill")
+        assert session.ended() and op.ledger.killed == {op.session_id: 1}
+    finally:  # never leave the child running when an assertion fails before the kill
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
 
 
 def test_a_scripted_lead_thread_that_dies_is_a_harness_fault_in_the_ledger():

@@ -129,7 +129,10 @@ to a real Python sample, with a real test. **The project's unit check is a real 
 `__pycache__`. The sample declares its pytest caches in `policy/checks.yaml` and has no Git ignore entry for them.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
-installed tool: its variables are not the operator's.
+installed tool: its variables are not the operator's. It has its own provider, a listener on loopback, which a setup
+fixture names as the relay upstream of every provider AEW knows an address for, so a relay probe of the world's
+synthetic login (doctor's and init's `provider-relay` rows) is answered there and never by a real provider host
+(register E387).
 
 ## 3. The scenarios
 

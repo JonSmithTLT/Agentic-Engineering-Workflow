@@ -52,6 +52,7 @@ def offline_kit(tmp_path, monkeypatch):
     world = new_world(tmp_path, host_data=home / "data")
     dest = tmp_path / "kit"
     lab = HarnessLab(Project(dest / "repo"), tmp_path, world.env)
+    lab.closers.extend(world.closers)  # the world's provider listener, which this kit's inert routes never use
     ledger = Ledger("E117")
     fixtures = {**world_fixtures(lab), "containment.network.upstreams": offline_policy}
     known = {"fakeprov": OFFLINE_KEY}

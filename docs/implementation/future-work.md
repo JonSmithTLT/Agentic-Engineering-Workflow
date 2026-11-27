@@ -4062,18 +4062,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
 
-### E387
-
-**Work:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows (`src/aew/doctor.py:160`, `src/aew/harness/doctor_relay.py`) send the world's synthetic OpenCode login to the real provider host, which answers HTTP 401, in every V3 case. The world gives doctor's relay probe a local upstream, or the probe is held off in it, so no offline case reaches a real host
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C17), from the vertical's re-measure of 2026-11-26 at `3640b585`: an observation with no counter; it changes no verdict
-
-**When:** **V-01**, the strict track of the burn-down
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
-
 ### E390
 
 **Work:** `DECIDE_WORK_PROPOSAL` on the O-01 wire: V01-01 step 5 (`plan`, W02; WIS the owner, G3-protected), so the operator's plan approval is a confirmed decision and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and the act is `plan accept` (`src/aew/cli/work_commands.py:367`). Its owner, WIS, is outside the pinned G3 wire's owner enum (`g3/aew_g3/g3-wire.schema.json`, `ConsumeRequest.owner`), so it cannot be consumed without a G3 wire change. E351 is the plan's decision kind in the projection, not this wire action
@@ -5445,6 +5433,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E387
+
+**Was:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows sent the world's synthetic OpenCode login to the real provider host, which answered HTTP 401, in every V3 case (cluster C17 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)
+
+**Closed:** 2026-11-27
+
+**By:** Branch `feat/e387-offline-doctor`, test-only: the offline world (`scripted_operator.new_world`) starts its own provider, a loopback listener closed with the lab, and its `containment.network.upstreams` fixture names it as the upstream of every provider AEW knows an address for, so doctor's and init's relay probes of the world's login are answered there (HTTP 200) and no offline case reaches a real host. `aew doctor` itself is unchanged. `test_the_offline_worlds_doctor_never_sends_its_login_to_a_real_provider_host` proves it; the V3 and V1 verdicts are as on `main`
+
+*Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
 
 ### E388
 

@@ -1741,7 +1741,7 @@ entries:
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: file sharing
   cause: >-
     The Lead broker's close removed its wake serving mark (wake_queue.clear_serving) with a bare unlink, the only
@@ -1751,10 +1751,13 @@ entries:
     no other thread in the test reads the mark, and an ordinary failure's autopsy keeps no file-holder list.
   owner: CI timing fixes
   test: tests/integration/test_lead_wake_status.py::test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_close
-  planned_fix: >-
-    Branch fix/windows-wake-serving-close: the mark's removal waits out a sharing refusal as a replace does
-    (util.unlink_with_retry), and a refusal that outlasts the wait is reported without stopping the close.
-    Proof by fault injection: test_lead_wake_status.py::test_a_broker_close_clears_its_mark_while_a_reader_holds_it.
+  closure:
+    pr: 637
+    cause: >-
+      The mark's removal waits out a sharing refusal as a replace does (util.unlink_with_retry), and a refusal that
+      outlasts the wait is reported without stopping the close.
+    test: tests/integration/test_lead_wake_status.py::test_a_broker_close_clears_its_mark_while_a_reader_holds_it
+    proof: fault injection
   evidence:
   - run: 45941273545
     job: 140316044983

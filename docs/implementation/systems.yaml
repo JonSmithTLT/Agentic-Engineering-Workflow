@@ -1945,15 +1945,6 @@ systems:
   as_built:
   - modules:aew.engine.ticket_fields
   - schemas:ticket-field-registry
-  - control-keys:unit:recorded_digests
-  - control-keys:unit:revisions
-  - control-keys:unit:revision_events
-  - control-keys:unit:revision_impact_holds
-  - control-keys:unit:revision_pending
-  - control-keys:unit:revision_refusals
-  - control-keys:unit:ticket_revision
-  - control-keys:unit:hierarchy_baseline
-  - control-keys:unit:coverage_obligations
   touches:
   - src/aew/engine/ticket_fields.py
   - src/aew/schemas/ticket-field-registry.v1.json
@@ -1970,13 +1961,8 @@ systems:
     on_by_default: false
     used_in_default_flow: 'no'
   finish_line: F4 per ADR-0016 and plan v8, slices S1 to S7, built and enabled for a project, with a revision recorded and
-    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe, and E126, E88 and
-    E87 done on their own rows.
+    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe, and E87 done on its own row.
   remaining:
-  - slice: 'E88: remove the nine reserved keys from the registry, after checking the coordination-message schema''s required
-      ticket_revision (on its own row)'
-    row: E88
-    estimate: 1 PR (estimate, census)
   - slice: 'E87: a promotion carries a dropped parent''s obligations (carried_obligations) instead of being refused (on
       its own row)'
     row: E87
@@ -1987,8 +1973,8 @@ systems:
   decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
     stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: Lead for E88 and E87 (the freeze is decided)
-  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 (built) and E88 proceed on their own rows. No
+  who: Lead for E87 (the freeze is decided)
+  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 are complete. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
   evidence:
@@ -1998,14 +1984,12 @@ systems:
   - src/aew/schemas/__init__.py:41 (registry schema registered)
   - src/aew/engine/coordination_ops.py:80,942-944 (CONFIRMER_SCOPE = 'revision', RecipientIndependent); src/aew/schemas/control.schema.json:272-278
     (scope enum has no 'revision')
-  - src/aew/engine/coordination_ops.py:1009-1013 (a revision ref is refused, reason no_ticket_revisions), :1120 (ticket_revision
+  - src/aew/engine/coordination_ops.py:1666 (a revision ref is refused, reason no_ticket_revisions), :1773 (ticket_revision
     written as None)
   - src/aew/engine/stage_intents.py:527 (TRA-25 waits for F4)
-  - src/aew/schemas/ticket-field-registry.v1.json:71,81,100-105,109 (the nine reserved keys E88 removes)
   - src/aew/engine/hierarchy_ops.py:54,667 (PROMOTION and the promotion check E87 changes)
   - src/aew/engine/scope_ops.py effective_meta, the one accessor for a Ticket's effective scope (E126, built)
-  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), :1111 (E87), :1122 (E88), :1490
-    (E126, on the Now list)'
+  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), rows E87, E88 (closed), and E126'
 - id: SYS-19
   name: Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
   purpose: Make a validation record say exactly what was evaluated and what it did not check, and name setup problems before

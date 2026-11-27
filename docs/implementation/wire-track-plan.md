@@ -53,9 +53,9 @@ the operator confirms it.
   side effect". **Ambiguity 2:** "most" leaves at least one of items 3 to 5 not "fine", and the message does not say
   which. No cap was stated for the allowance; R9 counts 12 or 13.
 - **The UAT:** the operator asked, at 03:56, whether the work can start "without making arw unoperational for the
-  uat?". The Lead reads that question as a constraint: before the operator's end-of-week testing (2026-11-25), no PR
-  may change what the operator or the Lead uses (§6, "The constraint"). It is the Lead's reading of a question, not a
-  stated ruling.
+  uat?". The Lead reads that question as a constraint: before the operator's end-of-week testing (the operator,
+  2026-11-25 04:52), no PR may change what the operator or the Lead uses (§6, "The constraint"). It is the Lead's
+  reading of a question, not a stated ruling.
 - **The timing:** the operator is back at their dev environment "roughly.3 or 4 days" from 2026-11-26. That wave 1
   should also wait until the designer's end-of-week session has answered is the Lead's framing, not the operator's
   words.
@@ -349,7 +349,7 @@ state, read by nothing that runs:
 **It must not change:** `effective` (`steering.py:172-191`), `raise_mode`, `lower`, `_raise_problem` (`:543-551`),
 `take_default` (`:108-134`), `g3_adapter.mode_version`/`raise_set`/`moved` (`:69-124`), any refusal code, the surface
 map, or Lead-facing text. It imports nothing from `aew.o01`.
-- Where the record lives: under `steering` in `src/aew/schemas/control.schema.json` (`:588-600`), a shared file (R13).
+- Where the record lives: under `steering` in `src/aew/schemas/control.schema.json` (`:602-614`), a shared file (R13).
 - Tests:
   - `test_a_new_lead_generation_gets_a_crawl_record_with_a_version` (I6-06.g);
   - `test_the_owner_check_refuses_a_superseded_mode_version_as_mode_stale`;
@@ -397,7 +397,7 @@ map, or Lead-facing text. It imports nothing from `aew.o01`.
 **It must not change:** `manifest_pin_ok` (`engine/base.py:385`, `api.py:1197`) or any launch's read; `aew manifest
 adopt`; `config_paths` (no owner column added to it); `engine/configuration.py`'s projection; `aew settings show`'s
 output; or `DIGEST_SCHEME`'s digest. Nothing that runs reads the store. It imports nothing from `aew.o01`.
-- Shared files: a schema in `src/aew/schemas/` plus its name in `schemas/__init__.py` (`:30-45`); an invariant in
+- Shared files: a schema in `src/aew/schemas/` plus its name in `schemas/__init__.py` (`:31-46`); an invariant in
   `tests/helpers/invariants.py`; `control.schema.json` if the store is control state (R13).
 - Tests:
   - `test_an_edit_on_a_revision_that_never_became_effective_is_definition_stale`;
@@ -718,7 +718,7 @@ D2, R2 (after F3), R3, E1 (after agenda item 1), then A4 last. A later PR merges
        state;
      - `steering.owner_check(state, target)`, returning I6-06.a's reasons. It is a pure function no caller uses yet.
    - **Owns:** new functions in `src/aew/engine/steering.py`, `tests/unit/test_steering_generation_record.py`.
-   - **Shared:** `control.schema.json`'s `steering` (`:588-600`) and `tests/helpers/invariants.py`, each appended in its
+   - **Shared:** `control.schema.json`'s `steering` (`:602-614`) and `tests/helpers/invariants.py`, each appended in its
      own section (R13).
    - **Must not change:** `effective`, `raise_mode`, `lower`, `_raise_problem` (`steering.py:543-551`), `take_default`
      (`:108-134`), `g3_adapter.mode_version`/`raise_set`/`moved`, any refusal code, the surface map, the guides. It
@@ -985,7 +985,7 @@ test on the real service's rules (`tests/integration/test_g3_endpoint_adapter.py
   R1's text). The rule is R3's: append in a section of one's own, resolve a conflict by keeping
   both, and re-run the schema and invariant tests after the merge.
 - **R14. The UAT freeze.** Every wave-1 PR carries the pin test named in its brief (§6). A reviewer who finds a change to
-  anything on the operator's list (§6, "The constraint") raises it as a major.
+  anything on the list in §6, "The constraint", raises it as a major.
 
 ### 9.3 Open questions (only the genuine ones)
 

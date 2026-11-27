@@ -1,7 +1,7 @@
 """What the ``aew map`` commands do (plan §4.4; ADR-0015). The CLI only parses and renders.
 
 * ``generate`` is Lead-authenticated (it writes under ``.aew/``): the current Lead's credential, checked against the
-  control state it only reads. It never takes ``--expect-rev`` and never commits a control transition: selection is
+  control state it only reads. It never commits a control transition: selection is
   a compare-and-set on the map registry's own revision (T5-INV-11).
 * ``select-architecture`` (Lead-authenticated, register F22.1 plan §5.2) records an existing discovery-evidence id
   as the architecture navigation reference. Selection asserts nothing about the record's content (design v0.5 §10),

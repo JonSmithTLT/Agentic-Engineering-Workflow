@@ -9,10 +9,10 @@ from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, add_tok
 
 
 def _audit(a: argparse.Namespace):
-    """Advisory unless it is recorded: recording is a Lead mutation, so it names the revision it is based on."""
-    if a.expect_rev is None:
+    """Advisory unless it is recorded: recording is a Lead mutation, so it needs the Lead credential."""
+    if not a.record:
         return _engine(a).history_audit(full=a.full)
-    return _engine(a).history_audit(full=a.full, token=_lead_token(a), expect_rev=a.expect_rev)
+    return _engine(a).history_audit(full=a.full, token=_lead_token(a))
 
 
 # What `aew record body` prints and how (register E170), as its own help says it.
@@ -93,15 +93,14 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
     q.add_argument("--into", required=True, metavar="WORK-ID", help="the hot unit whose later packs carry it")
     q.add_argument("--reason", required=True)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).history_load(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                            record_id=a.record_id, into=a.into, reason=a.reason))
+    q.set_defaults(handler=lambda a: _engine(a).history_load(
+        token=_lead_token(a), record_id=a.record_id, into=a.into, reason=a.reason))
 
-    q = hsub.add_parser("audit", help="verify the history incrementally (or --full); with --expect-rev the Lead "
+    q = hsub.add_parser("audit", help="verify the history incrementally (or --full); with --record the Lead "
                                       "records it and advances the verified root")
     q.add_argument("--full", action="store_true", help="verify everything, not only what is new since the last audit")
     add_token(q)
-    q.add_argument("--expect-rev", type=int, help="control revision: records the audit (a Lead mutation, with the "
-                                                  "Lead credential)")
+    q.add_argument("--record", action="store_true", help="record the audit with the Lead credential")
     _add_json(q)
     q.set_defaults(handler=_audit)
 

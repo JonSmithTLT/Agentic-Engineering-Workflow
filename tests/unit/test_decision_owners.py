@@ -204,18 +204,18 @@ def test_a_resolve_decision_names_as_judgment_inputs_exactly_the_fields_its_argu
     assert {"RESOLVE_STAGE", "DISPOSE_FINDING", "DISPOSE_CLAIM", "DISPOSE_ANOMALY"} <= set(kinds)
     for kind in kinds:
         primitives = projection.DECISION_PRIMITIVES[kind]
-        inputs = projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1"})
-        assert inputs is not None and set(inputs) == set(resolve["required"]) - {"expect_rev", "subject"}, kind
+        inputs = projection.judgment_inputs(kind, "resolve", {"subject": "X-1"})
+        assert inputs is not None and set(inputs) == set(resolve["required"]) - {"subject"}, kind
         options = inputs["choice"]["options"]
         assert options and set(options) == {c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items()
                                             if p in primitives}, kind
         assert inputs["rationale"] == resolve["properties"]["rationale"], kind
-        assert projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1", "choice": options[0]}) \
+        assert projection.judgment_inputs(kind, "resolve", {"subject": "X-1", "choice": options[0]}) \
             == {"rationale": inputs["rationale"]}, kind
-        assert projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1", "choice": options[0],
+        assert projection.judgment_inputs(kind, "resolve", {"subject": "X-1", "choice": options[0],
                                                             "rationale": "why"}) is None, kind
         shown = {"decision": kind, "subject": "T-0001", "owner": projection.decision_owner(kind), "evidence": [],
-                 "tool": "resolve", "arguments": {"expect_rev": 3, "subject": "X-1"}, "availability": "AVAILABLE",
+                 "tool": "resolve", "arguments": {"subject": "X-1"}, "availability": "AVAILABLE",
                  "default": "NONE", "cli_fallback": None, "judgment_inputs": inputs}
         validate_def("surface", "decision", shown, source="test")
     assert projection.judgment_inputs("PUBLISH", None, None) is None  # no call to fill
@@ -229,7 +229,7 @@ def test_a_decision_whose_call_is_not_resolve_names_no_judgment_inputs_whatever_
     from aew.surface import contract
 
     publish = contract.tool("integration_publish", contract.ALL_SWITCHES).input_schema
-    arguments = {"expect_rev": 3, "work_id": "T-0001"}
+    arguments = {"work_id": "T-0001"}
     assert "prepared_candidate" in set(publish["required"]) - set(arguments)
     assert projection.judgment_inputs("PUBLISH", "integration_publish", arguments) is None
     shown = projection._decision("PUBLISH", "T-0001", tool="integration_publish", arguments=arguments,

@@ -721,7 +721,11 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
             return None
 
     refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
-    assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)
+    acquire = ("lead", "acquire")
+    assert refused == set(worker_surface.WRITER_ONLY) - {acquire}, sorted(refused)
+    [own_terminal] = [r for a, r in results if worker_surface.words(a) == acquire]
+    denied = json.loads(own_terminal.stderr)["error"]
+    assert denied["code"] == "USAGE" and "writes credentials only to your terminal" in denied["message"]
 
 
 # ------------------------------------------------------------------ STG-05 CS-2: a workspace fingerprint is a read

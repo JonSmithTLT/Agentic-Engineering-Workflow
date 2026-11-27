@@ -44,19 +44,13 @@ class EntryScan(ast.NodeVisitor):
         self.unreadable = set()
         self.forwarders = set()
         self.unchecked = set()
-        self.checked_revision = False
         self.calls = []
 
     def visit_FunctionDef(self, node):
-        previous = self.function, self.bindings, self.checked_revision
+        previous = self.function, self.bindings
         self.function, self.bindings = node.name, self.bindings.copy()
-        self.checked_revision = any(
-            isinstance(n, ast.Compare) and ast.unparse(n.left) == "expect_rev"
-            and any(ast.unparse(v) == "s.revision" for v in n.comparators)
-            for n in ast.walk(node)
-        )
         self.generic_visit(node)
-        self.function, self.bindings, self.checked_revision = previous
+        self.function, self.bindings = previous
 
     def visit_Assign(self, node):
         for target in node.targets:
@@ -68,14 +62,15 @@ class EntryScan(ast.NodeVisitor):
         values = _strings(expression, self.bindings)
         if None in values:
             self.unreadable.add((self.file, line, ast.unparse(expression) if expression else "<missing>"))
-        (self.entries if checked else self.unchecked).update(values - {None})
+        for value in values - {None}:
+            (self.entries if checked and value not in UNCHECKED else self.unchecked).add(value)
 
     def visit_Call(self, node):
         if isinstance(node.func, ast.Attribute):
             name = node.func.attr
             if name in {"lead_txn", "txn", "custody_txn"}:
                 location = self.file, self.function
-                position = 1 if name == "custody_txn" else 2
+                position = 1
                 expr = node.args[position] if len(node.args) > position else next(
                     (kw.value for kw in node.keywords if kw.arg == "op"), None)
                 if location in FORWARDERS and isinstance(expr, ast.Name) and expr.id == "op":
@@ -91,7 +86,6 @@ class EntryScan(ast.NodeVisitor):
                         and transition.func.id == "Transition"):
                     expr = next((kw.value for kw in transition.keywords if kw.arg == "op"), None)
                     location = self.file, self.function
-                    checked = self.checked_revision or any(kw.arg == "expect_rev" for kw in node.keywords)
                     if location in TRANSACTION_COMMITS and expr and ast.unparse(expr) == "ctx.op or op":
                         pass  # the callers are enumerated separately, including custody
                     elif location == ("harness_ops.py", "_lead_request") and expr and (
@@ -99,10 +93,10 @@ class EntryScan(ast.NodeVisitor):
                     ):
                         self.calls.append(node.lineno)
                     else:
-                        self._record(expr, node.lineno, checked=checked)
+                        self._record(expr, node.lineno)
                 else:
                     self.unreadable.add((self.file, node.lineno, ast.unparse(node)))
-            if name in {"_write", "_record_lead"} and self.checked_revision and self.function:
+            if name == "_record_lead" and self.function == "message_record_lead":
                 self.entries.add(self.function.replace("_", ".", 1))
         self.generic_visit(node)
 
@@ -163,8 +157,8 @@ def test_static_scan_reports_undeclared_and_unreadable_entries():
         'OP = "checkpoint"\n'
         'def planted(k, choice):\n'
         '    name = OP if choice else "unknown.write"\n'
-        '    k.lead_txn(token, rev, name)\n'
-        '    k.lead_txn(token, rev, compute_op())\n'
+        '    k.lead_txn(token, name)\n'
+        '    k.lead_txn(token, compute_op())\n'
     ))
     assert scan.entries & P.CONTROL_OP_SPECS.keys() == {"checkpoint"}
     assert scan.entries - P.CONTROL_OP_SPECS.keys() == {"unknown.write"}
@@ -172,9 +166,9 @@ def test_static_scan_reports_undeclared_and_unreadable_entries():
 
 
 @pytest.mark.parametrize(("module", "body", "op"), [
-    ("surface/planted_review.py", 'engine.lead_txn(token, rev, "planted.facade")', "planted.facade"),
-    ("engine/planted_review.py", 'if expect_rev != s.revision:\n        raise ValueError(expect_rev)\n'
-     '    s.commit(Transition(op="planted.direct", actor=actor, summary="x"))', "planted.direct"),
+    ("surface/planted_review.py", 'engine.lead_txn(token, "planted.facade")', "planted.facade"),
+    ("engine/planted_review.py", 's.commit(Transition(op="planted.direct", actor=actor, summary="x"))',
+     "planted.direct"),
 ])
 def test_planted_control_entries_are_found_in_new_modules(tmp_path, module, body, op):
     path = tmp_path / module
@@ -185,11 +179,11 @@ def test_planted_control_entries_are_found_in_new_modules(tmp_path, module, body
     assert entries - P.CONTROL_OP_SPECS.keys() == {op}
 
 
-def test_control_op_specs_leave_primitive_lookups_at_the_base():
-    # 8a3810b6. Include the keys and every PrimitiveSpec field in the snapshot.
+def test_control_op_specs_keep_the_scoped_primitive_declarations():
+    # E329 changes idempotency scopes to the binding each primitive uses. Keep all fields pinned in the snapshot.
     declared = {name: P.spec_for(name) for name in P.SPECS}
     digest = hashlib.sha256(json.dumps(declared, sort_keys=True).encode()).hexdigest()
-    assert digest == "d097521a5df405d989970ca6677a6f6b3b1fb59314a417524462b59195599236"
+    assert digest == "0801cc392ce0606707867dede8debc09f61e4ab20e338523a03985288726cdb7"
     assert declared == P.SPECS
     for name in (P.CONTROL_OP_SPECS.keys() - declared.keys()) | {"unknown.write"}:
         assert P.spec_for(name) == P.PrimitiveSpec(
@@ -242,8 +236,7 @@ HANDLER_CASES = {
     "work_depend": [{"add": ["T-0002"]}],
     "work_create": [{"kind": "epic", "risk_class": 1}],
     "work_reclassify": [{"risk_class": 2}],
-    "history_audit": [{"token": "synthetic", "expect_rev": 1}],
-    "_upgrade_v2": [{"expect_rev": 1}],
+    "history_audit": [{"token": "synthetic"}],
     "open": [{"ingress": "test", "plan": [{}], "base_class": P.MECHANICAL, "effective_class": P.MECHANICAL}],
     "lower": [{"mode": "crawl"}],
     "request": [{"kind": "raise"}],
@@ -276,7 +269,7 @@ def test_control_op_specs_match_runtime_transaction_entries(monkeypatch, tmp_pat
 
     seen = set()
 
-    def record(token, revision, op, **kwargs):
+    def record(token, op, **kwargs):
         seen.add(op)
         raise ReachedTransaction
 
@@ -311,7 +304,7 @@ def test_control_op_specs_match_runtime_transaction_entries(monkeypatch, tmp_pat
     facade = api.Engine.__new__(api.Engine)
     facade._k = k
     with pytest.raises(ReachedTransaction):
-        facade.lead_txn("synthetic", 1, "unknown.write")
+        facade.lead_txn("synthetic", "unknown.write")
     assert seen - P.CONTROL_OP_SPECS.keys() == {"unknown.write"}
 
 
@@ -351,12 +344,12 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
     monkeypatch.setattr(lead_ops, "verify_offer", lambda *args: "offer")
     monkeypatch.setattr(lead_ops.operator, "authorize", lambda *args: {"authorized_by": "operator-tty"})
     with pytest.raises(ReachedTransaction):
-        lead.lead_acquire(expect_rev=1)
+        lead.lead_acquire()
     state["lead"]["status"] = "active"
     with pytest.raises(ReachedTransaction):
-        lead.lead_handoff_accept(offer="synthetic", expect_rev=1)
+        lead.lead_handoff_accept(offer="synthetic")
     with pytest.raises(ReachedTransaction):
-        lead.lead_takeover(expect_rev=1, reason="synthetic")
+        lead.lead_takeover(reason="synthetic")
 
     state["lead"]["start"] = {"generation": 1}
     monkeypatch.setattr(lead, "_check_resume", nothing)
@@ -370,7 +363,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
                                       steering=steering)
     monkeypatch.setattr(migration, "discard_unreachable", lambda: [])
     with pytest.raises(ReachedTransaction):
-        migration.migrate(token="synthetic", expect_rev=1)
+        migration.migrate(token="synthetic")
 
     writer = coordination_ops.Coordination(k, archive=archive)
     monkeypatch.setattr(coordination_ops, "require_lead", lambda *a, **kw: {"generation": 1})
@@ -384,7 +377,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
     monkeypatch.setattr(writer, "_record", nothing)
     monkeypatch.setattr(writer, "_write", record_message)
     with pytest.raises(ReachedTransaction):
-        writer.message_record_lead(token="synthetic", expect_rev=1, to="INV-0001", body="synthetic")
+        writer.message_record_lead(token="synthetic", to="INV-0001", body="synthetic")
 
 
 def test_journal_labels_follow_the_spec_of_the_entered_operation():

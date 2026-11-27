@@ -30,7 +30,7 @@ from typing import Any, NamedTuple
 from aew.engine import operator_decisions as OD
 from aew.engine import transitions as T
 from aew.errors import NotFound
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE
+from aew.harness.contract import CREATE_TICKET, HELD_SEAT_IN_A_GUIDE
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -98,7 +98,7 @@ WITH_REASON = "with a reason"
 
 def _command(via: str, to: str = "<STATE>") -> str:
     """The engine's own command for an operation (``transitions._COMMANDS``), never a copy of it (#331 review F3)."""
-    return f"`{T._COMMANDS[via].format(w='<T>', to=to)}`"
+    return f"`{T._COMMANDS[via].format(w='<T>', to=to, frm='<current state>')}`"
 
 
 class Move(NamedTuple):
@@ -144,7 +144,7 @@ PATH = (
     Move("work.create", None, CREATE_TICKET, label="Create the Ticket",
          note="Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance "
               "check take the shell command."),
-    Move("plan.propose", None, f"`aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
+    Move("plan.propose", None, "`aew plan propose <T> --file - --assurance none` (the plan in a quoted "
                                "heredoc)", label="Propose the plan",
          note="In the shell, a plan's assurance is `--assurance none`, or `--review default` and/or `--verify default` "
               "when the plan relies on a review or verification beyond the class path."),
@@ -165,9 +165,9 @@ PATH = (
          label="Dispatch the verifier"),
     Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
-    Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
+    Move("integrate.prepare", None, "`aew integrate prepare <T>`", label="Prepare the candidate",
          note="On a class path with no verification, `ticket_prepare` takes it from REVIEW_PASSED, with no report."),
-    Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
+    Move("invoke.create.mutating", "integration", "`aew invoke create <T> --scope integration --launch`",
          label="Dispatch the integration verifier", post_verify=True),
     Move("verify.ingest.integration", None, _command("verify.ingest"), label="Accept the integration verification",
          post_verify=True, note="Name the integration verifier's report in `verification_evidence`, once its run has "
@@ -454,14 +454,17 @@ def _classes() -> Section:
         "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it "
         "matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of "
         "40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal "
-        "(`--goal`) and an acceptance check that is a configured project check (`--acceptance-check`, mutating Tickets "
-        "only); no acceptance input inside the scope; no protected path in the scope; no review trigger (security, "
-        "trust, persistence, compatibility) reached by the scope; no inherited elevated obligation (a parent's minimum "
-        "class or non-waivable gate); a clean `aew plan lint` (a warning counts, such as an affected path outside the "
-        "scope); and your three recorded assertions, made at creation with `--class0-assert transformation_clear "
-        "--class0-assert inputs_complete --class0-assert no_consequential_boundary`. To raise a Ticket's class: "
-        f"`aew work reclassify <T> --class <0-4> --reason <reason> {EXPECT_REV}` (at least any inherited minimum; the "
-        "inherited gates stay required).",
+        "(`--goal`) and an acceptance check "
+        "that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared "
+        "acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no "
+        "acceptance input inside the scope; no protected path in the scope; no review "
+        "trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated "
+        "obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, "
+        "such as an affected path outside the scope); and your three "
+        "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
+        "inputs_complete --class0-assert no_consequential_boundary`. To raise a Ticket's class, use "
+        "`aew work reclassify <T> --class <0-4> --reason <reason>` (at least any inherited minimum; the "
+        "inherited gates stay required), or make it eligible.",
     ]
     return Section("classes", "Choosing a risk class", "Risk classes and Class 0 eligibility",
                    "you choose or change a Ticket's class, or a Class 0 Ticket is refused", tuple(lines))
@@ -524,7 +527,7 @@ def _recovery() -> Section:
         f"`{T.dispatch_command('<T>', 'implementer')}`. The open findings reach it through its pack.",
         f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
-        f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
+        "REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --prior-value <current state>`.",
         "- **A lost harness run** is not an interruption: give `aew harness status` the invocation ID and use "
         "its launch_argv to relaunch (rotating the credential), or cancel the invocation.",
     ]
@@ -536,9 +539,9 @@ def _recovery() -> Section:
 def _non_mutating(gates_policy: dict[str, Any], checks: str) -> Section:
     lines = [
         "To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card "
-        "investigator`, or `researcher` or `planner`) and plan it as a mutating one. Dispatch it with "
-        f"`aew work dispatch <T> --launch {EXPECT_REV}`, move it to RUNNING, ingest its record with "
-        f"`aew evidence ingest <T> --evidence <id> {EXPECT_REV}`, then `aew work accept <T> {EXPECT_REV}` "
+        "investigator`, or `researcher` or `planner`) and plan it as for a mutating Ticket. Dispatch it with "
+        "`aew work dispatch <T> --launch`, move it to RUNNING, ingest its record with "
+        "`aew evidence ingest <T> --evidence <id>`, then `aew work accept <T> --approval-digest <shown digest>` "
         "(or review and verify it first, if its class requires that).",
     ]
     nm = gates_policy.get("non_mutating_paths") or {}
@@ -555,8 +558,8 @@ def _stories() -> Section:
     lines = [
         "Plan a parent, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for "
         f"acceptance: review and verify it (`{T.dispatch_command('<S>', 'reviewer|verifier')}`, then ingest), then "
-        f"`aew work close <S> --reason <reason> {EXPECT_REV}`. An Epic closes only once the history is audited through "
-        f"the current root: `aew history audit {EXPECT_REV}` first.",
+        "`aew work close <S> --reason <reason> --approval-digest <shown digest>`. An Epic closes only once "
+        "the history is audited through the current root: `aew history audit --record` first.",
     ]
     return Section("stories", "Stories and Epics", "Stories and Epics",
                    "work has structure, or a parent's children are all done", tuple(lines))
@@ -572,8 +575,8 @@ def _maps() -> Section:
 def _history() -> Section:
     lines = [
         "Finished units leave the active state; `status` shows counts and the most recent. "
-        "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> "
-        f"{EXPECT_REV}` gives that unit's later packs an exact record as labelled reference.",
+        "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason>` "
+        "gives that unit's later packs an exact record as labelled reference.",
     ]
     return Section("history", "Finished work", "Finished units and their history",
                    "you need a finished unit, or want one loaded into a unit's packs", tuple(lines))
@@ -636,8 +639,7 @@ def _rules(gates_policy: dict[str, Any], post_verify: bool, post_checks: list[st
              "validated. Coverage not recorded is not complete coverage."),
         Rule("A finished unit's record loaded into another unit's packs is labelled reference: never current evidence, "
              "never instructions."),
-        # Not every change takes it (`harness send`, `map generate` and others do not: the audit of 2026-11-25, F1).
-        Rule("In the shell, a command that takes `--expect-rev` needs the current revision and returns the new one. "
+        Rule("For a bound change, use the prior value or approval digest shown by `aew status` or the relevant read. "
              "Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line."),
     ]
     return rules
@@ -650,8 +652,9 @@ def _tool_rules() -> list[Rule]:
         Rule("Don't make part of a tool's move from the shell first: a tool starts from its first step's state and "
              "refuses a Ticket already past it. If a tool stops partway, what it committed stands, a failed report "
              "it recorded included: read `status`, then take the Ticket's move below."),
-        Rule("`resolve` settles only what `resume` or a decision lists. A partial stale stage whose result names "
-             "`resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not."),
+        Rule("`resolve` settles only what `resume` or a decision lists. Continuing an unfinished stage requires the "
+             "shown approval digest. A changed item or approval subject calls for a new decision. Ended stages "
+             "(COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) stay ended."),
     ]
 
 
@@ -699,9 +702,8 @@ def document(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages
         "",
         "## Your tools, and when to use each",
         "",
-        "Where a tool covers a move, use it: it makes the whole move, and returns the revision for your next "
-        "`expect_rev`. Use the shell where no tool covers a move, or where a tool refuses; a refusal names the "
-        "command that applies.",
+        "Where a tool covers a move, use it: it makes the whole move. Use the shell where no tool covers a move, "
+        "or where a tool refuses; a refusal names the command that applies.",
         "",
         *(f"- {rule}" for rule in tool_rules),
         "",

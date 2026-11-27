@@ -173,7 +173,7 @@ def _cli(c: Call) -> Any:
 
 
 def _checkpoint(c: Call) -> Any:
-    out = c.engine.checkpoint(token=c.token(), expect_rev=c.a["expect_rev"], note=c.a.get("note") or "",
+    out = c.engine.checkpoint(token=c.token(), note=c.a.get("note") or "",
                               next_action=c.a.get("next"))
     c.committed("checkpoint", out, f"checkpoint {out.get('checkpoint')}", [str(out.get("checkpoint"))])
     return out
@@ -184,11 +184,11 @@ def _steering(c: Call) -> Any:
     nothing; only the operator raises, at the operator endpoint. The tool offers no confirmation request (register
     E183): ``contract.STEERING_ARGUMENTS`` holds its actions, and a call is checked against them before it runs."""
     if c.a["action"] == "lower":
-        out = c.engine.steering_lower(token=c.token(), expect_rev=c.a["expect_rev"], mode=c.a["mode"],
+        out = c.engine.steering_lower(token=c.token(), mode=c.a["mode"],
                                       rationale=c.a.get("rationale") or "", prior_value=c.a.get("prior_value"))
         c.committed("steering", out, f"steering mode lowered to {out.get('mode')}", [str(out.get("record"))])
         return out
-    out = c.engine.steering_request(token=c.token(), expect_rev=c.a["expect_rev"], kind="raise",
+    out = c.engine.steering_request(token=c.token(), kind="raise",
                                     rationale=c.a["rationale"], mode=c.a.get("mode"))
     c.committed("steering", out, f"steering request {out.get('request')} recorded (grants nothing)",
                 [str(out.get("request"))])
@@ -197,7 +197,7 @@ def _steering(c: Call) -> Any:
 
 def _message_send(c: Call) -> Any:
     out = c.engine.message_record_lead(
-        token=c.token(), expect_rev=c.a["expect_rev"], to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
+        token=c.token(), to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
         in_reply_to=c.a.get("in_reply_to"), refs=c.a.get("refs"), idempotency_id=c.a.get("idempotency_id"),
         when=c.a.get("when", "next-step"),
         channel=("lead_mcp" if c.ctx.ingress == "mcp" else "lead_broker" if c.ctx.lead_session is not None else "cli"))
@@ -297,7 +297,7 @@ def _runner_defect(call: Call, t: contract.Tool, exc: Exception) -> tuple[dict[s
     if call.committed_unknown or payload.get("status") == stage_intents.ACTIVE:
         next_action = "Call `resume` to see what committed and the unfinished stage, then `resolve`."
     elif t.mutates:
-        next_action = "Read `status` before retrying with a fresh `expect_rev`. See completed_steps for commits."
+        next_action = "Read `status` before retrying with current operation inputs. See completed_steps for commits."
     else:
         next_action = _RETRY_DEFECT
     defect = _report_defect(call, t, exc, next_action)

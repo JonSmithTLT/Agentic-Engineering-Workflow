@@ -80,12 +80,10 @@ def commands(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
             yield from commands(child, (*path, name))
 
 
-def _value_of(a: argparse.Action, ticket: str, rev: int, dispatches: bool) -> str:
+def _value_of(a: argparse.Action, ticket: str, dispatches: bool) -> str:
     """A required argument that is not the one under test: ``choices`` first, since a choice may be an int."""
     if a.choices:
         return str(a.choices[0])
-    if a.dest == "expect_rev":
-        return str(rev)
     if a.type is int:
         return "1"
     if not a.option_strings:
@@ -93,8 +91,8 @@ def _value_of(a: argparse.Action, ticket: str, rev: int, dispatches: bool) -> st
     return "-" if isinstance(a, cli_main.fields.FileInput) else "r"
 
 
-def argv_for(path: tuple[str, ...], command: argparse.ArgumentParser, target: argparse.Action, value: str, ticket: str,
-             rev: int) -> list[str]:
+def argv_for(path: tuple[str, ...], command: argparse.ArgumentParser, target: argparse.Action, value: str,
+             ticket: str) -> list[str]:
     """The command with its required arguments only, and ``target`` holding ``value``."""
     dispatches = any(p <= frozenset(path) for p in lead_broker.DISPATCHES)
     rivals = {x.dest for g in command._mutually_exclusive_groups if target in g._group_actions
@@ -110,7 +108,7 @@ def argv_for(path: tuple[str, ...], command: argparse.ArgumentParser, target: ar
         elif a.nargs == 0:
             argv += [a.option_strings[0]] if a.dest == "launch" and dispatches else []
         elif a.required or not a.option_strings or a.dest in chosen:
-            given = _value_of(a, ticket, rev, dispatches)
+            given = _value_of(a, ticket, dispatches)
             argv += [a.option_strings[0], given] if a.option_strings else [given]
     return argv
 
@@ -183,7 +181,7 @@ def main() -> None:
             if target.dest in NOT_A_ROW or target.nargs == 0 or target.choices or target.type is int:
                 continue
             for value in values:
-                argv = argv_for(path, command, target, value, a.ticket, engine.store.read()["revision"])
+                argv = argv_for(path, command, target, value, a.ticket)
                 row("lead.cli", " ".join(path), target.option_strings[0] if target.option_strings else target.dest,
                     lambda argv=argv: lead_broker.run_cli(engine, a.token, argv, a.root, "", channel="lead_broker"))
     if not a.only:
@@ -201,8 +199,6 @@ def main() -> None:
                     continue
                 for value in values:
                     args = {k: a.ticket if k == "work_id" else TOOL_DEFAULTS.get(k, "r") for k in required}
-                    if "expect_rev" in props:
-                        args["expect_rev"] = engine.store.read()["revision"]
                     if "timeout_s" in props:
                         args["timeout_s"] = 1
                     args[key] = value if spec["type"] == "string" else [value]

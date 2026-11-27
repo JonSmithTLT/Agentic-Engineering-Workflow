@@ -77,6 +77,6 @@ def test_the_cli_sets_a_priority_at_creation_and_refuses_one_with_no_reason_or_o
         ([*base, "--priority", "low", "--priority-reason", "  "], "is not blank"),
         ([*base, "--priority-reason", "later"], "goes with its level"),
     ]:
-        res = p.aew(*refused, "--expect-rev", str(p.rev()), env=env)
+        res = p.aew(*refused, env=env)
         assert res.returncode != 0 and res.error["code"] == "USAGE", res.stderr
         assert why in res.error["message"], res.error

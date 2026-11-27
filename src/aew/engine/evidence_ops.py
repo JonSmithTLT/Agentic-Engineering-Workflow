@@ -305,7 +305,7 @@ class Gates:
         digests = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
         gc["gate_approval_digests"] = digests
         gc["gate_approval_argv"] = {
-            gate: approval.command("waive", work_id, state["revision"], digest,
+            gate: approval.command("waive", work_id, digest,
                                    "--gate", gate, "--reason", "<reason>")
             for gate, digest in digests.items()
         }
@@ -313,7 +313,7 @@ class Gates:
         if snapshot and "children_digest" in snapshot:
             digest = approval.closeout_digest(snapshot)
             gc["closeout_approval_digest"] = digest
-            gc["closeout_approval_argv"] = approval.command("work.close", work_id, state["revision"], digest)
+            gc["closeout_approval_argv"] = approval.command("work.close", work_id, digest)
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
         if gc.get("plan_binding"):
@@ -767,8 +767,7 @@ class Gates:
         state = self.k.store.current()
         gc = self.gate_context(state, work_id)
         out = self.roles.effective_role_plan(state, work_id, gc)
-        out["staff_argv"] = approval.bound_argv(("work", "staff", work_id), state["revision"],
-                                               out["role_plan_digest"])
+        out["staff_argv"] = approval.bound_argv(("work", "staff", work_id), out["role_plan_digest"])
         out["plan_gates"] = self.roles.plan_gates(self.units.unit(state, work_id))
         return out
 
@@ -806,23 +805,23 @@ class EvidenceCommands:
     def _handler(self, operation: str, work_id: str) -> Any:
         return self.kinds.resolve(operation, self.units.unit(self.k.store.current(), work_id))
 
-    def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None,
+    def invoke_evidence_unit(self, *, token: str, work_id: str, role: str | None,
                              card: str | None, scope: str, execution_profile: dict[str, Any] | None = None,
                              launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
         if request_id is not None:
-            return self._invoke_request(token, expect_rev, request_id, evidence_only=True, work_id=work_id,
+            return self._invoke_request(token, request_id, evidence_only=True, work_id=work_id,
                                         role=role, card=card, scope=scope, execution_profile=execution_profile,
                                         launch=launch)
         handler = self.kinds.resolve_evidence_only(INVOKE, self.units.unit(self.k.store.current(), work_id))
-        return handler(token=token, expect_rev=expect_rev, work_id=work_id, role=role, card=card, scope=scope,
+        return handler(token=token, work_id=work_id, role=role, card=card, scope=scope,
                        execution_profile=execution_profile, launch=launch)
 
-    def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def ingest_evidence_unit_report(self, *, token: str, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
         handler = self.kinds.resolve_evidence_only(INGEST, self.units.unit(self.k.store.current(), work_id))
-        return handler(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id, kind=kind)
+        return handler(token=token, work_id=work_id, evidence_id=evidence_id, kind=kind)
 
-    def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
+    def invoke_create(self, *, token: str, work_id: str, role: str | None = None,
                       card: str | None = None, scope: str = "ticket",
                       execution_profile: dict[str, Any] | None = None, launch: bool = False,
                       request_id: str | None = None) -> dict[str, Any]:
@@ -830,20 +829,20 @@ class EvidenceCommands:
         if scope not in {"ticket", "integration"}:
             raise UsageError("--scope must be ticket or integration")
         if request_id is not None:
-            return self._invoke_request(token, expect_rev, request_id, evidence_only=False, work_id=work_id,
+            return self._invoke_request(token, request_id, evidence_only=False, work_id=work_id,
                                         role=role, card=card, scope=scope, execution_profile=execution_profile,
                                         launch=launch)
-        return self._handler(INVOKE, work_id)(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
+        return self._handler(INVOKE, work_id)(token=token, work_id=work_id, role=role,
                                               card=card, scope=scope, execution_profile=execution_profile,
                                               launch=launch)
 
-    def _invoke_request(self, token: str, expect_rev: int, request_id: str, *, evidence_only: bool,
+    def _invoke_request(self, token: str, request_id: str, *, evidence_only: bool,
                         work_id: str, role: str | None, card: str | None, scope: str,
                         execution_profile: dict[str, Any] | None, launch: bool) -> dict[str, Any]:
         arguments = {"work_id": work_id, "role": role, "card": card, "scope": scope,
                      "execution_profile": execution_profile, "launch": launch}
         request = ControlRequest.prepare(request_id, evidence_only=evidence_only, **arguments)
-        with self.k.lead_txn(token, expect_rev, "invoke.create", request=request) as ctx:
+        with self.k.lead_txn(token, "invoke.create", request=request) as ctx:
             if ctx.replayed is not None:
                 return ctx.replayed
             # A repeat can name an invocation whose unit has since been archived.
@@ -851,7 +850,7 @@ class EvidenceCommands:
             unit = self.units.unit(ctx.state, work_id)
             resolve = self.kinds.resolve_evidence_only if evidence_only else self.kinds.resolve
             handler = resolve(INVOKE, unit)
-            out = handler(token=token, expect_rev=expect_rev, **arguments, _ctx=ctx)
+            out = handler(token=token, **arguments, _ctx=ctx)
             ctx.request_ref = (work_id, out["invocation"])
             if "dispatch" in out:
                 ctx.request_metadata = {"dispatch": out["dispatch"]}
@@ -885,7 +884,7 @@ class EvidenceCommands:
                     raise IllegalTransition(
                         f"{invocation} is still active; cancel it with:\n\n```sh\n"
                         f"aew invoke cancel {invocation} "
-                        "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+                        "--fields - <<'EOF'\n"
                         "reason: 'why this active invocation must end'\n"
                         "EOF\n```"
                     )
@@ -930,14 +929,14 @@ class EvidenceCommands:
         facts["workspace"], facts["workspace_id"] = ws["path"], ws["id"]
         return None
 
-    def _invoke_ticket(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
+    def _invoke_ticket(self, *, token: str, work_id: str, role: str | None = None,
                        card: str | None = None, scope: str = "ticket",
                        execution_profile: dict[str, Any] | None = None, launch: bool = False,
                        _ctx: TxnContext | None = None) -> dict[str, Any]:
         """Dispatch a bounded invocation for a mutating Ticket. The Role card (explicit, planned, or workflow
         default) determines the archetype; authority comes from the archetype only (ADR-0006). Its legality is the
         ``invoke.create.mutating`` dispatch entrypoint's guards (M4-A)."""
-        txn = self.k.lead_txn(token, expect_rev, "invoke.create") if _ctx is None else contextlib.nullcontext(_ctx)
+        txn = self.k.lead_txn(token, "invoke.create") if _ctx is None else contextlib.nullcontext(_ctx)
         with txn as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
@@ -968,8 +967,8 @@ class EvidenceCommands:
                 "pack": slices.for_lead(pack or None), "dispatch": decision.to_dict(),
                 "revision": ctx.session.committed_revision}
 
-    def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "invoke.cancel", reason=reason) as ctx:
+    def invoke_cancel(self, *, token: str, invocation: str, reason: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, "invoke.cancel", reason=reason) as ctx:
             inv = ctx.state["invocations"].get(invocation)
             if inv is None:
                 raise NotFound(f"no invocation {invocation}")
@@ -1248,7 +1247,7 @@ class EvidenceCommands:
                         f"{work_id}'s accepted plan changed after {inv_id} was dispatched to assess revision "
                         f"{(inv.get('plan_revision') or {}).get('revision')}, so this assessment would be of a plan "
                         f"that is no longer the accepted one; the Lead dispatches a new assessor with `{command}`, "
-                        "and its arguments, in these details with the Lead's `expect_rev` added, on stdin",
+                        "and its arguments, in these details, on stdin",
                         reason="plan_revision_changed", arguments=arguments,
                         dispatched_for=inv.get("plan_revision"), accepted=E.plan_binding(unit.get("plan")))
                 meta.update(E.plan_assessment_binding(work_id, unit.get("plan"), submitted))
@@ -1346,11 +1345,11 @@ class EvidenceCommands:
             complete=not coverage_problems, limits=["check_evidence_incomplete"] if coverage_problems else [])
         return {"verification": v, "evaluated_snapshot": inv["snapshot"], "result": overall, "coverage": coverage}
 
-    def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
+    def review_ingest(self, *, token: str, work_id: str, evidence_id: str) -> dict[str, Any]:
+        return self._handler(INGEST, work_id)(token=token, work_id=work_id,
                                               evidence_id=evidence_id, kind="review")
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def verify_ingest(self, *, token: str, work_id: str, evidence_id: str,
                       scope: str | None = None) -> dict[str, Any]:
         """Ingest a verification report. With ``scope`` (``ticket``: the `verify.ingest` primitive; ``integration``:
         `verify.ingest.integration`), the report must be of that scope: the primitive's own query is required, so its
@@ -1358,18 +1357,18 @@ class EvidenceCommands:
         report's own scope selects the checks, as before."""
         handler = self._handler(INGEST, work_id)
         if scope is None:
-            return handler(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id,
+            return handler(token=token, work_id=work_id, evidence_id=evidence_id,
                            kind="verification")
         if handler != self._ingest_ticket_report:
             raise UsageError("a scoped verification ingest is a mutating Ticket's; ingest this report without a scope")
-        return self._ingest_ticket_verification(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._ingest_ticket_verification(token=token, work_id=work_id,
                                                 evidence_id=evidence_id, scope=scope)
 
-    def _ingest_ticket_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def _ingest_ticket_report(self, *, token: str, work_id: str, evidence_id: str,
                               kind: str) -> dict[str, Any]:
         """A mutating Ticket's review or verification report."""
         ingest = self._ingest_ticket_review if kind == "review" else self._ingest_ticket_verification
-        return ingest(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id)
+        return ingest(token=token, work_id=work_id, evidence_id=evidence_id)
 
     # ---- `review.ingest`'s guard as a query (M4-E E4; aew.engine.guards)
 
@@ -1469,8 +1468,8 @@ class EvidenceCommands:
             return "REVIEW_FAILED", open_required, pending
         return (None if pending else "REVIEW_PASSED"), open_required, pending  # None: other reviews outstanding
 
-    def _ingest_ticket_review(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "review.ingest") as ctx:
+    def _ingest_ticket_review(self, *, token: str, work_id: str, evidence_id: str) -> dict[str, Any]:
+        with self.k.lead_txn(token, "review.ingest") as ctx:
             ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "review",
                                "ids": [evidence_id]})
             state = ctx.state
@@ -1552,7 +1551,7 @@ class EvidenceCommands:
                 integ = unit.get("integration") or {}
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
                     if (unit["state"] == "COMMIT_READY" and integ.get("status") == "validated"
-                            and integ.get("post_integration_evidence") == evidence_id):
+                            and integ.get("candidate") and integ.get("post_integration_evidence") == evidence_id):
                         # A passing integration verification is already ingested. The candidate remains under
                         # its live lease until publication; do not suggest ingesting the report again.
                         scratch = copy.deepcopy(state)
@@ -1566,7 +1565,7 @@ class EvidenceCommands:
                                 raise IllegalTransition(
                                     f"{work_id}'s integration verification is already ingested and its candidate is "
                                     f"leased for publishing; publish it directly with `aew integrate publish {work_id} "
-                                    "--expect-rev N` (do not ingest again)")
+                                    f"--candidate {integ['candidate']}` (do not ingest again)")
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
                 self.gates.require_current_binding(unit)
                 # A VALIDATED entry's report is accepted under a fresh lease, granted in the ingest's own commit (M4-E
@@ -1625,12 +1624,12 @@ class EvidenceCommands:
         pending = G.unmet(gc["gates"], self.gates.verification_gates(gc))
         return (None if pending else "VERIFIED"), None, pending  # None: other planned verifier cards outstanding
 
-    def _ingest_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def _ingest_ticket_verification(self, *, token: str, work_id: str, evidence_id: str,
                                     scope: str | None = None) -> dict[str, Any]:
         # The integration-scoped primitive enters its transaction as itself, so a stage's journal can tell it from the
         # Ticket's (M4-E E6a); the transition log records `verify.ingest` for both, as before.
-        txn = (self.k.lead_txn(token, expect_rev, "verify.ingest.integration") if scope == "integration"
-               else self.k.lead_txn(token, expect_rev, "verify.ingest"))
+        txn = (self.k.lead_txn(token, "verify.ingest.integration") if scope == "integration"
+               else self.k.lead_txn(token, "verify.ingest"))
         with txn as ctx:
             ctx.op = "verify.ingest"
             ctx.events.append({"kind": "evidence.ingested", "work": work_id, "evidence_kind": "verification",
@@ -1684,28 +1683,28 @@ class EvidenceCommands:
                 "pending_verifications": pending, "revision": ctx.session.committed_revision,
                 "coverage": ev.get("coverage") or CV.legacy(), **ctx.result_advisories()}
 
-    def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
+    def verify_classify(self, *, token: str, work_id: str, classification: str,
                         reason: str, binding: str | None = None) -> dict[str, Any]:
         if classification not in transitions.VERIFICATION_CLASSIFICATIONS:
             raise UsageError(f"classification must be one of {sorted(transitions.VERIFICATION_CLASSIFICATIONS)}")
         if not (reason and reason.strip()):
             raise UsageError("a classification needs a reason")
         return self._handler(CLASSIFY_VERIFICATION, work_id)(
-            token=token, expect_rev=expect_rev, work_id=work_id, classification=classification, reason=reason,
+            token=token, work_id=work_id, classification=classification, reason=reason,
             binding=binding,
         )
 
-    def _classify_ticket_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
+    def _classify_ticket_verification(self, *, token: str, work_id: str, classification: str,
                                       reason: str, binding: str | None = None) -> dict[str, Any]:
         """A Ticket's failed verification, classified (WC §6); a parent's is the hierarchy's."""
-        with self.k.lead_txn(token, expect_rev, "verify.classify", reason=reason) as ctx:
+        with self.k.lead_txn(token, "verify.classify", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if unit["state"] != "VERIFICATION_FAILED":
                 raise IllegalTransition(f"{work_id} is {unit['state']}; only VERIFICATION_FAILED is classified")
             to = transitions.VERIFICATION_CLASSIFICATIONS[classification]
             transitions.check("VERIFICATION_FAILED", to, "verify.classify")
             failing = (unit.get("last_verification") or {}).get("evidence")
-            ref = approval.failure_ref("verify.classify", unit, failing, binding)
+            ref = approval.failure_ref("verify.classify", unit, failing, binding, work_id=work_id)
             change = {"from": "VERIFICATION_FAILED", "to": to}
             decision = self.k.new_decision(
                 ctx, "verification_failure_classification",
@@ -1726,19 +1725,18 @@ class EvidenceCommands:
         return {"ok": True, "work_id": work_id, "classification": classification, "to": to, "decision": decision,
                 "revision": ctx.session.committed_revision}
 
-    def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
+    def waive(self, *, token: str, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None, binding: str | None = None) -> dict[str, Any]:
         if bool(gate) == bool(finding):
             raise UsageError("waive exactly one gate or one finding")
-        with self.k.lead_txn(token, expect_rev, "waive", reason=reason) as ctx:
+        with self.k.lead_txn(token, "waive", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             policy = self.k.policy("gates")
             ref = []
             if gate:
                 gc = self.gates.gate_context(ctx.state, work_id)
-                if binding is not None:
-                    approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate))
-                    ref = [f"{work_id}/{gate}@record:{binding}"]
+                approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate), work_id=work_id)
+                ref = [f"{work_id}/{gate}@record:{binding}"]
                 if gate in gc["obligations"]["non_waivable"]:
                     raise GateUnsatisfied(f"{gate} is inherited as non-waivable")
                 if gate not in policy.get("waivable_gates", []):

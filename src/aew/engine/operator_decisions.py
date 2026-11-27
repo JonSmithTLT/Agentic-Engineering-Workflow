@@ -17,10 +17,8 @@ raise` uses (A1 §1.1):
    when and by which principal), so the record outlives the held one it drops. A plan or candidate other than the one
    confirmed is refused, and so is a call with no confirmation: the refusal says what to ask the operator.
 
-**Why it is not a control commit.** A Lead asks the operator at the revision it read, and its call states that
-revision (`--expect-rev`). A confirmation that moved the revision would refuse the very call it answers as stale, on
-every plan and every publish. So it is held beside control state, changes no revision, and enters the transition log
-with the commit that uses it.
+**When it enters the transition log.** A confirmation is held beside control state, changes no revision, and enters
+the transition log with the commit that uses it. The Lead still supplies the plan digest or candidate it observed.
 
 **How long one stands.** A confirmation does not end with the Lead's generation, as a steering raise does: the
 generation it was given under is recorded, never checked. It stands until a Lead session's call uses it, the

@@ -736,7 +736,7 @@ def test_a_validation_run_gets_the_entries(tmp_path, monkeypatch):
     engine = Engine(project.root, project.root / ".aew")
     engine._validation.backoff_s = 0.0
     clean_launching_env(monkeypatch, tmp_path / "home")
-    done = engine.integrate_validate(token=project.token, expect_rev=project.rev(), work_id=wid)
+    done = engine.integrate_validate(token=project.token, work_id=wid)
     assert done["ok"], done
     _says_the_entry(out)
 

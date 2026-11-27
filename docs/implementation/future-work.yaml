@@ -4987,9 +4987,9 @@ sections:
       takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is removed outright (the operator, 2026-11-25);
       open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification''s
       WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded
-      recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every
-      A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit order,
-      the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
+      recovery and the guides) land in the same PR. Tests cover the admission boundary for every A entry and exercise four
+      direct writers through their own handlers. The vertical''s `revision_args` and `stale_retries` are 0. The revision
+      stays as the commit order, the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
     Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
       parts 2, 4 and 5; the operator''s yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"'
     When: '**Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking

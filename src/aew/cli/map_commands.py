@@ -1,6 +1,6 @@
 """`aew map`: the structural codebase map (register F22.1; design v0.5 §2, §3; ADR-0015).
 
-A map is derived navigation context, never authority: no command here takes ``--expect-rev`` or changes control
+A map is derived navigation context, never authority: no command here changes control
 state. ``map generate`` writes under ``.aew/local/maps/`` and is Lead-authenticated (Lead-reachable in a Lead
 session); ``map show``, ``map search`` and ``map diff`` are reads.
 

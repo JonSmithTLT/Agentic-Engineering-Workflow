@@ -27,7 +27,6 @@ from invariants import assert_control_invariants, load_control, with_cold  # noq
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 from aew.engine.store import serialize_control  # noqa: E402
-from aew.harness import contract as K  # noqa: E402
 from aew.history.index import HistoryIndex  # noqa: E402
 from aew.history.store import History  # noqa: E402
 
@@ -47,7 +46,7 @@ def aew(t: CP.Template, *args: str, fault: str | None = None) -> Any:
 
 
 def migrate(t: CP.Template, *, fault: str | None = None) -> Any:
-    return aew(t, "migrate", "--expect-rev", str(read(t)["revision"]), fault=fault)
+    return aew(t, "migrate", fault=fault)
 
 
 def read(t: CP.Template) -> dict[str, Any]:
@@ -78,16 +77,16 @@ def comparable(state: dict[str, Any]) -> dict[str, Any]:
 def test_a_v1_project_refuses_the_leads_mutations_until_it_is_migrated(tmp_path):
     t = v1_project(tmp_path)
     refused = aew(t, "work", "create", "ticket", "--title", "New work", "--class", "1",
-                  "--expect-rev", str(t.rev()))
+                  )
     assert refused.error["code"] == "MIGRATION_REQUIRED", refused.stderr
-    migrate = f"aew migrate {K.EXPECT_REV}"  # the owner's text, and it runs as printed (ITEMS 56)
+    migrate = "aew migrate"  # the owner's text, and it runs as printed (ITEMS 56)
     assert refused.error["details"]["next_action"] == migrate and P.parse(migrate, fenced=False)
     actions = aew(t, "resume", "--json").json["next_actions"]
     assert any(f"`{migrate}`" in a for a in actions), actions
     # Reads work, and so do what the Lead needs to reach the migration: the seat, and ending work in flight.
     assert aew(t, "status", "--json").returncode == 0 and aew(t, "work", "tree").returncode == 0
     inv = next(i for i, v in read(t)["invocations"].items() if v["work_unit"] == "T-0003" and v["status"] == "active")
-    cancelled = aew(t, "invoke", "cancel", inv, "--reason", "not needed", "--expect-rev", str(t.rev()))
+    cancelled = aew(t, "invoke", "cancel", inv, "--reason", "not needed")
     assert cancelled.returncode == 0, cancelled.stderr
     assert_control_invariants(t)
 
@@ -122,7 +121,7 @@ def test_migrating_archives_the_finished_work_and_keeps_everything_else(tmp_path
     again = migrate(t)
     assert again.returncode == 0 and again.json["migrated"] is False and read(t)["revision"] == after["revision"]
     created = aew(t, "work", "create", "ticket", "--title", "New work", "--class", "1",
-                  "--expect-rev", str(t.rev()))
+                  )
     assert created.returncode == 0, created.stderr
     shown = aew(t, "work", "show", "T-0001").json["control"]  # lookups by id read the archive (R7)
     assert shown["state"] == "DONE" and shown["archived"] is True
@@ -171,10 +170,10 @@ def test_a_crash_while_a_migration_seals_a_segment(tmp_path):
 
 def handoff(t: CP.Template) -> None:
     """A cooperative handoff, allowed on v1: the seat's credentials end, so a Lead record has new content."""
-    offer = aew(t, "lead", "handoff", "offer", "--expect-rev", str(t.rev()))
+    offer = aew(t, "lead", "handoff", "offer")
     assert offer.returncode == 0, offer.stderr
     accepted = run_aew("-C", str(t.root), "lead", "handoff", "accept", "--offer", offer.json["offer"],
-                       "--expect-rev", str(t.rev()))
+                       )
     assert accepted.returncode == 0, accepted.stderr
     t.token = accepted.json["token"]
 
@@ -278,7 +277,8 @@ def test_parent_evidence_bound_before_the_migration_stays_current_until_the_chil
     assert gates(Engine.discover(t.root), story) == before
     assert_control_invariants(t)
     # Closing it relies on that evidence; a new child would have made it stale instead.
-    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed", "--expect-rev", str(t.rev()))
+    binding = t.eng.approval_subject(story, "work.close")["digest"]
+    closed = aew(t, "work", "close", story, "--reason", "acceptance gates passed", "--approval-digest", binding)
     assert closed.returncode == 0, closed.stderr
     assert story not in load_control(t.root)["work"]
     assert_control_invariants(t)
@@ -291,7 +291,7 @@ def test_a_new_child_after_the_migration_makes_the_parent_evidence_stale(tmp_pat
     t.lead("review_ingest", work_id=story, evidence_id=parent_review(t, story))
     assert migrate(t).returncode == 0
     added = aew(t, "work", "create", "ticket", "--title", "Follow-up", "--class", "1", "--parent", story,
-                "--expect-rev", str(t.rev()))
+                )
     assert added.returncode == 0, added.stderr
     assert gates(Engine.discover(t.root), story)["review_r1"] == "STALE"
     assert_control_invariants(t)
@@ -316,6 +316,7 @@ def test_a_classified_parent_failure_still_needs_a_new_child_after_the_migration
     assert migrate(t).returncode == 0
     t.lead("review_ingest", work_id=story, evidence_id=parent_review(t, story))
     t.lead("verify_ingest", work_id=story, evidence_id=parent_verification(t, story))
-    refused = aew(t, "work", "close", story, "--reason", "gates passed", "--expect-rev", str(t.rev()))
+    binding = t.eng.approval_subject(story, "work.close")["digest"]
+    refused = aew(t, "work", "close", story, "--reason", "gates passed", "--approval-digest", binding)
     assert refused.returncode != 0 and "remediation child" in refused.error["message"], refused.stderr
     assert_control_invariants(t)

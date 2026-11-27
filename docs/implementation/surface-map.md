@@ -121,8 +121,9 @@ typed Lead tool (`aew.surface.contract.TOOLS`) has one entry:
   - The floor comes from its arguments:
     - any command: `USAGE`;
     - a Lead credential: `PERMISSION_DENIED` and `STALE_AUTHORITY`;
-    - any expected revision (`--expect-rev`, `--expect-map-rev`): `STALE_REVISION`;
-    - a mutating tool: the same.
+    - the independent map compare-and-set (`--expect-map-rev`): `STALE_REVISION`;
+    - a missing or moved required prior value or approval subject: `CHANGED_SINCE_READ`;
+    - a mutating tool: current Lead authority and that tool’s declared bindings.
   - On top of the floor: `PROJECT_NOT_FOUND` where it opens a project, and the codes its own handler raises.
   - `refusal_status` says the inventory is partial and the refusals are not yet structured (a cause, a remedy and an
     owner each). A2 delivers both.

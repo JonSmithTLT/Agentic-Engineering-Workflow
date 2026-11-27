@@ -15,7 +15,6 @@ import pytest
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
 from aew.errors import IllegalTransition, ValidationFailed
-from aew.harness import contract as K
 from aew.util import dump_yaml, read_yaml
 
 
@@ -77,7 +76,7 @@ def test_lead_authority_accept_shows_the_bound_digest_on_a_terminal(project, mon
     monkeypatch.setattr(terminal, "isatty", lambda: True)
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
     argv = ["-C", str(project.root), "authority", "accept", candidate["id"], "--class", "orientation",
-            "--decided-by", "lead", "--expect-rev", str(project.rev())]
+            "--decided-by", "lead", ]
     with monkeypatch.context() as streams:
         streams.setattr(sys, "stderr", terminal)
         assert main(argv) == 0
@@ -93,7 +92,7 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     manifest.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
     cands = project.ok("authority", "list")["candidates"]
     res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation", "--decided-by", "lead",
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR"
     assert project.ok("status", "--json")["contradictions"]
     project.adopt_policy("project renamed by operator")
@@ -117,8 +116,7 @@ def test_a_policy_file_changed_outside_aew_refuses_every_lead_write_until_adopte
         path.unlink()
     rel = f"policy/{path.name}"
     before = control_bytes(project)
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR", res.stderr
     assert f".aew/{rel}" in res.error["message"] and "manifest adopt" in res.error["message"]
     assert res.error["details"]["files"] == [rel] and control_bytes(project) == before
@@ -144,10 +142,10 @@ def test_adopting_needs_the_operator_at_their_terminal_whatever_the_credential(p
     gates.write_bytes(gates.read_bytes() + b"# loosened by whoever holds the credential\n")
     before = control_bytes(project)
     res = project.aew("manifest", "adopt", "--reason", "mine",
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
     with pytest.raises(OperatorAuthorizationRequired):
-        Engine.discover(project.root).manifest_adopt(token=project.token, expect_rev=project.rev(), reason="mine",
+        Engine.discover(project.root).manifest_adopt(token=project.token, reason="mine",
                                                      authorization={"authorized_by": "lead"})
     assert control_bytes(project) == before
     decision = project.adopt_policy("reviewed by the operator")["decision"]
@@ -167,7 +165,7 @@ def test_a_policy_edit_after_a_transaction_began_is_never_used_by_it(project):
     gates = project.root / ".aew/policy/gates.yaml"
     original = gates.read_bytes()
     with pytest.raises(IntegrityError, match="gates.yaml"):
-        with k.lead_txn(project.token, project.rev(), "checkpoint") as ctx:
+        with k.lead_txn(project.token, "checkpoint") as ctx:
             k.policy("gates")  # the pinned bytes read fine
             gates.write_bytes(original + b"# edited mid-transaction\n")
             ctx.summary = "would have used the edit"
@@ -257,16 +255,16 @@ def test_a_decision_recorded_as_the_operators_needs_the_operator_at_their_termin
         if argv[0] == "work" else ""
     args = [a.format(cand=cand, wid=wid) for a in argv]
     before = control_bytes(project)
-    res = project.aew(*args, "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew(*args, env={"AEW_LEAD_TOKEN": project.token})
     assert res.error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", res.stderr
     assert control_bytes(project) == before
     engine = Engine.discover(project.root)
     with pytest.raises(OperatorAuthorizationRequired):
         if argv[0] == "work":
-            engine.work_staff(token=project.token, expect_rev=project.rev(), work_id=wid, review=["security_reviewer"],
+            engine.work_staff(token=project.token, work_id=wid, review=["security_reviewer"],
                               selected_by="operator", authorization={"authorized_by": "lead"})
         else:
-            engine.authority_accept(token=project.token, expect_rev=project.rev(), candidate_id=cand,
+            engine.authority_accept(token=project.token, candidate_id=cand,
                                     klass="decisions", decided_by="operator")
     assert control_bytes(project) == before
 
@@ -278,6 +276,7 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     substituted in-process: no terminal exists here.)"""
     from aew import operator
     from aew.cli.main import main
+    from aew.engine.api import Engine
 
     asked: list[str] = []
     confirmed = {"authorized_by": "operator-tty", "challenge_code": "X"}
@@ -286,11 +285,12 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     monkeypatch.chdir(project.root)
     cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
     wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"]
+    engine = Engine.discover(project.root)
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
     assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by,
-                 "--expect-rev", str(project.rev())]) == 0
+                 "--approval-digest", engine.authority_candidate(cand)["digest"]]) == 0
     assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by,
-                 "--expect-rev", str(project.rev())]) == 0
+                 "--prior-value", engine.prior_value("work_staff", wid)]) == 0
     decisions = "".join(f.read_text(encoding="utf-8") for f in (project.root / ".aew/decisions").glob("*.md"))
     if by == "operator":
         assert [a.split(":")[0] for a in asked] == ["RECORD as YOUR decision", "RECORD as YOUR selection"], asked
@@ -322,14 +322,12 @@ def test_what_the_lead_is_told_to_do_never_hands_it_an_operator_decision(project
         _names_the_operator(action)
     manifest = project.root / ".aew/project.yaml"
     manifest.write_bytes(manifest.read_bytes() + b"# edited\n")
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": project.token})
     assert "aew manifest adopt" in res.error["message"]
     _names_the_operator(res.error["message"])
     project.adopt_policy("reviewed")
     write_control_v1(project.root)
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": project.token})
     assert res.error["code"] == "MIGRATION_REQUIRED" and "aew migrate" in res.error["message"]
     _names_the_operator(res.error["message"])
     actions = project.ok("status", "--json")["next_actions"]
@@ -352,7 +350,7 @@ def test_an_unadopted_checks_edit_is_named_as_such_in_the_next_actions(project):
 
 
 def test_acquire_only_when_vacant(project):
-    res = project.aew("lead", "acquire", "--expect-rev", str(project.rev()))
+    res = project.aew("lead", "acquire")
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     # Register V2: the refusal names the holder and the way on when the holding session is gone.
     assert "aew lead takeover" in res.error["message"] and "interrupts nothing" in res.error["message"]
@@ -369,7 +367,7 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     assign(p, wid)  # an implementer is active
-    res = p.aew("lead", "acquire", "--expect-rev", str(p.rev()))
+    res = p.aew("lead", "acquire")
     details = res.error["details"]
     assert res.error["code"] == "PERMISSION_DENIED" and len(details["active_invocations"]) == 1
     assert f"interrupts the active invocation(s) {details['active_invocations'][0]}" in res.error["message"]
@@ -379,24 +377,29 @@ def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
 def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leaves(tmp_path):
     """The advice follows the takeover's outcome (independent review of #78). An active integration verifier on a
     prepared candidate: the takeover interrupts the Ticket, which retires its entry and lease, so there is nothing to
-    reconcile. A validated candidate with no active role invocation: the lease survives its dead custodian and is
-    reconciled."""
+    reconcile. A verifier-validated candidate with no active role invocation retains its lease, so takeover leaves
+    it for reconciliation."""
     from aewflow import prepare_and_validate, sample_project, to_commit_ready
+
+    from aew.engine.api import Engine
 
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     p.lead("integrate", "prepare", wid)
     p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
-    res = p.aew("lead", "acquire", "--expect-rev", str(p.rev()))
+    res = p.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [wid], res.error
     assert "integrate reconcile" not in res.error["message"] and "aew resume" in res.error["message"]
 
     q = sample_project(tmp_path / "validated")
     wid2, _ = to_commit_ready(q, tmp_path / "validated")
     prepare_and_validate(q, wid2)
-    res = q.aew("lead", "acquire", "--expect-rev", str(q.rev()))
+    queue = Engine.discover(q.root).store.read_committed()["queue"]
+    lease = queue["lease"]
+    assert lease is not None and queue["entries"][lease["entry"]]["work"] == wid2
+    res = q.aew("lead", "acquire")
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
-    assert f"`aew integrate reconcile {wid2} {K.EXPECT_REV}`" in res.error["message"], res.error
+    assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):
@@ -415,7 +418,7 @@ def test_forged_credentials_rejected(project, mangle):
     else:
         token = token.rsplit(".", 1)[0] + "."
     before = control_bytes(project)
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": token})
+    res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     assert control_bytes(project) == before
 
@@ -437,17 +440,16 @@ def test_no_raw_secret_is_ever_written(project):
 def test_superseded_lead_rejected_after_handoff(project):
     old = project.token
     offer = project.lead("lead", "handoff", "offer")["offer"]
-    accepted = project.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(project.rev()),
-                          "--session-label", "lead-b")
+    accepted = project.ok("lead", "handoff", "accept", "--offer", offer, "--session-label", "lead-b")
     new = accepted["token"]
     assert accepted["generation"] == 2
 
     before = control_bytes(project)
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": old})
+    res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": old})
     assert res.returncode == 3 and res.error["code"] == "STALE_AUTHORITY"
-    res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev() - 1), env={"AEW_LEAD_TOKEN": new})
-    assert res.returncode == 3 and res.error["code"] == "STALE_REVISION"
     assert control_bytes(project) == before
+    written = project.ok("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": new})
+    assert written["revision"] == accepted["revision"] + 1
 
     decision = accepted["decision"]
     assert "authority_transfer" in (project.root / f".aew/decisions/{decision}.md").read_text()
@@ -463,7 +465,7 @@ def test_pending_handoff_freezes_outgoing_lead(project, monkeypatch, capsys):
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
     monkeypatch.setattr(operator, "authorize", lambda _: {"authorized_by": "operator-tty"})
     assert main(["-C", str(project.root), "authority", "reject", cands[0]["id"],
-                 "--expect-rev", str(project.rev())]) == 4
+                 ]) == 4
     assert "a Lead handoff is pending" in capsys.readouterr().err
     project.lead("lead", "handoff", "cancel")
     project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
@@ -471,7 +473,7 @@ def test_pending_handoff_freezes_outgoing_lead(project, monkeypatch, capsys):
 
 @pytest.mark.acceptance("AT-4b")
 def test_takeover_cannot_be_self_authorized(project):
-    rev = project.rev()
+    project.rev()
     before = control_bytes(project)
     attempts = [
         (["--reason", "lead lost"], None, None),
@@ -480,7 +482,7 @@ def test_takeover_cannot_be_self_authorized(project):
         (["--reason", "lead lost", "--yes"], None, "yes\n"),
     ]
     for extra, env, stdin in attempts:
-        res = project.aew("lead", "takeover", "--expect-rev", str(rev), *extra, env=env, input=stdin)
+        res = project.aew("lead", "takeover", *extra, env=env, input=stdin)
         assert res.returncode != 0
         code = json.loads(res.stderr)["error"]["code"] if res.stderr.startswith("{") else "USAGE"
         assert code in {"OPERATOR_AUTHORIZATION_REQUIRED", "USAGE"}, res.stderr
@@ -500,8 +502,8 @@ def _pty_takeover(root: Path, rev: int, label: str) -> tuple[dict, str]:
     import pty
     import select
 
-    argv = [sys.executable, "-m", "aew", "-C", str(root), "lead", "takeover", "--expect-rev", str(rev),
-            "--reason", "Lead session lost", "--session-label", label]
+    argv = [sys.executable, "-m", "aew", "-C", str(root), "lead", "takeover", "--reason", "Lead session lost",
+            "--session-label", label]
     pid, fd = pty.fork()
     if pid == 0:  # child: controlling terminal is the pty slave
         os.execvpe(argv[0], argv, clean_env())  # noqa: S606 (argv is fixed above)
@@ -540,7 +542,7 @@ def _pty_takeover(root: Path, rev: int, label: str) -> tuple[dict, str]:
 def test_operator_authorized_takeover_supersedes_everyone(project):
     a_token = project.token
     offer = project.lead("lead", "handoff", "offer")["offer"]
-    b_token = project.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(project.rev()))["token"]
+    b_token = project.ok("lead", "handoff", "accept", "--offer", offer)["token"]
     rev = project.rev()
     result, screen = _pty_takeover(project.root, rev, "lead-c")
     assert result["generation"] == 3
@@ -551,8 +553,7 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     assert written, screen
     c_token = written.group(1)
     for stale in (a_token, b_token):
-        res = project.aew("checkpoint", "--next", "x", "--expect-rev", str(project.rev()),
-                          env={"AEW_LEAD_TOKEN": stale})
+        res = project.aew("checkpoint", "--next", "x", env={"AEW_LEAD_TOKEN": stale})
         assert res.error["code"] == "STALE_AUTHORITY"
     decision = (project.root / f".aew/decisions/{result['decision']}.md").read_text()
     assert "operator-tty" in decision and "Lead session lost" in decision

@@ -225,7 +225,7 @@ def test_coverage_consumers_use_the_runners_cwd_not_a_second_calculation(tmp_pat
     assert checked["coverage"]["checks"][0]["cwd"] == marker
     p.lead("invoke", "cancel", inv["invocation"], "--reason", "exercise checks-mode runner provenance next")
     policy(p, checks=SMOKE)
-    out = engine(p).integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+    out = engine(p).integrate_validate(token=p.token, work_id=wid)
     assert out["coverage"]["checks"][0]["cwd"] == marker
 
 
@@ -244,7 +244,7 @@ def test_coverage_uses_the_pinned_inventory_when_unrelated_policy_changes_during
         return original(work_id, run)
 
     monkeypatch.setattr(eng._validation, "_execute", execute)
-    out = eng.integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+    out = eng.integrate_validate(token=p.token, work_id=wid)
     assert out["result"] == "pass"
     assert "added-after-pin" not in {c["check_id"] for c in out["coverage"]["configured_not_run"]}
     pin = integ(p, wid)[VO.CURRENT]["coverage_inputs"]
@@ -422,7 +422,7 @@ def test_slow_selector_copy_setup_cannot_spend_the_checks_deadline(tmp_path, con
     monkeypatch.setattr(C, "run", run_check)
     monkeypatch.setattr(check_changes, "remove_copy", retire_copy)
     try:
-        out = eng.integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+        out = eng.integrate_validate(token=p.token, work_id=wid)
     finally:
         checks_started.set()
     assert started.is_set(), "the selector must reach copy setup for this control"
@@ -442,8 +442,8 @@ def test_every_terminal_record_keeps_coverage_without_manufacturing_a_validation
     wid = prepared(p, tmp_path)
     if kind == "abandoned":
         eng = engine(p)
-        run = eng._validation._pin(VO.Principal(VO.LEAD, p.token), p.rev(), wid, attempt=1, diagnostic=False)
-        eng._validation._abandon(VO.Principal(VO.LEAD, p.token), p.rev(), wid, run["id"],
+        run = eng._validation._pin(VO.Principal(VO.LEAD, p.token), wid, attempt=1, diagnostic=False)
+        eng._validation._abandon(VO.Principal(VO.LEAD, p.token), wid, run["id"],
                                  "VALIDATION_INTERRUPTED", "synthetic executor interruption after the real pin")
     else:
         validate(p, wid, diagnostic=kind == "advisory")
@@ -488,7 +488,7 @@ def test_the_finalizer_records_superseded_coverage_without_claiming_the_unobserv
     policy(p, checks=SMOKE)
     wid = prepared(p, tmp_path)
     eng = engine(p)
-    eng._validation._pin(VO.Principal(VO.LEAD, p.token), p.rev(), wid, attempt=1, diagnostic=False)
+    eng._validation._pin(VO.Principal(VO.LEAD, p.token), wid, attempt=1, diagnostic=False)
     p.lead("integrate", "defer", wid, "--reason", "retire the candidate before execution")
     retired = control(p)["work"][wid]["integration_history"][-1][VO.CURRENT]
     assert retired["state"] == "abandoned" and retired["reason"] == "SUPERSEDED"

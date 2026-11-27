@@ -129,6 +129,7 @@ def test_no_engine_operation_changes_the_shared_parse(tmp_path, monkeypatch):
     monkeypatch.setattr(ST.ControlStore, "_load", checked)
     t = CP.make_template(tmp_path / "repo")
     eng = t.eng
+    revision = eng.store.read_committed()["revision"]
     for read in (eng.status, eng.resume, eng.work_tree, eng.harness_status, lambda: eng.gate_show("T-0003")):
         read()
-    assert eng.store.read()["revision"] == t.rev()
+    assert eng.store.read()["revision"] == revision

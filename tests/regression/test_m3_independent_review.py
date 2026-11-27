@@ -155,7 +155,7 @@ def test_health_fails_when_a_field_changes_type():
 # ------------------------------------------------------------------------------------------------ B1: plan order
 
 def _refused_cli(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 

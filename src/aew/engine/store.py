@@ -76,7 +76,6 @@ from aew.errors import (
     DispatchUndecided,
     IntegrityError,
     ProjectNotFound,
-    StaleRevision,
     ThreadUnsealed,
     ValidationFailed,
 )
@@ -332,18 +331,11 @@ class Session:
             raise IntegrityError(f"{path} is referenced with two different hashes")
         self._prewritten[path] = sha256
 
-    def commit(self, transition: Transition, *, expect_rev: int | None = None,
-               state: dict[str, Any] | None = None) -> int:
+    def commit(self, transition: Transition, *, state: dict[str, Any] | None = None) -> int:
         """Commit this session's state, or ``state`` when a finalizer projected the one to serialize (ADR-0011 R6).
         """
         if self.committed_revision is not None:
             raise AEWError("session already committed")
-        if expect_rev is not None and expect_rev != self.revision:
-            raise StaleRevision(
-                f"expected control revision {expect_rev}, current is {self.revision}",
-                expected=expect_rev,
-                current=self.revision,
-            )
         after = self.state if state is None else state
         _require_dispatched(self._committed_state, after)
         self._require_sealed(transition, after)

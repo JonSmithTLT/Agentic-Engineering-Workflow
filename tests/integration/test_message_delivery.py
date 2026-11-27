@@ -160,7 +160,7 @@ def test_a_lead_rotation_after_the_durable_offer_never_posts_to_the_old_run(work
     def rotate_after_selection(**kwargs):
         result = select(**kwargs)
         assert result["message"] is not None and facts(w) == [["RECORDED", "POSTED"]]
-        w.e.lead_takeover(expect_rev=w.rev(), reason="the seat was lost", session_label="lead-b")
+        w.e.lead_takeover(reason="the seat was lost", session_label="lead-b")
         return result
 
     monkeypatch.setattr(w.e, "message_next_post", rotate_after_selection)
@@ -466,7 +466,7 @@ def test_a_recorded_harness_send_wakes_a_held_agent_and_retains_staging_order(wo
     w.send("Stay staged until resumed.")
     delivery.tick(select=True)
     snap = w.control_bytes()
-    result = w.e.harness_send(token=w.token, run=run, text="Wake the held run.", when=when, expect_rev=w.rev())
+    result = w.e.harness_send(token=w.token, run=run, text="Wake the held run.", when=when)
     assert result["message"]["origin"] == "harness_send" and result["message"]["run"] == run
     assert result["revision"] == w.rev() and w.control_bytes() == snap
     assert not list(runlog.run_dir(w.e.aew_root, run).glob("requests/*"))
@@ -616,10 +616,10 @@ def test_a_lead_message_reaches_the_worker_at_the_next_step_boundary(live_lab, t
     live_lab.until(lambda: len(event_rows("opencode.session.step.started")) >= 2,
                    "watchdog", what="worker blocked in its second step")
     second = event_rows("opencode.session.step.started")[1]["assistantMessageID"]
-    queued = engine.message_record_lead(token=live_lab.project.token, expect_rev=engine.store.read()["revision"],
-                                        to="INV-0001", body="Follow up after your turn.", when="turn-end")
-    engine.message_record_lead(token=live_lab.project.token, expect_rev=engine.store.read()["revision"],
-                               to="INV-0001", body="Also document the follow-up.", when="turn-end")
+    queued = engine.message_record_lead(token=live_lab.project.token, to="INV-0001", body="Follow up after your turn.",
+                                        when="turn-end")
+    engine.message_record_lead(token=live_lab.project.token, to="INV-0001", body="Also document the follow-up.",
+                               when="turn-end")
     mid = send(live_lab, "Check the shutdown edge before your next step.")["message"]["id"]
 
     def observed():

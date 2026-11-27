@@ -68,13 +68,13 @@ def declared(k: int) -> list[dict[str, Any]]:
             for i in range(70 if k % 2 == 0 else 1)]
 
 
-def one_transaction(store: ControlStore, *, expect_rev: int | None = None) -> int:
+def one_transaction(store: ControlStore) -> int:
     with store.session() as s:
         k = s.state["counters"]["n"] + 1
         s.state["counters"]["n"] = k
         s.write(f"records/item-{k}.md", item_content(k))
         s.write("manifest.txt", f"n={k}\n", immutable=False)
-        return s.commit(Transition(op="bump", actor={"kind": "test"}, events=declared(k)), expect_rev=expect_rev)
+        return s.commit(Transition(op="bump", actor={"kind": "test"}, events=declared(k)))
 
 
 def check_invariants(root: Path, *, synthetic_through: int = 0, window: int | None = None) -> int:

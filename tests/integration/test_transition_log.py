@@ -217,7 +217,7 @@ def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they
     p = sample_project(tmp_path)
     old_lead = p.token.split(".")[1]
     offer = p.lead("lead", "handoff", "offer")["offer"]
-    accepted = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))
+    accepted = p.ok("lead", "handoff", "accept", "--offer", offer)
     events = transfer_events(p, accepted["revision"])
     assert {"kind": "decision.recorded", "id": accepted["decision"], "type": "authority_transfer"} in events
     revoked = {e["id"] for e in events if e["kind"] == "credential.revoked"}
@@ -228,7 +228,7 @@ def test_a_handoff_and_a_takeover_record_their_decision_and_the_credentials_they
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        taken = Engine.discover(p.root).lead_takeover(expect_rev=p.rev(), reason="review of PR #53",
+        taken = Engine.discover(p.root).lead_takeover(reason="review of PR #53",
                                                       session_label="operator")
     finally:
         aew.operator.authorize = original

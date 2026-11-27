@@ -13,7 +13,7 @@ from pathlib import Path
 from aew.engine import primitives as P
 
 ENGINE = Path(P.__file__).resolve().parent
-LEAD_TXN_OP = re.compile(r"lead_txn\(\s*[^,()]+,\s*[^,()]+,\s*\"([a-z_.]+)\"")
+LEAD_TXN_OP = re.compile(r"lead_txn\(\s*[^,()]+,\s*\"([a-z_.]+)\"")
 
 
 def lead_txn_ops() -> set[str]:

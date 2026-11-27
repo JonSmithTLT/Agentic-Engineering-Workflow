@@ -284,7 +284,7 @@ def test_the_scripted_lead_fills_a_decisions_judgment_inputs_choosing_an_option_
     """Register E388 (spec v2): a decision of the Lead's that names judgment inputs is called with the projection's
     arguments, the first offered option for its choice and a rationale in the Lead's own words, never a schema."""
     decision = {"decision": "RESOLVE_STAGE", "subject": T, "owner": "lead", "evidence": ["SI-0002"],
-                "tool": "resolve", "arguments": {"expect_rev": REV, "subject": "SI-0002"},
+                "tool": "resolve", "arguments": {"subject": "SI-0002"},
                 "availability": "AVAILABLE", "default": "NONE", "cli_fallback": None,
                 "judgment_inputs": {"choice": {"options": ["continue", "abandon"]},
                                     "rationale": {"type": "string", "description": "free text"}}}

@@ -1,7 +1,7 @@
 """The StageIntent journal (M4-E E3; plan v3 E3 and §2.7; typed Lead surface design v0.2 §3.4).
 
-A stage call (a typed tool that expands into several primitives) opens an intent as its first commit, by CAS on the
-caller's expected revision (rules 1 and 2), binding the call, the state it started from and its planned steps. Each
+A stage call (a typed tool that expands into several primitives) opens an intent as its first commit, binding the
+call, its subject's opening state and its planned steps. Each
 step then commits with its primitive, in the same transaction: the surface arms :func:`step` around exactly one
 primitive call, and this module's finalizer records the step, or refuses the commit, before the transaction lands.
 So the journal never claims a step that did not commit, and a step never commits outside its journal.
@@ -10,9 +10,8 @@ The finalizer refuses a step whose intent is no longer ACTIVE, whose owning Lead
 (a takeover never continues a stage implicitly: F18 §14), whose key is already recorded (the idempotency key
 ``<SI>:<n>``: a continued stage never repeats a committed step), that is out of plan order, whose commit is not its
 planned primitive's (``step_primitive_mismatch``), whose primitive commits a second time in one armed block
-(``step_commits_twice``), that retries a judgment-bearing step or any step of a judgment-bearing stage
-(``judgment_replay``: rules 4 and 5), or whose bound legality digest no longer holds (STALE_POLICY: rule 6). The
-operational digest is recorded with each step, never enforced.
+(``step_commits_twice``), or whose bound legality digest no longer holds (STALE_POLICY: rule 6). The loop also
+rechecks the steering mode and policy it relied on to run without a Lead decision.
 
 A launch (``dispatch.launch``: run 1 of a dispatch made with ``launch``) has no transaction of its own: its dispatch's
 commit records it and its dispatch's decision covers it (plan v3 §1, N4; ``primitives.COVERED_BY_PREVIOUS``). So a
@@ -41,8 +40,8 @@ Resolving an ACTIVE intent (E3c) is the current Lead's explicit choice, never in
 - **abandon** ends it ABANDONED; committed steps are never undone;
 - **continue** rechecks it (:meth:`StageIntents.recheck`, the one function ``resume`` reads too): the legality digest it
   bound, the stage contract and plan the surface re-resolves now, the subject unit as its last step left it (another
-  primitive moved it: refused), and the run of a launching last step. Authority is the caller's credential and its
-  revision the CAS of ``lead_txn``. It then rebinds the intent to the current Lead generation (F18 §14), recorded in
+  primitive moved it: refused), and the run of a launching last step. The caller binds the shown continuation
+  digest. It then rebinds the intent to the current Lead generation (F18 §14), recorded in
   ``rebound``, and the surface resumes from the first uncommitted step. A launching step's run with no supervisor
   record, or one that is no longer starting or running, is ``launch_failed``: the continue stops the intent there in
   the same commit and never completes it over a run that never started. It never relaunches: a relaunch is the Lead's
@@ -57,7 +56,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -88,7 +87,8 @@ LIVE_RUN = (K.STARTING, K.RUNNING)  # a launching step's run its supervisor stil
 OK, NOT_APPLICABLE = "ok", "not_applicable"
 CHANNELS = ("mcp", "cli", "direct", "test")  # the surface's ingresses (SurfaceContext), and tests' own
 OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, and what a later step may name
-REFERENCE = "$from"  # a planned argument {"$from": [m, field]}: the one id step m recorded under field
+REFERENCE = "$from"  # a planned argument {"$from": [m, field]} reads the journal's step m
+STEP_STATE = "state"  # a later transition may bind the subject state that step m committed
 ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # judgments that accept a report
 
 
@@ -114,7 +114,6 @@ class StepBinding:
 
     intent: str
     n: int
-    retried: bool = False
     final: bool = False
     covers: bool = False  # step n + 1 is this step's dispatch's launch, recorded in the same commit (M4-E E5a)
     used: bool = field(default=False, compare=False)
@@ -128,14 +127,14 @@ _STEP: ContextVar[StepBinding | None] = ContextVar("aew_stage_step", default=Non
 
 
 @contextmanager
-def step(intent: str, n: int, *, retried: bool = False, final: bool = False,
+def step(intent: str, n: int, *, final: bool = False,
          covers: bool = False) -> Iterator[StepBinding]:
     """Arm step ``n`` of ``intent`` for the primitive called inside the block: its commit records the step (or is
     refused). ``final``: the step is the plan's last and has no effect after its commit, so the same commit completes
     the intent. ``covers``: step ``n + 1`` is the launch of this step's dispatch (``dispatch.launch``), which the same
     commit records as that step (M4-E E5a). A primitive that commits twice inside one block is refused at its second
     commit."""
-    binding = StepBinding(intent, n, retried=retried, final=final, covers=covers)
+    binding = StepBinding(intent, n, final=final, covers=covers)
     token = _STEP.set(binding)
     try:
         yield binding
@@ -173,18 +172,21 @@ def unit_state(unit: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class StageIntents:
-    def __init__(self, k: Any, *, archive: Any, obligations: Any = None) -> None:
+    def __init__(self, k: Any, *, archive: Any, obligations: Any = None,
+                 automation_guard: Callable[[dict[str, Any], dict[str, str], dict[str, Any],
+                                             list[dict[str, Any]], str], None] | None = None) -> None:
         self.k = k
         self.archive = archive
         # (state, work_id) -> the unit's effective obligations: what a stage that accepts evidence binds (E5b)
         self.obligations = obligations
+        self.automation_guard = automation_guard
 
     # ------------------------------------------------------------------ opening and closing (Lead transactions)
 
-    def open(self, *, token: str, expect_rev: int, tool: str, contract_digest: str, arguments: dict[str, Any],
+    def open(self, *, token: str, tool: str, contract_digest: str, arguments: dict[str, Any],
              judgment_inputs: list[str], base_class: str, effective_class: str, plan: list[dict[str, Any]],
              subject: str | None, ingress: str, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Open an intent as the stage's first commit (rules 1 and 2): a stale ``expect_rev`` commits nothing. Every
+        """Open an intent as the stage's first commit. Every
         planned primitive must be declared (an undeclared one is judgment-bearing and has no step runner: fail
         closed), and a unit has at most one ACTIVE intent (a stage is never stacked over an unresolved one).
 
@@ -192,6 +194,10 @@ class StageIntents:
         the steering mode and the record that set it, the generation that mode was granted to, and the projection it
         executed. It is recorded on the intent, and so in its cold record, and grants nothing: the stage is the same
         call, checked the same way, as a Lead's."""
+        from aew.engine.stage_migration import has_retired_argument
+
+        if has_retired_argument(arguments, plan):
+            raise UsageError("stage arguments include a retired revision check; read the current tool contract")
         if ingress not in CHANNELS:
             raise UsageError(f"unknown ingress {ingress!r}", allowed=list(CHANNELS))
         if not plan or len(plan) > MAX_STEPS:
@@ -199,13 +205,17 @@ class StageIntents:
         if base_class not in P.CLASS_RANK or effective_class not in P.CLASS_RANK:
             raise UsageError("a stage's base and effective class are operation classes",
                              allowed=list(P.OPERATION_CLASSES))
-        with self.k.lead_txn(token, expect_rev, "stage.open") as ctx:
+        with self.k.lead_txn(token, "stage.open") as ctx:
             state = ctx.state
             if subject is not None and subject not in state["work"]:
                 raise NotFound(f"no hot work unit {subject}: a stage's subject is a unit in flight", work_id=subject)
             if subject is not None and (prior := arguments.get("prior_value")) is not None:
                 approval.prior_state(tool, subject, prior, state["work"][subject]["state"],
                                      root=self.k.aew_root, state=state)
+            if tool == "integration_publish" and subject is not None:
+                integration = state["work"][subject].get("integration") or {}
+                approval.compare("integrate.publishing", subject, arguments.get("prepared_candidate"),
+                                 integration.get("candidate"), reason="candidate_mismatch")
             for other in (state.get("stage_intents") or {}).values():
                 if other["subject"]["id"] == subject:  # one per unit, and one with no unit (§2.7: bounded)
                     raise IllegalTransition(
@@ -217,7 +227,10 @@ class StageIntents:
             state["counters"]["stage_intent"] = state["counters"].get("stage_intent", 0) + 1
             sid = format_id("SI", state["counters"]["stage_intent"])
             for n, planned in enumerate(plan, start=1):
-                _check_references(n, planned.get("args") or {})
+                args = planned.get("args") or {}
+                _check_references(n, args)
+                if planned["primitive"] == "work.transition":
+                    approval.require_binding(tool, subject or "work.transition", "state", args.get("prior_value"))
                 spec = P.spec_for(planned["primitive"])
                 if spec.primitive_id in P.NOT_STEPS:
                     raise IllegalTransition(f"step {n}, {planned['primitive']}, cannot run as one stage step: "
@@ -239,12 +252,18 @@ class StageIntents:
                               "key": step_key(sid, n), **({"args": planned["args"]} if "args" in planned else {})})
             floor = max([P.CLASS_RANK[base_class], *(P.CLASS_RANK[s["operation_class"]] for s in steps)])
             if P.CLASS_RANK[effective_class] < floor:
-                # R5-1 retries only a non-judgment stage: an effective class below its own row or its steps would
-                # let a judgment be replayed (§3.4 rules 4 and 5; #140 review, finding 2).
+                # The automation admission rule and the journal both depend on the truthful effective class.
                 raise IllegalTransition(
                     f"a stage's effective class is at least its base class and each step's; {effective_class} is "
                     f"below {P.OPERATION_CLASSES[floor]}", reason="class_understated")
             d = self.k.policy_digests()
+            if auto_run is not None:
+                # Admission of this action uses the mode it was projected under. Later mode changes apply to
+                # the next action. This stage retains its legality, generation and scoped step checks.
+                if self.automation_guard is None:
+                    raise IllegalTransition("no steering admission guard is available",
+                                            reason="confirmation_unavailable")
+                self.automation_guard(state, d, auto_run, steps, effective_class)
             # A stage that accepts evidence binds the obligations the evidence is judged against (plan v3 E3; M4-E E5b),
             # recorded for attribution like the operational digest.
             obligations = None
@@ -255,12 +274,12 @@ class StageIntents:
                 "arguments": arguments, "arguments_digest": digest(arguments), "judgment_inputs": list(judgment_inputs),
                 "base_class": base_class, "effective_class": effective_class, "ingress": ingress,
                 "caller": dict(ctx.actor), "generation": state["lead"]["generation"],
-                "opened": {"expect_rev": expect_rev, "rev": ctx.session.revision + 1, "at": utc_now()},
+                "opened": {"rev": ctx.session.revision + 1, "at": utc_now()},
                 "binding": {"legality_digest": d["legality_digest"], "operational_digest": d["operational_digest"],
                             "authorization_digest": None, "obligations_digest": obligations, "lease": None},
                 "subject": {"kind": "unit" if subject else "project", "id": subject,
                             "start": unit_state(state["work"].get(subject)) if subject else None},
-                "plan": steps, "steps": [], "retried_after_stale_revision": False, "stopped": None, "rebound": [],
+                "plan": steps, "steps": [], "stopped": None, "rebound": [],
                 "resolution": None, "closed": None}
             if auto_run is not None:
                 intent["auto_run"] = dict(auto_run)
@@ -272,18 +291,13 @@ class StageIntents:
             revision = ctx.session.revision + 1
         return {"intent": sid, "revision": revision, "binding": dict(intent["binding"])}
 
-    def stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-             reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
+    def stop(self, *, token: str, intent: str, n: int, boundary: str, code: str, message: str,
+             reason: str | None = None) -> dict[str, Any]:
         """Record that the stage stopped at step ``n`` (rule 3: the first refusal stops it), and end the intent:
-        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand. A partial stale stop
-        may instead stay ACTIVE awaiting the Lead's explicit resolution (E137); this never runs another step."""
-        with self.k.lead_txn(token, expect_rev, "stage.stop") as ctx:
+        REFUSED when no step committed, STOPPED_AT_BOUNDARY otherwise. Committed steps stand."""
+        with self.k.lead_txn(token, "stage.stop") as ctx:
             si = self._active(ctx.state, intent, owner=True)
             done = len(si["steps"])
-            if await_resolution and not (code == "STALE_REVISION" and boundary == "stale_revision"
-                                         and 0 < done < len(si["plan"])):
-                raise IllegalTransition("only a partially committed stage stopped stale can await resolution",
-                                        reason="not_resolvable_stop")
             # The stop is at the next step, or at the last when every step committed and what followed its commit
             # failed (a launch: rule 7). Never at a step that does not exist (#140 review, finding 3).
             if n != done + 1 and not (n == done == len(si["plan"])):
@@ -292,20 +306,17 @@ class StageIntents:
             si["stopped"] = {"n": n, "boundary": boundary,
                              "error": {"code": code, "message": message[:2000], "reason": reason},
                              "rev": ctx.session.revision + 1, "at": utc_now()}
-            status = ACTIVE if await_resolution else STOPPED if si["steps"] else REFUSED
-            if await_resolution:
-                self._validate(si)
-            else:
-                self._end(ctx, si, status)
+            status = STOPPED if si["steps"] else REFUSED
+            self._end(ctx, si, status)
             ctx.summary = f"stage {si['tool']} ({intent}) stopped at step {n}: {boundary}"
             ctx.refs.append(intent)
             revision = ctx.session.revision + 1
         return {"intent": intent, "status": status, "revision": revision}
 
-    def close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
+    def close(self, *, token: str, intent: str) -> dict[str, Any]:
         """End an intent whose every planned step committed, when its last step had an effect after its commit (a
         launch): the commit that records the step cannot also say the stage completed."""
-        with self.k.lead_txn(token, expect_rev, "stage.close") as ctx:
+        with self.k.lead_txn(token, "stage.close") as ctx:
             si = self._active(ctx.state, intent, owner=True)
             if len(si["steps"]) != len(si["plan"]):
                 raise IllegalTransition(f"{intent} has {len(si['plan']) - len(si['steps'])} step(s) still to run: "
@@ -316,12 +327,12 @@ class StageIntents:
             revision = ctx.session.revision + 1
         return {"intent": intent, "status": COMPLETED, "revision": revision}
 
-    def abandon(self, *, token: str, expect_rev: int, intent: str, rationale: str) -> dict[str, Any]:
+    def abandon(self, *, token: str, intent: str, rationale: str) -> dict[str, Any]:
         """Close an intent without running its remaining steps: committed steps are never undone. The current Lead
         may abandon any ACTIVE intent, its own or one a superseded generation left (F18 §14)."""
         if not (rationale and rationale.strip()):
             raise UsageError("abandoning a stage needs a rationale")
-        with self.k.lead_txn(token, expect_rev, "stage.abandon") as ctx:
+        with self.k.lead_txn(token, "stage.abandon") as ctx:
             si = self._active(ctx.state, intent)
             si["resolution"] = {"choice": "abandon", "rationale": rationale.strip()[:2000],
                                 "generation": ctx.state["lead"]["generation"], "rev": ctx.session.revision + 1,
@@ -332,7 +343,7 @@ class StageIntents:
             revision = ctx.session.revision + 1
         return {"intent": intent, "status": ABANDONED, "revision": revision}
 
-    def continue_(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
+    def continue_(self, *, token: str, intent: str, contract_digest: str | None,
                   plan: list[dict[str, Any]] | None, rationale: str, binding: str | None = None) -> dict[str, Any]:
         """The current Lead's explicit continue (rule 8; F18 §14): every recheck must pass now, or nothing commits and
         the intent stays ACTIVE for another choice. ``contract_digest`` and ``plan`` are the stage contract and plan
@@ -346,12 +357,11 @@ class StageIntents:
         the same way, so no later step runs over a run that never started."""
         if not (rationale and rationale.strip()):
             raise UsageError("continuing a stage needs a rationale")
-        with self.k.lead_txn(token, expect_rev, "stage.continue") as ctx:
+        with self.k.lead_txn(token, "stage.continue") as ctx:
             state = ctx.state
             si = self._active(state, intent)
             check = self.recheck(state, si, contract_digest=contract_digest, plan=plan)
-            if binding is not None:
-                approval.compare("stage.continue", intent, binding, check["approval"]["digest"])
+            approval.compare("stage.continue", intent, binding, check["approval"]["digest"])
             _refuse_unless_continuable(si, check)
             rev = ctx.session.revision + 1
             generation = state["lead"]["generation"]
@@ -411,7 +421,14 @@ class StageIntents:
             checks["policy"] = {"status": OK, "message": "the legality digest it bound is in force"} if (
                 current == bound) else {"status": "stale_policy", "bound": bound, "current": current,
                                         "message": f"{LEGALITY_MOVED} since it opened"}
-        if contract_digest is None:
+        from aew.engine.stage_migration import needs_upgrade
+
+        if needs_upgrade(si):
+            checks["contract"] = {
+                "status": "changed",
+                "message": "this stage predates scoped bindings; the operator runs `aew migrate` before it continues",
+            }
+        elif contract_digest is None:
             checks["contract"] = {"status": "unknown_stage",
                                   "message": f"the surface no longer has a stage {si['tool']} to continue"}
         elif contract_digest != si["contract_digest"]:
@@ -486,13 +503,13 @@ class StageIntents:
                     return {"status": K.UNREADABLE, "run": run, "observed": observed,
                             "message": f"step {step_n}'s run {run} could not be read just now; "
                                        f"check again with `aew harness status {inv}`"}
-                relaunch = f"`aew harness launch {inv} {K.EXPECT_REV}`"
-                cancel_command = f"aew invoke cancel {inv} {K.EXPECT_REV}"
+                relaunch = f"`aew harness launch {inv} --prior-value {run}`"
+                cancel_command = f"aew invoke cancel {inv}"
                 if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
                     # The stage's own remedies stay first: relaunch, or abandon the intent (an invoke cancel ends the
                     # invocation but leaves the intent unresolved; #313 review, F4).
                     abandon = K.fields_command(
-                        f"aew stage abandon {intent} {K.EXPECT_REV}",
+                        f"aew stage abandon {intent}",
                         "rationale", "stage launch failed")
                     cancel = K.fields_command(cancel_command, "reason", "stage launch failed")
                     return {"status": "no_supervisor", "run": run, "observed": observed,
@@ -545,9 +562,6 @@ class StageIntents:
             raise IllegalTransition(f"{binding.key} plans {planned['primitive']}; this commit is {ctx.txn_op}: a step "
                                     "commits only its planned primitive (#140 review, finding 1)",
                                     reason="step_primitive_mismatch", planned=planned["primitive"], op=ctx.txn_op)
-        if binding.retried and P.JUDGMENT_BEARING in (planned["operation_class"], si["effective_class"]):
-            raise IllegalTransition(f"{binding.key} is judgment-bearing or in a judgment-bearing stage: it is never "
-                                    "retried after a stale revision (§3.4 rules 4 and 5)", reason="judgment_replay")
         d = self.k.policy_digests()
         if d["legality_digest"] != si["binding"]["legality_digest"]:
             raise StalePolicy(
@@ -570,9 +584,6 @@ class StageIntents:
                   "at": utc_now()}
         if ctx.op in P.DISPOSITION_OPS.get(planned["primitive"], ()):  # its disposition, not its completion (E6a)
             record["disposition"] = ctx.op
-        if binding.retried:
-            record["retried_after_stale_revision"] = True
-            si["retried_after_stale_revision"] = True
         si["steps"].append(record)
         if binding.covers:
             si["steps"].append(_covered_step(si, binding, record, outputs, state, before))
@@ -626,6 +637,10 @@ class StageIntents:
 
     def _end(self, ctx: TxnContext, si: dict[str, Any], status: str) -> None:
         """End ``si``: write it whole to its cold home and drop it from the hot state, in this commit."""
+        from aew.engine import stage_migration
+
+        if stage_migration.needs_upgrade(si):
+            stage_migration.upgrade(si)
         state = ctx.state
         rev = ctx.session.revision + 1
         si["status"] = status
@@ -665,18 +680,18 @@ class StageIntents:
 
 def _check_references(n: int, args: dict[str, Any]) -> None:
     """Refuse a step ``n`` whose argument names what no earlier step of the plan can record: only ``{"$from": [m,
-    field]}`` with an integer ``1 <= m < n`` and ``field`` one of :data:`OUTPUTS`. Checked when the intent opens, so a
-    bad plan commits nothing, and a continued stage (E3c) resolves only a plan this check accepted (#142 review,
-    finding 4)."""
+    field]}`` with an integer ``1 <= m < n``. It can name one recorded output ID or the recorded subject state for
+    ``prior_value``. A bad plan commits nothing, and continuation resolves only an admitted plan."""
     for name, value in args.items():
         if not (isinstance(value, dict) and REFERENCE in value):
             continue
         ref = value[REFERENCE]
         m, field = ref if isinstance(ref, list | tuple) and len(ref) == 2 else (None, None)
-        if set(value) != {REFERENCE} or isinstance(m, bool) or not isinstance(m, int) or field not in OUTPUTS:
+        fields = (*OUTPUTS, STEP_STATE) if name == "prior_value" else OUTPUTS
+        if set(value) != {REFERENCE} or isinstance(m, bool) or not isinstance(m, int) or field not in fields:
             raise UsageError(f"step {n}'s argument {name} is not a step reference: a reference is "
                              f"{{{REFERENCE!r}: [m, field]}}, with m an earlier step's number and field one of "
-                             f"{', '.join(OUTPUTS)}", reason="malformed_reference", step=n, argument=name)
+                             f"{', '.join(fields)}", reason="malformed_reference", step=n, argument=name)
         if not 1 <= m < n:
             raise UsageError(f"step {n}'s argument {name} comes from step {m}, which is not an earlier step: a step "
                              "uses only what the steps before it recorded", reason="reference_not_earlier", step=n,

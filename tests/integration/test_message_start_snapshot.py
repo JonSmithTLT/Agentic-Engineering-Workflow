@@ -27,8 +27,9 @@ def test_post_offer_snapshot_is_shared_even_if_policy_changes_after_the_broker_t
         assert token == w.token
         if adopted:
             set_messaging(w.root, "enabled")
-            w.e.manifest_adopt(token=token, expect_rev=w.rev(), reason="test the post-apply snapshot",
-                               authorization=OPERATOR)
+            w.e.manifest_adopt(token=token, reason="test the post-apply snapshot",
+                               authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
 
     original = lead.session_presentation(w.e, provider_env=[], contained=holder)
 
@@ -36,7 +37,8 @@ def test_post_offer_snapshot_is_shared_even_if_policy_changes_after_the_broker_t
         assert switches == (frozenset({"coordination.messaging"}) if adopted else frozenset())
         # The adoption changed again after the broker's capture. Presentation must not split the two versions.
         set_messaging(w.root, "disabled" if adopted else "enabled")
-        w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="after capture", authorization=OPERATOR)
+        w.e.manifest_adopt(token=w.token, reason="after capture", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
         return original(env, switches)
 
     def harness(private_dir, env):

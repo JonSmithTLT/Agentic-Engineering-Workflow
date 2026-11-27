@@ -40,6 +40,7 @@ from aew.errors import AEWError, GitError, MapCurrentnessUnproven, UsageError
 from aew.maps import EVIDENCE_CLASS, gitobjects, rules, slices, store, structural
 from aew.maps import freshness as F
 from aew.maps.canonical import render_text
+from aew.maps.reads import KINDS, SCOPES, SEARCH_LIMIT, SEARCH_LIMIT_MAX, TEXT_MAX
 
 SCHEMA = "aew/map-answer/v1"
 # A-14 §4's categories, as historical v0.5 §7.2's four states name them; the series' PR C adds PARTIAL (ruling Q3).
@@ -57,9 +58,8 @@ MAX_ANSWER_BYTES = 64 * 1024
 SCOPE_ROWS = structural.CAPS["directories"]
 # Listing the basis tree (exact search) and the scoped rows: the slice's bound, for the same `ls-tree`.
 LISTING_S = slices.SCOPE_LISTING_S
-SEARCH_LIMIT, SEARCH_LIMIT_MAX, TEXT_MAX = 20, 100, 200
-KINDS = ("any", "path")
-SCOPES = ("", "none", "ticket")
+# The reads' arguments and bounds (KINDS, SCOPES, TEXT_MAX, the search limits) are ``aew.maps.reads``'s, which the
+# Lead's typed `map` tool renders too (PR A2).
 # The lexical fallback (the plan's §3.5): the capability register's provider for this capability, never a hard-coded
 # `rg`, bounded in time and in hits, rooted at the caller's workspace.
 SEARCH_CAPABILITY = "EXACT_CODE_SEARCH"
@@ -72,6 +72,8 @@ ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "genera
 # of its session is no authority), so it names the route, never a principal. A Lead's relayed read and its shell's
 # read print the same bytes (the relayed reads' condition 2). A worker's reads name its invocation.
 CLI_RECIPIENT = {"kind": "cli", "who": "the Lead or the operator (not authenticated by a read)"}
+# The Lead's typed `map` tool (PR A2): the same reader, which a read authenticates no better, by its own route.
+TOOL_RECIPIENT = {**CLI_RECIPIENT, "kind": "lead_tool"}
 NEXT_SOURCE = {"step": "read the source in your workspace with your own tools (your editor, `rg`, `grep -rn`)",
                "cost": "unbounded by AEW: you choose what to read"}
 

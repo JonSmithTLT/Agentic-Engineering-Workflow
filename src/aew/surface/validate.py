@@ -50,7 +50,31 @@ def check_call(name: Any, arguments: Any, profile: str, switches: frozenset[str]
         _check_work_show(arguments)
     if t.name == "resolve":
         _check_resolve(arguments)
+    if t.name == "map":
+        _check_map(arguments)
     return t
+
+
+def map_arguments(read: str) -> tuple[str, ...]:
+    """The arguments the `map` tool's ``read`` takes: its bridge row's, and for `show` the Ticket whose scope it reads
+    (register F15.8, PR A2; ``contract.MAP_OPERATIONS`` owns the rows)."""
+    row = tuple(contract.MAP_OPERATIONS[contract.MAP_PREFIX + read])
+    return (*row, *contract.MAP_SHOW_EXTRA) if read == "show" else row
+
+
+def _check_map(arguments: dict[str, Any]) -> None:
+    """Each read takes only its own arguments, `search` needs its text, and `work_id` goes with `scope: ticket`, as
+    the CLI's `--work` goes with `--scope ticket` (kept out of the advertised schema, as the other tools' are)."""
+    read = arguments["read"]
+    stray = sorted(arguments.keys() - {"read", *map_arguments(read)})
+    violations = [f"{key}: not taken by read {read}" for key in stray]
+    if read == "search" and "text" not in arguments:
+        violations.append("text: required for read search")
+    if read == "show" and ("work_id" in arguments) != (arguments.get("scope") == "ticket"):
+        violations.append("work_id: required with scope ticket, and taken only with it")
+    if violations:
+        raise AdapterInputError("INVALID_ARGUMENTS", "map: show takes section, or scope ticket with work_id; search "
+                                                     "takes text, with kind and limit", violations=violations)
 
 
 def _check_resolve(arguments: dict[str, Any]) -> None:

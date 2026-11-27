@@ -33,6 +33,8 @@ DESCRIPTIONS = {
     # The guide's core says it changes no scope or authority (`messaging_guide_lines`).
     "message_send": "Message an active worker's invocation. Deliver at its next step (default), turn end or on "
                     "relaunch.",
+    "map": "Codebase map at the head: show (status, section, or scope ticket with work_id) or search (exact path, "
+           "then text). Hits are candidates.",
 }
 # Property descriptions, by tool and property (E367; the audit of 2026-11-25, U3 to U5): where an argument's source or
 # form was not said. Each names where the Lead finds the value.

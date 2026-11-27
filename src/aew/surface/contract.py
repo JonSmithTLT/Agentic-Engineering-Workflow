@@ -22,7 +22,10 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
+from aew.harness.bridge import MAP_OPERATIONS
 from aew.knowledge import evidence as E
+from aew.maps import reads as map_reads
+from aew.maps import structural as map_structural
 from aew.owners import owner_of, whose
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
@@ -195,12 +198,43 @@ EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.muta
                       "work.redispatch"))
 
 
+# The `map` tool's reads (PR A2): the worker bridge's map rows, each named without its prefix, so `read: search` is the
+# row `map.search`. Its arguments are those rows' arguments (strings, as the rows take them), each bounded by the map
+# reads' owner, and `work_id`, the Ticket whose scope `scope: ticket` reads (the CLI's `--work`; a worker's is its own
+# invocation's). Which read takes which argument is the rows' too (``validate``). No argument names a commit or a root:
+# the tool reads at the authoritative head, as `aew map search` does without `--commit`.
+MAP_PREFIX = "map."
+MAP_READS = tuple(op.removeprefix(MAP_PREFIX) for op in MAP_OPERATIONS)
+MAP_SHOW_EXTRA = ("work_id",)
+MAP_ARGUMENTS: dict[str, dict[str, Any]] = {
+    # Bounded by the longest section's name, not listed (about 190 B a request): `show` with no section lists them,
+    # and a wrong name is refused with the list.
+    "section": {"type": "string", "minLength": 1, "maxLength": max(map(len, map_structural.SECTIONS))},
+    "scope": {"enum": [s for s in map_reads.SCOPES if s]},
+    "text": {"type": "string", "minLength": 1, "maxLength": map_reads.TEXT_MAX},
+    "kind": {"enum": list(map_reads.KINDS)},
+    "limit": {"type": "string", "pattern": f"^[0-9]{{1,{len(str(map_reads.SEARCH_LIMIT_MAX))}}}$"},
+}
+
+
+def _map_schema() -> dict[str, Any]:
+    names = dict.fromkeys(a for args in MAP_OPERATIONS.values() for a in args)
+    if set(names) != set(MAP_ARGUMENTS):
+        raise ValueError("the map tool's arguments must be exactly the bridge's map rows' arguments")
+    return _obj({"read": {"enum": list(MAP_READS)}, **{a: MAP_ARGUMENTS[a] for a in names},
+                 "work_id": {**WORK_ID_PATTERN, "maxLength": 32}}, ("read",))
+
+
 # ---------------------------------------------------------------------------------------------- the catalog
 
 MESSAGING = "coordination.messaging"
 MESSAGE_BODY_CAP = L.UNSEEN_CAP  # one body budget across a StageResult's payload and projection, not per envelope
 MESSAGE_BODY_BYTES = L.UNSEEN_BODY_BYTES
-ALL_SWITCHES = frozenset({MESSAGING})
+# The Lead's typed map reads (register F15.8, the mapping series' PR A2): offered while the project's adopted
+# execution policy has ``maps.reads: structural``, the switch that offers a worker's run the same reads
+# (``context.switches_for``).
+MAPS = "maps.reads"
+ALL_SWITCHES = frozenset({MESSAGING, MAPS})
 ENV_SWITCHES = "AEW_LEAD_SURFACE_SWITCHES"
 _SWITCH_TOOLS: dict[str, Tool] = {}
 
@@ -384,6 +418,12 @@ TOOLS: dict[str, Tool] = _catalog(
               "when": {"enum": ["next-step", "turn-end"]}}, ("to", "body")),
         expands_to=("message.send",), mutates=True, switch=MESSAGING,
     ),
+    # A read of the codebase map through `aew.maps.query`, the module `aew map search` and a worker's bridge rows answer
+    # from (register F15.8, PR A2). It never refreshes or selects a map.
+    Tool("map", QUERY, MECHANICAL,
+         "Read the codebase map at the authoritative head: show its status, a section, or a Ticket's directories "
+         "(scope ticket, work_id), or search for a path, exact first, then the workspace's text. Hits are candidates.",
+         _map_schema(), switch=MAPS),
 )
 
 

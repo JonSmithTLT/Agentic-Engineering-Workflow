@@ -14,7 +14,9 @@ authority:
   a44_amendment: 30-stages/STG-20-blocked-on-you/AMENDMENT-2026-11-11-context-pool.md
 baseline:
   push_wake: true
-  switches: [coordination.messaging]
+  # maps.reads: a new project's map reads (`aew init` writes structural; O1, 2026-11-25), so the Lead's typed `map` row
+  # is measured (F15.8 PR A2). Both modes below are measured with it on.
+  switches: [coordination.messaging, maps.reads]
   system_bytes: 5834
   guide_bytes: 8116
   join_bytes: 2
@@ -62,14 +64,18 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-  # The room between the derived ceiling (baseline 24797 + the allocations above 5765 = 30562 B) and the operator's
+  F15.8_map_tool:
+    bytes: 769
+    kind: measured
+    source: "F15.8's PR A2, the Lead's typed `map` tool, which O2 approved with an allocation under the pool cap (the operator, 2026-11-25; F15.8's notes), from operator_reserve. Measured with the pool gate's own render against main c9d99d16, maps.reads on as a new project holds it. Messaging on: MCP 11084 -> 11784 B (+700, the compact row, 17 tools) and guide 9404 -> 9473 B (+69, the core's line for `map`), so 26684 -> 27453 B. Messaging off: MCP 11174 -> 11950 B (+776, the standard row, 16 tools) and guide 9184 -> 9253 B (+69), so 26384 -> 27229 B. The system and join byte counts are unchanged. With maps.reads off the row and its line are absent and the pool is byte for byte what it was."
+  # The room between the derived ceiling (baseline 24797 + the allocations above 6534 = 31331 B) and the operator's
   # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
   # than lowering the cap; any change to the cap itself is the operator's.
   operator_reserve:
-    bytes: 9438
+    bytes: 8669
     kind: reserve
-    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B."
+    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B. F15.8's PR A2 takes its measured 769 B, leaving 9438 - 769 = 8669 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
@@ -143,10 +149,13 @@ approval_history:
 # E331: the core's rule on classifying no longer says to wait for the session's end (the operator classifies with no
 # Lead credential, the seat left to the Lead): 71 B fewer, messaging on and off, in before and after alike, so E231's
 # saving stands. The baseline, the allocations and the 40000 B cap are unchanged; the 71 B is more room under the cap.
+# F15.8's PR A2: the core's line for the typed `map` tool, shown while maps.reads is on (now in the fixture), adds 69 B,
+# messaging on and off, in before and after alike, so E231's saving stands; its bytes are in the F15.8_map_tool
+# allocation.
 guide_core:
   measured: '2026-11-27'
-  messaging_on: {before: 17644, after: 9404}
-  messaging_off: {before: 17466, after: 9184}
+  messaging_on: {before: 17713, after: 9473}
+  messaging_off: {before: 17535, after: 9253}
   saving_bytes: 8240
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

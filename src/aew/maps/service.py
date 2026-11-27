@@ -70,6 +70,19 @@ def _default_commit(engine: Any) -> str:
     return commit
 
 
+def read_context(engine: Any, *, commit: str | None = None, work: str | None = None,
+                 recipient: dict[str, Any] | None = None) -> query.Context:
+    """The Lead's and the operator's map read context (register F15.8): ``commit``, else the authoritative head, and
+    with ``work`` that Ticket's scope paths. ``aew map show --scope ticket``, ``aew map search`` and the Lead's typed
+    ``map`` tool (PR A2) all read here, so they answer at the same basis; a worker's basis is its invocation's
+    (``harness_ops.map_read_basis``)."""
+    scope_paths = tuple(engine.work_scope_paths(work)) if work else ()
+    return query.Context(repo_root=engine.repo_root, aew_root=engine.aew_root, commit=commit or _default_commit(engine),
+                         chosen_by=query.EXPLICIT if commit else query.AUTHORITATIVE_HEAD,
+                         recipient=recipient or query.CLI_RECIPIENT, workspace=engine.repo_root,
+                         scope_paths=scope_paths)
+
+
 def _entry(record: dict[str, Any], sha: str, root: str) -> dict[str, Any]:
     return {"root": root, "sha256": sha, "source_revision": record["source_revision"],
             "source_tree": record["source_tree"], "object_format": record["object_format"],

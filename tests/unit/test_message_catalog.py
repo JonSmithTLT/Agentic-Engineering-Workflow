@@ -22,10 +22,12 @@ def without_descriptions(value):
     return value
 
 
-def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send():
-    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send"]
-    assert set(contract.ALL_SWITCHES) == {"coordination.messaging"}
-    assert "message_send" not in contract.catalog()
+def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send_and_map():
+    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send", "map"]
+    assert set(contract.ALL_SWITCHES) == {"coordination.messaging", "maps.reads"}
+    assert "message_send" not in contract.catalog() and "map" not in contract.catalog()
+    assert list(contract.catalog(frozenset({contract.MESSAGING}))) == [*contract.catalog(), "message_send"]
+    assert list(contract.catalog(frozenset({contract.MAPS}))) == [*contract.catalog(), "map"]
 
 
 def test_the_compact_presentation_changes_only_descriptions():
@@ -57,6 +59,7 @@ def test_every_built_row_is_offered_on_exactly_its_declared_profiles(switches, p
     assert offered == [t for t in rows.values() if t.built and profile in t.profiles]
     assert ("cli" in {t.name for t in offered}) == (profile == "recovery")
     assert ("message_send" in {t.name for t in offered}) == bool(switches)
+    assert ("map" in {t.name for t in offered}) == bool(switches)
 
 
 @pytest.mark.parametrize("value", ["not JSON", "{}", '"coordination.messaging"', '[7]', '["unknown"]'])

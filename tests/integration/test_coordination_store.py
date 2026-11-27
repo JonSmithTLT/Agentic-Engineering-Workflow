@@ -123,12 +123,19 @@ def pin(root: Path) -> None:
 
 
 def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = False,
-          model: str | None = None, new_project: bool = False) -> World:
+          model: str | None = None, new_project: bool = False, maps_reads: str | None = None) -> World:
+    """``maps_reads``: the policy's ``maps.reads`` in place of the template's, for a test whose subject needs every Lead
+    surface switch off (the Lead's typed `map` tool is ``maps.reads``'s: register F15.8, PR A2)."""
     root = make_git_repo(tmp_path / "repo", CP.FILES)
     with pytest.MonkeyPatch.context() as patch:
         if not new_project:
             patch.setattr(X, "TEMPLATE", legacy_execution_template())
         Engine.initialize(root, project_id="calc")
+    if maps_reads is not None:
+        policy = root / EXECUTION
+        data = util.load_yaml(policy.read_text(encoding="utf-8"))
+        data["maps"]["reads"] = maps_reads
+        policy.write_text(util.dump_yaml(data), encoding="utf-8", newline="\n")
     if checks:
         (root / ".aew/policy/checks.yaml").write_text(util.dump_yaml(QUICK_CHECKS), encoding="utf-8", newline="\n")
     pin(root)

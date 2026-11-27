@@ -86,16 +86,6 @@ def _bridge_read(op: str, args: dict[str, Any]) -> Any:
                                card=card) from None
 
 
-def _context(a: argparse.Namespace, engine: Any, *, scope_paths: tuple[str, ...] = ()) -> Any:
-    """The Lead's or the operator's read context: ``--commit``, else the authoritative head, from this project."""
-    from aew.maps import query, service
-
-    commit = a.commit or service._default_commit(engine)
-    return query.Context(repo_root=engine.repo_root, aew_root=engine.aew_root, commit=commit,
-                         chosen_by=query.EXPLICIT if a.commit else query.AUTHORITATIVE_HEAD,
-                         recipient=query.CLI_RECIPIENT, workspace=engine.repo_root, scope_paths=scope_paths)
-
-
 def _show(a: argparse.Namespace) -> Any:
     from aew.maps import query, service
 
@@ -105,8 +95,7 @@ def _show(a: argparse.Namespace) -> Any:
         if a.root or not a.work:
             raise UsageError("--scope ticket reads a Ticket's scope: give --work T-n (and not --root; --commit sets "
                              "the basis)")
-        engine = _engine(a)
-        ctx = _context(a, engine, scope_paths=tuple(engine.work_scope_paths(a.work)))
+        ctx = service.read_context(_engine(a), commit=a.commit, work=a.work)
         return _text(query.serve(ctx, "map.show", {"section": a.section or "", "scope": "ticket"}), a.json)
     if a.work:
         raise UsageError("--work goes with --scope ticket")
@@ -114,12 +103,12 @@ def _show(a: argparse.Namespace) -> Any:
 
 
 def _search(a: argparse.Namespace) -> Any:
-    from aew.maps import query
+    from aew.maps import query, service
 
     args = {"text": a.text, "kind": a.kind, "limit": str(a.limit) if a.limit is not None else ""}
     if _in_worker_run(a, "commit"):
         return _text(_bridge_read("map.search", args), a.json)
-    return _text(query.serve(_context(a, _engine(a)), "map.search", args), a.json)
+    return _text(query.serve(service.read_context(_engine(a), commit=a.commit), "map.search", args), a.json)
 
 
 def _diff(a: argparse.Namespace) -> Any:

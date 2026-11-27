@@ -218,11 +218,22 @@ def _message_send(c: Call) -> Any:
     return out | {"next": next_step[out["delivery"]]}
 
 
+def _map(c: Call) -> Any:
+    """A read of the codebase map (register F15.8, PR A2): the bridge row the read names, answered by
+    ``aew.maps.query`` at the context ``aew map search`` reads at (``service.read_context``), by the tool's own route.
+    A read writes no map state, so it never refreshes or selects a map."""
+    from aew.maps import query, service
+
+    row = contract.MAP_PREFIX + c.a["read"]
+    ctx = service.read_context(c.engine, work=c.a.get("work_id"), recipient=query.TOOL_RECIPIENT)
+    return query.serve(ctx, row, {name: c.a.get(name, "") for name in contract.MAP_OPERATIONS[row]})
+
+
 RUNNERS: dict[str, Runner] = {
     "status": _status, "resume": _resume, "work_show": _work_show,
     "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
     "report_write": _report_write, "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
-    "message_send": _message_send,
+    "message_send": _message_send, "map": _map,
 }
 
 

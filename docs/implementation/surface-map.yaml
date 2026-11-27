@@ -1926,6 +1926,22 @@ tools:
                COORDINATION_LIMIT, IDEMPOTENCY_CONFLICT, NOT_A_WORKER, RECIPIENT_INDEPENDENT,
                REF_UNKNOWN, REF_OUT_OF_SCOPE, REPLY_NOT_IN_THREAD, ILLEGAL_TRANSITION, MIGRATION_REQUIRED]
     note: "Records next-step or turn-end under coordination.messaging. Stages a held run's message until it resumes."
+  - name: map
+    home: product
+    users: [lead]
+    journeys: []
+    mutates: "no"
+    mutates_basis: contract.Tool.mutates
+    probe:
+      - [lead, tool, map, --arguments, '{"read": "show"}']
+      - [lead, tool, map, --arguments, '{"read": "show", "section": "languages"}']
+      - [lead, tool, map, --arguments, '{"read": "show", "scope": "ticket", "work_id": "{ticket}"}']
+      - [lead, tool, map, --arguments, '{"read": "search", "text": "README.md", "kind": "path", "limit": "5"}']
+    refusals: [NOT_FOUND, USAGE]
+    note: "register F15.8 (the mapping series' PR A2): the Lead's typed map read under maps.reads, answered by
+      aew.maps.query at the authoritative head (service.read_context), the module `aew map search` and `aew map show
+      --scope ticket` answer from and a worker's map.show and map.search rows read; it writes no map state, so it never
+      refreshes or selects a map. The relayed CLI reads stay for the operator and for --commit"
   - name: status
     home: product
     users: [lead]

@@ -18,7 +18,10 @@ from aew.util import load_yaml
 
 RECORD_PATH = "docs/implementation/lead-context-pool.yaml"
 RECORD = Path(__file__).resolve().parents[2] / RECORD_PATH
-MESSAGING_ON = frozenset({contract.MESSAGING})
+# The fixture's switches: messaging on and off, each with a new project's map reads (`maps.reads: structural`, which
+# `aew init` writes: the operator, 2026-11-25, O1), so the Lead's typed `map` row (register F15.8, PR A2) is measured.
+MESSAGING_ON = frozenset({contract.MESSAGING, contract.MAPS})
+MESSAGING_OFF = frozenset({contract.MAPS})
 
 
 @dataclass(frozen=True)
@@ -76,7 +79,7 @@ def approved_ceiling(record: dict) -> int:
     allocations = record["allocations"]
     # These names are operator-approved. A new name needs an operator decision recorded with the allocation.
     assert set(allocations) == {"E157", "E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry",
-                                "operator_reserve"}
+                                "F15.8_map_tool", "operator_reserve"}
     for name, entry in allocations.items():
         assert type(entry["bytes"]) is int, name
         assert entry["kind"] in {"estimate", "measured", RESERVE} and entry["source"].strip(), name
@@ -151,19 +154,19 @@ def host_independent_placement(monkeypatch):
     monkeypatch.setattr(capability_store, "read", lambda directory=None: capability_store.empty())
 
 
-@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
 def test_the_contained_normal_lead_fits_its_context_pool(record, switches, host_independent_placement):
     pool = render_pool(record["baseline"]["containment"], switches)
     check_pool(pool, record, switches=switches)
 
 
-@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
 def test_the_guides_core_is_the_size_the_pool_records(record, switches, host_independent_placement):
     """E231: the guide's core is what the Lead's system text carries, and its bytes, messaging on and off, are the
     measured `after` figures the record gives, with the saving it lowered the baseline and cap by. A change to the
     core's bytes fails here until the record says what it measures."""
     pool = render_pool(record["baseline"]["containment"], switches)
-    measured = record["guide_core"]["messaging_on" if switches else "messaging_off"]
+    measured = record["guide_core"]["messaging_on" if contract.MESSAGING in switches else "messaging_off"]
     assert pool.guide_bytes == measured["after"], (
         f"the guide's core renders {pool.guide_bytes} B, the record says {measured['after']} B: update "
         f"{RECORD_PATH} guide_core and the baseline")
@@ -182,10 +185,11 @@ def check_tool_count(count: int, record: dict) -> None:
     assert count <= limit, f"normal surface offers {count} tools (limit {limit}, {RECORD_PATH} tool_ceiling)"
 
 
-@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
 def test_the_normal_surface_stays_within_the_offered_tool_limit(record, switches):
     listing = mcp.tools_list(NORMAL, switches=switches)
-    assert ("message_send" in {tool["name"] for tool in listing["tools"]}) == bool(switches)
+    names = {tool["name"] for tool in listing["tools"]}
+    assert ("message_send" in names) == (contract.MESSAGING in switches) and "map" in names
     check_tool_count(len(listing["tools"]), record)
 
 
@@ -216,7 +220,7 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     message = rf"{cap} B cap.*guide {smaller.guide_bytes} B.*{freed} B saving.*{RECORD_PATH}"
     with pytest.raises(AssertionError, match=message):
         check_pool(smaller, record, switches=MESSAGING_ON)
-    check_pool(render_pool(label, frozenset()), record, switches=frozenset())
+    check_pool(render_pool(label, MESSAGING_OFF), record, switches=MESSAGING_OFF)
     # Measured allocations already account for growth beyond the baseline; retain that accounting and remove
     # only this saving, rather than copying the grown rendered guide into the baseline and counting growth twice.
     record["baseline"]["guide_bytes"] -= freed

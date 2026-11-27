@@ -544,22 +544,36 @@ def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_l
 def test_a_lead_that_moves_a_directory_under_a_git_directory_finds_its_env_file_empty_from_the_next_launch(lead_lab):
     """The scan leaves no directory out by its name: a Lead that moves a directory holding a `.env` file under a
     directory named `.git` in one session, or gives it that name, reads the file as empty in the next, there and
-    wherever it moves the directory back to. Only the project's own `.aew` is left out, and nothing can be moved
-    under it: it is a read-only mount of its own in the Lead's tree. Synthetic values only."""
+    wherever it moves the directory back to. Only the project's own `.aew` and `.git` are left out, and nothing can be
+    moved under either: each is a read-only mount of its own in the Lead's tree. Synthetic values only."""
     lab = lead_lab
-    for d in ("apps/web", "apps/api"):
+    for d in ("apps/web", "apps/api", "apps/cli"):
         (lab.repo / d).mkdir(parents=True)
         (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
     first = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
                    "mkdir -p stash/.git && mv apps/web stash/.git/web; echo rc=$?; mv apps/api apps/.git; echo rc=$?; "
-                   "mv apps/.git .aew/api 2>/dev/null; cat stash/.git/web/.env apps/.git/.env; echo end")
-    assert first.stdout.split() == ["rc=0", "rc=0", "end"], first.stdout + first.stderr
+                   "mv apps/.git .aew/api 2>/dev/null; mv apps/cli .git/cli 2>/dev/null || echo refused; "
+                   "cat stash/.git/web/.env apps/.git/.env apps/cli/.env; echo end")
+    assert first.stdout.split() == ["rc=0", "rc=0", "refused", "end"], first.stdout + first.stderr
     assert (lab.repo / "stash" / ".git" / "web" / ".env").is_file() and (lab.repo / "apps" / ".git" / ".env").is_file()
     done = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
                   "cat stash/.git/web/.env apps/.git/.env; grep -rh SYNTHETIC . 2>/dev/null; "
                   "mv stash/.git/web web && cat web/.env; echo end")
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
+def test_a_lead_on_a_branch_named_like_a_env_file_has_a_working_git_in_its_sandbox(lead_lab):
+    """The project's own git directory is left out of the `.env` scan (a read-only mount of its own in every layout),
+    so a checked-out branch whose name matches a `.env` file's keeps its ref: inside the Lead's sandbox git reads the
+    branch, its commit and a clean status."""
+    lab = lead_lab
+    assert git("checkout", "-q", "-b", "rel.env", cwd=lab.repo).returncode == 0
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    assert not [p for p in layout.env_masks if L._within(p, str((lab.repo / ".git").resolve()))]
+    done = lab.sh(layout, "git rev-parse --abbrev-ref HEAD && git log -1 --format=%s && git status --porcelain "
+                          "--untracked-files=no && echo end")
+    assert done.stdout.split() == ["rel.env", "base", "end"], done.stdout + done.stderr
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

@@ -247,10 +247,10 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
 
 
 def test_containment_hides_env_files_under_a_directory_named_git_from_a_worker(lab):
-    """The scan leaves no directory out by its name, so a `.env` file under a directory named `.git`, in the project's
-    own git directory or anywhere below, reads as empty from a worker's sandbox too, by absolute path and to a search
-    of the project. Synthetic values only."""
-    names = (".git/moved/.env", "vendor/.git/.env", "vendor/.git/web/.env.local")
+    """The scan leaves no directory out by its name, so a `.env` file under a directory named `.git` below the
+    project's top reads as empty from a worker's sandbox too, by absolute path and to a search of the project. Only the
+    project's own git directory is left out, a read-only mount of its own in every layout. Synthetic values only."""
+    names = ("vendor/.git/.env", "vendor/.git/web/.env.local", "src/.git/moved/.env")
     for name in names:
         (lab.repo / name).parent.mkdir(parents=True, exist_ok=True)
         (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
@@ -283,6 +283,50 @@ def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab,
     assert {str(locked.resolve()), str(listed.resolve())} <= set(layout.env_dirs)
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
+def test_a_checks_sandbox_masks_the_projects_env_files_where_they_are_when_the_check_starts(lab):
+    """Each check's sandbox scans the project again (``for_check``): a session that writes the project and moves a
+    directory holding a `.env` file after a run's layout is made, leaving an empty decoy at the old path, finds the
+    file empty from a check of that run by its new path, by its old one and to a search of the tree, through the same
+    choke point a check uses (``checks.run``). Synthetic values only."""
+    from aew.policy import checks
+
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    (lab.repo / "apps" / "web" / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    layout = lab.layout("implementer")
+    # the rearrangement a Lead's live session can make after the worker's layout is made
+    (lab.repo / "apps" / "web").rename(lab.repo / "apps" / "old")
+    (lab.repo / "apps" / "web").mkdir()
+    (lab.repo / "apps" / "web" / ".env").write_text("")
+    script = (f"cat {lab.repo}/apps/old/.env {lab.repo}/apps/web/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; "
+              "echo end")
+    result = checks.run({"command": ["sh", "-c", script], "timeout_s": 60}, lab.ws, policy=None,
+                        env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
+    assert "--- stdout ---\nend\n" in result["log"], result["log"]  # it ran, and read nothing
+    assert "SYNTHETIC-ENV-VALUE" not in result["log"], result["log"]
+    assert str((lab.repo / "apps" / "old" / ".env").resolve()) in L.for_check(layout).env_masks
+
+
+def test_a_env_named_link_that_masks_nothing_neither_refuses_a_launch_nor_empties_a_file_or_directory(lab):
+    """A `.env`-named link whose target cannot be followed (a loop, or a path through a file), at the project's top or
+    below, and one to a file outside the project under another name, mask nothing and refuse nothing: a worker's
+    sandbox starts, the directory holding the link reads as it is, and the outside file reads as it is by its own path
+    and through the link. A `.env` file beside them stays masked. Synthetic values only."""
+    (lab.repo / "src").mkdir()
+    (lab.repo / "src" / "main.py").write_text("SYNTHETIC-SOURCE\n")
+    (lab.repo / "src" / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "loop.env").symlink_to("loop.env")
+    (lab.repo / "through.env").symlink_to("f.txt/x")
+    (lab.repo / "src" / "loop.env").symlink_to("loop.env")
+    host = lab.outside / "host-file.txt"
+    host.write_text("SYNTHETIC-HOST-FILE\n")
+    (lab.repo / "host.env").symlink_to(host)
+    layout = lab.layout("implementer")
+    assert not layout.env_dirs and str(host.resolve()) not in layout.env_masks
+    done = lab.sh(layout, f"cat {lab.repo}/src/main.py {host} {lab.repo}/host.env {lab.repo}/src/.env; echo end")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.split() == ["SYNTHETIC-SOURCE", "SYNTHETIC-HOST-FILE", "SYNTHETIC-HOST-FILE", "end"], done.stdout
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):

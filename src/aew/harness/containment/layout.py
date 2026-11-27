@@ -225,6 +225,10 @@ class Layout:
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``: a secret file in a tree the run writes
     env_masks: tuple[str, ...] = ()          # the project's `.env` files among them, in every layout
     env_dirs: tuple[str, ...] = ()           # the project's directories its .env scan could not read, in hide_dirs
+    env_bulk: tuple[str, ...] = ()           # those holding more .env files than can be masked one by one, in hide_dirs
+    env_links: tuple[tuple[str, str], ...] = ()  # (link, why): `.env`-named links not followed, so masking nothing
+    project: str | None = None               # the project whose .env scan each sandbox of this layout repeats
+    env_keep: tuple[str, ...] = ()           # what a run needs: a `.env` link's target there is never masked
     left_out: tuple[str, ...] = ()           # absent inside: left out of their directories, ``left_out_of``
     left_out_of: tuple[str, ...] = ()        # empty tmpfs at its depth, its other entries put back, then read-only
     put_back: tuple[str, ...] = ()           # those other entries, bound back read-only at their depth
@@ -276,7 +280,8 @@ class Layout:
                 "tools_first": self.tools_first, "tools_last": self.tools_last,
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files, *self.left_out],
                 "left_out_of": list(self.left_out_of), "env_masks": list(self.env_masks),
-                "env_dirs": list(self.env_dirs),
+                "env_dirs": list(self.env_dirs), "env_bulk": list(self.env_bulk),
+                "env_links": [{"path": p, "why": why} for p, why in self.env_links],
                 "tree_masks": [{"path": p, "by": by} for p, by in self.tree_masks],
                 "tree_absent": [{"path": p, "by": by} for p, by in self.tree_absent],
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
@@ -316,6 +321,14 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
     the ``PATH`` the caller's environment gives this process (default: this process's own). What it runs gets
     :meth:`Layout.contained_path` of it: set here, the one way into a sandbox, so a context cannot miss the register's
     tools whichever allow-list built its environment (CAPR-04; the designer's CAP-1 ruling 1)."""
+    out = _bwrap_args(layout, argv, cwd=cwd, path=path)
+    _refuse_too_many_arguments(layout, out)  # counted before bubblewrap starts (CS-4 addendum 9)
+    return out
+
+
+def _bwrap_args(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None,
+                path: str | None = None) -> list[str]:
+    """:func:`bwrap_argv`, not yet counted against bubblewrap's limit."""
     # --new-session: no controlling terminal, so TIOCSTI has no terminal it would accept (CB-05; bubblewrap's answer to
     # CVE-2017-5226). bubblewrap's own processes stay in the caller's process group, so killing it still ends the run.
     out = [layout.bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
@@ -343,9 +356,7 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
         out += ["--remount-ro", path]
     if cwd is not None:
         out += ["--chdir", os.fspath(cwd)]
-    out = [*out, "--", *argv]
-    _refuse_too_many_arguments(layout, out)  # counted before bubblewrap starts (CS-4 addendum 9)
-    return out
+    return [*out, "--", *argv]
 
 
 # bubblewrap 0.4.0 (EL8) takes at most this many arguments after its own name: one more and it exits with "bwrap:
@@ -365,9 +376,11 @@ def _refuse_too_many_arguments(layout: Layout, argv: list[str]) -> None:
     held = Counter(os.path.dirname(p) for p in (*layout.put_back, *(p for p, _ in layout.put_back_links))
                    if os.path.dirname(p) in masked).most_common()
     listed = ", ".join(f"{d} ({n} entries)" for d, n in held) or "none"
-    envs = len(layout.env_masks) + len(layout.env_dirs)
+    envs = len(layout.env_masks) + len(layout.env_dirs) + len(layout.env_bulk)
+    # where most of them are: what is left after the directories holding many are masked whole (_bounded_env)
+    most = ", ".join(f"{d} ({n})" for d, n in Counter(os.path.dirname(p) for p in layout.env_masks).most_common(3))
     # the step for whichever takes more of the arguments: the entries put back, or the project's .env files
-    step = (f"keep fewer .env files in the project (it has {envs}, each masked on its own)"
+    step = (f"keep fewer .env files in the project (it has {envs}, each masked on its own, most in {most or 'none'})"
             if envs and envs >= sum(n for _, n in held) else
             f"move entries out of {held[0][0]} into a subdirectory, so it has fewer to put back" if held else
             "list fewer secret paths or writable roots")
@@ -423,9 +436,22 @@ def for_check(layout: Layout, requested: str | None = None) -> Layout:
     """The layout a check of a contained run starts in (F28 §3.8, network containment design decision 3): the run's
     own, with no network unless the check's definition asks for the host's and the run's own policy gives the host's
     (equal to or stricter than the run, never wider). It never binds the run's network directory, so a check has no
-    route to the relay or the egress proxy either."""
+    route to the relay or the egress proxy either.
+
+    The project's `.env` files are scanned again for each check (:func:`project_env_masks`, at its cost), so a check
+    finds the tree's `.env` files as they are when it starts, wherever a session that writes the project (the Lead's)
+    has moved them since the run's layout was made, never the paths of an earlier scan (the quick check of #592). A
+    containment.writable root that now holds one of them, or lies in a directory now masked whole, refuses the check."""
     network = SHARED if requested == SHARED and layout.network == SHARED else ISOLATED
-    return replace(layout, network=network, net_dir=None)
+    out = replace(layout, network=network, net_dir=None)
+    if layout.project is None:
+        return out
+    out = replace(out, **_env_fields(_without_env(out), project_env_masks(layout.project, layout.env_keep),
+                                     out.writable))
+    out = _bounded_env(out)
+    _refuse_env_roots([(p, p) for p in out.operator_writable], _env_secrets(out))
+    bwrap_argv(out, [])  # counted before any check starts, as for_run counts the run's own
+    return out
 
 
 # Within one depth: an entry put back into a directory a secret is left out of first, so a bind of the layout's own
@@ -516,6 +542,8 @@ PROJECT_ENV = "the project's .env files"  # what puts each there, on the launch 
 ENV_WHAT = "a project .env file"  # what each is, for a refusal that names one
 PROJECT_ENV_DIR = "a project directory the .env scan cannot read"  # one masked whole, on the launch line
 ENV_DIR_WHAT = "a project directory that may hold a .env file"
+PROJECT_ENV_BULK = "a project directory with more .env files than can be masked one by one"  # one masked whole
+ENV_BULK_WHAT = "a project directory holding many .env files"
 
 
 def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None, needed: list[tuple[str, str]],
@@ -674,49 +702,101 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str],
 
 
 def _unlistable(root: str, exc: OSError) -> ContainmentUnavailable:
-    """The refusal of a project the `.env` scan cannot list or check: AEW reads its store there, so it is never masked
-    whole."""
-    return ContainmentUnavailable(f"the project {root} cannot be listed or checked ({exc.strerror}); give this account "
-                                  "read and search permission on it and on what it holds", project=root,
-                                  reason="project_unlistable")
+    """The refusal of a project the `.env` scan cannot list or check, naming the entry that failed and the fix for its
+    cause (the quick check of #592, m1): AEW reads its store there, so it is never masked whole."""
+    entry = os.fspath(exc.filename) if exc.filename else root
+    what = f"the project {root}" if entry == root else f"{entry}, at the top of the project {root},"
+    step = (f"give this account read and search permission on {root} (for example chmod u+rx {root})"
+            if exc.errno in (errno.EACCES, errno.EPERM) else f"remove or repair {entry}")
+    return ContainmentUnavailable(f"{what} cannot be listed or checked ({exc.strerror}), so the project's .env files "
+                                  f"cannot be found and every contained launch of it is refused. To launch, {step}",
+                                  project=root, entry=entry, reason="project_unlistable")
 
 
 class EnvScan(NamedTuple):
-    """What :func:`project_env_masks` finds: the `.env` files to mask in place, and the directories to mask whole."""
+    """What :func:`project_env_masks` finds: the `.env` files to mask in place, the directories to mask whole, and the
+    `.env`-named links it does not follow, each with why (named on the launch line, masking nothing)."""
 
     files: list[str]
     dirs: list[str]
+    links: tuple[tuple[str, str], ...] = ()
 
 
-def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
+# Left out of the walk, at the project's top only, each where it is a read-only mount of its own, so nothing in the
+# tree can be moved under it: `.aew`, which has masks of its own, and `.git` where the layout binds it so as the git
+# metadata (the quick check of #592, m2: a checked-out branch named like a `.env` file keeps a working git inside).
+ENV_LEFT_OUT = (".aew", ".git")
+
+
+def _env_named(name: str) -> bool:
+    """``name`` is a `.env` file's (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`)."""
+    return any(fnmatchcase(name, p) for p in ENV_FILES) and not any(fnmatchcase(name, p) for p in ENV_DOCS)
+
+
+def _env_link(link: str, root: str, keep: tuple[str, ...]) -> tuple[str | None, str | None]:
+    """``(target to mask, why not)`` for a `.env`-named link (:func:`project_env_masks`): its target where that is a
+    file it masks, else None, with why where the link is named. Never raises, so no link refuses a launch or has its
+    directory masked whole (the operator's ruling of 2026-11-27)."""
+    try:
+        mode = os.stat(link).st_mode
+    except FileNotFoundError:  # a link to nothing: nothing to read there
+        return None, None
+    except OSError as exc:  # a loop, or a path through a file: nothing can be read through it, inside either
+        return None, f"its target cannot be followed ({exc.strerror}), so nothing is read through it"
+    if not stat.S_ISREG(mode):  # a link to a directory, or to anything that is not a file
+        return None, None
+    target = _real(link)
+    if _sandbox_own(target):
+        return None, None
+    if any(_within(target, k) for k in keep):
+        return None, f"its target {target} is what a run needs, which is never masked"
+    if _within(target, root):
+        if any(_within(target, os.path.join(root, d)) for d in ENV_LEFT_OUT):
+            return None, f"its target {target} is in the project's own {os.path.relpath(target, root).split(os.sep)[0]}"
+        return target, None
+    if not _env_named(os.path.basename(target)):
+        return None, f"its target {target} lies outside the project and is not named like a .env file"
+    return target, None
+
+
+def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = ()) -> EnvScan:
     """Every `.env` file in ``project``, at any depth (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), at its real
     path, sorted: what :func:`for_run` masks in place by the empty read-only file in every layout, so containment hides
     the project's `.env` files from every tool. A directory is not one: `.env` is also a virtual environment's usual
-    name, and masking that whole would hide the interpreter a run may need. A link to a file is, by its target, which
-    the mask hides at both paths; a link to nothing, or to a directory, is not.
+    name, and masking that whole would hide the interpreter a run may need. A link to a file is masked by its target,
+    which the mask hides at both paths, where that target is in the project or is itself named like a `.env` file,
+    and is not in ``keep`` (what a run needs: the interpreter, AEW's package, the git metadata). Any other link to a
+    file masks nothing and is named (``links``), as its target reads the same by its own path: one whose target lies
+    outside the project under another name, or in ``keep``, or in the project's own ``.aew`` or ``.git``, and one whose
+    target cannot be followed (a loop, or a path through a file), as nothing can be read through it. A link to
+    nothing, or to a directory, is not a `.env` file.
 
-    The scan, at each launch, is a walk of the whole tree, whatever git makes of it: tracked, untracked and ignored
-    files alike, and a nested repository's or a submodule's own, as each is in the tree a run sees. It leaves out only
-    the project's own ``.aew`` (the store, and the runs' own directories, which have masks of their own; a read-only
-    mount of its own in the Lead's tree, so nothing is moved under it), never a directory by its name alone: a ``.git``
-    directory is walked as any other, so a file of git's own with such a name (a branch named ``x.env``) is masked
-    too. It follows no link to a directory, so it ends: a directory outside the project that a link inside it points
-    at is not walked. Its cost is the tree's size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored
-    vendored directories, measured on a loaded host, about twice the walk without the stats.
+    The scan, at each launch and for each check's sandbox (:func:`for_check`), is a walk of the whole tree, whatever
+    git makes of it: tracked, untracked and ignored files alike, and a nested repository's or a submodule's own, as
+    each is in the tree a run sees. It leaves out only the project's own ``.aew`` (the store, and the runs' own
+    directories, which have masks of their own) and its own ``.git`` directory where ``keep`` holds it, as the git
+    metadata every layout binds read-only (:data:`ENV_LEFT_OUT`): each is a read-only mount of its own, so nothing in
+    the tree is moved under it. No directory is left out by its name alone: a ``.git`` directory below the top is
+    walked as any other. It follows no link to a directory, so
+    it ends: a directory outside the project that a link inside it points at is not walked. Its cost is the tree's
+    size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored vendored directories, measured on a loaded
+    host, two to three times the walk without the stats.
 
     It fails closed, and refuses for no directory below the project (the quick checks of #592): every entry is
     checked by its own stat, never by the listing alone, and a directory the walk cannot list, or one holding an entry
     it cannot stat (a directory that can be listed but not searched), is in ``dirs``, masked whole by an empty
     directory as a containment.hide directory is, as a `.env` file in it may still be read by name; one whose path is
     too long to list, its deepest directory the walk reached. One gone during the walk is not there to hide. The
-    project itself is never masked whole, as AEW reads its store there: one that cannot be listed, or that holds at
-    its top an entry that cannot be checked, is refused (``project_unlistable``).
+    project itself is never masked whole, as AEW reads its store there: one that cannot be listed, or searched, is
+    refused (``project_unlistable``), naming the entry and the fix.
 
     Its limits: a directory masked whole hides all it holds, what a run needs there included (a containment.writable
-    root in it is refused), so taking such a directory's permissions away stops the project's contained launches until
-    they are given back; that hides, and shows nothing. Present at the launch only: a file first created, or replaced
-    by rename on the host, during the session is seen inside until the next launch, as a containment.hide entry in the
-    run's own tree is."""
+    root in it is refused), so taking such a directory's permissions away stops the project's contained launches, the
+    workers' included, until they are given back; that hides, and shows nothing. The masks are those of the tree as
+    each scan found it: a file first created, moved or replaced by rename during the session, or while a scan walks
+    the tree, is masked from the next scan that finds it (the next launch, or the next check's sandbox), as a
+    containment.hide entry in the run's own tree is from the next launch. A `.env` file in the project's own git
+    directory is not masked: that is git's."""
     root = _real(project)
     try:
         if not stat.S_ISDIR(os.stat(root).st_mode):
@@ -725,8 +805,11 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
         return EnvScan([], [])
     except OSError as exc:
         raise _unlistable(root, exc) from exc
+    git = os.path.join(root, ".git")
+    left_out = {os.path.join(root, ".aew"), *((git,) if git in keep else ())}
     files: set[str] = set()
     dirs: set[str] = set()
+    links: dict[str, str] = {}
     stack = [root]
     while stack:
         top = stack.pop()
@@ -742,6 +825,7 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
             continue
         below: list[str] = []
         found: list[str] = []
+        named: dict[str, str] = {}
         try:
             for entry in entries:
                 # every entry's type by its own lstat, never the listing's: a directory that can be listed but not
@@ -751,52 +835,139 @@ def project_env_masks(project: str | os.PathLike[str]) -> EnvScan:
                 except FileNotFoundError:  # gone during the walk
                     continue
                 if stat.S_ISDIR(mode):
-                    # Only the project's own `.aew` is left out: a read-only mount of its own in the Lead's tree, so
-                    # nothing in the tree can be moved under it. A directory left out by its name alone (`.git`) would
-                    # be one any directory can be moved under, or given the name of.
-                    if not (top == root and entry.name == ".aew"):
+                    if not (top == root and entry.path in left_out):
                         below.append(entry.path)
                     continue
-                name = entry.name
-                if not any(fnmatchcase(name, p) for p in ENV_FILES) or any(fnmatchcase(name, p) for p in ENV_DOCS):
+                if not _env_named(entry.name):
                     continue
-                try:
-                    target = os.stat(entry.path).st_mode  # a link's target, which the mask covers
-                except FileNotFoundError:  # a link to nothing: nothing to read there
-                    continue
-                if stat.S_ISREG(target):
+                if stat.S_ISREG(mode):
                     found.append(_real(entry.path))
+                elif stat.S_ISLNK(mode):
+                    target, why = _env_link(entry.path, root, keep)
+                    found += [target] if target is not None else []
+                    named.update({entry.path: why} if why is not None else {})
         except OSError as exc:  # an entry this scan cannot check: its directory whole
             if top == root:
                 raise _unlistable(root, exc) from exc
             dirs.add(top)
             continue
         files.update(f for f in found if not _sandbox_own(f))
+        links.update(named)
         stack += below
     hidden = sorted(dirs)
-    return EnvScan(sorted(f for f in files if not any(_within(f, d) for d in hidden)), hidden)
+    return EnvScan(sorted(f for f in files if not any(_within(f, d) for d in hidden)), hidden,
+                   tuple(sorted((p, why) for p, why in links.items() if not any(_within(p, d) for d in hidden))))
 
 
-def _unmasked(plan: MaskPlan, paths: list[str]) -> tuple[str, ...]:
-    """Those of ``paths`` no mask of ``plan`` hides already: one a secret mask covers is left to it."""
-    covered = (*plan.dirs, *plan.left_out)
-    return tuple(p for p in paths if p not in plan.files and not any(_within(p, c) for c in covered))
+def _unmasked(files: tuple[str, ...], covered: tuple[str, ...], paths: list[str]) -> tuple[str, ...]:
+    """Those of ``paths`` no other mask hides already: one of ``files``, or under one of ``covered``, is left to it."""
+    return tuple(p for p in paths if p not in files and not any(_within(p, c) for c in covered))
 
 
-def _env_fields(plan: MaskPlan, env_files: tuple[str, ...], env_dirs: tuple[str, ...],
-                written: list[str]) -> dict[str, Any]:
-    """The :class:`Layout` fields of ``plan`` with the project's `.env` files (:func:`project_env_masks`) masked in
-    place among ``hide_files``, the directories its walk could not read masked whole among ``hide_dirs``, and each
-    named on the launch line (``tree_masks``) where it lies in a tree the run writes: the Lead's project."""
-    fields = plan.fields()
-    fields["hide_files"] = (*plan.files, *env_files)
-    fields["hide_dirs"] = (*plan.dirs, *env_dirs)
-    fields["env_masks"] = env_files
-    fields["env_dirs"] = env_dirs
-    fields["tree_masks"] = (*plan.tree_masks, *((p, by) for paths, by in ((env_dirs, PROJECT_ENV_DIR),
-                                                                          (env_files, PROJECT_ENV))
-                                                 for p in paths if any(_within(p, w) for w in written)))
+# What each of the project's `.env` masks is, by its Layout field: what names it on the launch line, and what it is
+# for a refusal that names it.
+_ENV_LABELS = {"env_dirs": (PROJECT_ENV_DIR, ENV_DIR_WHAT), "env_bulk": (PROJECT_ENV_BULK, ENV_BULK_WHAT),
+               "env_masks": (PROJECT_ENV, ENV_WHAT)}
+
+
+def _env_fields(base: Mapping[str, Any], scan: EnvScan, writable: tuple[str, ...] | list[str],
+                bulk: tuple[str, ...] = ()) -> dict[str, Any]:
+    """The :class:`Layout` fields of ``base`` (the other masks' fields) with the project's `.env` files of ``scan``
+    (:func:`project_env_masks`) masked in place among ``hide_files``, the directories its walk could not read, and
+    ``bulk`` (:func:`_bounded_env`), masked whole among ``hide_dirs``, and each named on the launch line
+    (``tree_masks``) where it lies in a tree the run writes: the Lead's project. A path another mask of ``base`` covers
+    is left to it."""
+    covered = (*base["hide_dirs"], *base["left_out"])
+    env = {"env_dirs": _unmasked(base["hide_files"], covered, scan.dirs), "env_bulk": bulk,
+           "env_masks": _unmasked(base["hide_files"], covered, scan.files)}
+    env["env_masks"] = tuple(f for f in env["env_masks"] if not any(_within(f, d) for d in bulk))
+    fields = dict(base)
+    fields.update(env)
+    fields["hide_files"] = (*base["hide_files"], *env["env_masks"])
+    fields["hide_dirs"] = (*base["hide_dirs"], *env["env_dirs"], *bulk)
+    fields["env_links"] = tuple((p, why) for p, why in scan.links if not any(_within(p, c) for c in (*covered, *bulk)))
+    fields["tree_masks"] = (*base["tree_masks"], *((p, _ENV_LABELS[key][0]) for key in _ENV_LABELS for p in env[key]
+                                                   if any(_within(p, w) for w in writable)))
     return fields
+
+
+def _without_env(layout: Layout) -> dict[str, Any]:
+    """The mask fields of ``layout`` with none of the project's `.env` masks: the base :func:`_env_fields` adds them
+    to."""
+    files, dirs = set(layout.env_masks), {*layout.env_dirs, *layout.env_bulk}
+    labels = {by for by, _ in _ENV_LABELS.values()}
+    return {"hide_files": tuple(p for p in layout.hide_files if p not in files),
+            "hide_dirs": tuple(p for p in layout.hide_dirs if p not in dirs), "left_out": layout.left_out,
+            "tree_masks": tuple((p, by) for p, by in layout.tree_masks if by not in labels)}
+
+
+def _env_secrets(layout: Layout) -> tuple[tuple[str, str], ...]:
+    """(path, what it is) for each of the project's `.env` masks in ``layout``: what a writable root must not reach."""
+    return tuple((p, _ENV_LABELS[key][1]) for key in _ENV_LABELS for p in getattr(layout, key))
+
+
+def _bounded_env(layout: Layout) -> Layout:
+    """``layout`` within bubblewrap's argument limit where the project's `.env` files are what takes it over (the
+    operator's ruling of 2026-11-27): each file takes three arguments, so the directories holding the most of them are
+    masked whole instead (``env_bulk``), each with two to four, the deepest that saves enough first. A directory that
+    is or holds anything else the layout binds, writes, protects or keeps, or lies in what it binds read-only (the
+    interpreter's prefix among them), is never one, nor the project itself. Where that is not enough the launch is
+    refused as before (``bwrap_argument_limit``)."""
+    over = len(_bwrap_args(layout, [])) - BWRAP_MAX_ARGS
+    if over <= 0 or not layout.env_masks or layout.project is None:
+        return layout
+    root = layout.project
+    bound = (*layout.readonly, *layout.protected, *layout.tool_binds, *layout.skills_binds, *layout.env_keep)
+    held = (*layout.writable, *bound, *layout.hide_runs, layout.mask_file,
+            *((layout.net_dir,) if layout.net_dir else ()))
+    files = set(layout.env_masks)
+    bulk = list(layout.env_bulk)
+    while over > 0:
+        counts: Counter[str] = Counter()
+        for f in files:
+            up = os.path.dirname(f)
+            while up != root and _within(up, root):
+                counts[up] += 1
+                up = os.path.dirname(up)
+        options = [(n, d) for d, n in counts.items()
+                   if n >= 2 and not any(_within(h, d) for h in held) and not any(_within(d, b) for b in bound)]
+        if not options:
+            break
+        enough = [o for o in options if 3 * o[0] - 4 >= over]
+        n, chosen = (max(enough, key=lambda o: (len(Path(o[1]).parts), -o[0])) if enough
+                     else max(options, key=lambda o: (o[0], len(Path(o[1]).parts))))
+        bulk = [b for b in bulk if not _within(b, chosen)] + [chosen]
+        files = {f for f in files if not _within(f, chosen)}
+        over -= 3 * n - 4
+    scan = EnvScan(sorted(files), list(layout.env_dirs), layout.env_links)
+    return replace(layout, **_env_fields(_without_env(layout), scan, layout.writable, bulk=tuple(sorted(bulk))))
+
+
+def _refuse_env_roots(roots: list[tuple[str, str]], secrets: tuple[tuple[str, str], ...]) -> None:
+    """A containment.writable root that holds one of the project's `.env` masks, or lies in a directory masked whole,
+    is refused, as a root that holds any mask is (CS-4 addendum 7, ruling 2), with the step that lifts it (the quick
+    check of #592, m1): for a directory the scan could not read, giving it its permissions back."""
+    for raw, root in roots:
+        hit = [(what, p) for p, what in secrets if _within(p, root) or _within(root, p)]
+        if not hit:
+            continue
+        what, path = hit[0]
+        if what == ENV_DIR_WHAT:
+            why = (f"{path} is masked whole, as the project's .env scan could not read it (this account cannot list "
+                   "it, or check an entry in it), and a writable root is never bound over a mask")
+            step = (f"give {path} back its read and search permission for this account at your own terminal (for "
+                    f"example chmod u+rx {path}), or repair the entry in it that cannot be checked; the next launch "
+                    "scans it again")
+        elif what == ENV_BULK_WHAT:
+            why = f"{path} is masked whole, as it holds more of the project's .env files than can be masked one by one"
+            step = f"keep fewer .env files under {path}"
+        else:
+            why = f"it holds {path}, one of the project's .env files, which every contained run finds masked"
+            step = f"move {path} out of it, or list a narrower directory that holds no .env file"
+        raise ContainmentUnavailable(
+            f"policy containment.writable root {raw!r} ({root}) is refused and runs cannot launch: {why}. To launch, "
+            f"{step}. This applies to every contained launch, workers included.",
+            root=raw, resolved=root, exposes=[{"what": w, "path": p} for w, p in hit], reason="writable_root_env_mask")
 
 
 def _sandbox_own(path: str) -> bool:
@@ -918,6 +1089,10 @@ def tree_masks_line(layout: Layout) -> str | None:
     if fixed:
         out.append(f"{'; '.join(fixed)}. A file replaced or first created there during the session is seen inside "
                    "until the next launch; a write there by your own tools needs root, or a directory you cannot read")
+    links = [(p, why) for p, why in layout.env_links if any(_within(p, w) for w in layout.writable)]
+    if links:
+        out.append(f"named like a .env file but not followed, so masking nothing: {listed(tuple(links))}. To have one "
+                   "masked, make it the file itself, or a link to a file in the project or named like a .env file")
     return ". ".join(out) or None
 
 
@@ -1592,14 +1767,18 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     _refuse_masks(plan.refused, home)
     # The project's `.env` files, in place in every layout, as every layout shows the project: one bind of the empty
     # file each, no directory emptied and refilled (the review of #592).
-    scan = project_env_masks(project)
-    env_dirs = _unmasked(plan, scan.dirs)
-    env_files = _unmasked(plan, scan.files)
+    # A `.env` link's target is never masked where it is what a run needs (the operator's ruling of 2026-11-27).
+    env_keep = tuple(dict.fromkeys((*readonly, *interpreter_binds(), _real(_aew_package()))))
+    scan = project_env_masks(project, env_keep)
+    covered = (*plan.dirs, *plan.left_out)
+    env_dirs = _unmasked(plan.files, covered, scan.dirs)
+    env_files = _unmasked(plan.files, covered, scan.files)
     hide_host = host_masks()
     secret = {**dict(plan.what), **dict.fromkeys(env_files, ENV_WHAT), **dict.fromkeys(env_dirs, ENV_DIR_WHAT)}
     guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir,
                        masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files, *env_dirs, *env_files)),
                        host=hide_host, net_dir=net_dir, left_out=tuple((p, secret[p]) for p in plan.left_out))
+    _refuse_env_roots(roots, (*((p, ENV_DIR_WHAT) for p in env_dirs), *((p, ENV_WHAT) for p in env_files)))
     operator = []
     for raw, path in roots:
         _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
@@ -1639,11 +1818,13 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         hide_runs.append(_real(runs))
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                     visible=tuple(visible), hide_runs=tuple(hide_runs),
-                    **_env_fields(plan, env_files, env_dirs, writable), mask_file=str(mask),
+                    **_env_fields(plan.fields(), scan, writable), mask_file=str(mask),
+                    project=_real(project) if os.path.isdir(project) else None, env_keep=env_keep,
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,
                     net_dir=net_dir, skills_binds=skills_binds, **tool_fields)
+    layout = _bounded_env(layout)
     steps = order(layout)
     _refuse_store_binds(role, project, steps)
     _refuse_trusted_code(role, steps)

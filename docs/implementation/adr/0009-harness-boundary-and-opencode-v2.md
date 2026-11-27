@@ -2278,16 +2278,26 @@ system text that said the same: the guarantee is containment's, and the `read` d
   `*.env.example` (`layout.ENV_FILES`, `layout.ENV_DOCS`: the names the read rules already used, the designer's of
   2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
   `.env` is also a virtual environment's usual name. A link to a file is masked by its target, which hides it at both
-  paths. Nothing under `.aew` is scanned: the store and the runs' own directories have masks of their own.
-- **How they are found** (`layout.project_env_masks`), at each launch: a walk of the whole tree, whatever git makes of
-  it (the quick check of #592). That covers tracked, untracked and ignored files alike, and a nested repository's or a
+  paths, where that target is in the project or is itself named like a `.env` file, and is not what a run needs (the
+  interpreter, AEW's package, the git metadata). Any other link so named masks nothing and is named on the Lead's
+  launch line with why (`env_links`; the operator's ruling of 2026-11-27): one to a file outside the project under
+  another name, which reads the same by its own path, one into `.aew` or the project's own `.git`, and one whose
+  target cannot be followed (a loop, or a path through a file), through which nothing can be read. None refuses a
+  launch or has its directory masked whole. Nothing under `.aew` is scanned: the store and the runs' own directories
+  have masks of their own.
+- **How they are found** (`layout.project_env_masks`), at each launch and again for each check's sandbox
+  (`layout.for_check`, which makes it from the run's layout): a walk of the whole tree, whatever git makes of it (the
+  quick check of #592). So a check finds the `.env` files where they are when it starts, wherever the tree has been
+  rearranged since the run's layout was made; a `containment.writable` root that now holds one, or lies in a
+  directory now masked whole, refuses the check. That covers tracked, untracked and ignored files alike, and a nested repository's or a
   submodule's own, as each is in the tree a run sees. It follows no link to a directory, so it ends. Its cost is the
-  tree's size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored vendored directories, measured on a
-  loaded host, about twice the walk without the stats.
-- **What the walk leaves out:** only the project's own `.aew`. That is a read-only mount of its own in the Lead's
-  tree, so no directory of the tree can be moved under it. No directory is left out by its name alone: a `.git`
-  directory, the project's own or one below, is walked as any other, since a directory can be moved under one, or
-  given that name. So a file of git's own with such a name (the ref of a branch named `x.env`) is masked too.
+  tree's size, one stat for each entry: 1 to 3 s for 200,000 entries in ignored vendored directories, measured on
+  loaded hosts, two to three times the walk without the stats, at each launch and each check.
+- **What the walk leaves out:** only the project's own `.aew`, and its own `.git` directory where that is the git
+  metadata the layout binds read-only (the quick check of #592, m2). Each is a read-only mount of its own, so no
+  directory of the tree can be moved under it, and a checked-out branch named like a `.env` file keeps a working git
+  inside. No directory is left out by its name alone: a `.git` directory below the project's top is walked as any
+  other, since a directory can be moved under one, or given that name.
 - **It fails closed** (the quick checks of #592). Each entry is checked by its own stat, never by the listing alone,
   and what the walk cannot check is masked whole by an empty directory, as a `containment.hide` directory is, because
   a `.env` file in it could still be read by name:
@@ -2301,28 +2311,37 @@ system text that said the same: the guarantee is containment's, and the `read` d
   session finds it empty from the next, and cannot give the permission back or move the directory there. The same
   holds for a `containment.hide` entry in the Lead's own tree: where its directory cannot be searched, so that it
   would read as absent, the directory is masked whole. Only the project itself is never masked whole, since AEW
-  reads its store there: one that cannot be listed, or that holds at its top an entry that cannot be checked, is
-  refused (`project_unlistable`).
+  reads its store there: one that cannot be listed, or searched, is refused (`project_unlistable`), naming the entry
+  that could not be checked and the fix for its cause (the quick check of #592, m1). A `containment.writable` root in
+  a directory masked whole is refused (`writable_root_env_mask`) with the step that lifts it: give the directory its
+  read and search permission back.
 - **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
   in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
   bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
   project's .env files"), and a write to it fails, naming the mask. A masked file reads as empty to every tool,
-  OpenCode's and the shell's alike. Each mask takes three of bubblewrap's arguments, and a project with more `.env`
-  files than the limit allows is refused before bubblewrap starts (`bwrap_argument_limit`, with `env_masks`, naming the
-  count; CS-4 addendum 9).
+  OpenCode's and the shell's alike. Each mask takes three of bubblewrap's arguments. Where a project's `.env` files
+  would take a launch over the limit, the deepest directories holding enough of them are masked whole instead
+  (`env_bulk`, named on the Lead's launch line "a project directory with more .env files than can be masked one by
+  one"; the operator's ruling of 2026-11-27), never one that holds what the layout binds, writes or keeps, nor the
+  project itself. Only where that is not enough is the launch refused before bubblewrap starts
+  (`bwrap_argument_limit`, with `env_masks`, naming the count and where most of them are; CS-4 addendum 9).
 - **A tracked `.env` is masked too** (the review of #592, F1). That is the safer default, as such a file can still hold
   a local edit. Inside, git shows it as modified with its content deleted, and a program that loads it reads it as
   empty. Its committed content stays in the history (`git show HEAD:.env`), which a mask never covers.
 - **Its limits** (the review of #592):
-  - a file first created, or replaced by rename on the host, during the session is seen inside until the next launch;
+  - the masks are those of the tree as each scan found it: a file first created, moved or replaced by rename during
+    the session, or while a scan walks the tree, is masked from the next scan that finds it (the next launch, or the
+    next check's sandbox);
   - a hard link to a masked file under another name is not masked;
   - other names are not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively);
   - a `.env` file in a directory outside the project is not masked, even where a link inside the project points at
     that directory;
   - a directory masked whole hides all it holds, what a run needs there included. A `containment.writable` root in
     it is refused, and a run that needs anything else there does not find it. So a Lead that takes away the
-    permissions of a directory a run needs stops the project's contained launches, its own next one included, until
-    the operator gives them back. That hides, and shows nothing.
+    permissions of a directory a run needs stops the project's contained launches, its own next one and the workers'
+    included, until the operator gives them back. That hides, and shows nothing. Limiting it to the Lead's own
+    launches would need the workers not to see the Lead's live tree, which is scoped separately;
+  - a `.env` file in the project's own git directory is not masked: that is git's.
 
   Anything else is named in `containment.hide`.
 - **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
@@ -2336,12 +2355,17 @@ system text that said the same: the guarantee is containment's, and the `read` d
 - **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
   - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
   - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked, each `.git`
-    directory included;
+    directory below the top included; the project's own git directory is left out where the layout binds it;
+  - a `.env`-named link that cannot be followed is named, masks nothing and refuses nothing, and one to a host file
+    under another name, the interpreter or the store masks nothing;
+  - a project with more `.env` files than bubblewrap takes masks the directory holding them whole and launches;
+  - each check's sandbox scans the project again, so a tree rearranged after the run's layout is made is masked where
+    it is, and a writable root that now holds a `.env` file refuses the check;
   - a directory the scan cannot list or search is masked whole and the run still launches, and so is the directory
     of a `containment.hide` entry in the Lead's tree that cannot be checked;
-  - a `containment.writable` root in a directory masked whole is refused;
-  - a project the scan cannot list is refused;
-  - a project with too many files to mask is refused;
+  - a `containment.writable` root in a directory masked whole is refused, saying to give its permissions back;
+  - a project the scan cannot list, or search, is refused, naming the entry and the fix;
+  - a project with too many files to mask, none of whose directories can be masked whole, is refused;
   - the read rules derive from the names.
 
   In a real sandbox on Linux, `tests/integration/test_lead_containment.py` and `tests/integration/test_containment.py`
@@ -2351,7 +2375,10 @@ system text that said the same: the guarantee is containment's, and the `read` d
   holds in a directory the scan cannot list or search, for the Lead and a worker, and for a Lead that takes a
   directory's permissions away in one session (modes 000, 300, 100, 400, 600 and 444) and gives them back, or moves
   the directory, in the next. It holds under a directory named `.git` too: for a worker, and for a Lead that moves a
-  directory under one, or gives it that name, in one session and reads it in the next.
+  directory under one, or gives it that name, in one session and reads it in the next, while a move under the
+  project's own `.git` fails. A Lead on a branch named like a `.env` file has a working git inside. A check's sandbox
+  made after the tree is rearranged reads the moved file as empty, and a `.env`-named link that masks nothing
+  refuses no worker's launch and empties nothing.
 
 ## Amendment 2026-11-25 — recorded harness send (E175)
 

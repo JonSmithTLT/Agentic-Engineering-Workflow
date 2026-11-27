@@ -21,6 +21,7 @@ requests include them is the designer's call; this change does not decide it by 
 
 **What remains** (2026-11-27): of R9, tokens in the declared rate basis (after provider profiles declare `rate_basis`,
 STG-14), the largest request (after the record carries it), and, if the designer rules that ruling 2's requests include
-them, compaction, title and retried calls (after the record carries them, in the same schema change); U4, the Lead's own usage (`aew usage lead`), waiting for
-the designer's Lead part; L3 and L4, which feed the frozen F19; exact tier pricing and fencing the `/aew-usage` report
-(#385's follow-ons); and U2's live-lane test (E239). SYS-11's R9 slice is narrowed to those parts with this note.
+them, compaction, title and retried calls (after the record carries them, in the same schema change); U4, the Lead's own
+usage (`aew usage lead`), waiting for the designer's Lead part; L3 and L4, which feed the frozen F19; exact tier pricing
+and fencing the `/aew-usage` report (#385's follow-ons); and U2's live-lane test (E239). SYS-11's R9 slice is narrowed
+to those parts with this note.

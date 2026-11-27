@@ -737,8 +737,8 @@ def test_a_run_whose_only_calls_were_uncounted_never_shows_an_exact_zero_beside_
     assert uncounted["requests"] == {"count": None, "unknown": O.REQUESTS_ONLY_UNCOUNTED}
     assert idle["requests"] == {"count": 0, "at_least": False}
     head = O._row_lines(uncounted, "")[0]
-    assert head.endswith("; requests unknown (tokens, but no call in its messages; compaction and title calls are not "
-                         "counted), not zero")
+    assert head.endswith("; requests unknown (tokens, but no call in its messages; "
+                         f"{O.REQUESTS_NOT_COUNTED}), not zero")
     assert (projected["totals"]["steps"], projected["totals"]["requests_unknown_runs"]) == (0, 1)
     assert O.requests_text(projected["totals"]) == (
         "0 model call(s) in the messages of 1 run(s) (compaction, title and retried calls not counted), and 1 run(s) "

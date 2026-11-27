@@ -1003,8 +1003,8 @@ def requests_text(totals: Mapping[str, Any]) -> str:
 # A row's unknown requests, by why they are unknown (#644 review, m1: a missing run's usage was lost, not unreported).
 _UNKNOWN_REQUESTS_TEXT = {REQUESTS_USAGE_LOST: "unknown (usage lost), not zero",
                           REQUESTS_NOTHING_REPORTED: "unknown (the run reported nothing), not zero",
-                          REQUESTS_ONLY_UNCOUNTED: "unknown (tokens, but no call in its messages; compaction and title "
-                                                   "calls are not counted), not zero"}
+                          REQUESTS_ONLY_UNCOUNTED: ("unknown (tokens, but no call in its messages; "
+                                                    f"{REQUESTS_NOT_COUNTED}), not zero")}
 
 
 def _row_requests(row: Mapping[str, Any]) -> str:

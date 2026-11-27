@@ -173,17 +173,18 @@ RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
 RESOLVE_LAUNCH = ("dispatch.launch",)
 
 
-def _choices_running(*primitives: str) -> tuple[str, ...]:
+def choices_running(*primitives: str) -> tuple[str, ...]:
+    """The `resolve` choices whose call runs one of ``primitives`` (every choice, with none), in catalog order."""
     return tuple(dict.fromkeys(c for (c, _), p in RESOLVE_CHOICE_PRIMITIVE.items()
                                if not primitives or p in primitives))
 
 
-STAGE_CHOICES = _choices_running("stage.resolve")
-DISPOSITION_CHOICES = _choices_running("work.dispose")
-GATE_CHOICES = _choices_running("work.gate_replace")
-SCOPE_CHOICES = _choices_running("work.scope_add")
-PLAN_CHOICES = _choices_running("plan.assess")
-RESOLVE_CHOICES = _choices_running()
+STAGE_CHOICES = choices_running("stage.resolve")
+DISPOSITION_CHOICES = choices_running("work.dispose")
+GATE_CHOICES = choices_running("work.gate_replace")
+SCOPE_CHOICES = choices_running("work.scope_add")
+PLAN_CHOICES = choices_running("plan.assess")
+RESOLVE_CHOICES = choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500

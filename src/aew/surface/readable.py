@@ -172,7 +172,8 @@ def _next(result: dict[str, Any]) -> str:
     wait, the engine's own hint, or what blocks it. Whose the decision is comes from its ``owner`` (register E335; the
     quick check of #597, m1): the Lead is told to decide only its own, and another's is named as theirs, with the call
     that carries it out, and, where the decision names one (``ask_operator``), the operator's confirmation that call
-    waits for. A call or a printed command is never shortened: it must run as printed."""
+    waits for, and what the call takes from the decider's judgment (``judgment_inputs``, register E388). A call or a
+    printed command is never shortened: it must run as printed."""
     projection = _projection(result)
     scope = _scope(result)
     if _payload(result).get("next_action"):
@@ -185,7 +186,8 @@ def _next(result: dict[str, Any]) -> str:
             if decision.get("ask_operator"):  # the confirmation a Lead session's call waits for (register E351)
                 what += f"; ask the operator to confirm it at their own terminal: {_whole(decision['ask_operator'])}"
             if decision.get("tool"):
-                return what + how + _whole(_call(decision["tool"], decision.get("arguments")))
+                return what + how + _whole(_call(decision["tool"], decision.get("arguments"))) + \
+                    _judgment(decision.get("judgment_inputs"))
             return what + how + _whole(_command(decision["cli_fallback"])) if decision.get("cli_fallback") else what
     offered = [a for a in projection.get("actions") or [] if a.get("availability") == "AVAILABLE" and not _weighed(a)]
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
@@ -203,6 +205,16 @@ def _next(result: dict[str, Any]) -> str:
     for blocker in projection.get("blockers") or []:
         return _one_line(f"blocked{scope}: {blocker.get('code')}: {blocker.get('message')}")
     return f"next{scope}: nothing offered"
+
+
+def _judgment(inputs: Any) -> str:
+    """What the decider adds to the printed call (register E388): each input it names, an enumerated one with its
+    options, so the call as printed plus these is the whole call."""
+    if not isinstance(inputs, dict) or not inputs:
+        return ""
+    named = (f"{name} ({' or '.join(map(str, offer['options']))})" if isinstance(offer, dict) and offer.get("options")
+             else str(name) for name, offer in inputs.items())
+    return _whole(f"; add {', '.join(named)}")
 
 
 def _weighed(action: dict[str, Any]) -> bool:

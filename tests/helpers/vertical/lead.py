@@ -21,8 +21,9 @@ Lead broker), and its shell commands run in the TUI's own environment.
 **Judgment inputs** (spec v2): where an action, or a decision the projection gives to the Lead or the mechanism,
 names ``judgment_inputs``, the Lead supplies them, its own judgment, with nothing asked (never on the operator's
 decisions, whose choice is the operator's): a value the projection offers (or the first of its ``options``) goes
-into the call's arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1)
-does.
+into the call's arguments, an input offered with neither (a rationale) the Lead writes in its own words, and the
+names it carries are recorded. The projection names them on a decision whose call needs them (register E388), and
+projection v2 (A1) on its actions.
 
 **Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
 call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
@@ -583,9 +584,10 @@ class Lead:
 
     def judged(self, item: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
         """The call's arguments with the Lead's own judgments supplied where the projection names ``judgment_inputs``
-        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first);
-        it fills only what the projection's arguments leave out. A list names the judgments the complete arguments
-        carry. Either way the names are recorded as the Lead's, never asked of the operator."""
+        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first, or
+        neither, a field's schema such as a decision's ``rationale``: the Lead writes it, register E388); it fills
+        only what the projection's arguments leave out. A list names the judgments the complete arguments carry.
+        Either way the names are recorded as the Lead's, never asked of the operator."""
         inputs = item.get("judgment_inputs")
         if not inputs:
             return arguments
@@ -596,6 +598,8 @@ class Lead:
                     offer = offer["options"][0]
                 elif isinstance(offer, dict) and "value" in offer:
                     offer = offer["value"]
+                elif isinstance(offer, dict):  # nothing offered: the Lead's own words
+                    offer = f"the Lead's judgment: {name} for {item.get('subject') or self.subject}, from its evidence"
                 out.setdefault(str(name), offer)
         self.event("judgment", tool=item.get("action") or item.get("tool"),
                    inputs=sorted(map(str, inputs)) if isinstance(inputs, (dict, list)) else inputs)

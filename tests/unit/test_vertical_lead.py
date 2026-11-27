@@ -274,3 +274,24 @@ def test_any_other_loop_stop_is_a_decline_at_once(tmp_path: Path, code: str) -> 
                  unit=lambda n: {"projection": _ticket(PUSH)})
     assert not lead.loop_acts({"revision": REV})
     assert lead.kinds() == ["loop_declined"]
+
+
+# ---------------------------------------------------------------------------------------------- judgment inputs (E388)
+
+
+def test_the_scripted_lead_fills_a_decisions_judgment_inputs_choosing_an_option_and_writing_the_rationale(
+        tmp_path: Path) -> None:
+    """Register E388 (spec v2): a decision of the Lead's that names judgment inputs is called with the projection's
+    arguments, the first offered option for its choice and a rationale in the Lead's own words, never a schema."""
+    decision = {"decision": "RESOLVE_STAGE", "subject": T, "owner": "lead", "evidence": ["SI-0002"],
+                "tool": "resolve", "arguments": {"expect_rev": REV, "subject": "SI-0002"},
+                "availability": "AVAILABLE", "default": "NONE", "cli_fallback": None,
+                "judgment_inputs": {"choice": {"options": ["continue", "abandon"]},
+                                    "rationale": {"type": "string", "description": "free text"}}}
+    lead = _Lead(tmp_path)
+    lead.tools = ["resolve"]
+    assert lead.own_decision(decision)
+    [(tool, arguments, _)] = lead.calls
+    assert tool == "resolve" and arguments["choice"] == "continue" and arguments["subject"] == "SI-0002"
+    assert isinstance(arguments["rationale"], str) and arguments["rationale"].strip()
+    assert [e["inputs"] for e in lead.events() if e["kind"] == "judgment"] == [["choice", "rationale"]]

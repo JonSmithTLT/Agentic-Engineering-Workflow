@@ -270,6 +270,20 @@ def test_the_next_step_prefers_the_lead_s_decision_then_a_move_then_a_wait_then_
     assert lines_of(stage(projection=every))[1] == "blocked: PLAN_NOT_ACCEPTED: plan not accepted"
 
 
+def test_a_decisions_next_step_names_the_judgment_inputs_its_printed_call_leaves_out():
+    """Register E388: the readable next step prints the decision's call and what the decider adds to it, each
+    judgment input with its options, so the line, followed, is the whole call."""
+    from aew.surface import projection as P
+
+    arguments = {"expect_rev": 15, "subject": "SI-0002"}
+    decision = {"decision": "RESOLVE_STAGE", "subject": "T-0001", "evidence": ["SI-0002"], "tool": "resolve",
+                "arguments": arguments, "availability": "AVAILABLE", "default": "NONE", "owner": "lead",
+                "cli_fallback": None, "judgment_inputs": P.judgment_inputs("RESOLVE_STAGE", "resolve", arguments)}
+    options = " or ".join(contract.STAGE_CHOICES)
+    assert lines_of(stage(projection={"decisions_required": [decision]}))[1] == (
+        f"decide RESOLVE_STAGE on T-0001: resolve expect_rev=15 subject=SI-0002; add choice ({options}), rationale")
+
+
 @pytest.mark.parametrize("over", [{"projection": {"actions": [action()]}}, {}])
 def test_many_steps_stay_below_the_outcome_and_next_step_and_say_how_many_were_left_out(over):
     many = [step(f"step {n}") for n in range(MAX_LISTED + 7)]
@@ -345,7 +359,9 @@ def full_result(shape: str) -> dict[str, Any]:
     """Every list full, so every line writer has something to write. The next step comes from the shape named."""
     decision = {"decision": "CHOOSE", "subject": "T-0001", "evidence": ["E-1"], "tool": "resolve",
                 "arguments": {"expect_rev": 15, "subject": "A-1"}, "availability": "AVAILABLE", "default": "NONE",
-                "cli_fallback": ["work", "dispose", "A-1"]}
+                "cli_fallback": ["work", "dispose", "A-1"],
+                "judgment_inputs": {"choice": {"options": ["accept_risk", "not_applicable"]},
+                                    "rationale": {"type": "string", "description": "free text"}}}
     run = {"run": "R-1", "invocation": "INV-1", "work_unit": "T-0001", "role": "reviewer", "status": "running",
            "reason": "r", "evidence": ["E-2"], "source": "local_telemetry", "observed_at": "2026-11-04T00:00:00Z"}
     projection = {"actions": [action(arguments={"expect_rev": 15, "note": "n"}, callable=shape != "command",

@@ -46,6 +46,28 @@ def resolve(p, sid: str, choice: str, *, token: str | None = None, rationale: st
     return R.run_tool(Engine.discover(p.root), CTX, "resolve", arguments, token=token or p.token)
 
 
+def judged(decision: dict[str, Any], choice: str | None = None,
+           rationale: str = "the Lead's own reason") -> dict[str, Any]:
+    """A decision's call as a Lead makes it from the projection alone (register E388): the decision's arguments, and
+    each judgment input it names filled in, a choice from its ``options`` (the first, or ``choice``, which must be
+    offered) and anything else, the rationale, in the Lead's own words."""
+    out = dict(decision["arguments"])
+    for name, offer in decision["judgment_inputs"].items():
+        if "options" in offer:
+            assert choice is None or choice in offer["options"], (choice, offer)
+            out[name] = choice or offer["options"][0]
+        else:
+            out[name] = rationale
+    return out
+
+
+def stage_decision(p, sid: str) -> dict[str, Any]:
+    projection = R.run_tool(Engine.discover(p.root), CTX, "status", {})["projection"]
+    [decision] = [d for d in projection["decisions_required"] if d["decision"] == "RESOLVE_STAGE"]
+    assert decision["evidence"] == [sid]
+    return decision
+
+
 def unfinished(p) -> dict[str, dict[str, Any]]:
     out = R.run_tool(Engine.discover(p.root), CTX, "resume", {})
     assert out["ok"], out["stopped"]
@@ -120,6 +142,45 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     assert any(sid in a and "aew stage continue|abandon" in a for a in cli["next_actions"])
     assert sid in p.aew("resume").stdout  # the rendered view names it too
     assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("choice", contract.STAGE_CHOICES)
+def test_a_lead_that_fills_the_stage_decisions_judgment_inputs_resolves_it_through_the_typed_call(
+        project, monkeypatch, choice):
+    """Register E388: RESOLVE_STAGE names what its `resolve` call takes from the Lead, the choice (offered: the
+    choices that run `stage.resolve`, from the contract) and the rationale (the schema's own field), so the decision's
+    arguments with those filled in are the whole call, and it resolves the stage, whichever choice is offered."""
+    p = project
+    sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    decision = stage_decision(p, sid)
+    schema = contract.tool("resolve").input_schema
+    assert decision["owner"] == "lead"
+    assert decision["judgment_inputs"] == {"choice": {"options": list(contract.STAGE_CHOICES)},
+                                           "rationale": schema["properties"]["rationale"]}
+    assert set(decision["arguments"]) | set(decision["judgment_inputs"]) >= set(schema["required"])
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", judged(decision, choice), token=p.token)
+    assert out["ok"], out["stopped"]
+    si = Engine.discover(p.root).stage_intent(sid)
+    assert si["status"] == ("COMPLETED" if choice == "continue" else "ABANDONED")
+    assert si["resolution"]["choice"] == choice and si["resolution"]["rationale"] == "the Lead's own reason"
+    assert hot(p) == {}
+    assert_control_invariants(p)
+
+
+def test_the_stage_decisions_arguments_alone_are_refused_naming_each_judgment_input(project, monkeypatch):
+    """Register E388: the decision's arguments without its judgment inputs are an input error that reaches nothing,
+    and its violations name each input the decision names, so a Lead refused knows what to supply."""
+    p = project
+    sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    decision = stage_decision(p, sid)
+    rev = p.rev()
+    with pytest.raises(AdapterInputError) as exc:
+        R.run_tool(Engine.discover(p.root), CTX, "resolve", decision["arguments"], token=p.token)
+    assert exc.value.code == "INVALID_ARGUMENTS"
+    named = sorted(name for name in decision["judgment_inputs"]
+                   if any(f"'{name}' is a required property" in v for v in exc.value.details["violations"]))
+    assert named == sorted(decision["judgment_inputs"]) == ["choice", "rationale"]
+    assert p.rev() == rev and list(hot(p)) == [sid]  # nothing committed
 
 
 # ---------------------------------------------------------------------------------------------- continue and abandon

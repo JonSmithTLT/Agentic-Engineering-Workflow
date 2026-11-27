@@ -181,3 +181,42 @@ def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table(
         assert head[1] == (f"decide PUBLISH on T-0001: {call}" if owner == P.LEAD else
                            f"{said} decision, PUBLISH on T-0001; it is carried out by: {call}"), head
         assert head[2] == f"decision: PUBLISH on T-0001, {said} (AVAILABLE)", head
+
+
+def _resolve_kinds() -> list[str]:
+    """The decision kinds whose call is `resolve`: those whose primitives a `resolve` choice runs (the contract's
+    ``RESOLVE_CHOICE_PRIMITIVE``)."""
+    from aew.surface import contract
+
+    run = set(contract.RESOLVE_CHOICE_PRIMITIVE.values())
+    return [k for k, primitives in projection.DECISION_PRIMITIVES.items() if set(primitives) <= run]
+
+
+def test_a_resolve_decision_names_as_judgment_inputs_exactly_the_fields_its_arguments_leave_out():
+    """Register E388: each `resolve` decision names what its call takes from its owner's judgment, read from the
+    contract: the schema's required fields the arguments leave out, the choice offered as the choices that run the
+    kind's own primitives (each a pair the contract maps to one of them), the rationale as the schema's own field.
+    Whole arguments name none, and the result contract accepts the field."""
+    from aew.surface import contract
+
+    resolve = contract.tool("resolve").input_schema
+    kinds = _resolve_kinds()
+    assert {"RESOLVE_STAGE", "DISPOSE_FINDING", "DISPOSE_CLAIM", "DISPOSE_ANOMALY"} <= set(kinds)
+    for kind in kinds:
+        primitives = projection.DECISION_PRIMITIVES[kind]
+        inputs = projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1"})
+        assert inputs is not None and set(inputs) == set(resolve["required"]) - {"expect_rev", "subject"}, kind
+        options = inputs["choice"]["options"]
+        assert options and set(options) == {c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items()
+                                            if p in primitives}, kind
+        assert inputs["rationale"] == resolve["properties"]["rationale"], kind
+        assert projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1", "choice": options[0]}) \
+            == {"rationale": inputs["rationale"]}, kind
+        assert projection.judgment_inputs(kind, "resolve", {"expect_rev": 3, "subject": "X-1", "choice": options[0],
+                                                            "rationale": "why"}) is None, kind
+        shown = {"decision": kind, "subject": "T-0001", "owner": projection.decision_owner(kind), "evidence": [],
+                 "tool": "resolve", "arguments": {"expect_rev": 3, "subject": "X-1"}, "availability": "AVAILABLE",
+                 "default": "NONE", "cli_fallback": None, "judgment_inputs": inputs}
+        validate_def("surface", "decision", shown, source="test")
+    assert projection.judgment_inputs("PUBLISH", None, None) is None  # no call to fill
+    assert projection.judgment_inputs("RESOLVE_STAGE", "resolve", None) is None

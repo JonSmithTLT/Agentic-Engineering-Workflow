@@ -22,7 +22,8 @@ how their answer can change:
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
 never for a query or a wait, never dependent on the profile). Decisions never carry a default, and each states its
-owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out.
+owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out, and names what its
+call takes from that owner's judgment (``judgment_inputs``; register E388), read from the call's schema.
 """
 
 from __future__ import annotations
@@ -133,12 +134,41 @@ def decision_owner(name: str) -> str:
     return owners.pop() if len(owners) == 1 else OPERATOR
 
 
+def judgment_inputs(name: str, tool: str | None, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
+    """What a decision's call takes from whoever decides it (register E388; the vertical's spec v2): each field its
+    tool's schema requires that the decision's arguments leave out, so that a call with those filled in is the whole
+    call. An enumerated field offers its ``options``: `resolve`'s ``choice`` only the choices that run the decision's
+    primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``, read through ``DECISION_PRIMITIVES``). Any other field is
+    offered as its schema, for the decider to write (a rationale). None when the arguments are whole, or there is no
+    call to fill: a decision never carries a default, so nothing here is a value."""
+    t = contract.tool(tool) if tool else None
+    if t is None or arguments is None:
+        return None
+    schema = t.input_schema
+    out: dict[str, Any] = {}
+    for field in schema.get("required") or ():
+        if field in arguments:
+            continue
+        prop = schema["properties"][field]
+        primitives = DECISION_PRIMITIVES.get(name, ())
+        if t.name == "resolve" and field == "choice" and primitives:
+            out[field] = {"options": list(contract.choices_running(*primitives))}
+        elif "enum" in prop:
+            out[field] = {"options": list(prop["enum"])}
+        else:
+            out[field] = dict(prop)
+    return out or None
+
+
 def _decision(name: str, subject: str, *, tool: str | None, arguments: dict[str, Any] | None,
               cli_fallback: list[str] | None, evidence: list[str] | None = None,
               availability: str = UNKNOWN) -> dict[str, Any]:
-    return {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
-            "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
-            "cli_fallback": cli_fallback}
+    out = {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
+           "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
+           "cli_fallback": cli_fallback}
+    if inputs := judgment_inputs(name, tool, arguments):
+        out["judgment_inputs"] = inputs
+    return out
 
 
 def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -5,9 +5,14 @@ the document says."""
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
+from typing import Any
 
+import pytest
 from vertical import ledger as L
+
+from aew.surface.errors import CODES as SURFACE_CODES
 
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "implementation" / "vertical-uat.md"
@@ -795,6 +800,54 @@ def test_each_open_starts_a_fresh_session_with_no_state_left(tmp_path):
     assert len(ids) == 2 and "" not in ids and op.chat_errors_at_open == 1
 
 
+# Each kill branch the host can run: os.killpg exists only on POSIX, and the Windows branch's proc.kill() runs anywhere
+@pytest.mark.parametrize("windows", [True] if sys.platform == "win32" else [False, True],
+                         ids=["windows-proc-kill"] if sys.platform == "win32" else ["posix-group", "windows-proc-kill"])
+def test_a_killed_session_tells_the_ledger_its_own_id_and_the_calls_it_had_recorded(tmp_path, monkeypatch, windows):
+    """E386 (review of #636, m2): ``open_session`` gives the Session the id its Lead stamps on its events, and
+    ``end_session(session, "kill")`` hands that id to the ledger with how many of its calls were recorded before the
+    kill, on each kill branch the host can run (Windows' ``proc.kill()`` reached through ``IS_WINDOWS``). A last line
+    the Lead has not finished writing is a call not yet recorded (the quick check of #636, qc3)."""
+    import json
+    import subprocess
+    from types import SimpleNamespace
+
+    from vertical import scripted_operator as S
+
+    children: list[subprocess.Popen[bytes]] = []
+
+    def start(argv, *, env, stdout, stderr, resume_prompt=False):  # a throwaway child in place of `aew opencode`
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], stdout=stdout, stderr=stderr,
+                                start_new_session=sys.platform != "win32",
+                                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        children.append(proc)
+        return proc, None
+
+    monkeypatch.setattr(S, "start_on_terminal", start)
+    monkeypatch.setattr(S, "IS_WINDOWS", windows)
+    sync, scripts = tmp_path / "sync", tmp_path / "scripts"
+    sync.mkdir()
+    scripts.mkdir()
+    lab = SimpleNamespace(env={S.SCRIPTS_ENV: str(scripts)}, sessions=[], tmp=tmp_path, root=tmp_path)
+    op = S.Operator(lab, L.Ledger("V2-forced-mid-stage"), tmp_path, SimpleNamespace(errors=[]))  # type: ignore[arg-type]
+    spec = {"state": str(sync / "lead-state.json"), "pidfile": str(sync / "lead-0.pid")}
+    try:
+        session = op.open_session("open", ["opencode"], spec)
+        assert session.lead_session == op.session_id != ""
+        events = [{"kind": "call", "session": op.session_id}, {"kind": "say", "session": op.session_id},
+                  {"kind": "call", "session": "another"}]
+        torn = json.dumps({"kind": "call", "session": op.session_id})[:20]  # a call still being written
+        (sync / "lead-events.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events) + torn,
+                                                encoding="utf-8")
+        op.end_session(session, "kill")
+        assert session.ended() and op.ledger.killed == {op.session_id: 1}
+    finally:  # never leave the child running when an assertion fails before the kill
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+
 def test_a_scripted_lead_thread_that_dies_is_a_harness_fault_in_the_ledger():
     """Review of #217, m3 (#213's G2): a thread of the scripted Lead that dies (childdiag's exception hook, through
     the Lead's subscription) is recorded as `thread_died` with fault `harness`, and the ledger lists it among the
@@ -812,3 +865,50 @@ def test_a_scripted_lead_thread_that_dies_is_a_harness_fault_in_the_ledger():
     led.lead_event(events[0])
     assert "harness faults: lead.thread_died" in led.summary()
     assert "lead silent or ended" not in led.summary()
+
+
+def test_the_call_in_flight_at_the_kill_is_the_scenarios_never_the_leads_refusal():
+    """E386: the call the killed session had in flight is refused BROKER_UNREACHABLE because the kill took the broker
+    with it. It is recorded as the scenario's and shown, never counted under refusals. The rule is that narrow: only
+    the first call the session records after the kill is excused, so a genuine refusal before the kill counts; the
+    same refusal from a session the test did not kill counts, so does any other code from the killed one, and so does
+    an excused refusal the killed session called past (it was not the call in flight), at its own place."""
+    def call(session: str, code: str | None, tool: str = "ticket_start") -> dict[str, Any]:
+        refused = {"ok": False, "stopped": {"error": {"code": code, "message": "m"}}} if code else {"ok": True}
+        return {"kind": "call", "via": "mcp", "tool": tool, "arguments": {"work_id": "T-0001"}, "offered": True,
+                "session": session, **refused}
+
+    def excused(led: L.Ledger) -> list[dict[str, Any]]:
+        return [o for o in led.observations if o["kind"] == "killed_in_flight"]
+
+    assert L.BROKER_UNREACHABLE in SURFACE_CODES  # the owner's code, not a restatement of it
+    led = L.Ledger("V2-forced-mid-stage")
+    led.session_killed("killed", calls_before=1)
+    led.lead_event(call("killed", None, tool="status"))  # recorded before the kill
+    led.lead_event(call("killed", L.BROKER_UNREACHABLE))
+    assert led.counts()["refusals"] == 0 and "refusals" not in led.over()
+    (seen,) = excused(led)
+    assert seen["evidence"]["tool"] == "ticket_start"
+    assert "the scenario's (refused in flight at the kill): ticket_start BROKER_UNREACHABLE" in led.summary()
+
+    led.lead_event(call("reopened", L.BROKER_UNREACHABLE))  # the session the test did not kill
+    assert led.counts()["refusals"] == 1 and excused(led)
+
+    earlier = L.Ledger("V2-forced-mid-stage")  # a genuine refusal before the kill; the in-flight call left no event
+    earlier.session_killed("killed", calls_before=1)
+    earlier.lead_event(call("killed", L.BROKER_UNREACHABLE))
+    assert earlier.counts()["refusals"] == 1 and not excused(earlier)
+
+    other = L.Ledger("V2-forced-mid-stage")
+    other.session_killed("killed", calls_before=0)
+    other.lead_event(call("killed", "STALE_REVISION", tool="stale_hint"))  # another code, from the killed one
+    assert other.counts()["refusals"] == 1
+
+    past = L.Ledger("V2-forced-mid-stage")
+    past.session_killed("killed", calls_before=0)
+    past.lead_event(call("killed", L.BROKER_UNREACHABLE))
+    seq = past.observations[-1]["seq"]
+    past.lead_event(call("killed", None, tool="status"))
+    assert past.counts()["refusals"] == 1 and not excused(past)
+    (recounted,) = [e for e in past.entries if e["counter"] == "refusals"]
+    assert recounted["seq"] == seq  # at its own place, before the call that followed it

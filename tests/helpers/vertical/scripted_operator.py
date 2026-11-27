@@ -124,6 +124,7 @@ class Session:
     err: Path
     pidfile: Path
     tty: int | None = None  # the master of the pseudo-terminal the session runs on (Linux), while it is open
+    lead_session: str = ""  # the open's id the scripted Lead stamps on its events (Operator.new_session)
 
     def ended(self) -> bool:
         return self.proc.poll() is not None
@@ -294,7 +295,7 @@ class Operator:
             proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
                                              stdout=o, stderr=e, resume_prompt=resume_prompt)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
-        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
+        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master, lead_session=lead_spec["session"])
         self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
@@ -440,6 +441,8 @@ class Operator:
             if not session.ended():
                 self.say("exit", "/exit")
         else:
+            # How many of its calls the session had recorded before the kill: only a later one was in flight (E386)
+            calls_before = recorded_calls(self.lab, session.lead_session)
             # The session dies from outside, as when its terminal is closed: Windows, the session's process (its job
             # object then ends the TUI); POSIX, its whole process group (the hangup a closed terminal sends).
             if IS_WINDOWS:
@@ -449,6 +452,7 @@ class Operator:
 
                 os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
+            self.ledger.session_killed(session.lead_session, calls_before=calls_before)
         try:
             code = session.proc.wait(EXIT_S)
         except subprocess.TimeoutExpired:
@@ -667,6 +671,17 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def recorded_calls(lab: HarnessLab, session: str) -> int:
+    """How many ``call`` events the Lead session ``session`` has recorded so far, read while it may be writing: only
+    complete lines count, since a last line not yet ended by its newline is a call not yet recorded (review of #636)."""
+    path = lab.tmp / "sync" / "lead-events.jsonl"
+    if not path.exists():
+        return 0
+    lines = path.read_text(encoding="utf-8").split("\n")[:-1]  # the part after the last newline is not yet a line
+    events = [json.loads(line) for line in lines if line.strip()]
+    return sum(1 for e in events if e.get("kind") == "call" and e.get("session") == session)
 
 
 # Whether `lead_label` reads the Lead's label from the product; `enforce` is refused until it does

@@ -508,8 +508,7 @@ None.
 - `aew.engine.recall`
 - `aew.engine.transitions`
 - `aew.errors`
-- `aew.harness.base`
-- `aew.harness.containment.netns`
+- `aew.harness.containment`
 - `aew.harness.contract`
 - `aew.harness.notify`
 - `aew.harness.runlog`
@@ -1543,9 +1542,11 @@ None.
 - `aew.capability.ops`
 - `aew.capability.status`
 - `aew.errors`
+- `aew.harness.base`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.probe`
+- `aew.harness.containment.relay`
 - `aew.harness.containment.sockets`
 - `aew.workspace.git`
 
@@ -1883,6 +1884,7 @@ None.
 ### `aew.harness.opencode.projection`
 
 - `aew.harness.containment.layout`
+- `aew.harness.containment.relay`
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.wake_queue`

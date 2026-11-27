@@ -403,6 +403,40 @@ def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
     assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])
 
 
+def test_the_site_and_harness_status_read_the_same_containment_label_for_every_record_age(lab, tmp_path):
+    """#649's review, F2: the site's E148 route and `harness status` read a run's network facts through one owner
+    (`containment.network_facts`, over `normalize`), so they agree on every record, whatever its age: today's label,
+    one before CS-3b (its network a string), one before M4-B (the string `workdir_separation_only`), and none."""
+    import json
+
+    from aew.dashboard.projections import Projector
+    from aew.dashboard.reader import StateReader
+    from aew.engine.api import Engine
+    from aew.harness import containment
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run, inv = out["launch"]["run"], out["invocation"]
+    lab.wait(run)
+    path = runlog.run_dir(lab.aew_root, run) / "run.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    today = {"filesystem": containment.CONTAINED, "network": {"mode": containment.PROXY_ONLY,
+                                                              "provider_relay": "configured",
+                                                              "relay_family": "matches"}}
+    ages = {"current": (today, ("proxy_only", "configured", "matches")),
+            "pre-CS-3b": ({"filesystem": containment.CONTAINED, "network": "shared"}, ("shared", "none", None)),
+            "pre-M4-B": (containment.WORKDIR_ONLY, (containment.network(), "none", None)),
+            "missing": (None, (containment.network(), "none", None))}
+    for age, (label, expected) in ages.items():
+        path.write_text(json.dumps({**record, "containment": label}), encoding="utf-8")
+        [listed] = lab.ok("harness", "status", inv)["runs"]
+        net = listed["containment"]["network"]
+        status = (net.get("mode"), net.get("provider_relay"), net.get("relay_family"))
+        [site] = Projector(StateReader(Engine.discover(lab.project.root)).snapshot()).run_provider_routes(inv)["runs"]
+        assert (site["network_mode"], site["provider_relay"], site["relay_family"]) == status == expected, age
+
+
 def test_the_leads_results_name_the_tools_a_run_went_without_in_aews_closed_words_only(lab, tmp_path):
     """#330's owed lines: `harness wait` and `harness status` say, beside a run's results, which tools it went without,
     what it got instead and why, from its label's `missing_tools`. The record is the run's own directory's, so only

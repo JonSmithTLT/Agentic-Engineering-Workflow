@@ -163,6 +163,10 @@ OTHER_PLACEHOLDER = "other_placeholder"
 # What became of a request's credential header: its sentinel swapped for the credential; none carried one; or one
 # carried a sentinel this relay does not hold, and the request was refused.
 SWAP_OUTCOMES = ("swapped", "none", "refused_unknown_placeholder")
+# A run label's ``network.provider_relay`` (F28 §3.1; :func:`describe`): the run's network started a provider relay, or
+# it did not. Every reader takes them from here (register E148; #649's review, F2).
+RELAY_CONFIGURED, RELAY_NONE = "configured", "none"
+PROVIDER_RELAY_STATES = (RELAY_CONFIGURED, RELAY_NONE)
 # The refusals of a request outside the relay's operation scope (register STG-05): a path outside the upstream's
 # prefix, or spelled so an upstream might read it as another one; and an operation the relay's policy does not allow.
 OUTSIDE_UPSTREAM_PATH = "outside_upstream_path"
@@ -1730,7 +1734,7 @@ def describe(relay: ProviderRelay | None) -> dict[str, Any]:
     """For the run's label: ``network.provider_relay`` (F28 §3.1) and its fixed upstream, and whether it presents a
     client certificate (by its policy field: the label reaches the sandbox, so never a path)."""
     if relay is None:
-        return {"provider_relay": "none"}
-    return {"provider_relay": "configured", "provider_upstream": relay.upstream.url,
+        return {"provider_relay": RELAY_NONE}
+    return {"provider_relay": RELAY_CONFIGURED, "provider_upstream": relay.upstream.url,
             **({"provider_upstream_proxy": f"{relay.proxy.host}:{relay.proxy.port}"} if relay.proxy else {}),
             **({"provider_client_cert": relay.client.field("cert")} if relay.client else {})}

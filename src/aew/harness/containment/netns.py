@@ -771,7 +771,7 @@ class RunNetwork:
             if self.key_source:
                 out["provider_key_source"] = self.key_source
         else:  # the Lead's: each relayed provider's fixed upstream
-            out["provider_relay"] = "configured" if self.relays else "none"
+            out["provider_relay"] = relay.RELAY_CONFIGURED if self.relays else relay.RELAY_NONE
             out["provider_relays"] = {p: r.upstream.url for p, (_, r) in self.relays.items()}
         if self.egress is not None:
             policy = self.egress.policy.describe()

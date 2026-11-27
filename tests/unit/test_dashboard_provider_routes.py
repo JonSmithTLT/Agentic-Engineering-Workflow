@@ -10,6 +10,10 @@ import yaml
 from aew.dashboard import projections as P
 from aew.dashboard.contract import Contract
 from aew.errors import NotFound
+from aew.harness import containment
+from aew.harness.base import RELAY_FAMILY_SHOWN
+from aew.harness.containment.netns import NETWORK_MODES
+from aew.harness.containment.relay import PROVIDER_RELAY_STATES
 
 ROOT = Path(__file__).resolve().parents[2]
 INVOCATION = "INV-0001"
@@ -61,8 +65,11 @@ def test_the_provider_route_projection_matches_the_proposed_data_schema():
             {"id": "R-INV-0001-2", "network_mode": "proxy_only", "provider_relay": "configured",
              "relay_family": "unverified"},
             {"id": "R-INV-0001-3", "network_mode": "isolated", "provider_relay": "none", "relay_family": None},
-            {"id": "R-INV-0001-4", "network_mode": "shared", "provider_relay": None, "relay_family": None},
-            {"id": "R-INV-0001-5", "network_mode": None, "provider_relay": None, "relay_family": None},
+            # Read as `harness status` reads them (#649's review, F2): a label before CS-3b had no relay, and a run
+            # with no label is the uncontained run's, on this platform's network
+            {"id": "R-INV-0001-4", "network_mode": "shared", "provider_relay": "none", "relay_family": None},
+            {"id": "R-INV-0001-5", "network_mode": containment.network(), "provider_relay": "none",
+             "relay_family": None},
             {"id": "R-INV-0001-6", "network_mode": None, "provider_relay": None, "relay_family": None},
         ],
     }
@@ -71,6 +78,12 @@ def test_the_provider_route_projection_matches_the_proposed_data_schema():
     contract = Contract(ROOT / "docs/design/dashboard-api-v1-provisional.yaml")
     contract.schemas.update(addition)
     assert contract.violations("RunProviderRoutes", data) == []
+    # The hand-off's enums are its owners' vocabularies, plus null (#656's review, m2: derive, don't restate)
+    fields = addition["RunProviderRoutes"]["properties"]["runs"]["items"]["properties"]
+    owners = {"network_mode": {*NETWORK_MODES, containment.NOT_PROVIDED}, "provider_relay": set(PROVIDER_RELAY_STATES),
+              "relay_family": set(RELAY_FAMILY_SHOWN)}
+    for name, owned in owners.items():
+        assert set(fields[name]["enum"]) == {*owned, None}, name
 
 
 def test_empty_and_unknown_invocations():

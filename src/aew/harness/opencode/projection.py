@@ -41,6 +41,7 @@ from aew import skills as shipped_skills
 from aew.harness import contract as K
 from aew.harness import procs
 from aew.harness.containment.layout import ENV_DOCS, ENV_FILES
+from aew.harness.containment.relay import RELAY_CONFIGURED
 from aew.harness.contract import (
     WAIT_RULE,
     LaunchContract,
@@ -290,7 +291,7 @@ def network_text(network: Mapping[str, Any]) -> str:
     """The system text's line for a run on a network of its own (F28; #257's review, F3): what the run reaches, that
     everything else is refused by design, and how to ask for more. ``network`` is the run's label
     (``netns.RunNetwork.describe``); its upstream and stated limits are the operator's, not the agent's."""
-    reach = ["your model's provider"] if network.get("provider_relay") == "configured" else []
+    reach = ["your model's provider"] if network.get("provider_relay") == RELAY_CONFIGURED else []
     allow = list(network.get("egress_allow") or [])
     if allow:
         reach.append(f"through `HTTPS_PROXY`, only {', '.join(f'`{a}`' for a in allow)}")

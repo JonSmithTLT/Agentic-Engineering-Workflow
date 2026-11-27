@@ -61,10 +61,8 @@ from aew.errors import (
     NotFound,
     ValidationFailed,
 )
+from aew.harness import containment, runlog
 from aew.harness import contract as K
-from aew.harness import runlog
-from aew.harness.base import RELAY_FAMILY_SHOWN
-from aew.harness.containment.netns import NETWORK_MODES, NOT_PROVIDED
 from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
@@ -647,18 +645,10 @@ class Projector:
         for run in _bounded(invocation.get("runs") or []):
             run_id = run["run"]
             _, record = self._observe(run_id)
-            containment = (record or {}).get("containment")
-            network = containment.get("network") if isinstance(containment, dict) else None
-            mode = network.get("mode") if isinstance(network, dict) else network
-            relay = network.get("provider_relay") if isinstance(network, dict) else None
-            family = network.get("relay_family") if isinstance(network, dict) else None
-            items.append({
-                "id": run_id,
-                "network_mode": mode if mode in (*NETWORK_MODES, NOT_PROVIDED) else None,
-                "provider_relay": relay if relay in ("configured", "none") else None,
-                "relay_family": family if relay == "configured" and isinstance(family, str)
-                and family in RELAY_FAMILY_SHOWN else None,
-            })
+            # The label's owner reads it, as for `harness status` (#649's review, F2: derive, don't restate)
+            facts = containment.network_facts((record or {}).get("containment"))
+            items.append({"id": run_id, "network_mode": facts["mode"], "provider_relay": facts["provider_relay"],
+                          "relay_family": facts["relay_family"]})
         return {"invocation": inv_id, "runs": items}
 
     # ---------------------------------------------------------------- evidence

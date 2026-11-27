@@ -440,6 +440,9 @@ class Operator:
             if not session.ended():
                 self.say("exit", "/exit")
         else:
+            # How many of its calls the session had recorded before the kill: only a later one was in flight (E386)
+            calls_before = sum(1 for e in lead_events(self.lab)
+                               if e.get("kind") == "call" and e.get("session") == session.lead_session)
             # The session dies from outside, as when its terminal is closed: Windows, the session's process (its job
             # object then ends the TUI); POSIX, its whole process group (the hangup a closed terminal sends).
             if IS_WINDOWS:
@@ -449,7 +452,7 @@ class Operator:
 
                 os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
-            self.ledger.session_killed(session.lead_session)
+            self.ledger.session_killed(session.lead_session, calls_before=calls_before)
         try:
             code = session.proc.wait(EXIT_S)
         except subprocess.TimeoutExpired:

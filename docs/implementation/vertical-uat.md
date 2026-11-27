@@ -282,7 +282,7 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 | `ambiguous_next_action` | the projection offered several AVAILABLE actions and marked none as next |
 | `revision_args` | any Lead call whose arguments include `expect_rev` or any other revision, **including one the projection supplied** |
 | `stale_retries` | a STALE_REVISION followed by a retry |
-| `refusals` | any refusal, by code and message, except the call in flight when the test kills the session (V2's forced case): that session's last call, refused `BROKER_UNREACHABLE`, is the scenario's, recorded and shown, never counted (register E386) |
+| `refusals` | any refusal, by code and message, except the call in flight when the test kills the session (as in V2's forced case): the first call that session records after the kill, refused `BROKER_UNREACHABLE` and followed by no other, is the scenario's, recorded and shown, never counted (amended with the operator's approval of 2026-11-27 to build the [V-01 burn-down](v01-burn-down.md)'s C16, replying to the Lead's plan whose step 1 was "the C4 re-measure, and start builders on C16 and C17": "Yes do 1 and 2"; register E386) |
 | `mechanical_calls` | calls that only push a stage or wait, with steering on (a steering-off run records them as its measurement, and only a steering-on run is held to 0) |
 
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:

@@ -31,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from aew.surface.errors import CODES as SURFACE_CODES
+
 # Shadow: the CI job runs and uploads the ledger on every pull request and on main, and is not in `assurance`'s
 # required set. Flipping it to "enforce" is the operator's decision, made when the job is green (vertical-uat.md).
 VERTICAL_MODE = "shadow"
@@ -49,6 +51,11 @@ STEERING_ONLY = frozenset({"mechanical_calls"})
 # V1's operator decisions, exactly: approving the plan and approving the publish (publish stays a judgement unless a
 # grant covers it). Any other question fails the comparison and is reviewed by hand.
 V1_DECISIONS = ("plan", "publish")
+# The typed surface's refusal for a broker it cannot reach. Its owner, `aew.surface.errors.CODES`, has no named
+# constant, so the value is checked against it here: a rename there fails this import, never a silent mismatch.
+BROKER_UNREACHABLE = "BROKER_UNREACHABLE"
+if BROKER_UNREACHABLE not in SURFACE_CODES:
+    raise ImportError(f"{BROKER_UNREACHABLE} is no longer one of aew.surface.errors.CODES")
 # Whose decision it is, as the projection states it (spec v2): `decisions_required` counts operator-owned decisions
 # only. The scripted Lead puts to the operator only a decision the projection gives to the operator, or one whose owner
 # is not stated (a fallback's question, which no decision carries: the summary says "owner not stated"; the projection
@@ -265,8 +272,11 @@ class Ledger:
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
         self.seq = 0
-        self.killed: set[str] = set()  # the Lead sessions the test killed (V2's forced case), by their open's id
-        self.in_flight: dict[str, dict[str, Any]] = {}  # each killed session's last call, when its broker was gone
+        # The Lead sessions the test killed (as in V2's forced case), by their open's id, each with how many of its
+        # calls were already recorded at the kill; and how many of each session's calls the ledger has read
+        self.killed: dict[str, int] = {}
+        self.calls_read: dict[str, int] = {}
+        self.in_flight: dict[str, dict[str, Any]] = {}  # a killed session's excused call, until another follows it
 
     # ------------------------------------------------------------------ recording
 
@@ -376,9 +386,11 @@ class Ledger:
         if _starts(words, LIFECYCLE_COMMANDS):
             self.count("lifecycle_steps", evidence, actor="operator", step=step)
 
-    def session_killed(self, session: str) -> None:
-        """The test killed the Lead session ``session`` (its open's id) from outside, as V2's forced case does."""
-        self.killed.add(session)
+    def session_killed(self, session: str, *, calls_before: int) -> None:
+        """The test killed the Lead session ``session`` (its open's id) from outside, as in V2's forced case, when
+        ``calls_before`` of its calls were already recorded: only a call recorded after them was in flight at the
+        kill."""
+        self.killed[session] = calls_before
 
     def lead_event(self, event: dict[str, Any]) -> None:
         """One event from the scripted Lead's own accounting (the ground truth for its calls, spec §4)."""
@@ -412,16 +424,20 @@ class Ledger:
             self.count("revision_args", evidence, actor="lead", step=step,
                        note="supplied by the projection" if e.get("offered") else "")
         session = e.get("session")
+        index = self.calls_read.get(session, 0)  # this call's place among its session's recorded calls
+        self.calls_read[session] = index + 1
         if (earlier := self.in_flight.pop(session, None)) is not None:  # not its last call: the Lead's after all
             self.observations.remove(earlier)
             self.count("refusals", earlier["evidence"], actor="lead", step=earlier["step"])
+            self.entries[-1]["seq"] = earlier["seq"]  # where it happened, before the call that followed it
         if e.get("ok") is False:
             refused = {**evidence, "stopped": e.get("stopped")}
             code = ((e.get("stopped") or {}).get("error") or {}).get("code")
-            if session in self.killed and code == "BROKER_UNREACHABLE":
+            if session in self.killed and index == self.killed[session] and code == BROKER_UNREACHABLE:
                 # The call in flight when the test killed the session is refused because the kill took the broker
                 # with it: the scenario's doing, recorded and never the Lead's refusal (register E386). Only the
-                # session's last call: a later one from it counts this refusal after all.
+                # first call recorded after the kill, and only while none follows it: an earlier refusal, or this
+                # one once the session calls again, is the Lead's.
                 self.observe("killed_in_flight", evidence=refused, step=step,
                              note="the call in flight when the test killed the session")
                 self.in_flight[session] = self.observations[-1]

@@ -5440,7 +5440,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** The pull request from `feat/e386-forced-kill-refusal`: the scripted operator tells the ledger which Lead session it killed, and the ledger records that session's last call, when it is refused `BROKER_UNREACHABLE`, as the scenario's (`killed_in_flight`, shown in the summary) instead of counting it under `refusals`; any other code, any other session, or a call the killed session made after it still counts (`vertical-uat.md` §4's `refusals` row amended). The re-measure of 2026-11-27 (`f848983e`) did not observe the refusal, so no counter moves today
+**By:** PR #636: the scripted operator tells the ledger which Lead session it killed and how many of its calls were already recorded, and the ledger records the first call that session records after the kill, when it is refused `BROKER_UNREACHABLE` and no other call follows it, as the scenario's (`killed_in_flight`, shown in the summary) instead of counting it under `refusals`; any other code, any other session, or a call the killed session made after it still counts (`vertical-uat.md` §4's `refusals` row amended). The re-measure of 2026-11-27 (`f848983e`) did not observe the refusal, so no counter moves today
 
 *Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
 

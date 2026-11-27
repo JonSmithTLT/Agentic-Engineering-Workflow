@@ -299,10 +299,14 @@ The foundational entrypoints are 8,879 B, 8,827 B and 8,830 B respectively.
 Their bundles are 9,964 B, 10,097 B and 9,815 B. The two optional additions
 copy 6,972 B and 7,982 B. These are UTF-8 and copied file bytes.
 
-The generated Lead guide's on-demand staffing section grows from 746 B to
-774 B. The per-request contained pool measures 26,755 B with messaging on
-and 26,455 B with it off, a zero-byte change in either mode. The 40,000 B cap
-and 9,438 B operator reserve remain as recorded.
+The named Lead staffing section grows from 776 B to 804 B, including
+its heading. Its body grows from 746 B to 774 B. The contained pool gate's
+fixture measures 26,755 B with messaging on and 26,455 B with it off,
+a zero-byte change in both modes. The contained projection with the
+current Lead skill copy adds the existing 206 B listing in each mode.
+With the new staffing section loaded, those totals are 27,765 B and
+27,465 B, leaving 2,797 B and 3,097 B respectively under the 40,000 B cap
+after holding the 9,438 B operator reserve.
 
 Use the green delivery build at Monday's UAT preflight. If it has not
 qualified by then, use the previously approved baseline and record which

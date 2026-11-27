@@ -5436,7 +5436,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `source-research` 0.1.0 ships as the `researcher` v3 foundation, from the public text reviewed in #642. The card retains optional `empirical-evaluation`.
+**By:** PR #643 and ADR-0006's 2026-11-27 delivery amendment. `source-research` 0.1.0 ships as the `researcher` v3 foundation, from the public text reviewed in #642. The card retains optional `empirical-evaluation`.
 
 *Later notes: `notes.d/E396/`, oldest first (`python tools/register.py show E396`).*
 
@@ -5446,7 +5446,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `general-implementation` 0.1.0 ships as the `engineer` v6 foundation, from the public text reviewed in #642. `test-design` returns to the optional list.
+**By:** PR #643 and ADR-0006's 2026-11-27 delivery amendment. `general-implementation` 0.1.0 ships as the `engineer` v6 foundation, from the public text reviewed in #642. `test-design` returns to the optional list.
 
 *Later notes: `notes.d/E397/`, oldest first (`python tools/register.py show E397`).*
 
@@ -5456,7 +5456,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `plan-review` 0.1.0 ships as the `plan_assessor` v4 foundation, from the public text reviewed in #642. The assessor uses its existing read-only operations and needs no execution.
+**By:** PR #643 and ADR-0006's 2026-11-27 delivery amendment. `plan-review` 0.1.0 ships as the `plan_assessor` v4 foundation, from the public text reviewed in #642. The assessor uses its existing read-only operations and needs no execution.
 
 *Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
 

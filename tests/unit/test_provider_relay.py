@@ -862,8 +862,9 @@ def test_the_label_names_the_upstream_and_never_a_credential():
     ("POST /v1/chat/completions", "X-Api-Key: {stale}"),
     ("POST /v1/chat/completions", "X-Request-Id: {stale}"),
     ("POST /v1/chat/completions", "ChatGPT-Account-Id: {stale}"),
+    ("POST /v1/chat/completions", "Accept-Encoding: gzip, {stale}"),
     ("GET /v1/models?key={stale}", "Accept: */*"),
-], ids=["bearer", "api-key", "other-header", "account-header", "target"])
+], ids=["bearer", "api-key", "other-header", "account-header", "accept-encoding", "target"])
 def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(line, header):
     """A sentinel no relay of the run issued (an earlier session's, kept in a store), in a credential header, in any
     other header or in the request's target, is refused 401 with its reason and what to do, before anything is
@@ -2310,16 +2311,19 @@ def test_a_successful_streamed_answer_is_relayed_byte_for_byte_as_before():
     ([], "identity"),  # none at all would accept any coding
     (["identity"], "identity"),
     (["gzip, deflate, br, zstd"], "gzip, deflate"),
-    (["br;q=1.0, gzip;q=0.8, *;q=0.1"], "gzip;q=0.8"),
+    (["br;q=1.0, gzip;q=0.8, *;q=0.1"], "gzip;q=0.8, deflate;q=0.1, identity;q=0.1, x-gzip;q=0.1"),
+    (["identity;q=0, *"], "identity;q=0, deflate, gzip, x-gzip"),  # what * accepted among them, still accepted
+    (["gzip, *;q=0"], "gzip, deflate;q=0, identity;q=0, x-gzip;q=0"),
+    (["*, *;q=0.5"], "deflate, gzip, identity, x-gzip"),  # the first * names them all
     (["deflate;q=0.5, x-gzip, GZIP;q=0.9"], "deflate;q=0.5, x-gzip, GZIP;q=0.9"),  # the client's order and weights
     (["br", "gzip, zstd"], "gzip"),  # two lines read as one list
     (["br, zstd, gzip, br"], "gzip"),
     (["br, zstd"], "identity"),
-    (["*"], "identity")])
+    (["*"], "deflate, gzip, identity, x-gzip")])
 def test_the_relay_asks_the_upstream_only_for_codings_it_can_read(lines, forwarded):
-    """The upstream is asked only for codings the relay reads when it cleans a failed answer (gzip, deflate and
-    identity): the client's own of those keep their order and weights, and with none left the relay asks for
-    identity."""
+    """The upstream is asked only for codings the relay reads when it cleans a failed answer
+    (``relay.READABLE_CODINGS``): the client's own of those keep their order and weights, a ``*`` stands with its
+    weight for those the client does not name, and with none left the relay asks for identity."""
     request = b"GET /v1/models HTTP/1.1\r\n" + b"".join(b"Accept-Encoding: %s\r\n" % v.encode() for v in lines)
     upstream_got, answer, _ = exchange(Seam(), request + b"\r\n")
     sent = headers(upstream_got.split(b"\r\n\r\n")[0])

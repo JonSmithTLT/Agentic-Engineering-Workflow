@@ -284,10 +284,21 @@ class Proxy:
 def _accept_encoding(values: Collection[str]) -> str:
     """The ``Accept-Encoding`` the relay sends upstream for the client's ``values`` (its ``Accept-Encoding`` lines):
     only the codings the relay reads (:data:`READABLE_CODINGS`), each with its weight and in the order the client gave
-    them, so a failed answer always comes in one the relay can clean (:meth:`ProviderRelay._failed_answer`). With none
-    of them left, or no such line (which would accept any coding, RFC 9110 §12.5.3), it is ``identity``."""
-    kept = [element.strip() for value in values for element in value.split(",")
-            if element.split(";", 1)[0].strip().lower() in READABLE_CODINGS]
+    them, so a failed answer always comes in one the relay can clean (:meth:`ProviderRelay._failed_answer`). A ``*``
+    stands, with its weight, for each of them the client does not name (RFC 9110 §12.5.3), so what the client accepted
+    among them is still accepted. With none of them left, or no such line (which would accept any coding), it is
+    ``identity``."""
+    elements = [element.strip() for value in values for element in value.split(",") if element.strip()]
+    named = {element.split(";", 1)[0].strip().lower() for element in elements}
+    kept: list[str] = []
+    for element in elements:
+        coding, semicolon, weight = element.partition(";")
+        coding = coding.strip().lower()
+        if coding in READABLE_CODINGS:
+            kept.append(element)
+        elif coding == "*":
+            kept += [other + semicolon + weight for other in sorted(READABLE_CODINGS - named)]
+            named |= READABLE_CODINGS
     return ", ".join(kept) or "identity"
 
 

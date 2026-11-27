@@ -1048,6 +1048,7 @@ None.
 - `aew.knowledge.records`
 - `aew.knowledge.render`
 - `aew.operator`
+- `aew.process_kind`
 - `aew.roles`
 - `aew.switch_offer`
 - `aew.util`

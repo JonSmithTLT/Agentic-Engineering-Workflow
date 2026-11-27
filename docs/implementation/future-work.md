@@ -5430,7 +5430,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** Branch `feat/e384-readiness-seat-row` (its pull request number is not yet known): doctor's `lead-seat` row, judged as resume judges the seat (one `resume_refusal` that resume and the row both read), PASS while the holding OpenCode session runs and WARN naming it, plain `aew opencode`, and the takeover once it is gone; no row for a vacant seat or one whose process this terminal cannot judge. Strictly additive, pinned: every other doctor row and verdict is unchanged. The vertical's V3 stale-lead-session case now names cause and fix and stays red only on the open fallback (C12)
+**By:** #640: doctor's `lead-seat` row, judged as resume judges the seat (one `resume_refusal` that resume and the row both read), PASS while the holding OpenCode session runs and WARN naming it, plain `aew opencode`, and the takeover once it is gone; no row for a vacant seat or one whose process this terminal cannot judge (another host or user, or inside a contained Lead's or a worker's sandbox). Strictly additive, pinned: every other doctor row and verdict is unchanged. The vertical's V3 stale-lead-session case now names cause and fix and stays red only on the open fallback (C12)
 
 *Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
 

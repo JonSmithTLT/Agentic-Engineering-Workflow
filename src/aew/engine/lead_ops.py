@@ -15,10 +15,11 @@ superseded credentials, so a superseded Lead can never overwrite newer state.
 from __future__ import annotations
 
 import copy
+import os
 from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
-from aew import operator
+from aew import operator, process_kind
 from aew.engine import approval
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
@@ -82,7 +83,11 @@ def seat_doctor(lead: dict[str, Any]) -> tuple[str, str] | None:
     it (:func:`resume_refusal`). PASS while it runs; WARN naming the dead session and the fix once it is gone: plain
     ``aew opencode`` resumes the seat, or, where resume is refused, the takeover. None, so no row, where nothing holds
     the seat or the seat records no OpenCode session of this host and user whose process this terminal can judge: the
-    `lead` row reports the seat's status either way. A read: it changes nothing."""
+    `lead` row reports the seat's status either way. That includes a process inside a contained Lead's or a worker's
+    sandbox: it keeps the host name and the uid but has its own pid namespace, so the seat's host-side process is not
+    visible from it and would read as gone (#640 review, M1). A read: it changes nothing."""
+    if any(os.environ.get(name) for name in (process_kind.LEAD_CONTAINED_ENV, process_kind.AGENT_ENDPOINT_ENV)):
+        return None
     refused = resume_refusal(lead)
     if lead["status"] == "vacant" or (refused is not None and refused[0] in UNJUDGED):
         return None

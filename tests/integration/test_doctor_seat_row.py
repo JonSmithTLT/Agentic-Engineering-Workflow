@@ -10,6 +10,7 @@ import pytest
 from aewflow import sample_project
 
 from aew.engine import api, lead_ops, resume_ops
+from aew import process_kind
 from aew.engine.api import Engine
 from aew.harness import procs, seat
 
@@ -91,6 +92,17 @@ def test_no_seat_row_where_nothing_holds_the_seat_or_its_session_cannot_be_judge
             return state
 
         monkeypatch.setattr(engine.store, "current", current)
+    assert seat_rows(engine) == []
+    assert lead_ops.seat_doctor(engine.store.current()["lead"]) is None
+
+
+@pytest.mark.parametrize("variable", [process_kind.LEAD_CONTAINED_ENV, process_kind.AGENT_ENDPOINT_ENV])
+def test_no_seat_row_inside_a_sandbox_that_cannot_see_the_seats_process(held, monkeypatch, variable):
+    """A contained Lead or a worker keeps the host name and uid but not the pid namespace: the seat's host-side
+    process is invisible there, so it must not be reported dead (#640 review, M1)."""
+    _, engine, _ = held
+    monkeypatch.setenv(variable, "1")
+    monkeypatch.setattr(procs, "same_process", lambda *_: False)
     assert seat_rows(engine) == []
     assert lead_ops.seat_doctor(engine.store.current()["lead"]) is None
 

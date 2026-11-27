@@ -57,6 +57,17 @@ items:
   what: 'The V-01 burn-down''s Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which
     decision does the projection offer, and is it the operator''s?"'
 
+- row: E381
+  needs: design
+  owner: designer
+  due: V-01
+  what: 'The design of the V-01 wire track''s actions that have none (the burn-down''s Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`,
+    which STG-03''s closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381,
+    E382 and E383 now hold their work; the shape of each is the designer''s'
+  blocks:
+  - E382
+  - E383
+
 - row: E99
   needs: design
   owner: designer

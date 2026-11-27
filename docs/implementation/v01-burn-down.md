@@ -3,7 +3,8 @@
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
 and each question below is the operator's or the designer's. The operator answered Q1, Q5, Q7 and Q10 on 2026-11-26.
-It changes no threshold: those are
+The alpha scripted gate passed at the re-measure of 2026-11-27 (`f848983e`); the strict gate still fails 4 of its 8
+cases (below, "The order"). It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -137,7 +138,7 @@ designer's session's to decide:
 Two tracks. The alpha gate is the personal alpha's scripted gate ([the register](future-work.md), §1;
 `tests/helpers/vertical/alpha.py`), which excuses the G3 steps not yet landed. The strict gate is the vertical itself.
 
-**The alpha gate** is the near-term bar (the operator's answer to Q7). The re-measure's ledgers fail it on two lines, V1's decisions and V2-forced's takeover.
+**The alpha gate** is the near-term bar (the operator's answer to Q7). The re-measure's ledgers of 2026-11-26 failed it on two lines, V1's decisions and V2-forced's takeover; both are clear since the three fixes below.
 1. **C15** (E385, done: #602 merged on 2026-11-26). It turns G3 #213 green and does not touch the alpha.
 2. **C1** (E335, done: #597). It clears the alpha's V1 line.
 3. **C7 + C8** (E376 and E377, done: #603). It clears the V2-forced line. **The alpha is then
@@ -146,6 +147,33 @@ Two tracks. The alpha gate is the personal alpha's scripted gate ([the register]
    (C1), since cleared by #597. Q5's
    answer settles its counting: the consent screen is a setup fixture, and the resume code counts under
    `pin_reentries`.
+
+**The alpha scripted gate passes** (the re-measure of 2026-11-27, `main` at `f848983e`, the merge of #617). Each of
+the 8 cases the alpha reads ran once, one per process, on Linux with steering off:
+`pytest -p no:xdist --lane vertical`, then the lane's own reporter over their ledgers, `python -m vertical.report`
+(`tests/helpers/vertical/report.py`, which calls `alpha.summary`). The verdict is that job summary's; nothing else
+records it.
+- **Alpha scripted gate: PASS.** Both lines that failed clear: V1's decisions are exactly plan and publish (C1), and
+  V2-forced has no takeover (C7). The other alpha lines hold: the hard limits, V1's operator counters at 0, a result
+  reached where one is asked, and the four V3 cases.
+- **Three excused G3 fallbacks:** open (step 3), plan (step 5) and publish (step 7, held by G3, I4-06 and I4-B7).
+  They are excused, not landed.
+- **Alpha receipt: NOT RECORDED.** It is a real-model run the operator starts, not part of the scripted gate.
+- **Each case ran once,** so the pass does not show stability.
+
+The strict gate at the same measure still fails 4 of the 8. Each failure, as the measure's report reads it, and the
+clusters it maps to:
+
+| Case | Strict | Fails on | Clusters |
+|---|---|---|---|
+| V1 steering-off | fail | `guessed_commands` 1 (`ticket_draft` on an empty project); `shell_aew_calls` 1 (`aew plan accept`); `revision_args` 7; the open, plan and publish fallbacks | C3; C2 (E163; E351's `cli_fallback` still runs from the shell); C4; C12 |
+| V2-forced-mid-stage | fail | `pin_reentries` 1 (the seat resume); `help_calls` 2; `guessed_commands` 1; `shell_aew_calls` 3 (the plan accept, `stage continue`, `work transition --to RUNNING`); `revision_args` 9; `refusals` 2 (the stage's `resolve`, refused for want of a choice and a rationale, and `stage continue`); the open, plan, reopen and publish fallbacks | `pin_reentries` by Q5 until REATTACH_LEAD (C12, E382); C5 (E374, E388); C3; C2; C4; C12. No `BROKER_UNREACHABLE` refusal this run: C16 not observed |
+| V1 evidence-mismatch | fail | `help_calls` 1; `guessed_commands` 1; `shell_aew_calls` 3 (the plan accept, `gate show` twice); `revision_args` 4; `refusals` 1 (the driver's `gate show --expect-rev`); the open and plan fallbacks; it ends at RUNNING with `ticket_request_review` BLOCKED, and no result | C11 (E380, with `hints.py`'s `--expect-rev`); C3; C2; C4; C12 |
+| V1 semantic-conflict | fail | `help_calls` 47; `shell_aew_calls` 47 (46 of them `aew integrate requeue`); `refusals` 47 (`ticket_prepare` in a loop, and one `integration_publish`); `revision_args` 99; `guessed_commands` 1; the open, plan and publish fallbacks; no result | C9 (E378), the loop; C2; C3; C4; C12 |
+| V3 check-changes-snapshot, model-id-provider-prefix, model-not-listed, provider-env-unset | pass | - | - |
+
+With the alpha passed, the wire track (C12) now follows, by the operator's answer to Q7 above ("this seems after alpha
+when we align the wires").
 
 **The strict gate.** The wire track and the rest. In the re-measure's proposed order, each after the alpha track:
 1. **C10** (E379), after Q3: turns V1 compatible-move green.
@@ -170,7 +198,8 @@ G3 #213 and V1 compatible-move.
 The operator's four, as they were put, each with the operator's answer of 2026-11-26. Of the designer's six, Q8 was
 answered by the operator on 2026-11-26 (after the operator's); Q2 to Q4, Q6 and Q9 are open, and are owned by [what the operator and
 designer owe](decisions-due.md), each on the row it holds: Q2 on E378, Q3 on E379, Q4 on E373, Q6 on E380 and Q9 on
-E374 (`python tools/register.py show <row>`).
+E374 (`python tools/register.py show <row>`). The wire track's actions with no design, ATTACH_LEAD, REATTACH_LEAD and APPROVE_INTEGRATION
+(C12, after Q7), are owed by the designer on E381's item there, which blocks E382 and E383.
 
 - **Q1 (operator; vertical-uat.md §2):** "With steering on, when the projection marks the live run's wait `woken: true`, may the scripted Lead end its turn and wait for AEW's wake instead of calling `harness_wait`, so that the wait is not counted under `mechanical_calls`?"
   - **Answered yes** (operator, 2026-11-26): "For q1 yes. That honestly just seems like a bug and sint how aew works now."

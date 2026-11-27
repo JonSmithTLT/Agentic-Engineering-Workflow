@@ -63,6 +63,8 @@ from aew.errors import (
 )
 from aew.harness import contract as K
 from aew.harness import runlog
+from aew.harness.base import RELAY_FAMILY_SHOWN
+from aew.harness.containment.netns import NETWORK_MODES, NOT_PROVIDED
 from aew.history import manifest as M
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
@@ -624,7 +626,7 @@ class Projector:
                        if next_after else None)
         return self.listing(items, next_cursor)
 
-    def run(self, inv_id: str) -> dict[str, Any]:
+    def _run_invocation(self, inv_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         self.require("runs")
         check_id(inv_id)
         view = self.state
@@ -632,7 +634,32 @@ class Projector:
             view = self.archive.rehydrate_invocation(view, inv_id) or view
         if inv_id not in view["invocations"] or _custody(view["invocations"][inv_id]):
             raise NotFound(f"no invocation {inv_id}")
-        return self.envelope(self.invocation_item(inv_id, view["invocations"][inv_id], view))
+        return view, view["invocations"][inv_id]
+
+    def run(self, inv_id: str) -> dict[str, Any]:
+        view, invocation = self._run_invocation(inv_id)
+        return self.envelope(self.invocation_item(inv_id, invocation, view))
+
+    def run_provider_routes(self, inv_id: str) -> dict[str, Any]:
+        """The proposed E148 response data, using the same invocation lookup and run bound as /runs/{id}."""
+        _, invocation = self._run_invocation(inv_id)
+        items = []
+        for run in _bounded(invocation.get("runs") or []):
+            run_id = run["run"]
+            _, record = self._observe(run_id)
+            containment = (record or {}).get("containment")
+            network = containment.get("network") if isinstance(containment, dict) else None
+            mode = network.get("mode") if isinstance(network, dict) else network
+            relay = network.get("provider_relay") if isinstance(network, dict) else None
+            family = network.get("relay_family") if isinstance(network, dict) else None
+            items.append({
+                "id": run_id,
+                "network_mode": mode if mode in (*NETWORK_MODES, NOT_PROVIDED) else None,
+                "provider_relay": relay if relay in ("configured", "none") else None,
+                "relay_family": family if relay == "configured" and isinstance(family, str)
+                and family in RELAY_FAMILY_SHOWN else None,
+            })
+        return {"invocation": inv_id, "runs": items}
 
     # ---------------------------------------------------------------- evidence
 

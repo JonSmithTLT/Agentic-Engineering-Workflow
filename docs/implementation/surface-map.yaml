@@ -1443,7 +1443,8 @@ commands:
       listed_twice or pinned_elsewhere; a plan revision held to the hash its unit pins, a decision to the hash the
       transition that wrote it recorded, the whole log read before one is refused; a decision issued and then
       deleted is unreadable, a damaged log log_damaged), and says what to do; a decision recorded before the log
-      began is INTEGRITY_ERROR before_log, not printed and not called damage. The operator's ruling of 2026-11-27 added the plan
+      began (no log, or an issued id dated before the log's first transition in a log that began late) is
+      INTEGRITY_ERROR before_log, not printed and not called damage; any other unwritten decision is not_pinned. The operator's ruling of 2026-11-27 added the plan
       revision and the decision. A Lead session runs it in its own shell (lead_broker.CONTAINED_LOCAL), every form
       alike. No typed tool yet: the structured, bounded Evidence read for the typed surface (the designer's decision
       of 2026-10-06, `aew evidence show`) is E170's follow-on"

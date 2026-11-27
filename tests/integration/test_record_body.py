@@ -501,16 +501,35 @@ def test_a_decision_recorded_before_the_transition_log_began_is_refused_without_
     assert "changed outside AEW" not in error["message"] and NEXT_STEP not in error["message"]
 
 
+def test_a_planted_decision_above_the_counter_with_an_early_time_is_refused_as_not_pinned(tmp_path):
+    """A planted record cannot pass for one recorded before the log began by claiming an early time: its id was never
+    issued, so it is damage (the quick check of #650, G1)."""
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    recorded = (p.root / ".aew" / "decisions" / f"{decision}.md").read_text(encoding="utf-8")
+    at = next(line for line in recorded.splitlines() if line.startswith("at: "))
+    planted = recorded.replace(decision, "D-0999").replace(at, "at: '2001-01-01T00:00:00Z'")
+    (p.root / ".aew" / "decisions" / "D-0999.md").write_text(planted, encoding="utf-8", newline="\n")
+    error = damaged(p, "D-0999", "not_pinned")
+    assert "before the transition log began" not in error["message"]
+
+
 def test_a_deleted_decision_is_refused_as_damage_not_as_an_unknown_id(tmp_path):
     """Its number was issued (it is within the decision counter), so a missing file is a record destroyed, not one
     that never existed (the review of #650, F3)."""
     p = sample_project(tmp_path)
     _, decision = depend(p, tmp_path)
-    (p.root / ".aew" / "decisions" / f"{decision}.md").unlink()
+    path = p.root / ".aew" / "decisions" / f"{decision}.md"
+    recorded = path.read_bytes()
+    path.unlink()
     error = damaged(p, decision, "unreadable")
     assert error["details"]["path"] == f"decisions/{decision}.md"
     issued = load_control(p.root)["counters"]["decision"]
     assert refusal(p, f"D-{issued + 1:04d}")["details"]["reason"] == "unknown_record"  # beyond it: never issued
+    path.write_bytes(recorded)  # restored: D-0001 exists again, and the malformed forms of its number must not reach it
+    assert decision == "D-0001" and body_of(p, decision)
+    for malformed in ("D-1", "D-0", "D-0000"):  # not an id AEW issues, whatever its number (the quick check, G2)
+        assert refusal(p, malformed)["details"]["reason"] == "unknown_record", malformed
 
 
 def test_a_damaged_transition_log_refuses_a_decision_read_with_a_reason(tmp_path):

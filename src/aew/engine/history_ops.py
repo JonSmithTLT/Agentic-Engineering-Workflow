@@ -190,7 +190,7 @@ class HistoryCommands:
             return self._plan_body(state, record_id, plan)
         if DECISION_ID.fullmatch(record_id) and (
                 (self.k.aew_root / "decisions" / f"{record_id}.md").is_file()
-                or int(record_id[2:]) <= (state.get("counters") or {}).get("decision", 0)):
+                or self._issued(state, record_id)):
             # A decision AEW issued (its number is within the counter) whose file is gone is damage, refused as
             # unreadable, not an unknown id (the review of #650, F3).
             return self._decision_body(state, record_id)
@@ -373,9 +373,13 @@ class HistoryCommands:
                 claimed = str(parse_frontmatter(raw.decode("utf-8"), source=rel)[0].get("at"))
             except (AEWError, UnicodeDecodeError, AttributeError):
                 claimed = None
-            if first is None or (claimed is not None and claimed < first["at"]):
+            since = (state.get("outbox") or {}).get("since") or 0
+            if first is None or (since > 0 and self._issued(state, decision_id)
+                                 and claimed is not None and claimed < first["at"]):
                 # Recorded before this project's transition log began (an engine older than ADR-0012): nothing pins
                 # it, which is not damage (the review of #650, F2). Still not printed, since nothing can check it.
+                # Only an id AEW issued, in a log that began after the project did, can be one (quick check, G1):
+                # a planted id above the counter, or any id in a log that holds every revision, is not_pinned.
                 began = ("this project has no transition log" if first is None
                          else f"the transition log begins at revision {first['revision']}, {first['at']}")
                 raise IntegrityError(
@@ -402,6 +406,16 @@ class HistoryCommands:
             # 2026-11-27 to the operator's ruling: "a lead being able to view decision records").
             return {**out, "fields": meta, "record": raw.decode("utf-8")}
         return {**out, "body": body}
+
+    @staticmethod
+    def _issued(state: dict[str, Any], record_id: str) -> bool:
+        """Whether ``record_id`` is a decision id AEW issued: exactly ``format_id("D", n)`` with ``n`` from 1 to the
+        decision counter (the quick check of #650, G2: ``D-1``, ``D-0`` and ``D-0000`` are not)."""
+        try:
+            n = int(record_id[2:])
+        except ValueError:
+            return False
+        return record_id == format_id("D", n) and 1 <= n <= (state.get("counters") or {}).get("decision", 0)
 
     def _decision_pin(self, state: dict[str, Any], rel: str) -> tuple[str | None, dict[str, Any] | None]:
         """The hash the transition that wrote ``rel`` recorded for it, newest first, and the oldest transition the log

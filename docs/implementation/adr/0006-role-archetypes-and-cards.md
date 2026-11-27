@@ -289,3 +289,45 @@ until a browser capability, supported execution environment, and preview
 access are provided. The designer still owns E395 sign-off and the
 installation-time license and provenance decision. The proposed card is v1.
 The four proposed delivery version bumps remain recorded above.
+
+## Amendment 2026-11-27 — deliver dedicated foundations and optional security skills (E136, E396–E398)
+
+On 2026-11-27, the operator confirmed “Implement the proposed plan” after asking for
+researched updates, small foundations and public security text that “should
+describe method only.” The public-text review in #642 cleared the exact
+candidate bundles in `e1cf8e690fe6d326b0aea1f68b6049db65e5ae07`.
+The public-text review in #646 cleared `security-control-validation` 0.2.2
+at `934a8cb4971dbe475e7005ef76ef267ac617940f`. This batch explicitly rehashes and copies the five approved runtime bundles,
+with evaluator files outside the install. Each is labelled unevaluated for
+the personal alpha.
+
+| Card | Version change | Foundational skill | Optional change |
+| --- | --- | --- | --- |
+| `researcher` | 2 → 3 | `source-research` 0.1.0 | Retains `empirical-evaluation` |
+| `engineer` | 5 → 6 | `general-implementation` 0.1.0 | Returns `test-design` to optional |
+| `plan_assessor` | 3 → 4 | `plan-review` 0.1.0 | Uses the existing read-only assessment contract |
+| `security_reviewer` | 1 → 2 | `security-review`, retained | Adds `agent-security-review` 0.2.1 and `security-control-validation` 0.2.2 |
+
+Each new dispatch pins its card and foundational skill. Optional skills are
+offered when shipped and are loaded for a relevant assignment. An invocation
+already in flight keeps the card and pack it pinned at dispatch.
+
+The foundational entrypoints are 8,879 B, 8,827 B and 8,830 B respectively.
+Their bundles are 9,964 B, 10,097 B and 9,815 B. The two optional additions
+copy 6,972 B and 8,115 B. These are UTF-8 and copied file bytes.
+
+The named Lead staffing section grows from 776 B to 804 B, including
+its heading. Its body grows from 746 B to 774 B. The contained pool gate's
+fixture measures 26,755 B with messaging on and 26,455 B with it off,
+a zero-byte change in both modes. The contained projection with the
+current Lead skill copy adds the existing 206 B listing in each mode.
+With the new staffing section loaded, those totals are 27,765 B and
+27,465 B, leaving 2,797 B and 3,097 B respectively under the 40,000 B cap
+after holding the 9,438 B operator reserve.
+
+Use the green delivery build at Monday's UAT preflight. If it has not
+qualified by then, use the previously approved baseline and record which
+skills are deferred. The offline checks exercise packaging, card dispatch
+and skill exposure. A run record must show actual model loading before
+any test or UAT observation is credited with it. E395 remains a proposal
+awaiting designer sign-off.

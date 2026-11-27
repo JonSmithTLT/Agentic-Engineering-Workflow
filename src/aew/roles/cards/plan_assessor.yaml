@@ -1,13 +1,13 @@
 schema: aew/role/v1
 role: plan_assessor
 display_name: Plan Assessor
-version: 3
+version: 4
 extends: reviewer
 purpose: Independent assessment of a unit's accepted plan revision before the work it plans is dispatched (E160).
 use_when:
   - a Ticket's or a Story's or Epic's accepted plan needs an independent assessment before the work it plans starts
 # No responsibilities of its own: an assessor's are its scope's, in its pack (aew.knowledge.context._scope_duties; E366).
-skills: [adversarial-review]
+skills: [plan-review]
 required_capabilities: [exact_code_search]
 restrict:
   operations: [submit.plan_assessment, context.read]

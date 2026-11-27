@@ -35,6 +35,20 @@
     "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
    }
   },
+  "agent-security-review": {
+   "version": "0.2.1",
+   "label": "unevaluated",
+   "sha256": "b9561b716f11c68967a97c02b399270635051eb08a1b52956989a327152463b7",
+   "files": {
+    "SKILL.md": "39eeba35b0ac33935eb992f594c68ea2245698ca9e94a6b4c7018ddaa8c0b134",
+    "references/aew-boundaries.md": "8f60e5d3fa73d277c25477bc407e61913b5a565489f7f4a5d5c1fc7de3a2936f"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/agent-security-review",
+    "snapshot": "agent-security-review-0.2.1-39eeba35",
+    "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
   "c-development": {
    "version": "0.2.0",
    "label": "unevaluated",
@@ -151,6 +165,20 @@
     "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   },
+  "general-implementation": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "a25737be078c920d23e2c1c13564a5d730de3f6f2510ae9f7f2011f10e127a9b",
+   "files": {
+    "SKILL.md": "beef965a633f520e2ecaec1695fa24d615bfd69ab38fe683dfdfd5a7948026d3",
+    "references/checks.md": "fdbad02acd7471bde406aac406e0640261473df220e7affa80fe66553accc6ee"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/general-implementation",
+    "snapshot": "general-implementation-0.1.0-beef965a",
+    "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
   "mechanical-enumeration": {
    "version": "0.1.0",
    "label": "unevaluated",
@@ -163,6 +191,20 @@
     "candidate": "docs/skills/candidates/mechanical-enumeration",
     "snapshot": "mechanical-enumeration-0.1.0-3b56d432",
     "snapshot_holds": "the candidate folder in this repository: SKILL.md, references/ and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md and references/ verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
+   }
+  },
+  "plan-review": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "1595d44bd6feee894724d35bd19e148707af2269be3ea47e4bd39b5e213c6e22",
+   "files": {
+    "SKILL.md": "ffcf5f83ac3aa01c35abf97b988cff134618e9f72d528b0425cc90a2b8203033",
+    "references/review-questions.md": "a01fd6c039009a2d1b15115f7f15ff97df430d48f9e77cbf6214d0716b6db55b"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/plan-review",
+    "snapshot": "plan-review-0.1.0-ffcf5f83",
+    "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
    }
   },
   "python-development": {
@@ -193,6 +235,21 @@
     "snapshot_holds": "the candidate folder in this repository: SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped with SKILL.md verbatim and without evals/ (SKILL.md links no evals/ file), so the shipped SKILL.md's hash is the snapshot's, and this sha256 is not the candidate folder's"
    }
   },
+  "security-control-validation": {
+   "version": "0.2.2",
+   "label": "unevaluated",
+   "sha256": "60df0ab84feb00de12ae9fe73bcc92518543095443d72064cb3335ecf45a3a10",
+   "files": {
+    "SKILL.md": "936da1e3cdbf909f7d1f1344b828d018830d6b6c46a71c6e34630e85fbf8a4f2",
+    "references/aew-validation.md": "12fcb326aa915dec21debe763dc50d054e0b06354b068bd50aff16d8c7ca1c22",
+    "references/agent-trials.md": "9d5c938ac788e8198d940e2c06645a732881d859a3c6df9b4472aaa605f4f460"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/security-control-validation",
+    "snapshot": "security-control-validation-0.2.2-936da1e3",
+    "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
   "security-review": {
    "version": "0.1.0",
    "label": "unevaluated",
@@ -209,6 +266,20 @@
     "candidate": "docs/skills/candidates/security-review",
     "snapshot": "security-review-0.1.0-cec1178e",
     "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 3-5 (cryptography, secret lifetime, untrusted input) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
+   }
+  },
+  "source-research": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "6ca64ba5df5e678eaac046e942a052dc9cd0194995ff29eb0a296985941049f4",
+   "files": {
+    "SKILL.md": "203f4b8273f7c5b1c9c6c6983e0a4fc0f113f54406d0e94fe62478498776424d",
+    "references/provenance.md": "8058a85ced0182266fb56bc60212ecb10f6d62975aaf799728e8ed3c943bd7f5"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/source-research",
+    "snapshot": "source-research-0.1.0-203f4b82",
+    "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
    }
   },
   "technical-writing": {

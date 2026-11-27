@@ -10,7 +10,6 @@ test is ``tests/live/test_skills_live.py``, on the VM.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import posixpath
 import re
@@ -29,10 +28,11 @@ from aew.harness.opencode import projection
 from aew.knowledge import context as ctxmod
 
 SHIPPED = Path(skills.__file__).resolve().parent / skills.SHIPPED
-SHIPS = ["acceptance-verification", "adversarial-review", "c-development", "c-review", "ci-evidence-triage",
-         "codebase-investigation", "debugging-root-cause-analysis", "delegation-handoffs", "empirical-evaluation",
-         "engineering-planning", "mechanical-enumeration",
-         "python-development", "requirements-clarification", "security-review", "technical-writing", "test-design"]
+SHIPS = ["acceptance-verification", "adversarial-review", "agent-security-review", "c-development", "c-review",
+         "ci-evidence-triage", "codebase-investigation", "debugging-root-cause-analysis", "delegation-handoffs",
+         "empirical-evaluation", "engineering-planning", "general-implementation", "mechanical-enumeration",
+         "plan-review", "python-development", "requirements-clarification", "security-control-validation",
+         "security-review", "source-research", "technical-writing", "test-design"]
 UNSHIPPED = "never-shipped"  # a name no skill will take, so these tests never churn as skills ship
 
 
@@ -255,31 +255,18 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
     # and `technical_writer` (E167) starts at 1. Its fourth moves the four cards it offers a skill to one more:
     # code_reviewer to 6, verifier and investigator to 4, researcher to 2. The foundational skills then move the four
     # cards that gain one in `skills:` once more: engineer and investigator to 5, planner to 4, plan_assessor to 3.
+    # The dedicated foundations and optional security skills move the four affected cards once more.
     assert {c: cards[c].meta["version"] for c in ("code_reviewer", "verifier", "engineer", "python_engineer",
                                                   "c_engineer", "investigator", "planner", "technical_writer",
-                                                  "researcher", "plan_assessor")} == {
-        "code_reviewer": 6, "verifier": 4, "engineer": 5, "python_engineer": 3, "c_engineer": 3, "investigator": 5,
-        "planner": 4, "technical_writer": 1, "researcher": 2, "plan_assessor": 3}
+                                                  "researcher", "plan_assessor", "security_reviewer")} == {
+        "code_reviewer": 6, "verifier": 4, "engineer": 6, "python_engineer": 3, "c_engineer": 3, "investigator": 5,
+        "planner": 4, "technical_writer": 1, "researcher": 3, "plan_assessor": 4, "security_reviewer": 2}
 
 
-# One foundational skill per card, in `skills:` (the operator, 2026-11-26: "it was planned for all role cards to have 1
-# foundational skill"), where E136's fourth batch moved one of a card's offered skills there or added one. The seven
-# cards that already requested exactly one are not listed: `test_every_built_in_card_requests_exactly_one...` reads
-# them from the cards. A batch below names a skill where it first reached a card; a card's foundational one has since
-# moved from its optional list to `skills:`.
-FOUNDATIONAL = {"engineer": "test-design", "investigator": "codebase-investigation",
-                "planner": "engineering-planning", "plan_assessor": "adversarial-review"}
-# The cards that wait for their foundational skill to be written, each with the register row that tracks it.
-WAITING = {"researcher": "E396"}
-
-
-def open_register_rows() -> set[str]:
-    """The ids of the register's open rows, as `tools/register.py` reads them (its ``rows``: outside §9 *Closed*)."""
-    spec = importlib.util.spec_from_file_location("register", Path(__file__).resolve().parents[2] / "tools/register.py")
-    assert spec is not None and spec.loader is not None
-    register = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(register)
-    return {row["id"] for row in register.rows(register.load()) if row["id"]}
+# Cards whose foundations were assigned or replaced in the E136 batches and E396–E398.
+FOUNDATIONAL = {"engineer": "general-implementation", "investigator": "codebase-investigation",
+                "planner": "engineering-planning", "plan_assessor": "plan-review",
+                "researcher": "source-research", "security_reviewer": "security-review"}
 
 
 # E136's first batch: the two candidates whose text is public in this repository, on the cards they fit, as
@@ -330,7 +317,9 @@ BATCH_4 = {
     "verifier": ["ci-evidence-triage"],
     "code_reviewer": ["ci-evidence-triage"],
 }
-BATCHES = (BATCH_1, BATCH_2, BATCH_3, BATCH_4)
+BATCH_5 = {"security_reviewer": ["agent-security-review", "security-control-validation"]}
+
+BATCHES = (BATCH_1, BATCH_2, BATCH_3, BATCH_4, BATCH_5)
 # Every built-in card's offered list, whole: E127's language skills on the default implementer, then E136's batches.
 # A card's foundational skill is requested, so it is not in its offered list.
 OFFERED = {card: [name for name in ([] if card != "engineer" else ["python-development", "c-development"])
@@ -400,19 +389,10 @@ def test_the_technical_writer_is_an_implementer_card_whose_run_is_told_to_load_t
     assert said == [said[0]] and said[0].startswith("- Load `technical-writing` with the `skill` tool")
 
 
-def test_every_built_in_card_requests_exactly_one_foundational_skill_or_waits_for_it_on_a_named_row(tmp_path):
-    """The operator, 2026-11-26: every role card has one foundational skill, the layer that says how a specialised
-    role proceeds. Each built-in card's ``skills:`` holds exactly one shipped skill, and its run is told to load it.
-    A card whose skill is not written yet holds none and is named here with the row that tracks the skill, so a new
-    card without one, or a second skill on a card, fails. The row is read from the register: a card may wait only
-    while its row is open, so closing the row without giving the card its skill fails here too."""
-    tracked = open_register_rows()
+def test_every_built_in_card_requests_exactly_one_foundational_skill(tmp_path):
+    """Every built-in card requests one shipped foundational skill and its run is told to load it."""
     for card in roles.builtin_cards().values():
         requested = card.meta.get("skills") or []
-        if card.id in WAITING:
-            assert requested == [], card.id
-            assert WAITING[card.id] in tracked, f"{card.id} waits on {WAITING[card.id]}, which is not an open row"
-            continue
         assert len(requested) == 1 and requested[0] in skills.shipped(), card.id
         assert requested[0] == FOUNDATIONAL.get(card.id, requested[0]), card.id
         assert requested[0] not in (card.meta.get("optional_skills") or []), card.id
@@ -420,7 +400,25 @@ def test_every_built_in_card_requests_exactly_one_foundational_skill_or_waits_fo
         assert planned["requested"] == requested and planned["unavailable"] == [], card.id
         said = lines(skills.deliver(planned, tmp_path / card.id / "skills"))
         assert said[0].startswith(f"- Load `{requested[0]}` with the `skill` tool"), card.id
-    assert set(FOUNDATIONAL) | set(WAITING) <= set(roles.builtin_cards())
+    assert set(FOUNDATIONAL) <= set(roles.builtin_cards())
+
+
+def test_the_security_reviewer_receives_optional_review_and_control_skills(tmp_path):
+    card = roles.builtin_cards()["security_reviewer"]
+    optional = BATCH_5[card.id]
+    planned = skills.plan(card.meta["skills"], card.meta["optional_skills"])
+    assert planned["requested"] == ["security-review"]
+    assert planned["offered"] == optional
+    assert planned["exposed"] == sorted(["security-review", *optional])
+    assert not planned["reasons"]
+    delivered = skills.deliver(planned, tmp_path / "skills")
+    assert skills.root_problems(tmp_path / "skills", delivered["exposed"]) == []
+    said = lines(delivered)
+    assert sum(line.startswith("- Load ") for line in said) == 1
+    assert said[0].startswith("- Load `security-review` with the `skill` tool")
+    listed = next(line for line in said if line.startswith("- The `skill` tool lists "))
+    assert all(f"`{name}`" in listed for name in optional)
+    assert [pin["name"] for pin in skills.pins(card.meta["skills"])] == ["skill:security-review"]
 
 
 def test_every_built_in_card_is_offered_exactly_its_mapped_skills_and_nothing_else():
@@ -769,8 +767,8 @@ def test_the_lead_is_told_to_staff_by_language_or_surface_from_the_cards_and_the
         meta = roles.builtin_cards()[card].meta
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text
     # The default is named in its own clause, with its one skill and what it is offered, never as a pick.
-    assert ("Otherwise the default, `engineer`, whose run loads `test-design` and may load `python-development` or "
-            "`c-development` when its task matches.") in text
+    assert ("Otherwise the default, `engineer`, whose run loads `general-implementation` and may load "
+            "`python-development` or `c-development` when its task matches.") in text
     assert "`engineer` when " not in text and "engineer" not in guide.staffed_cards()
     monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
     fewer = guide.staffing_text()
@@ -790,10 +788,9 @@ def test_the_staffing_line_names_what_the_offering_implementer_cards_all_offer_a
     implementers = sorted(c.id for c in cards.values() if c.archetype == "implementer")
     offering = [c for c in implementers if cards[c].meta.get("optional_skills")]
     assert offering == ["c_engineer", "engineer", "python_engineer"] and "technical_writer" in implementers
-    # `test-design` is the default's own skill now, so its clause names it, and only the language cards offer it:
-    # the shared sentence holds what all three offer, and says nothing that is untrue of one of them.
+    # `test-design` returns to the shared optional skills of the three offering implementers.
     named = ("The runs of `c_engineer`, `engineer` and `python_engineer` may also load "
-             "`debugging-root-cause-analysis` when their task matches.")
+             "`debugging-root-cause-analysis` or `test-design` when their task matches.")
     assert text.endswith(named) and text.count("debugging-root-cause-analysis") == text.count("`test-design`") == 1
     assert "Every implementer card" not in text
 
@@ -809,11 +806,12 @@ def test_the_staffing_line_names_what_the_offering_implementer_cards_all_offer_a
 
     # With every implementer card offering them, the sentence says "every", as it did before the writer card.
     assert without("technical_writer").endswith(
-        "Every implementer card's run may also load `debugging-root-cause-analysis` when its task matches.")
+        "Every implementer card's run may also load `debugging-root-cause-analysis` or `test-design` "
+        "when its task matches.")
     # A card that stops offering them leaves the sentence, and the others keep it.
     fewer = without("c_engineer", [])
     assert fewer.endswith("The runs of `engineer` and `python_engineer` may also load "
-                          "`debugging-root-cause-analysis` when their task matches.")
+                          "`debugging-root-cause-analysis` or `test-design` when their task matches.")
     # A skill only some of the offering cards offer is not in it, and with none shared there is no sentence.
     one = without("c_engineer", ["debugging-root-cause-analysis", "mechanical-enumeration"])
     assert one.endswith("may also load `debugging-root-cause-analysis` when their task matches.")
@@ -833,7 +831,8 @@ def test_the_default_cards_clause_says_only_what_it_has(monkeypatch):
         monkeypatch.setattr(roles, "builtin_cards", lambda: changed)
         return guide.staffing_text()
 
-    assert "Otherwise the default, `engineer`, whose run loads `test-design`." in with_default(optional_skills=[])
+    own_skill_only = with_default(optional_skills=[])
+    assert "Otherwise the default, `engineer`, whose run loads `general-implementation`." in own_skill_only
     assert ("Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its "
             "task matches.") in with_default(skills=[])
     assert "Otherwise the default" not in with_default(skills=[], optional_skills=[])
@@ -848,9 +847,9 @@ def test_the_staffing_line_names_a_lone_offering_card_once_and_never_repeats_its
         cards[card] = roles.Card(c.id, {**c.meta, "optional_skills": []}, c.source, c.path, c.sha256)
     monkeypatch.setattr(roles, "builtin_cards", lambda: cards)
     text = guide.staffing_text()
-    assert text.endswith("Otherwise the default, `engineer`, whose run loads `test-design` and may load "
+    assert text.endswith("Otherwise the default, `engineer`, whose run loads `general-implementation` and may load "
                          "`python-development` or `c-development` when its task matches. The run of `engineer` may "
-                         "also load `debugging-root-cause-analysis` when its task matches.")
+                         "also load `debugging-root-cause-analysis` or `test-design` when its task matches.")
     assert text.count("`python-development`") == 2  # its language card's clause and the default's, never a third
 
 

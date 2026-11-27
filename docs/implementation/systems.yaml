@@ -2366,11 +2366,6 @@ systems:
     checks the absolute `skills` path and a colliding id; exercised in a real Lead run. AEW-declared MCP servers are not
     in the Lead''s alpha.'
   remaining:
-  - slice: 'E136: what its four batches left: the two security skills on `security_reviewer` (the designer''s fit, designer-decisions-2026-11-04-skills-by-fit.md
-      section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`''s
-      one foundational skill, once the source-research skill is written (E396)'
-    row: E136
-    estimate: 1 or 2 batched PRs after the operator's answers (estimate)
   - slice: 'the Lead''s skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the
       per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record.
       Left: the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a
@@ -2389,17 +2384,16 @@ systems:
     E136's first batch adds two optional ones, E161 the Lead's three, E136's second batch two more and its third `technical-writing`,
     with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
     staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
-    second also on the Lead's list. Of E136's skills, the two security ones wait on the operator's update of their
-    drafts and `frontend-design` waits for its own card (E395). Every card but `researcher` requests one foundational skill
-    (the operator, 2026-11-26, a ruling for every role card; its cost is reported for each card and is no longer a precondition); `researcher` waits for a skill to be written (E396), and `engineer` and `plan_assessor`
-    hold interim ones (E397, E398). Also
+    second also on the Lead's list. E136's final delivery adds both optional security skills to `security_reviewer`.
+    Every installed card requests one foundational skill, including the dedicated `source-research`, `general-implementation`
+    and `plan-review` (E396, E397, E398). E395 tracks the Frontend Engineer proposal and its designer sign-off. Also
     E135's evaluation runner is built (eval/skill_eval, on SYS-01's instrument); its qualification
     is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
     live checks.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:16, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
-    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`); from E136's fourth batch
-    every built-in card but `researcher` requests exactly one
+    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`); after E396–E398
+    every built-in card requests exactly one
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
     lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
     E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,

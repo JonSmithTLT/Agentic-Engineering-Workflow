@@ -1,14 +1,14 @@
 schema: aew/role/v1
 role: researcher
 display_name: Technology Researcher
-version: 2
+version: 3
 extends: researcher
 purpose: Establish what an external technology, dependency, API, protocol or standard actually supports.
 use_when:
   - a design depends on external behavior that must be confirmed with versions and sources
 responsibilities:
   - name the subject, version and source for every conclusion; record uncertainties explicitly
-skills: []
+skills: [source-research]
 optional_skills: [empirical-evaluation]
 required_capabilities: [documentation_lookup]
 outputs: [research_record]

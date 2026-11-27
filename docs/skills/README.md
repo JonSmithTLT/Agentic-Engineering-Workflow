@@ -148,9 +148,6 @@ or runtime manifests.
 | General implementation | [Skill](candidates/general-implementation/SKILL.md), [cases](candidates/general-implementation/evals/cases.yaml), [rubric](candidates/general-implementation/evals/rubric.md) |
 | Plan review | [Skill](candidates/plan-review/SKILL.md), [cases](candidates/plan-review/evals/cases.yaml), [rubric](candidates/plan-review/evals/rubric.md) |
 
-Two shared evaluator resources that the security candidates' `evals/` name,
-under `docs/skills/evals/security-boundaries/`, are not yet in this repository.
-
 ## 7. Secondary skill outlines
 
 These are possible later slices, not additional installed candidates:

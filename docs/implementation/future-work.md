@@ -4134,6 +4134,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E399/`, oldest first (`python tools/register.py show E399`).*
 
+### E401
+
+**Work:** Quote and bound recorded text in the pack sections that E198's quoting pass left as they were, as #614 does for recovery items: an open finding's summary and location (the implementer's, reviewer's and verifier's packs, where the section is mandatory and a bound needs a way to the whole finding first), and a work unit's title in the requirement, hierarchy, request and child-work sections. The documents those sections print whole as Markdown by design (a requirement's body and acceptance criteria, an ancestor's, the accepted plan) are decided in the same pass: fenced as the record under review is, or left as they are with the reason. Done when `tests/unit/test_pack_truth.py`'s recorded-text guard plants in each of them
+
+**Source:** E198's quoting pass (`fix/pack-recorded-text-quoting`), which checked these sections and left them
+
+**When:** **Unscheduled**, any idle slot; compatible with E368's rewrite, which may move these sections
+
+**Notes:** Filed by the E198 quoting pass
+
+*Later notes: `notes.d/E401/`, oldest first (`python tools/register.py show E401`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.

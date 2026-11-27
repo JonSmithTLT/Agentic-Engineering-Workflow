@@ -5599,6 +5599,18 @@ sections:
     Notes: 'Filed by #623, which does not fix it: the seal read is shared. That pull request''s carriage-return test goes
       through a work unit''s body, which is read as bytes'
 
+  - '#': E401
+    Work: 'Quote and bound recorded text in the pack sections that E198''s quoting pass left as they were, as #614 does
+      for recovery items: an open finding''s summary and location (the implementer''s, reviewer''s and verifier''s packs,
+      where the section is mandatory and a bound needs a way to the whole finding first), and a work unit''s title in the
+      requirement, hierarchy, request and child-work sections. The documents those sections print whole as Markdown by design
+      (a requirement''s body and acceptance criteria, an ancestor''s, the accepted plan) are decided in the same pass: fenced
+      as the record under review is, or left as they are with the reason. Done when `tests/unit/test_pack_truth.py`''s recorded-text
+      guard plants in each of them'
+    Source: E198's quoting pass (`fix/pack-recorded-text-quoting`), which checked these sections and left them
+    When: '**Unscheduled**, any idle slot; compatible with E368''s rewrite, which may move these sections'
+    Notes: Filed by the E198 quoting pass
+
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
   columns:

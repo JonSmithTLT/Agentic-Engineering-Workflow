@@ -75,24 +75,25 @@ class ContextPacks:
         return chain, inherited
 
     def _input_summaries(self, inputs: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
-        """Each consumed input with what its record holds: the summary lines, and for a role that produces the work
-        (``ctxmod.OPEN_ROLES``), under ``open``, what its author recorded as unresolved, uncertain or a constraint
-        (``ctxmod.open_items``; register E198). ``open`` is absent when the record holds none, and for an evaluator,
+        """Each consumed input with what its record holds: the summary lines, each a mapping of a label to the recorded
+        value it prints, which the pack quotes and bounds (``ctxmod.recorded``; register E198), and for a role that
+        produces the work (``ctxmod.OPEN_ROLES``), under ``open``, what its author recorded as unresolved, uncertain or
+        a constraint (``ctxmod.open_items``). ``open`` is absent when the record holds none, and for an evaluator,
         whose pack inputs are what they were."""
         out = []
         for i in inputs:
             ev = next((e for e in E.scan(self.k.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
-            summary: list[str] = []
+            summary: list[dict[str, Any]] = []
             left_open = ctxmod.open_items(ev) if ev and role in ctxmod.OPEN_ROLES else []
             if ev:
                 d, r, pr = ev.get("discovery") or {}, ev.get("research") or {}, ev.get("proposal") or {}
-                summary += [f"fact: {f['statement']}" for f in d.get("facts", [])]
-                summary += [f"hypothesis: {h['statement']}" for h in d.get("hypotheses", [])]
-                summary += [f"conclusion: {c}" for c in r.get("conclusions", [])]
-                summary += [f"subject: {s.get('name')} {s.get('version') or ''} ({s.get('source')})"
-                            for s in r.get("subjects", [])]
+                summary += [{"fact": f["statement"]} for f in d.get("facts", [])]
+                summary += [{"hypothesis": h["statement"]} for h in d.get("hypotheses", [])]
+                summary += [{"conclusion": c} for c in r.get("conclusions", [])]
+                summary += [{"subject": s.get("name"), **({"version": s["version"]} if s.get("version") else {}),
+                             "source": s.get("source")} for s in r.get("subjects", [])]
                 if pr:
-                    summary += [f"objective: {pr.get('objective')}", f"approach: {pr.get('approach')}"]
+                    summary += [{"objective": pr.get("objective")}, {"approach": pr.get("approach")}]
             out.append({**i, "summary": summary, **({"open": left_open} if left_open else {})})
         return out
 

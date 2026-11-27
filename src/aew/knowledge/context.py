@@ -563,23 +563,41 @@ def _inputs(p: PackInputs) -> list[str]:
     if not p.inputs:
         return []
     lines = ["## Consumed inputs (accepted records via dependency edges; pinned at dispatch)", ""]
+    if any(i.get("summary") for i in p.inputs):
+        lines += ["Under each input, what its record holds: each value is text the agent that produced the record "
+                  "wrote, quoted and cut to a bound (a cut says how many characters it left out).", ""]
     for i in p.inputs:
         ack = f", acknowledged by {i['acknowledgement']}" if i.get("acknowledgement") else ""
         lines.append(f"- `{i['id']}` ({i['kind']} from {i['from']}): freshness **{i['freshness']}** "
                      f"({i.get('basis')}{ack})")
-        for line in i.get("summary", []):
-            lines.append(f"    - {line}")
+        for item in i.get("summary", []):  # one line per summary item: each value its record holds, quoted
+            lines.append("    - " + ", ".join(f"{label}: {recorded(value)}" for label, value in item.items()))
     lines += ["", "Recheck consequential claims against the current source before relying on them (KC §13)."]
     return lines
 
 
+def _fence(content: str) -> str:
+    """A code fence for ``content``, text a worker wrote or changed: longer than any run of backticks in it, so a run in
+    it cannot close the fence. Three backticks for content with no run of three or more."""
+    return "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
+
+
+def _fenced(info: str, content: str, empty: str = "") -> list[str]:
+    """``content`` in its fence (``_fence``), or ``empty`` there when it has none."""
+    fence = _fence(content)
+    return [fence + info, content or empty, fence]
+
+
 def _subject(p: PackInputs) -> list[str]:
+    """The record under review, whole: what a reviewer or a verifier judges. Its fields and its body are what a worker
+    recorded, so each is fenced (``_fence``) and the body never reads as the pack's own headings."""
     s = p.subject
     if not s:
         return []
+    body = s.get("body", "").strip()
     return ["## Record under review (the Ticket's accepted execute record)", "",
             f"`{s['id']}` ({s['kind']}, sha256 {s['sha256'][:12]}…), observed source `{s.get('observed_commit')}`", "",
-            "```yaml", s["content"].rstrip(), "```", "", s.get("body", "").strip() or "(no body)"]
+            *_fenced("yaml", s["content"].rstrip()), "", *(_fenced("markdown", body) if body else ["(no body)"])]
 
 
 def _children(p: PackInputs) -> list[str]:
@@ -597,10 +615,10 @@ def _children(p: PackInputs) -> list[str]:
     for c in p.children:
         if c.get("diff") is not None:
             lines += ["", f"### {c['id']} — its own integrated change (`{c['integrated_commit']}`)", "",
-                      "```diff" if p.role == "reviewer" else "```text", c["diff"].rstrip() or "(empty)", "```"]
+                      *_fenced("diff" if p.role == "reviewer" else "text", c["diff"].rstrip(), "(empty)")]
     if p.aggregate_diffstat is not None:
         lines += ["", "### Aggregate change since the parent baseline (supplementary context only)", "",
-                  "```text", p.aggregate_diffstat.rstrip() or "(no change since the baseline)", "```"]
+                  *_fenced("text", p.aggregate_diffstat.rstrip(), "(no change since the baseline)")]
     return lines
 
 
@@ -617,8 +635,7 @@ def _history(p: PackInputs) -> tuple[list[str], list[list[str]], list[str]]:
     blocks, labels = [], []
     for h in p.history:
         content = h["content"].rstrip()
-        # A record written by a model may hold backticks: the fence is longer than any run of them in it.
-        fence = "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
+        fence = _fence(content)  # a record written by a model may hold backticks
         label = f"history:{h['id']}@{h['sha256'][:12]}"
         blocks.append(["", f"### {label} ({h['kind']}; source: {h['source']})", "",
                        f"Loaded because: {h['reason']}", "", f"{fence}yaml", content, fence])
@@ -653,13 +670,13 @@ def bounded(items: list[Any], limit: int) -> dict[str, Any]:
     return {"items": items[:limit], "total": len(items)}
 
 
-def bounded_text(text: str) -> dict[str, Any]:
+def bounded_text(text: str, limit: int = RECOVERY_MAX_TEXT) -> dict[str, Any]:
     """``text`` cut where its quoted form (``_quoted``: an escape counts as the characters it prints) would pass
-    ``RECOVERY_MAX_TEXT``, with how many characters were cut."""
+    ``limit``, with how many characters were cut."""
     kept = size = 0
     for char in text:
         size += len(json.dumps(char, ensure_ascii=True)) - 2
-        if size > RECOVERY_MAX_TEXT:
+        if size > limit:
             break
         kept += 1
     return {"text": text[:kept], "more": len(text) - kept}
@@ -677,6 +694,19 @@ def _quoted(value: dict[str, Any]) -> str:
     outside ASCII is escaped, so it cannot start a line, a heading or a fence of the pack, or hide what it is."""
     cut = f" [… {value['more']} more characters]" if value.get("more") else ""
     return json.dumps(value["text"], ensure_ascii=True) + cut
+
+
+# A value a record holds, as a section other than these two prints it (the consumed inputs' summaries, failure
+# evidence, an implementer's reported facts): its size as quoted in the pack. A fact or a conclusion is the content of
+# the record that consumes it, not a note on it, so it keeps more than a recovery reason.
+RECORDED_MAX_TEXT = 480
+
+
+def recorded(value: Any) -> str:
+    """A value a worker's record holds, as the pack prints it: quoted (``_quoted``) and cut to ``RECORDED_MAX_TEXT``
+    with the cut counted (``bounded_text``), so it cannot start a line, a heading or a fence of the pack, as #614 does
+    for a recovery reason and #621 for a recorded open item."""
+    return _quoted(bounded_text("" if value is None else str(value), RECORDED_MAX_TEXT))
 
 
 def _and_more(listing: dict[str, Any], what: str) -> list[str]:
@@ -892,8 +922,9 @@ def sections(p: PackInputs) -> list[Section]:
         out.append(_lines_section("failure-evidence", EVIDENCE, [
             "", "## Failure evidence to address (classified LOCAL_IMPLEMENTATION_DEFECT by the Lead)", "",
             f"- Verification `{fe['id']}` result: {fe['result']}",
-            *[f"- claim [{c['type']}] {c['claim']}: {c['result']}" for c in fe.get("claims", [])],
-            f"- Verifier's suspected cause: {fe.get('suspected_cause') or 'not stated'}"], cuttable=True))
+            *[f"- claim [{c['type']}] {recorded(c['claim'])}: {c['result']}" for c in fe.get("claims", [])],
+            "- Verifier's suspected cause: "
+            + (recorded(fe["suspected_cause"]) if fe.get("suspected_cause") else "not stated")], cuttable=True))
     assessing = p.scope == E.ASSESSMENT_SCOPE  # the open findings are a change's: they are not the plan's (E160)
     if p.role in {"implementer", "reviewer", "verifier"} and not assessing:
         out.append(_lines_section("open-findings", WORK, ["", *_findings(p)]))  # they decide the gate
@@ -913,10 +944,12 @@ def sections(p: PackInputs) -> list[Section]:
         s = p.implementation_summary or {}
         out.append(_lines_section("implementation-facts", EVIDENCE, [
             "", "## Implementation facts (structured fields only; implementer reasoning is excluded)", "",
-            "- Files changed: " + (", ".join(s.get("files_changed", [])) or "not reported"),
-            "- Checks run: " + (", ".join(s.get("checks_run", [])) or "not reported"),
-            "- Declared deviations from plan: " + ("; ".join(s.get("deviations", [])) or "none declared"),
-            "- Unexpected findings: " + ("; ".join(s.get("unexpected_findings", [])) or "none declared")],
+            "- Files changed: " + (", ".join(map(recorded, s.get("files_changed", []))) or "not reported"),
+            "- Checks run: " + (", ".join(map(recorded, s.get("checks_run", []))) or "not reported"),
+            "- Declared deviations from plan: "
+            + ("; ".join(map(recorded, s.get("deviations", []))) or "none declared"),
+            "- Unexpected findings: "
+            + ("; ".join(map(recorded, s.get("unexpected_findings", []))) or "none declared")],
             cuttable=True))
         out.append(_lines_section("check-results", EVIDENCE, ["", *_check_results(p)], cuttable=True))
         out.append(_lines_section("review-scope", CONSTRAINTS, [
@@ -924,17 +957,19 @@ def sections(p: PackInputs) -> list[Section]:
             f"Review the complete change below{' for ' + p.specialty + ' concerns' if p.specialty else ''}: "
             "correctness, ownership, error/cleanup paths, compatibility, security, test adequacy and "
             "unnecessary scope."]))
-        out.append(_lines_section("change", EVIDENCE, ["", "## Change under review", "", "```diff",
-                                                       p.diff.rstrip() or "(empty diff)", "```"], cuttable=True))
+        out.append(_lines_section("change", EVIDENCE, ["", "## Change under review", "",
+                                                       *_fenced("diff", p.diff.rstrip(), "(empty diff)")],
+                                  cuttable=True))
     if p.role == "verifier" and p.scope in {"observation", "parent"}:
         pass  # the record or the children above are what is verified; implementer claims do not apply
     elif p.role == "verifier":
         s = p.implementation_summary or {}
         out.append(_lines_section("implementation-revision", EVIDENCE, [
-            "", "## Implementation revision", "", "```text", p.diffstat.rstrip() or "(no changes)", "```", "",
+            "", "## Implementation revision", "", *_fenced("text", p.diffstat.rstrip(), "(no changes)"), "",
             "Implementer claims (NOT evidence — establish each outcome yourself):",
-            *_bullets([f"files changed: {', '.join(s.get('files_changed', [])) or 'not reported'}",
-                       f"checks run: {', '.join(s.get('checks_run', [])) or 'not reported'}"])], cuttable=True))
+            *_bullets([f"files changed: {', '.join(map(recorded, s.get('files_changed', []))) or 'not reported'}",
+                       f"checks run: {', '.join(map(recorded, s.get('checks_run', []))) or 'not reported'}"])],
+            cuttable=True))
     head, blocks, labels = _open_questions(p)
     if blocks:
         # After the sections the work is given (an implementer's failure evidence among them), so a budget funds

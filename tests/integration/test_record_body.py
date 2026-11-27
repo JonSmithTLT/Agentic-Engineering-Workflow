@@ -459,6 +459,95 @@ def test_an_unknown_decision_is_refused_and_says_where_decision_ids_come_from(tm
         assert "aew history log --since 0 --kind decision.recorded" in error["message"]
 
 
+def test_a_decision_recorded_while_the_clock_ran_fast_still_reads_after_the_clock_is_corrected(tmp_path,
+                                                                                                    monkeypatch):
+    """Recorded while the host clock was days fast (a resumed VM, say), then the clock was corrected: every later
+    commit is dated before the decision. The walk must still reach the transition that wrote it, not refuse a genuine
+    decision as changed (the review of #650, F1)."""
+    from aew.engine import base, store
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    first = create_unit(p, "ticket", "First", extra=("--scope", "calc/**"))
+    second = create_unit(p, "ticket", "Second", extra=("--scope", "calc/**"))
+    fast = "2099-01-01T00:00:00Z"
+    with monkeypatch.context() as m:  # the decision and the commit that wrote it, both on the fast clock
+        m.setattr(base, "utc_now", lambda: fast)
+        m.setattr(store, "utc_now", lambda: fast)
+        decision = Engine.discover(p.root).work_depend(token=p.token, work_id=second, add=[first],
+                                                       reason="recorded on a fast clock")["decision"]
+    assert f"at: '{fast}'" in (p.root / ".aew" / "decisions" / f"{decision}.md").read_text(encoding="utf-8")
+    for title in ("Later", "Later still"):  # the corrected clock: these commits are dated before the decision
+        create_unit(p, "ticket", title, extra=("--scope", "calc/**"))
+    assert body_of(p, decision) == f"added: ['{first}']\nremoved: []\n"
+
+
+def test_a_decision_recorded_before_the_transition_log_began_is_refused_without_a_claim_of_damage(tmp_path):
+    """A project an engine older than the transition log (ADR-0012) started holds decisions no transition pins. Such
+    a decision is not printed, since nothing can check it, but it is not reported as changed outside AEW either (the
+    review of #650, F2). Planted here as a control state without the log's marker, as such an engine left it."""
+    from aew.engine.store import serialize_control
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    state = load_control(p.root)
+    state.pop("outbox")
+    (p.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    error = refusal(p, decision)
+    assert (error["code"], error["details"]) == ("INTEGRITY_ERROR",
+                                                  {"reason": "before_log", "path": f"decisions/{decision}.md"})
+    assert "before the transition log began" in error["message"] and "this project has no transition log" in \
+        error["message"]
+    assert "changed outside AEW" not in error["message"] and NEXT_STEP not in error["message"]
+
+
+def test_a_deleted_decision_is_refused_as_damage_not_as_an_unknown_id(tmp_path):
+    """Its number was issued (it is within the decision counter), so a missing file is a record destroyed, not one
+    that never existed (the review of #650, F3)."""
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    (p.root / ".aew" / "decisions" / f"{decision}.md").unlink()
+    error = damaged(p, decision, "unreadable")
+    assert error["details"]["path"] == f"decisions/{decision}.md"
+    issued = load_control(p.root)["counters"]["decision"]
+    assert refusal(p, f"D-{issued + 1:04d}")["details"]["reason"] == "unknown_record"  # beyond it: never issued
+
+
+def test_a_damaged_transition_log_refuses_a_decision_read_with_a_reason(tmp_path):
+    """The log is the decision's pin. A link of its chain changed between the head and the decision refuses the read
+    as damage, typed like every other refusal of this read (the review of #650, F4)."""
+    from aew.util import dump_yaml, load_yaml
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    after = p.rev() + 1
+    create_unit(p, "ticket", "Later", extra=("--scope", "calc/**"))
+    log = p.root / ".aew" / "state" / "log" / f"{after:06d}.yaml"
+    record = load_yaml(log.read_text(encoding="utf-8"))
+    record["summary"] = "a summary nobody committed"
+    log.write_text(dump_yaml(record), encoding="utf-8", newline="\n")
+    error = damaged(p, decision, "log_damaged")
+    assert "chain is broken" in error["message"]
+
+
+def test_a_decision_read_never_resolves_the_events_of_the_transitions_it_passes(tmp_path, monkeypatch):
+    """The pin is in each record's writes; its events are not needed, so an overflow sidecar the read never uses
+    cannot refuse it (the review of #650, F5). In process, with the event resolution made to fail."""
+    from aew.engine import outbox
+    from aew.engine.api import Engine
+    from aew.errors import IntegrityError
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    create_unit(p, "ticket", "Later", extra=("--scope", "calc/**"))
+
+    def unavailable(self, record):
+        raise IntegrityError("an overflow sidecar is missing", revision=record["revision"])
+
+    monkeypatch.setattr(outbox.LogView, "events", unavailable)
+    assert Engine.discover(p.root).record_body(decision)["decision_type"] == "dependency_change"
+
+
 def test_the_new_forms_run_in_a_contained_lead_session_as_the_read_did(tmp_path):
     """`record body` takes no credential, so a Lead session runs it in its own shell (lead_broker.CONTAINED_LOCAL):
     the broker relays nothing for it, and its new forms take no flag the broker would see."""

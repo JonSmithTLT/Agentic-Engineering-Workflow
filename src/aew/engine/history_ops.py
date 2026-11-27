@@ -188,7 +188,11 @@ class HistoryCommands:
         state = self.k.store.current()
         if plan is not None:
             return self._plan_body(state, record_id, plan)
-        if DECISION_ID.fullmatch(record_id) and (self.k.aew_root / "decisions" / f"{record_id}.md").is_file():
+        if DECISION_ID.fullmatch(record_id) and (
+                (self.k.aew_root / "decisions" / f"{record_id}.md").is_file()
+                or int(record_id[2:]) <= (state.get("counters") or {}).get("decision", 0)):
+            # A decision AEW issued (its number is within the counter) whose file is gone is damage, refused as
+            # unreadable, not an unknown id (the review of #650, F3).
             return self._decision_body(state, record_id)
         unit = state["work"].get(record_id)
         if unit is not None:
@@ -347,10 +351,6 @@ class HistoryCommands:
                 "status": entry.get("status"), "accepted": accepted == revision,
                 "supersedes": entry.get("supersedes"), "body": body}
 
-    # How far before a decision's own time the transition log is searched for the commit that wrote it: its time is
-    # taken inside that commit's transaction, before the commit's own, so this margin only absorbs a clock step back.
-    DECISION_LOG_MARGIN_S = 86_400
-
     def _decision_body(self, state: dict[str, Any], decision_id: str) -> dict[str, Any]:
         """A decision record (``Kernel.new_decision``), held to the hash the transition that wrote it recorded in its
         writes (``state/log``, hash-chained to the committed head: ``outbox.newest_transitions``). Control state pins
@@ -364,18 +364,27 @@ class HistoryCommands:
             raise self._damaged(f"decision record {decision_id} ({rel}) cannot be read: {exc.strerror or 'an error'}",
                                 reason="unreadable", path=rel) from exc
         try:
-            claimed = _epoch(str(parse_frontmatter(raw.decode("utf-8"), source=rel)[0].get("at")))
-        except (AEWError, UnicodeDecodeError, ValueError, AttributeError):
-            claimed = None  # damaged: the search below then reads the whole log, and the hash refuses it
-        try:
-            written, since = self._decision_pin(state, rel, claimed)
-        except IntegrityError as exc:  # the log's own refusal (a broken chain), with what to do about it
-            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **exc.details) from exc
+            written, first = self._decision_pin(state, rel)
+        except IntegrityError as exc:  # the log's own refusal (a broken chain, a missing record): typed, with what
+            #                            to do about it (the review of #650, F4)
+            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **{"reason": "log_damaged", **exc.details}) from exc
         if written is None:
-            began = f" (the log begins at revision {since}; a decision recorded before it has no pin either)" \
-                if since is not None and since > 1 else ""
+            try:
+                claimed = str(parse_frontmatter(raw.decode("utf-8"), source=rel)[0].get("at"))
+            except (AEWError, UnicodeDecodeError, AttributeError):
+                claimed = None
+            if first is None or (claimed is not None and claimed < first["at"]):
+                # Recorded before this project's transition log began (an engine older than ADR-0012): nothing pins
+                # it, which is not damage (the review of #650, F2). Still not printed, since nothing can check it.
+                began = ("this project has no transition log" if first is None
+                         else f"the transition log begins at revision {first['revision']}, {first['at']}")
+                raise IntegrityError(
+                    f"decision record {decision_id} ({rel}) says it was recorded before the transition log began "
+                    f"({began}), so no transition pins its content and nothing can check it. Nothing is printed; "
+                    f"its file is `.aew/{rel}`, to be read knowing that nothing checks it", reason="before_log",
+                    path=rel)
             raise self._damaged(f"decision record {decision_id} ({rel}) is not one the transition log records "
-                                f"writing{began}", reason="not_pinned", path=rel)
+                                "writing", reason="not_pinned", path=rel)
         if sha256_bytes(raw) != written:
             raise self._damaged(f"decision record {decision_id} ({rel}) is not the content its transition recorded",
                                 reason="not_pinned", path=rel)
@@ -394,18 +403,18 @@ class HistoryCommands:
             return {**out, "fields": meta, "record": raw.decode("utf-8")}
         return {**out, "body": body}
 
-    def _decision_pin(self, state: dict[str, Any], rel: str, claimed: int | None) -> tuple[str | None, int | None]:
-        """The hash the transition that wrote ``rel`` recorded for it, newest first, and where the log begins. The
-        search stops a margin before the decision's own time (``claimed``), past which no commit can have written
-        it; a decision whose recorded time is false is then not found, which refuses it as the hash would."""
-        since = (state.get("outbox") or {}).get("since")
-        for transition in outbox.newest_transitions(self.k.aew_root, state):
+    def _decision_pin(self, state: dict[str, Any], rel: str) -> tuple[str | None, dict[str, Any] | None]:
+        """The hash the transition that wrote ``rel`` recorded for it, newest first, and the oldest transition the log
+        holds (None: the project has no log). The whole log is read before a decision is refused, whatever its own
+        time says: a clock that stepped back after it was recorded leaves later commits dated before it (the review
+        of #650, F1). Only the chain and each record's writes are read, never its events (F5)."""
+        first = None
+        for transition in outbox.newest_transitions(self.k.aew_root, state, events=False):
             for write in ((transition.get("txn") or {}).get("writes") or ()):
                 if isinstance(write, dict) and write.get("path") == rel:
-                    return write.get("after"), since
-            if claimed is not None and _epoch(transition["at"]) < claimed - self.DECISION_LOG_MARGIN_S:
-                break
-        return None, since
+                    return write.get("after"), transition
+            first = transition
+        return None, first
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:

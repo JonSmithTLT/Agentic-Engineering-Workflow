@@ -5,7 +5,9 @@ because the queued typed tools (F15.8 A2's map read, E158's consult, E12's `evid
 would make 20. The ceiling now lives in `lead-context-pool.yaml` as `tool_ceiling`, an operator-approved count with
 those words and the date, and `tests/unit/test_lead_context_pool.py` reads it from there; it was a literal 16 in the
 test. The 40,000 B byte cap and its operator reserve are unchanged. TLS-21 and CMG-23 in the requirements ledger now
-name the record instead of "the 16-tool ceiling"; the operator and the designer will revisit the figure.
+name the record instead of "the 16-tool ceiling". TLS-21's source, the typed Lead surface design v0.2 §4.4, still
+says 16; whether the ledger's wording becomes an amendment to it is the designer's. The operator and the designer will
+revisit the figure.
 
 **What remains** for E158. The ceiling now has room for the consult (16 tools with messaging on today), so its
 offered-tool slot is no longer a count decision; it still needs its separate Q-BUDGET proof and its bytes, and the

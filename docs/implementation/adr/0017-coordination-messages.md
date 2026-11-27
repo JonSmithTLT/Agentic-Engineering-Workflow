@@ -292,8 +292,10 @@ Built with MS3.
 includes the shipped messaging-on compact catalog. The 16-tool ceiling and description-only compact presentation
 stay in force. E158's separate Q-BUDGET proof still applies.
 
-**2026-11-27 amendment: the offered-tool ceiling (operator decision).** The operator, 2026-11-27: "Id say for now to keep things rolling raise the tool cap to 18 or 20 and the designer and I can reckon woth it after. Just like the byte cap the tool cap was for bloat. So if this is an action commonly used by the lead a tool makes sense." The Lead chose 20,
-because the queued typed tools (F15.8 A2's map read, E158's consult, E12's `evidence show`, the history-search tool)
+**2026-11-27 amendment: the offered-tool ceiling (operator decision).** The operator, 2026-11-27: "Id say for now to
+keep things rolling raise the tool cap to 18 or 20 and the designer and I can reckon woth it after. Just like the byte
+cap the tool cap was for bloat. So if this is an action commonly used by the lead a tool makes sense." The Lead chose
+20, because the queued typed tools (F15.8 A2's map read, E158's consult, E12's `evidence show`, the history-search tool)
 would make 20. The ceiling is now the operator-approved count in the [context pool](../lead-context-pool.yaml)
 (`tool_ceiling`), which the pool's test reads, so D13's "exactly 16 tools" with no tool headroom no longer holds: a
 later normal row fits under that count and the byte cap. The byte cap is unchanged, and the operator and the designer

@@ -9,6 +9,7 @@ import json
 import re
 import threading
 import time
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -464,6 +465,16 @@ def test_a_requester_that_has_gone_ends_the_wait_and_says_so_and_frees_the_endpo
         assert time.monotonic() < deadline, "the wait did not end"
         time.sleep(0.01)
     assert any(approval in line for line in endpoint.lines) and steered.fake.consumed == [] and _mode(steered) != MODE
+    # The endpoint's G3 path keeps the approval's per-host record as every G3 client does (A-44 BOY-05.a), and it
+    # ends with the request: the view says nothing will submit it (BOY-05.b), FYI
+    from aew import g3records
+    from aew.engine import attention
+
+    [found] = [f for f in g3records.read_all() if f.record and f.record["approval_ref"] == approval]
+    assert found.record["exited_at"] and found.record["outcome"] is None
+    assert found.record["project"] == steered.engine.manifest["project"]["id"]
+    at = g3records.parse_time(found.record["expires_at"]) - timedelta(seconds=1)  # the fake service's own clock
+    assert attention.approval_state(found.record, at, alive=True)[0] == "g3_approval.client_gone"
     steered.fake.undecided = False
     assert _raise(steered)["mode"] == MODE, "the endpoint is free again"
 

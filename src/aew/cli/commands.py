@@ -591,8 +591,12 @@ def _report_show(args: argparse.Namespace) -> Any:
 
 
 def _status(args: argparse.Namespace) -> Any:
+    from aew.engine import attention
+
     engine = _engine(args)
     report = engine.status(args.work_id)
+    if args.work_id is None:  # what waits on the operator, from the overview's own module, site up or not (BOY-02.a)
+        report["attention"] = attention.for_engine(engine, contradictions=report["contradictions"])
     return report if args.json else engine.render_status(report)
 
 

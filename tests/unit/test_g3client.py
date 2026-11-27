@@ -754,9 +754,8 @@ def test_through_the_command_a_record_for_another_set_is_never_submitted(
     assert len(asked) == 2 and submitted == []
 
 
-@pytest.mark.parametrize("answer, error_code, reason", [
-    ((503, {"code": "G3_UNAVAILABLE"}), "UNAVAILABLE", "g3_unavailable"),
-    ((403, {"code": "PEER_NOT_PERMITTED"}), "PERMISSION_DENIED", "g3_peer_not_permitted"),
+@pytest.mark.parametrize("answer, error_code, reason", [  # the command reads through a 503 (A-44 BOY-05.a;
+    ((403, {"code": "PEER_NOT_PERMITTED"}), "PERMISSION_DENIED", "g3_peer_not_permitted"),  # test_g3records.py)
 ])
 def test_through_the_command_a_refusal_mid_wait_ends_the_wait_at_once_and_names_its_cause(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], answer: Any,

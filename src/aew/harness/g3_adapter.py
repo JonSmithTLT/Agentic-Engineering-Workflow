@@ -168,19 +168,37 @@ def outcomes(bad_request: str = HELD_AGAIN) -> Iterator[None]:
 
 
 def approve(cset: dict[str, Any], on_pending: Callable[[dict[str, Any]], None],
-            wait: Callable[[float], None] = time.sleep) -> tuple[dict[str, Any], dict[str, Any]]:
+            wait: Callable[[float], None] = time.sleep, *,
+            project: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ask for the approval and wait for the operator: the approved set and its consent record. ``on_pending`` tells the
     requester the approval is on the confirmer, and ``wait`` passes the time between looks at the service, so the
-    endpoint can end the wait when the requester has gone."""
+    endpoint can end the wait when the requester has gone. As every G3 client AEW ships, it keeps the approval's
+    per-host record (A-44 BOY-05.a), labelled with ``project``: here "submitted" is the approved set handed back to
+    the endpoint, its owner, for the consume."""
+    from aew import g3records
+
     with outcomes():
         proved = g3client.with_proofs(g3client.check_set(cset))
     with outcomes(bad_request=OLDER_SERVICE):
         pending = g3client.request_approval(proved)
     with outcomes():
         g3client.expires_at(pending)
-        on_pending(pending)
-        record = g3client.await_decision(pending, sleep=wait)
-        return g3client.approved_set(proved, record), record
+        writer = g3records.Writer(pending, project=project)
+        outcome = None
+        try:
+            on_pending(pending)
+            try:
+                record = g3client.await_decision(pending, sleep=wait, on_read=writer.read)
+            except errors.OperatorAuthorizationRequired as exc:
+                outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found"}.get(
+                    (exc.details or {}).get("reason"))
+                raise
+            outcome = "approved_not_submitted"
+            approved = g3client.approved_set(proved, record)
+            outcome = "approved_submitted"
+            return approved, record
+        finally:
+            writer.finish(outcome)
 
 
 def consume_member(approved: dict[str, Any], record: dict[str, Any], policy: dict[str, Any] | None) -> dict[str, Any]:

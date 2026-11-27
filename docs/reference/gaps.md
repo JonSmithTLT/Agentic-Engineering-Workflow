@@ -118,6 +118,9 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.usage_ops:write_pricing_snapshot`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.validation_ops:Validation.establish`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.work_ops:WorkUnits.propose`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.g3records:Writer._write`: Path.mkdir of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:Writer._write`: atomic_write of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:prune`: Path.unlink of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.broker_liveness:write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.check_changes:remove_copy.writable`: os.rmdir of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:remove_copy.writable`: os.unlink of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds

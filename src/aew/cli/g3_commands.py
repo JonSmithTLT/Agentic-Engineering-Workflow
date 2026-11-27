@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from aew.cli.commands import _add_json
+from aew.cli.commands import _add_json, _cwd
 from aew.errors import NotFound, ValidationFailed
 
 
@@ -67,8 +67,33 @@ def _request(a: argparse.Namespace) -> Any:
     sys.stderr.write(f"aew g3: waiting for the operator to approve or decline {pending['approval_ref']} in the "
                      f"confirmer (AEW approvals), until {pending['expires_at']}\n")
     sys.stderr.flush()
-    record = C.await_decision(pending)
-    receipt = C.submit(C.approved_set(proved, record), a.o01, token)
+    # The approval's per-host record (A-44 BOY-05.a): written by this client alone, at the start, after each read of
+    # G3 and at the exit, so the dashboard and `aew status` show the wait without connecting to G3
+    from aew import g3records as R
+    from aew.errors import OperatorAuthorizationRequired
+
+    writer = R.Writer(pending, project=R.project_label(_cwd(a)))
+    outcome = None
+    if writer.failed:
+        sys.stderr.write(f"aew g3: this approval's record cannot be written in {writer.directory} ({writer.failed}): "
+                         "the dashboard and `aew status` will not show this wait; the confirmer still lists it\n")
+
+    def say(text: str) -> None:
+        sys.stderr.write(f"aew g3: {text}\n")
+        sys.stderr.flush()
+
+    try:
+        try:
+            record = C.await_decision(pending, on_read=writer.read, say=say, keep_reading=True)
+        except OperatorAuthorizationRequired as exc:
+            outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found",
+                       "unanswered_until_expiry": "unanswered"}.get((exc.details or {}).get("reason"))
+            raise
+        outcome = "approved_not_submitted"
+        receipt = C.submit(C.approved_set(proved, record), a.o01, token)
+        outcome = "approved_submitted"
+    finally:
+        writer.finish(outcome)
     out = {"approval_ref": pending["approval_ref"], "consent_set_ref": record.get("consent_set_ref"),
            "set_digest": record.get("set_digest"), "receipt": receipt,
            "note": C.note(receipt, S.standing(project=False), C.probe())}

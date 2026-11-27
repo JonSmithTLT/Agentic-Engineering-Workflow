@@ -164,6 +164,10 @@ class StatusViews:
             lines += ["", usage["line"]]
             if usage.get("pricing_problem"):
                 lines.append(f"  ! the price table cannot be used ({usage['pricing_problem']}); see `aew doctor`")
+        if report.get("attention"):  # A-44 S1: the attention module's items, as the dashboard's overview lists them
+            from aew.engine import attention
+
+            lines += ["", *attention.render(report["attention"])]
         if report.get("hierarchy"):
             lines += ["", "Hierarchy", *(f"  {h}" for h in report["hierarchy"])]
         if report["next_actions"]:

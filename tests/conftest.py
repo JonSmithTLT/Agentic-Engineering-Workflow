@@ -421,6 +421,37 @@ def weaker_contexts(weaker_register_dir, request):
     weaker_register.ROOT_OVERRIDE, weaker_register.scan = saved, scan
 
 
+@pytest.fixture(scope="session")
+def g3_records_session_dir(tmp_path_factory) -> Iterator[Path]:
+    """The sentinel on this host's own G3 approval records (A-44 BOY-05.a; register E101): at the session's end the
+    host's directory is as the session found it."""
+    from unittest import mock
+
+    from aew import g3client
+
+    with mock.patch.dict(os.environ, HOST_ENV, clear=True):
+        host = g3client.approval_records_dir()
+    before = _register_files(host)
+    yield tmp_path_factory.mktemp("g3-records")
+    after = _register_files(host)
+    assert after == before, (f"the session changed this host's own G3 approval records at {host}: "
+                             f"{sorted(set(after.items()) ^ set(before.items()))}")
+
+
+@pytest.fixture(autouse=True)
+def g3_records(g3_records_session_dir, request):
+    """No test reads or writes this host's own G3 approval records: in process each test has a directory of its own.
+    (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
+    import re
+
+    from aew import g3client
+
+    saved = g3client.RECORDS_OVERRIDE
+    g3client.RECORDS_OVERRIDE = g3_records_session_dir / re.sub(r"[^\w.-]+", "_", request.node.nodeid)[-120:]
+    yield g3client.RECORDS_OVERRIDE
+    g3client.RECORDS_OVERRIDE = saved
+
+
 @pytest.fixture(autouse=True)
 def capability_register(capability_register_dir):
     """No test reads or writes this host's own capability register (STG-15, CAP-1): in process the register is the

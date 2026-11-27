@@ -448,7 +448,8 @@ class OperatorEndpoint:
                 raise g3_adapter.requester_gone(approval)
 
         try:
-            approved, record = g3_adapter.approve(g3_adapter.raise_set(bound), on_pending, wait)
+            approved, record = g3_adapter.approve(g3_adapter.raise_set(bound), on_pending, wait,
+                                                  project=str(self.engine.manifest["project"]["id"]))
             wait(0)
             with self._engine_lock:
                 changed = g3_adapter.moved(approved, self.engine.steering_raise_preview(mode))

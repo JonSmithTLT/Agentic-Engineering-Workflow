@@ -1847,7 +1847,8 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "asks the G3 service for the operator's approval of a protected command set, and submits the
-      approved set to the O-01 route"
+      approved set to the O-01 route; it writes and prunes the approval's per-host record (A-44 BOY-05.a), which only
+      the G3 clients write and the attention module only reads"
     lead_disposition: forbidden-to-lead
     lead_kept_out_by: "custody_ops.refuse_kept_out: refused where a Lead session's environment is present, before
       anything is read (the Lead's ruling of 2026-10-25); and lead_broker.run_cli, through custody_ops.LEAD_KEPT_OUT,
@@ -1857,8 +1858,9 @@ commands:
     keep_out_probe: [g3, request, absent-set.json, --o01, "http://127.0.0.1:9", --token-file, absent-token]
     refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, UNAVAILABLE, USAGE,
                VALIDATION_FAILED]
-    note: "STG-03 G3-D. OPERATOR_AUTHORIZATION_REQUIRED: the operator declined, the approval expired, or a restart
-      of the G3 service lost it; nothing was submitted. A Lead asking for an operator approval is not built (the
+    note: "STG-03 G3-D. OPERATOR_AUTHORIZATION_REQUIRED: the operator declined, the approval expired, a restart
+      of the G3 service lost it, or the service did not answer before the approval's expiry (it reads through no
+      answer and a 503 until then, A-44 BOY-05.a); nothing was submitted. A Lead asking for an operator approval is not built (the
       designer's question). The PIN is typed only in the confirmer"
   - name: message thread
     home: diagnostic

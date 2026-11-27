@@ -100,17 +100,20 @@ def _at(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def no_weaker_context(now: float | None = None) -> tuple[str, str] | None:
+def no_weaker_context(now: float | None = None, *, sweep: bool = True) -> tuple[str, str] | None:
     """Condition 3: None when no weaker agent context was live on this host in the window; otherwise its reason and
     fix. The register's sweep records first what has ended since its owner last wrote (a writer, so where this
-    process cannot write the register, as inside a sandbox, the reading stands without it, which only holds longer)."""
+    process cannot write the register, as inside a sandbox, the reading stands without it, which only holds longer).
+    A reader that writes nothing (the dashboard, through the attention module) passes ``sweep=False``: its reading
+    likewise only holds longer."""
     from aew.errors import AEWError
     from aew.harness import weaker_register as W
 
-    try:
-        W.sweep(now)
-    except (AEWError, OSError):
-        pass
+    if sweep:
+        try:
+            W.sweep(now)
+        except (AEWError, OSError):
+            pass
     r = W.read(now=now)
     if r.clear:
         return None
@@ -138,9 +141,10 @@ def no_weaker_context(now: float | None = None) -> tuple[str, str] | None:
 
 
 def standing(policy: dict[str, Any] | None = None, *, project: bool = True, now: float | None = None,
-             platform: str | None = None) -> Standing:
+             platform: str | None = None, sweep: bool = True) -> Standing:
     """G3's standing for an owner's project (``project``: judge condition 2 from ``policy``), or, for a reader bound
-    to no project (``project=False``), for conditions 1 and 3. Computed per call, never cached."""
+    to no project (``project=False``), for conditions 1 and 3. Computed per call, never cached. ``sweep=False`` reads
+    the register of weaker contexts without sweeping it (:func:`no_weaker_context`)."""
     judged = (1, 2, 3) if project else (1, 3)
     failed = installed(platform=platform)
     if failed:
@@ -149,7 +153,7 @@ def standing(policy: dict[str, Any] | None = None, *, project: bool = True, now:
         failed = contained_policy(policy)
         if failed:
             return _fail(2, *failed, judged)
-    failed = no_weaker_context(now)
+    failed = no_weaker_context(now, sweep=sweep)
     if failed:
         return _fail(3, *failed, judged)
     return Standing(True, judged=judged)

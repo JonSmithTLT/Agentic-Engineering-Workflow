@@ -60,7 +60,8 @@ def _from_git(repo_root: Path, path: str, sha: str) -> bytes | None:
     from aew.workspace import git
 
     try:
-        commits = git.git("log", f"-n{GIT_COMMITS}", "--format=%H", "--", path, cwd=repo_root, check=False)
+        # object_git, bounded and windowless: the history a pin's bytes are looked for in is read like any object
+        commits = git.object_git("log", f"-n{GIT_COMMITS}", "--format=%H", "--", path, cwd=repo_root, check=False)
         for commit in commits.stdout.decode("ascii", "replace").split():
             shown = git.object_git("cat-file", "blob", f"{commit}:{path}", cwd=repo_root, check=False)
             if shown.returncode == 0 and sha256_bytes(shown.stdout) == sha:

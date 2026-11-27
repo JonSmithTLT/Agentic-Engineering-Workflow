@@ -279,7 +279,8 @@ def test_uncommitted_work_in_the_branchs_worktree_is_reported_and_its_index_is_u
     before = (index.read_bytes(), index.stat().st_mtime_ns)
     wid = ref_ticket(project, tmp_path)
     out = engine(project).work_dispatch(token=project.token, work_id=wid)
-    assert out["execution"]["ref_pin"]["uncommitted"] == {"worktree": str(where), "paths": 1}
+    noticed = out["execution"]["ref_pin"]["uncommitted"]
+    assert Path(noticed["worktree"]).resolve() == where.resolve() and noticed["paths"] == 1  # git prints C:/ on Windows
     assert (index.read_bytes(), index.stat().st_mtime_ns) == before
     pack = (project.root / ".aew" / out["pack"]["path"]).read_text(encoding="utf-8")
     assert "1 tracked path(s) had uncommitted changes" in pack

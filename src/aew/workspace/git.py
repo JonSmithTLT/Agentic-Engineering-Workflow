@@ -618,7 +618,10 @@ def uncommitted_on(branch: str, *, cwd: Path) -> dict[str, Any] | None:
         return None
     listing = object_git("worktree", "list", "--porcelain", cwd=cwd).stdout.decode("utf-8", "replace")
     for block in listing.split("\n\n"):  # git 2.31 has no `-z` here; a path holding a newline is not matched
-        fields = dict(line.partition(" ")[::2] for line in block.splitlines() if line)
+        fields: dict[str, str] = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(" ")
+            fields[key] = value
         if fields.get("branch") != branch or not fields.get("worktree") or not Path(fields["worktree"]).is_dir():
             continue
         proc = object_git("--no-optional-locks", "status", "--porcelain", "-z", "--no-renames",

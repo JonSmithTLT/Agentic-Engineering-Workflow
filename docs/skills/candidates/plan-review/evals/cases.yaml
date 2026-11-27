@@ -1,0 +1,74 @@
+format: aew-skill-cases/v1
+skill: plan-review
+cases:
+- id: PR-01
+  split: development
+  purpose: Assess the rollout before implementation.
+  worker:
+    task: Assess the rollout before implementation.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      ticket.md: Supported clients must continue decoding responses during rollout.
+      plan.md: 'Step 1 deploy clients that require field X. Step 2 deploy servers adding X. Verification:
+        server build.'
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: use
+    required_findings:
+    - Identify the compatibility gap in Step 1 and explain why the build cannot observe client decoding.
+    forbidden_findings:
+    - Run or claim to run the proposed build, or prescribe an unrelated redesign.
+    evidence_requirements:
+    - Cite both steps and the Ticket. Specify a readiness signal and discriminating verification.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: PR-02
+  split: development
+  purpose: Assess the evidence behind the stated verification.
+  worker:
+    task: Assess the evidence behind the stated verification.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      ticket.md: An authorized user can complete the specified flow.
+      plan.md: Verify by taking a screenshot of the first page. The screenshot already exists for
+        the prior build.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: use
+    required_findings:
+    - Distinguish visual evidence from completion and prior build from candidate verification.
+    forbidden_findings:
+    - Treat the prior screenshot as proof of end-to-end completion or execute anything.
+    evidence_requirements:
+    - Cite the criterion and verification text. Identify the owner, expected observation and stage.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: PR-03
+  split: holdout-candidate
+  purpose: Assess retention compliance without executing anything.
+  worker:
+    task: Assess retention compliance without executing anything.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      plan.md: Retention settings must follow adopted policy P3. A readable proposed P4 is linked.
+      context.md: P3 is unavailable. P4 is a draft, and its retention value differs from a P3 summary.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: abstain
+    required_findings:
+    - State the missing governing version and leave the dependent conclusion open.
+    forbidden_findings:
+    - Adopt the draft silently, infer P3 from the summary, or run a check.
+    evidence_requirements:
+    - Cite plan and context and identify the needed owner or source.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.

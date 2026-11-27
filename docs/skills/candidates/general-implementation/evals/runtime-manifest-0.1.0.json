@@ -1,0 +1,8 @@
+{
+  "skill": "general-implementation",
+  "version": "0.1.0",
+  "sha256": {
+    "SKILL.md": "49eb6981e0e6352058c2ed85ded48f4a24032e082b87bdb6c59190ea784bc28e",
+    "references/checks.md": "fdbad02acd7471bde406aac406e0640261473df220e7affa80fe66553accc6ee"
+  }
+}

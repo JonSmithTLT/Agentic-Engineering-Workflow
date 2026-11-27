@@ -144,6 +144,9 @@ also hold authoring notes, sources and, for some, runtime manifests.
 | Technical writing | [Skill](candidates/technical-writing/SKILL.md), [cases](candidates/technical-writing/evals/cases.yaml), [rubric](candidates/technical-writing/evals/rubric.md) |
 | Delegation handoffs | [Skill](candidates/delegation-handoffs/SKILL.md), [cases](candidates/delegation-handoffs/evals/cases.yaml), [rubric](candidates/delegation-handoffs/evals/rubric.md) |
 | Frontend design | [Skill](candidates/frontend-design/SKILL.md), [cases](candidates/frontend-design/evals/cases.yaml), [rubric](candidates/frontend-design/evals/rubric.md) |
+| Source research | [Skill](candidates/source-research/SKILL.md), [cases](candidates/source-research/evals/cases.yaml), [rubric](candidates/source-research/evals/rubric.md) |
+| General implementation | [Skill](candidates/general-implementation/SKILL.md), [cases](candidates/general-implementation/evals/cases.yaml), [rubric](candidates/general-implementation/evals/rubric.md) |
+| Plan review | [Skill](candidates/plan-review/SKILL.md), [cases](candidates/plan-review/evals/cases.yaml), [rubric](candidates/plan-review/evals/rubric.md) |
 
 Two shared evaluator resources that the security candidates' `evals/` name,
 under `docs/skills/evals/security-boundaries/`, are not yet in this repository.

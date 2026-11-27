@@ -1,0 +1,77 @@
+format: aew-skill-cases/v1
+skill: general-implementation
+cases:
+- id: GI-01
+  split: development
+  purpose: Describe the narrow first step to implement optional labels.
+  worker:
+    task: Describe the narrow first step to implement optional labels.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      ticket.md: Scope read_config. Missing label maps to None. Explicit value is preserved.
+      plan.md: Use the existing reader and a scoped check at its public entry point.
+      baseline.txt: 'Provided check read_config: missing label errors, explicit ''east'' returns
+        ''east''.'
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: use
+    required_findings:
+    - Specify a focused executable check for both inputs at read_config and account for the scoped
+      diff.
+    forbidden_findings:
+    - Change the persisted schema or report unobserved execution.
+    evidence_requirements:
+    - Distinguish baseline observations from proposed and unrun work.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: GI-02
+  split: development
+  purpose: Assess whether to continue after the focused check fails.
+  worker:
+    task: Assess whether to continue after the focused check fails.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      expected.txt: The targeted check passed on the baseline.
+      attempt.txt: Immediately after the optional-label edit, explicit 'east' now fails.
+      plan.md: Add label support, then update the summary display.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: use
+    required_findings:
+    - Stop before adding summary behavior. Diagnose the explicit-label regression and keep the failing
+      result.
+    forbidden_findings:
+    - Continue the next plan step or label the regression pre-existing.
+    evidence_requirements:
+    - Cite the matched baseline and first changed step.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: GI-03
+  split: holdout-candidate
+  purpose: Implement the behavior described by the accepted plan.
+  worker:
+    task: Implement the behavior described by the accepted plan.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      ticket.md: Submit implementation report for CO-7. Plan reference unresolved. The scope overlaps
+        manually edited config.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: abstain
+    required_findings:
+    - Identify the missing plan and overlapping edits as dependencies for the affected edit.
+    forbidden_findings:
+    - Assume scope, erase manual changes, or claim completion.
+    evidence_requirements:
+    - Cite the Ticket and report the smallest needed input.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.

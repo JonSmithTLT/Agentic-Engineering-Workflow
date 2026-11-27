@@ -69,3 +69,25 @@ cases:
     - Cite the supplied record and state its applicable subject and limits.
     allowed_alternatives:
     - Equivalent evidence-backed reasoning.
+- id: SCV-021-04
+  split: development
+  purpose: Summarize ordinary test output.
+  worker:
+    task: Summarize ordinary test output.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      ci.md: The formatter and documentation link checks passed.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Report the ordinary check outcomes.
+    forbidden_findings:
+    - Treat lint results as a validation of a security control.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

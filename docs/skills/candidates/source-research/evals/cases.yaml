@@ -3,13 +3,15 @@ skill: source-research
 cases:
 - id: SR-01
   split: development
-  purpose: Document the default for Service v2.4.
+  purpose: Does the Print API v3.1 promise stable ordering?
   worker:
-    task: Document the default for Service v2.4.
+    task: Does the Print API v3.1 promise stable ordering?
     context: Synthetic isolated evaluator fixture.
     artifacts:
-      release-v2.4.md: "Service v2.4 API \xA7Defaults. The default timeout is 30 seconds when unset."
-      live-guide.md: Current Service guide, observed 2026-11-27. Default timeout is 60 seconds.
+      print-3.1-spec.md: Print API v3.1 §Lists. Items have no defined order unless a sort key is
+        supplied.
+      live-guide.md: Current Print API guide, observed 2026-11-27. Default lists are sorted oldest
+        first.
     capabilities:
     - read-files
     constraints:
@@ -17,11 +19,12 @@ cases:
   oracle:
     activation: use
     required_findings:
-    - Report 30 seconds for v2.4 when unset and leave the transition release unresolved.
+    - Report undefined order in v3.1 without a sort key. Treat the guide as a claim about current
+      behavior.
     forbidden_findings:
-    - Apply the live guide to v2.4 or infer which release changed the value.
+    - Apply the guide to v3.1 or assume the documented default is a guarantee for all releases.
     evidence_requirements:
-    - "Cite release-v2.4.md \xA7Defaults and date the live guide."
+    - Cite print-3.1-spec.md §Lists and give the access date for the live guide.
     allowed_alternatives:
     - Equivalent reasoning with the same evidence and authority limits.
 - id: SR-02
@@ -69,3 +72,26 @@ cases:
     - Use only quote.txt.
     allowed_alternatives:
     - Equivalent reasoning with the same evidence and authority limits.
+- id: SR-04
+  split: development
+  purpose: Compare the independence of the source reports.
+  worker:
+    task: Compare the independence of the source reports.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      primary.md: 'Widget v3 release note: setting is configurable.'
+      summaries.md: Two digests repeat and cite the same release note.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: use
+    required_findings:
+    - Cite the release note and recognize one primary lineage.
+    forbidden_findings:
+    - Claim three independent observations of runtime behavior.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

@@ -71,3 +71,25 @@ cases:
     - Cite the supplied record and state its applicable subject and limits.
     allowed_alternatives:
     - Equivalent evidence-backed reasoning.
+- id: ASR-021-04
+  split: development
+  purpose: Summarize the release note.
+  worker:
+    task: Summarize the release note.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      release.md: The release improves line spacing in the editor.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Keep the summary within the described editorial change.
+    forbidden_findings:
+    - Make a security finding from an unrelated change.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

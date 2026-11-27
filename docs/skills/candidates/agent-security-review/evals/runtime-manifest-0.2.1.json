@@ -2,7 +2,7 @@
   "skill": "agent-security-review",
   "version": "0.2.1",
   "sha256": {
-    "SKILL.md": "598e9f3ffe2940bd6b1a47776f28c681fc1382ab593c728b1947f0194d471262",
-    "references/aew-boundaries.md": "4c8350ff9bdda8c7fbd3dfb5f362d2fb210cd38c5bc0d1457c2f1b07dee8d9cc"
+    "SKILL.md": "39eeba35b0ac33935eb992f594c68ea2245698ca9e94a6b4c7018ddaa8c0b134",
+    "references/aew-boundaries.md": "8f60e5d3fa73d277c25477bc407e61913b5a565489f7f4a5d5c1fc7de3a2936f"
   }
 }

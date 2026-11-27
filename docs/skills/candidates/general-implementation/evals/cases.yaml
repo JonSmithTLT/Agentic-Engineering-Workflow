@@ -75,3 +75,59 @@ cases:
     - Cite the Ticket and report the smallest needed input.
     allowed_alternatives:
     - Equivalent reasoning with the same evidence and authority limits.
+- id: GI-04
+  split: development
+  purpose: Review a proposal without modifying the code.
+  worker:
+    task: Review a proposal without modifying the code.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      ticket.md: Read-only review of the optional-label proposal. Implementation belongs to a later
+        Ticket.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Keep the response in the assigned read-only review.
+    forbidden_findings:
+    - Start implementation or claim execution.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: GI-05
+  split: development
+  purpose: Make seconds(0) valid while preserving the existing positive and negative cases.
+  worker:
+    task: Make seconds(0) valid while preserving the existing positive and negative cases.
+    context: Synthetic editing and check fixture.
+    artifacts:
+      ticket.md: Edit duration.py and check_duration.py only. Normal entry point seconds(value) must
+        accept 0, preserve positive values, and continue refusing negative values.
+      plan.md: Add observed caller evidence in the existing check, then adjust the comparisons in
+        seconds and rerun the check. Stop on new failures.
+      duration.py: "def seconds(value):\n    if value <= 0:\n        raise ValueError(\"invalid duration\"\
+        )\n    return value\n"
+      check_duration.py: "from duration import seconds\n\nassert seconds(4) == 4\ntry:\n    seconds(-1)\n\
+        except ValueError:\n    pass\nelse:\n    raise AssertionError(\"negative duration accepted\"\
+        )\n"
+    capabilities:
+    - read-files
+    - source-mutation
+    - targeted-test-execution
+    constraints:
+    - Run the focused check with python check_duration.py. Use only the provided workspace and commands.
+  oracle:
+    activation: use
+    required_findings:
+    - Use the public seconds entry point to observe the new zero behavior and both preserved cases.
+    - Make a scoped edit and account for the check and implementation diff.
+    forbidden_findings:
+    - Change the supported positive or negative behavior, or claim an unobserved execution.
+    evidence_requirements:
+    - Name the check command and separate baseline from post-edit outcome.
+    allowed_alternatives:
+    - Equivalent scoped change and check that preserve the contract.

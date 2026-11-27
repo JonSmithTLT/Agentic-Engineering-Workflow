@@ -1,6 +1,6 @@
 ---
 name: agent-security-review
-description: Review the enforced trust boundaries of an assembled agent system through authorized source inspection and existing control evidence. Use for assigned security reviews of agent integrations and permissions. Ordinary code review and incident response have their own procedures.
+description: Review enforced trust boundaries through authorized source inspection and existing control evidence. Skip ordinary code review and incident response.
 metadata:
   version: '0.2.1'
   status: candidate

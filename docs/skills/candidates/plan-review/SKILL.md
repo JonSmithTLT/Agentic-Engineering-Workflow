@@ -1,8 +1,8 @@
 ---
 name: plan-review
-description: Assess whether a proposed plan meets its requirements, respects interfaces and dependencies, and can be verified before work starts. Use for read-only plan assessment. Patch review and check execution use their assigned roles.
+description: Assess requirements, interfaces, dependencies and verification before work starts. Skip patch review and execution.
 metadata:
-  version: "0.1.0"
+  version: '0.1.0'
   status: candidate
 ---
 

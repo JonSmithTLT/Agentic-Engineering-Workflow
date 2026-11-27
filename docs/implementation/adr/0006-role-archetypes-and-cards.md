@@ -256,7 +256,7 @@ rehash pull request.
   to its optional list. E398 proposes `plan-review` 0.1.0 as the sole
   foundation on `plan_assessor` v3 → v4, replacing the interim
   `adversarial-review`. Plan assessment uses read evidence and requires no
-  execution. The always-read entrypoints are 8,992, 8,943, and 8,941 UTF-8
+  execution. The always-read entrypoints are 8,879, 8,827, and 8,830 UTF-8
   bytes respectively.
 - **Security candidates.** E136 proposes `agent-security-review` 0.2.1
   and `security-control-validation` 0.2.1 as optional on

@@ -1,6 +1,6 @@
 ---
 name: security-control-validation
-description: Validate a named defensive control with static inspection, existing authorized observations, and ordinary control checks. Use for scoped review of prevention, detection, or containment claims. Broad vulnerability discovery and incident response have their own assignments.
+description: Assess a named defensive control with static inspection, supplied evidence and ordinary checks. Skip vulnerability discovery and incident response.
 metadata:
   version: '0.2.1'
   status: candidate

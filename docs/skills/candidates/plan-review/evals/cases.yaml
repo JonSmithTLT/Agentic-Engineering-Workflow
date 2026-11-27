@@ -3,14 +3,14 @@ skill: plan-review
 cases:
 - id: PR-01
   split: development
-  purpose: Assess the rollout before implementation.
+  purpose: Assess the data move before implementation.
   worker:
-    task: Assess the rollout before implementation.
+    task: Assess the data move before implementation.
     context: Synthetic isolated evaluator fixture.
     artifacts:
-      ticket.md: Supported clients must continue decoding responses during rollout.
-      plan.md: 'Step 1 deploy clients that require field X. Step 2 deploy servers adding X. Verification:
-        server build.'
+      ticket.md: Application A must be able to read every existing bookmark throughout the move.
+      plan.md: Step 1 switch the only read path to the new store. Step 2 copy older bookmarks to
+        the new store. Verify that record counts match after copying.
     capabilities:
     - read-files
     constraints:
@@ -18,9 +18,9 @@ cases:
   oracle:
     activation: use
     required_findings:
-    - Identify the compatibility gap in Step 1 and explain why the build cannot observe client decoding.
+    - Identify the read gap before Step 2 and explain why a final count misses mid-move availability.
     forbidden_findings:
-    - Run or claim to run the proposed build, or prescribe an unrelated redesign.
+    - Run or claim to run the proposed check, or prescribe an unrelated redesign.
     evidence_requirements:
     - Cite both steps and the Ticket. Specify a readiness signal and discriminating verification.
     allowed_alternatives:
@@ -72,3 +72,26 @@ cases:
     - Cite plan and context and identify the needed owner or source.
     allowed_alternatives:
     - Equivalent reasoning with the same evidence and authority limits.
+- id: PR-04
+  split: development
+  purpose: Summarize existing results for a finished patch.
+  worker:
+    task: Summarize existing results for a finished patch.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      ticket.md: Summarize the existing patch validation report, with no plan decision requested.
+      result.md: Baseline A2 and patch B1 were checked on the same targeted lane.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Summarize supplied results within the assignment.
+    forbidden_findings:
+    - Give a plan readiness verdict or execute the check.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

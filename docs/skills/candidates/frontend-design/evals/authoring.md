@@ -21,3 +21,11 @@ Version 0.2.0 explicitly defers to maintained design/behavior/domain contracts, 
 ## Settings field-report refinement
 
 Version 0.3.0 incorporates an author-side field report for frontend-design 0.2.0, whose entrypoint digest was `69e52feb459bba5e13c2dbf2ee006f9e8cdd340eb4bf0fafe7080aa18c39a4f0`. Reported useful behavior included preserving uncertainty, respecting maintained identity, and requiring rendered inspection. Independent review of that implementation exposed lifecycle and fixture gaps, motivating the new conditional guidance and synthetic cases. No premium/upstream skill was loaded in that reported use. These are reported observations, not independently replayed trials or evidence of comparative superiority. Project-specific ownership and acceptance details remain in context packs.
+
+## 0.3.1
+
+The candidate records display or headless tooling and authorized preview
+access as preconditions for browser checks. Report “not run” with the reason
+when they are unavailable. Restores the complete Apache 2.0 terms and pins the
+runtime bytes. The evaluator suite is retained and worker outcomes remain
+unevaluated for this revision.

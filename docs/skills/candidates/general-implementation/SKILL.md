@@ -1,8 +1,8 @@
 ---
 name: general-implementation
-description: Implement scoped engineering changes in small steps with executable behavior checks and a diff review against the accepted plan. Use for implementation Tickets. Read-only investigations and plan decisions use their own role procedures.
+description: Implement scoped changes in small steps with executable checks and a diff review against the plan. Skip read-only work.
 metadata:
-  version: "0.1.0"
+  version: '0.1.0'
   status: candidate
 ---
 

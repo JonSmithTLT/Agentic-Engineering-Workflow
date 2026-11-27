@@ -1,8 +1,8 @@
 ---
 name: source-research
-description: Research a defined question with traceable primary sources, versioned conclusions, and explicit uncertainty. Use for source-backed technical or policy research. Editorial work on supplied text usually needs no new research.
+description: Research questions using traceable primary sources, versions and stated uncertainty. Skip editorial-only work.
 metadata:
-  version: "0.1.0"
+  version: '0.1.0'
   status: candidate
 ---
 

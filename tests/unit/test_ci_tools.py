@@ -968,6 +968,29 @@ def _cache_family(step: dict) -> str:
     return (step["with"].get("restore-keys") or step["with"]["key"]).split("${{")[0]
 
 
+def test_a_lane_restores_the_pinned_scanner_from_the_cache_before_installing_and_saves_only_a_verified_one():
+    """Run 46048405164 (register E3): one Linux lane's three scanner downloads were refused, so the lane withheld its
+    passing report and `main` went red. The lane action restores the archive from the Actions cache before the
+    installer runs, and saves it after a miss only once the installer reported the scanner available (so only bytes
+    that matched the pinned digest are kept). The path and key come from the installer, never restated here, and there
+    is no restore-keys prefix that could restore another version's archive."""
+    steps = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    index = {step.get("id") or step.get("uses") or step.get("name"): i for i, step in enumerate(steps)}
+    entry, restore, tools = steps[index["scanner-cache"]], steps[index["scanner-restore"]], steps[index["tools"]]
+    assert entry["run"] == "python tools/ci/install_evidence.py --cache-entry"
+    assert tools["run"] == "python tools/ci/install_evidence.py"
+    save = next(i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/cache/save"))
+    assert index["scanner-cache"] < index["scanner-restore"] < index["tools"] < save
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert restore["env"] == {"SEGMENT_DOWNLOAD_TIMEOUT_MINS": "1"}  # a stalled restore is a miss in 1 min, not 10
+    for step in (restore, steps[save]):
+        assert step["with"] == {"path": "${{ steps.scanner-cache.outputs.path }}",
+                                "key": "${{ steps.scanner-cache.outputs.key }}"}
+        assert step["continue-on-error"] is True  # the cache can save a download, never fail a lane
+    assert "steps.tools.outputs.scanner == 'true'" in steps[save]["if"]
+    assert "steps.scanner-restore.outputs.cache-hit != 'true'" in steps[save]["if"]
+
+
 def test_setup_caches_only_the_pinned_bubblewrap_and_bounds_a_cold_download():
     """setup-aew's bubblewrap cache (strategy §7): the key names the pinned version, the release and the architecture,
     and nothing else restores it, so a cached package is always the one a cold job would download; the install

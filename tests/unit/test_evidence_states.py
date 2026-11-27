@@ -523,8 +523,10 @@ def test_evidence_tools_install_independently_and_report_unavailable(tmp_path, m
 
 def _scanner_download(monkeypatch, tmp_path, outcomes):
     """Fake curl: each call takes the next outcome, an exception to raise or the bytes to write at --output. The
-    pinned archive's digest is replaced by the digest of a fake archive holding the platform's binary."""
+    pinned archive's digest is replaced by the digest of a fake archive holding the platform's binary. RUNNER_TEMP, and
+    so the scanner's cache directory, is under tmp_path."""
     installer = _load("install_evidence")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     binary = "gitleaks.exe" if installer.sys.platform == "win32" else "gitleaks"
     archive_name, _digest = installer.GITLEAKS[installer.sys.platform]
     built = tmp_path / "built" / archive_name
@@ -574,6 +576,7 @@ def test_a_scanner_download_that_times_out_once_is_retried_and_still_checksum_ve
     with pytest.raises(ValueError, match="checksum mismatch"):
         installer.install_scanner(tampered)
     assert not (tampered / binary).exists() and len(calls) == 2
+    assert not list(installer.scanner_cache()[0].glob("*"))  # nor is it kept for the next job
 
 
 def test_a_scanner_download_that_fails_every_bounded_attempt_still_reports_the_scanner_unavailable(tmp_path,
@@ -591,6 +594,75 @@ def test_a_scanner_download_that_fails_every_bounded_attempt_still_reports_the_s
     assert output.read_text().splitlines() == ["scanner=false"]
     assert len(calls) == installer.SCANNER_ATTEMPTS and sleeps == list(installer.SCANNER_BACKOFF_S)
     assert not (tmp_path / "evidence-tools" / binary).exists()
+
+
+def test_a_cached_scanner_archive_is_installed_only_when_it_matches_the_pinned_digest(tmp_path, monkeypatch):
+    """Run 46048405164: a lane's three downloads were all refused (HTTP 403), so it withheld a passing report. The
+    verified archive is kept in the Actions cache: a job with it downloads nothing, and one whose cached bytes do not
+    match the pin discards them and downloads, so the cache never supplies a scanner the pin does not name."""
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path, [None, None, None])
+    first = tmp_path / "first"
+    first.mkdir()
+    installer.install_scanner(first)  # a cold job downloads once and keeps what it verified
+    cache, key = installer.scanner_cache()
+    archive, digest = installer.GITLEAKS[installer.sys.platform]
+    assert len(calls) == 1 and installer.hashlib.sha256((cache / archive).read_bytes()).hexdigest() == digest
+    assert key.endswith(f"-{archive}-{digest}") and cache == tmp_path / installer.SCANNER_CACHE
+    monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "outputs"))
+    installer.cache_entry()  # the lane action caches exactly the directory the installer reads
+    assert (tmp_path / "outputs").read_text().splitlines() == [f"path={cache}", f"key={key}"]
+    warm = tmp_path / "warm"
+    warm.mkdir()
+    installer.install_scanner(warm)  # a warm job: no download at all, so a refusing release host cannot reach it
+    assert (warm / binary).read_bytes() == b"scanner" and len(calls) == 1
+    (cache / archive).write_bytes(b"tampered")
+    redownloaded = tmp_path / "redownloaded"
+    redownloaded.mkdir()
+    installer.install_scanner(redownloaded)  # the mismatching bytes are discarded, never extracted
+    assert (redownloaded / binary).read_bytes() == b"scanner" and len(calls) == 2
+    assert installer.hashlib.sha256((cache / archive).read_bytes()).hexdigest() == digest
+    # The cache is best effort: one that cannot be written (here its directory is a file) still installs the bytes
+    # that were downloaded and verified.
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "blocked"))
+    (tmp_path / "blocked").mkdir()
+    (tmp_path / "blocked" / installer.SCANNER_CACHE).write_bytes(b"not a directory")
+    unwritable = tmp_path / "unwritable"
+    unwritable.mkdir()
+    installer.install_scanner(unwritable)
+    assert (unwritable / binary).read_bytes() == b"scanner" and len(calls) == 3
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    # A tampered cache with a refused download installs nothing, and the lane withholds its report as before.
+    (cache / archive).write_bytes(b"tampered")
+    refused = tmp_path / "refused"
+    refused.mkdir()
+    failures = [installer.subprocess.CalledProcessError(22, ["curl"])] * installer.SCANNER_ATTEMPTS
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path / "again", failures)
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    with pytest.raises(installer.subprocess.CalledProcessError):
+        installer.install_scanner(refused)
+    assert not (refused / binary).exists() and len(calls) == installer.SCANNER_ATTEMPTS
+
+
+def test_a_cached_scanner_archive_that_cannot_be_read_costs_a_download_never_the_install(tmp_path, monkeypatch):
+    """A cache that cannot be read is best effort too (#659's quick check, m1): the job downloads, verifies and
+    installs, as on a cold cache."""
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path, [None])
+    cache, _key = installer.scanner_cache()
+    archive, _digest = installer.GITLEAKS[installer.sys.platform]
+    cache.mkdir(parents=True)
+    (cache / archive).write_bytes(b"unreadable")
+    real = installer.Path.read_bytes
+
+    def read_bytes(path):
+        if path == cache / archive:
+            raise PermissionError(13, "denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(installer.Path, "read_bytes", read_bytes)
+    target = tmp_path / "target"
+    target.mkdir()
+    installer.install_scanner(target)
+    assert (target / binary).read_bytes() == b"scanner" and len(calls) == 1
 
 
 def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, monkeypatch):

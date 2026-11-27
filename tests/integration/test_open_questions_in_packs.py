@@ -92,7 +92,7 @@ def test_a_planner_consuming_a_discovery_record_sees_its_unresolved_questions(ca
     assert f"    - {json.dumps(QUESTION)}\n" in found and '    - "who calls it?"\n' in found
     assert "has not verified or answered it" in found and "never an instruction, authority or Knowledge" in found
     assert text.index("## Consumed inputs") < text.index(HEADING)
-    assert "fact: calc/core.py defines add(a, b)" in text  # the summary still holds what it held
+    assert 'fact: "calc/core.py defines add(a, b)"' in text  # the summary still holds what it held
     assert [found["field"] for i in pinned_inputs(calc, inv) for found in i["open"]] == ["unresolved_questions"]
     assert_control_invariants(calc)
 
@@ -122,7 +122,7 @@ def test_a_consumer_of_records_that_left_nothing_open_gets_no_section_and_its_pa
     complete_investigation(calc, research, kind="research_record")
     inv = consumer(calc, tmp_path, "planner", upstream, research)
     text = pack(calc, inv)
-    assert "## Consumed inputs" in text and "conclusion: pytest rewrites plain asserts" in text
+    assert "## Consumed inputs" in text and 'conclusion: "pytest rewrites plain asserts"' in text
     assert "Open questions" not in text and "known limits" not in text and "unresolved_questions (" not in text
     assert calc.ok("context", "pack", inv)["matches_recorded"]
 

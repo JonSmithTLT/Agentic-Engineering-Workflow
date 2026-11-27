@@ -749,9 +749,9 @@ V3_CASES: dict[str, dict[str, Any]] = {
                                  "accepted": r"(?m)^model-refs\s+PASS\s+the harness is given [^\n]*"
                                              r"(?<![\w/-])vuatprov/vuat-model\b"},  # never a doubled one
 }
-# The case readiness cannot name yet, and the row that holds it: the stale seat is G3-C's (vertical-uat.md §3; the
-# designer's position of 2026-11-02). It stays red, and says so.
-V3_HELD = {"stale-lead-session": "G3-C"}
+# The row each case's diagnosis is owed to, which a red case names: the stale seat is doctor's seat row, register
+# E384 (vertical-uat.md §3; V-01 burn-down C14), where G3-C, which merged, held it before.
+V3_HELD = {"stale-lead-session": "E384"}
 V3_MODELS = [{"id": "vuat-model", "modelID": "vuat-model", "providerID": "vuatprov", "name": "VUAT", "enabled": True,
               "variants": []}]
 

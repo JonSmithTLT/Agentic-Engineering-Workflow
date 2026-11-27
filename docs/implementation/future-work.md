@@ -3978,18 +3978,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E383/`, oldest first (`python tools/register.py show E383`).*
 
-### E384
-
-**Work:** `aew doctor` has a seat row: a Lead seat held by a session that is no longer running is a WARN naming the dead session and the fix (plain `aew opencode` resumes it, E330; a takeover where resume is refused). Today neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat. With it, the vertical's `V3_HELD` cites this row instead of G3-C (`tests/acceptance/test_vertical_path.py:753`), which merged with STG-03
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C14), from the vertical's re-measure of 2026-11-26 at `3640b585`: V3 stale-lead-session, where doctor named neither cause nor fix
-
-**When:** **V-01**, the strict track of the burn-down, after E330 (merged)
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
-
 ### E390
 
 **Work:** `DECIDE_WORK_PROPOSAL` on the O-01 wire: V01-01 step 5 (`plan`, W02; WIS the owner, G3-protected), so the operator's plan approval is a confirmed decision and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and the act is `plan accept` (`src/aew/cli/work_commands.py:367`). Its owner, WIS, is outside the pinned G3 wire's owner enum (`g3/aew_g3/g3-wire.schema.json`, `ConsumeRequest.owner`), so it cannot be consumed without a G3 wire change. E351 is the plan's decision kind in the projection, not this wire action
@@ -5383,6 +5371,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #603 (`1b854d6b`): the scripted Lead keeps the MCP `content` text and takes its first words from the readable head, never the JSON. The rendered resume names T-0001 through its run line in the vertical world, so no product gap was found; a Ticket assigned with no harness run is named only through its runs or decisions, recorded on #603 as an observation
 
 *Later notes: `notes.d/E377/`, oldest first (`python tools/register.py show E377`).*
+
+### E384
+
+**Was:** `aew doctor` has a seat row: a Lead seat held by a session that is no longer running is a WARN naming the dead session and the fix (plain `aew opencode` resumes it, E330; a takeover where resume is refused), and the vertical's `V3_HELD` cites this row instead of G3-C (cluster C14 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)
+
+**Closed:** 2026-11-27
+
+**By:** #640: doctor's `lead-seat` row, judged as resume judges the seat (one `resume_refusal` that resume and the row both read), PASS while the holding OpenCode session runs and WARN naming it, plain `aew opencode`, and the takeover once it is gone; no row for a vacant seat or one whose process this terminal cannot judge (another host or user, or inside a contained Lead's or a worker's sandbox). Strictly additive, pinned: every other doctor row and verdict is unchanged. The vertical's V3 stale-lead-session case now names cause and fix and stays red only on the open fallback (C12)
+
+*Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
 
 ### E385
 

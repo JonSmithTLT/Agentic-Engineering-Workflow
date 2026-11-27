@@ -160,7 +160,9 @@ one login, an API key, is relayed as in the operator's default configuration.
   of the authoritative snapshot, contained as a worker's check, and its `check-changes` row names each path a check
   changes, with `.gitignore` or `.git/info/exclude` as the fix; never evidence. Without the flag the row is a WARN
   that gives the command, so the driver types `aew doctor --run-checks` for this case. Neither refuses anything.
-- **The case readiness can't name yet** stays red, and the driver names what holds it: the stale seat is G3-C's.
+- **The stale seat** is named by doctor's `lead-seat` row (register E384): a seat held by a Lead session that is
+  no longer running is a WARN naming that session and the fix, plain `aew opencode`, which resumes it, or a
+  takeover where resume is refused. Should the case go red, the driver names the row that owes it: E384.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
   the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for readiness (`aew doctor`) and for the

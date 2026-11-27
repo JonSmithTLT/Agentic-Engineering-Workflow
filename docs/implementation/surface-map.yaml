@@ -182,7 +182,10 @@ commands:
       plan login, provider-key names its time left and model-list uses the same route and seed as launch.
       `steering:run-ready` says whether a raise to Run would be accepted and could act (A1 §3.2): a Lead in the seat, the
       notifier, a deadline_s on every profile routing can pick, and an operator endpoint that answers a ping, each with
-      its fix; a read, like every doctor check.
+      its fix; a read, like every doctor check. `lead-seat` (register E384) says whether the OpenCode session holding
+      the seat still runs, judged as `aew opencode`'s resume judges it: PASS while it runs, a WARN naming a gone
+      session and the fix, and no row where the seat is vacant or its process cannot be judged from here (another
+      host or user, a seat not taken by `aew opencode`, or inside a contained Lead's or a worker's sandbox).
       checks-configured reports missing project CI declarations and declared tools without a configured check."
   - name: init
     home: product

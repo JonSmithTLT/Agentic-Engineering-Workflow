@@ -60,7 +60,7 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | **C11** After the evidence-mismatch refusal, nothing is offered | The gate's refusal for a check that changes a tracked file is BLOCKED with no decision (`projection.py:334-372`); until #596, the driver also appended `--expect-rev` to a hinted read command, and that refusal counted. At the re-measure of `8c85f377` that refusal is gone (evidence-mismatch's `refusals` 0, `gate show` read once); the case still ends at RUNNING | design, oracle | `E380` | None | Counters and fallbacks of the other clusters | M, 1 PR (the driver line went with #596) | E335; Q6 | open |
 | **C12** V01-01's wire steps are not on the O-01 wire | The oracle derives them not built: the vendored O-01 registry lacks the actions or holds them registry-only, and the carrier admits one origin (`tests/helpers/vertical/oracle.py:196-210`). `path_problems` fails any operator fallback (`tests/acceptance/test_vertical_path.py:217-226`), so no strict V1, V2 or V4 case passes before it | design (the wire track) | `E381`, `E382`, `E383`, `E390`, `E391`, `E392`, `E393`, `E181`, `STG-14` | None, but every strict V1, V2 and V4 green needs it | Nothing it leaves; the alpha excuses it | Many PRs | Q7, answered: after the personal alpha, aligned with STG-14 | open |
 | **C13** The credential route a scenario measures | V2's same-shell extra keeps the credential route by design; V4 changes its setting through acquire, export, a hand-edited policy and a separate adopt: there is no `aew policy route` (only `aew settings show`) | scenario; product for V4 | `E164`, `E331` | None | The other clusters | 2 PRs | E327 (merged) for E331 | in flight (E331's PR built: settings and authority adopted at the operator's terminal with no Lead credential; E164's `aew policy route` and `model allow` remain, through its hook) |
-| **C14** Readiness has no seat row | Neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat, so doctor names neither the dead session nor the fix; `V3_HELD` cites G3-C, which merged (`test_vertical_path.py:753`) | product | `E384` | None: the case still takes the G3 open fallback (C12) | C12's open step | S, 1 PR | E330 (merged) | open |
+| **C14** Readiness has no seat row | Neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat, so doctor names neither the dead session nor the fix; `V3_HELD` cites G3-C, which merged (`test_vertical_path.py:753`) | product | `E384` | None: the case still takes the G3 open fallback (C12) | C12's open step | S, 1 PR | E330 (merged) | done (#640) |
 | **C15** The #213 autopsy cannot see the contained TUI | The TUI writes its childdiag events to the children directory the autopsy names (`tests/helpers/autopsy.py:431-442`), outside the contained Lead's writable roots, the scripts directory and `sync` (`scripted_operator.py:494`) | oracle | `E385` | G3 #213 diagnosis | Nothing in that case | S, test-only | none | done (#602) |
 | **C16** The forced kill's own refusal | The call in flight when the test kills the session mid-stage is refused `BROKER_UNREACHABLE` and counted as the Lead's; the refused `stale_hint` that follows belongs to C7's takeover chain | oracle | `E386` | None | C7's chain, C5 | S, one oracle rule | none | done (#636) |
 | **C17** The offline world is not offline under doctor | Doctor's `provider-relay` rows (`src/aew/doctor.py:160`, `src/aew/harness/doctor_relay.py`) send the world's synthetic login to the real provider host, which answers HTTP 401 in every V3 case. No counter reads it, and no verdict changes | oracle | `E387` | None | Nothing | S, 1 PR | none | done (#635) |
@@ -115,7 +115,7 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | step | `result` | C12 | not built (the D-01 reads); no operator fallback |
 | step | `exit` | none | outside AEW |
 | step | `reopen` | C7, C12 | G3 fallback, after C7's block |
-| step | `preflight` | C14 | landed; V3 stale-lead-session is not diagnosed |
+| step | `preflight` | C14 | landed; V3 stale-lead-session is diagnosed by doctor's `lead-seat` row (E384) |
 | step | `setting` | C12, C13 | G3 fallback |
 | step | `raise` | C12 | G3 fallback |
 
@@ -210,7 +210,7 @@ when we align the wires").
 6. **C9** and **C11** (E378, E380), after Q2 and Q6.
 7. **C6** (E375, done: #627), an oracle fix with its `vertical-uat.md` §2 and §3 amendments (Q1 and Q10 answered):
    `mechanical_calls` 0 in each steering-on case.
-8. **C14** (E384), with C16 (E386) and C17 (E387) as small fixes beside it.
+8. **C14** (E384, done by #640: doctor's `lead-seat` row; V3 stale-lead-session names cause and fix and fails only on the open fallback), with C16 (E386, done: #636) and C17 (E387, done: #635) as small fixes beside it.
 9. **C13** (E164, E331).
 10. **C12**, the wire track (E381 to E383, E390 to E393, E181, STG-14): after the personal alpha, aligned with STG-14 (Q7).
 

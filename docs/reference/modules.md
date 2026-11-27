@@ -1056,6 +1056,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.ports`
 - `aew.engine.request_ids`
+- `aew.engine.resume_ops`
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
@@ -1064,6 +1065,7 @@ None.
 - `aew.knowledge.records`
 - `aew.knowledge.render`
 - `aew.operator`
+- `aew.process_kind`
 - `aew.roles`
 - `aew.switch_offer`
 - `aew.util`

@@ -25,13 +25,20 @@ optional_capabilities: [browser_testing]
 outputs: [implementation_report]
 ```
 
-This extends the existing implementer archetype and adds no operations.
-The ordinary implementation capabilities remain required. Browser access
-and preview access come from project execution policy. The optional browser
-capability requires an available display or headless driver and authorized
-network access to the preview when the task needs it. Browser tooling and MCP
-are deployment decisions. Complete available checks when browser verification
-is unavailable and report the affected checks as “not run” with a reason.
+This extends the implementer archetype with the ordinary implementation
+capabilities. **Current contained workers cannot run browser checks.** AEW
+offers no browser-testing tool, the supported worker network policy provides
+no browser preview destinations, and the worker permission projection denies
+OpenCode's browser tool. Every browser check reports “not run” with that
+reason until an explicit capability is provided. Complete the project's
+available checks in the meantime.
+
+The optional `browser_testing` entry is a proposed capability. Providing it
+would require the relevant policy and tooling decision, an available display
+or headless driver, and authorized access to the preview. The designer can
+decide whether delivery of the capability belongs in a separate change.
+See the [worker permissions](../../../../src/aew/harness/opencode/projection.py)
+and the [worker egress policy](../../../../src/aew/harness/containment/egress.py).
 
 The proposed candidate is [frontend-design 0.3.1](../../../skills/candidates/frontend-design/SKILL.md).
 Its entrypoint is 8,375 UTF-8 bytes, with 25,644 bytes in the full runtime
@@ -45,3 +52,8 @@ messaging-off Lead context pools against 40,000 bytes and the operator
 reserve, and include the staffing delta in the installation pull request.
 Verify the card can be selected, loaded, and report a browser check as not run
 in a contained environment that lacks it. E395 stays open pending the designer's decision.
+
+At installation, reconcile the license with the verified origin of the
+rewritten text. Record whose work and terms the installed notice covers,
+and retain any notice required by material actually reused. The current
+candidate includes the prior Apache terms while that provenance is reviewed.

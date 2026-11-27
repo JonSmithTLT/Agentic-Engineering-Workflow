@@ -219,9 +219,6 @@ REVIEWED = {
     "do not avoid it to collect more evidence than the class requires":
         "judgement on choosing Class 0 (X4b), read with the class detail; the core's rules carry what the engine "
         "enforces about classes",
-    "a held seat refuses `aew opencode --acquire` until `aew lead release` gives it up":
-        "the operator's procedure after the session, which the section naming `aew lead acquire` must carry (review of "
-        "#329, F2); the core carries the rule that classifying is the operator's",
 }
 
 

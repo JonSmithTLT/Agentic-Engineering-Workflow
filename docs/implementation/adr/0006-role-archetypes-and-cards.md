@@ -243,7 +243,7 @@ The operator's answers of 2026-11-26 to the questions E136's third batch left, u
 
 ## Amendment 2026-11-27 — public skill candidates and Frontend Engineer proposal (E136, E395–E398)
 
-The operator asked that “the updates and new skills should be researched as well”
+On 2026-11-27, the operator asked that “the updates and new skills should be researched as well”
 and to “Keep foundational skills small.” This batch publishes the researched
 entrypoints, linked details and evaluator material for public-text review.
 It records the intended delivery and version changes before the separate
@@ -261,11 +261,11 @@ rehash pull request.
 - **Security candidates.** E136 proposes `agent-security-review` 0.2.1
   and `security-control-validation` 0.2.1 as optional on
   `security_reviewer` v1 → v2. Its sole foundation remains
-  `security-review`. The operator said the skills “should describe method
-  only.” The public text cites the adopted October 19 and October 24
+  `security-review`. On 2026-11-27, the operator said the skills “should
+  describe method only.” The public text cites the adopted October 19 and October 24
   scope and reachability decisions and describes defensive evidence methods.
-- **Frontend proposal.** The operator requires “Make browser checks optional
-  capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
+- **Frontend proposal.** On 2026-11-27, the operator said “Make browser
+  checks optional capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
   with `frontend-design` 0.3.1 as its sole foundation. The E395 design note
   holds the proposed card and the browser capability conditions. The designer
   owns its sign-off. A later installation would measure and record the Lead
@@ -273,3 +273,19 @@ rehash pull request.
 - **Delivery state.** This batch edits candidate and design records. Card
   versions, shipped entries, and the Lead's context stay at their installed
   revisions. Worker outcomes for the candidates are unevaluated.
+
+## Amendment 2026-11-27 — public candidate review follow-up (E136 and E395)
+
+The operator's follow-up on #642 said “if a contained agent can't reach
+something on its own, it is not filed.” `security-control-validation`
+0.2.2 states that October 24 rule in its AEW reference before delivery.
+The `agent-security-review` 0.2.1 evaluator record and the 0.2.2 evaluator
+record each describe the four current cases. The register note records
+that #642 cleared the draft-update hold.
+
+On 2026-11-27 the operator also clarified the E395 proposal's current
+environment. Contained workers will report browser checks as “not run”
+until a browser capability, supported execution environment, and preview
+access are provided. The designer still owns E395 sign-off and the
+installation-time license and provenance decision. The proposed card is v1.
+The four proposed delivery version bumps remain recorded above.

@@ -269,7 +269,6 @@ ENDPOINT_DOWN = ("the operator endpoint is not running: start `aew operator serv
                  "deliver notifications")
 SEAT_VACANT = ("no Lead holds the seat: start the Lead session with `aew opencode --acquire`. A raise binds its "
                "generation, and the steering loop runs in that session")
-PINNED_EDIT = "Edit pinned settings or classify authority candidates"  # the quickstart's section for a pinned edit
 
 
 def endpoint_silent(why: str) -> str:
@@ -318,12 +317,11 @@ def deadline_problem(policy: dict[str, Any] | None, *, seat_held: bool = False) 
     begins), with the route to fix it, or ``None``. The raise to Run, each Run activation, ``doctor`` and ``status``
     give this one text.
 
-    The fix is an edit of a pinned file, which starts with the operator taking the seat. With ``seat_held`` (the raise
-    and the loop always: both need a Lead in the seat) that step is refused until the Lead session ends, so the route
-    starts there and names the quickstart section the operator follows; otherwise it names the commands. Either way it
-    ends with the Lead started again and the raise asked again, since a raise binds one Lead generation."""
+    The fix is an edit of a pinned file, which the operator adopts at their own terminal with no Lead credential and
+    the seat left with its holder (register E331). With ``seat_held`` (the raise and the loop always: both need a Lead
+    in the seat) the Lead keeps running, and the raise is asked again once adopted; otherwise the route ends with the
+    Lead started and the raise asked."""
     from aew.engine.first_configuration import post_pin_route
-    from aew.harness import contract as K
     from aew.policy import execution as X
 
     missing = profiles_without_deadline(policy)
@@ -336,12 +334,9 @@ def deadline_problem(policy: dict[str, Any] | None, *, seat_held: bool = False) 
     else:
         what = (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: give each a "
                 "deadline_s (seconds)")
-    again = "start the Lead again with `aew opencode --acquire` and raise to Run again"
-    if seat_held:
-        return (f"{what}. That is an edit of .aew/{X.REL_PATH}, a pinned file: end the Lead session first, so it "
-                f"gives up the seat; then, at the operator's terminal, follow the quickstart's \"{PINNED_EDIT}\" "
-                f"(it ends with {K.MANIFEST_ADOPT} and the release of the seat); then {again}")
-    return f"{what}. To do that, {post_pin_route(X.REL_PATH)}. {K.HELD_SEAT}. Then {again}"
+    again = ("raise to Run again" if seat_held
+             else "start the Lead with `aew opencode --acquire` and raise to Run")
+    return f"{what}. To do that, {post_pin_route(X.REL_PATH)}. Then {again}"
 
 
 LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)

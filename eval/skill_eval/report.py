@@ -1,4 +1,4 @@
-"""A skill evaluation's report: the shared paired report (:mod:`skill_eval.paired`), with what a skill evaluation
+"""A skill evaluation's report: the shared paired report (:mod:`aew_eval.paired`), with what a skill evaluation
 reads from the same pairs (skill evaluation guide §5, steps 8 and 9; §6; §7).
 
 The pairs, their usage differences, the blind packets and the paired grades are the shared part's. This module adds
@@ -26,8 +26,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from skill_eval import paired, plan
-from skill_eval.paired import load_grades  # noqa: F401 (the grader's file is read the shared way)
+from aew_eval import paired
+from aew_eval.paired import load_grades  # noqa: F401 (the grader's file is read the shared way)
+
+from skill_eval import plan
 from skill_eval.run import LANE_FILE
 
 REPORT = "aew/skill-eval-report/v1"

@@ -51,10 +51,11 @@ QUOTED_PYTHON = '"{python}"'
 
 
 def post_pin_route(*files: str) -> str:
-    """What changing a pinned policy file takes. Whatever prints it adds ``K.HELD_SEAT``."""
+    """What changing a pinned policy file takes: the edit, then the operator's adoption at their own terminal, which
+    needs no Lead credential and leaves the seat with its holder (register E331), so no seat step comes before it."""
     edits = ", ".join(f".aew/{file}" for file in files)
-    return (f"run `aew lead acquire`, edit the settings in {edits}, "
-            f"then run {K.MANIFEST_ADOPT} at the operator's terminal")
+    return (f"edit the settings in {edits}, then the operator runs {K.MANIFEST_ADOPT} at their own terminal (it needs "
+            "no Lead credential, and the Lead seat stays with its holder)")
 
 
 def already_initialized(aew_root: Any) -> str:
@@ -62,7 +63,7 @@ def already_initialized(aew_root: Any) -> str:
     #329, F8). The code stays `INTEGRITY_ERROR`, as ruled."""
     return (f"{aew_root} is already an initialized AEW project, so `aew init` can't change it. "
             f"To change its check command or model, {post_pin_route(CHECKS_REL, X.REL_PATH)}. "
-            f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`")
+            "Then start the Lead with `aew opencode --acquire`, unless one is running")
 
 
 def _refuse(reason: str, message: str, **details: Any) -> UsageError:
@@ -137,7 +138,7 @@ def _provider_env(provider: str) -> tuple[str, ...]:
                       f"--model: provider {provider!r} isn't one this flag knows "
                       f"({', '.join(sorted(netns.PROVIDER_KEY_ENV))}). Another provider is a hand edit: `aew init` "
                       f"without these flags, {post_pin_route(X.REL_PATH)}, naming its "
-                      f"containment.network.upstreams entry there. {K.HELD_SEAT}", provider=provider)
+                      f"containment.network.upstreams entry there", provider=provider)
     return (name,)
 
 
@@ -206,7 +207,7 @@ class FirstConfiguration:
         if self.argv is None or self.identity is None:  # at least one was given, or there would be no configuration
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
             return (f"this project still has no {missing}. To add it, "
-                    f"{post_pin_route(file)}. {K.HELD_SEAT}. "
+                    f"{post_pin_route(file)}. "
                     "Then start the Lead with `aew opencode --acquire`")
         var = self.provider_env[0]
         hidden = "; ".join(f"{shell}: `{form}`" for shell, form in lead_credential.forms(var, var).items())

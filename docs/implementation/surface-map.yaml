@@ -455,24 +455,41 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "checks the scoped subject of approval and commits under the control lock"
-    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
-    note: "optional --approval-digest binds the candidate shown to the operator"
+    refusals: [CHANGED_SINCE_READ, ILLEGAL_TRANSITION, NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED,
+               PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "optional --approval-digest binds the candidate shown to the operator. --decided-by operator (the default)
+      is the operator's own decision at their terminal with no Lead credential (register E331, operator_adopt):
+      PERMISSION_DENIED in an AEW session (aew_session) or a non-writer (non_writer_process),
+      OPERATOR_AUTHORIZATION_REQUIRED with no terminal (no_terminal); it always asks the typed-back code (the
+      operator's ruling of 2026-11-27; a G3 approval replaces it when the wire track adds one); --decided-by lead takes
+      the Lead credential (STALE_AUTHORITY). lead_broker.OPERATOR_DECIDED keeps it from a Lead session"
   - name: authority reject
     home: operator-admin
     users: [operator]
     journeys: []
     mutates: "yes"
     mutates_basis: "checks the scoped subject of approval and commits under the control lock"
-    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    refusals: [CHANGED_SINCE_READ, ILLEGAL_TRANSITION, NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED,
+               PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "the operator's own decision at their terminal with no Lead credential (register E331, operator_adopt),
+      refused as authority accept's operator form is, and always asking the typed-back code (the operator's ruling of
+      2026-11-27; a G3 approval replaces it when the wire track adds one)"
   - name: manifest adopt
     home: operator-admin
     users: [operator]
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
     mutates_basis: "checks the scoped subject of approval and commits under the control lock"
-    refusals: [CHANGED_SINCE_READ, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
-    note: "today's configure and change-a-setting fallback. Adopts the operational coverage declaration in
-      policy/checks.yaml and validates covered_by against the configured check IDs and built-in guardrails."
+    refusals: [CHANGED_SINCE_READ, ILLEGAL_TRANSITION, INTEGRITY_ERROR, OPERATOR_AUTHORIZATION_REQUIRED,
+               PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE, VALIDATION_FAILED]
+    note: "today's configure and change-a-setting route. The operator's own adoption at their terminal, with no Lead
+      credential and the seat left to its holder (register E331, operator_adopt.adopt): it shows each file's diff
+      against its pin and binds the digests shown (CHANGED_SINCE_READ when one moved); a plain yes while the register
+      of weaker contexts is clear, the typed-back code naming the weaker run otherwise. PERMISSION_DENIED in an AEW
+      session (aew_session) or a non-writer (non_writer_process), OPERATOR_AUTHORIZATION_REQUIRED with no terminal
+      (no_terminal); lead_broker.OPERATOR_DECIDED keeps it from a Lead session. Adopts the operational coverage
+      declaration in policy/checks.yaml and validates covered_by against the configured check IDs and built-in
+      guardrails."
   - name: work create
     home: product
     users: [lead]
@@ -1802,7 +1819,12 @@ commands:
     relayed: contained-lead
     refusals: [INTEGRITY_ERROR, NOT_FOUND, PROJECT_NOT_FOUND, USAGE, VALIDATION_FAILED]
     note: "F25 R9; a provisional run is read from its run directory under .aew/local, so the contained Lead's read is
-      relayed to the host"
+      relayed to the host. Each run and total also shows its requests (the rate-limit unit's ruling 2): the model calls
+      in the run's messages (the record's steps; compaction, title and retried calls not counted, and the text says
+      so), unknown for a missing run (usage lost), a run that reported nothing or one with tokens but no call in its
+      messages, never a zero, and a floor for one not read to the end; a total's JSON gives them as steps,
+      requests_unknown_runs and requests_floor_runs; tokens in a declared rate basis and the largest request are not
+      shown yet"
   - name: g3 request
     home: operator-admin
     users: [operator]

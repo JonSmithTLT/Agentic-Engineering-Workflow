@@ -250,6 +250,10 @@ CUSTODY_OPS = ("custody.register", "integrate.validate", "integrate.validated", 
                "integrate.validation_unavailable", "integrate.validation_released", "integrate.route",
                "integrate.release", "integrate.publishing")
 CUSTODY_PUBLISH = "integrate.publishing"
+# The closed family the operator commits at their own terminal with no Lead credential (register E331; review of #641,
+# point 4): the settings' adoption and an authority decision recorded as theirs. ``Kernel.operator_txn`` refuses any
+# other op, and a test holds this set to the engine's `operator_txn` call sites.
+OPERATOR_OPS = frozenset({"manifest.adopt", "authority.accept", "authority.reject"})
 
 
 def mint_custody(state: dict[str, Any], *, custodian: str, entry: str, attempt: int, lease_at: str) -> str:

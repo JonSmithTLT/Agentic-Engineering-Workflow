@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
-from aew.engine import approval, gate_ops, operator_decisions, transitions, usage_ops
+from aew.engine import approval, gate_ops, operator_decisions, pinned_copies, transitions, usage_ops
 from aew.engine import steering as steering_mod
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
@@ -119,6 +119,8 @@ class ProjectAdmin:
         text = render_manifest(manifest)
         ctx.session.write(MANIFEST, text, immutable=False)
         ctx.state["manifest_sha256"] = sha256_text(text)
+        # The new pin's bytes, for the diff the operator's next adoption shows (register E331).
+        ctx.after_commit.append(lambda: pinned_copies.keep(self.k.aew_root, text.encode("utf-8")))
 
     def authority_candidate(self, candidate_id: str) -> dict[str, Any]:
         return self._candidate_subject(self._candidate(self._fresh_manifest(), candidate_id))
@@ -139,16 +141,34 @@ class ProjectAdmin:
         digest = approval.digest(candidate)
         return {"path": path, "kind": "file, missing", "digest": digest, "ref": f"{path}@record:{digest}"}
 
-    def authority_accept(self, *, token: str, candidate_id: str, klass: str,
+    def _check_decider(self, token: str | None, decided_by: str, authorization: dict[str, str] | None) -> None:
+        """An authority decision runs as the Lead's transaction, with its credential, or with none as the operator's own
+        at their terminal (register E331), which only an operator decision can be."""
+        if decided_by not in {"lead", "operator"}:
+            raise UsageError("an authority decision must name lead or operator as the decider")
+        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
+        if token is None and decided_by != "operator":
+            raise UsageError("a decision recorded as the Lead's needs the Lead credential; the operator's own decision "
+                             "(`--decided-by operator`, the default) needs none", reason="lead_credential_required")
+
+    @staticmethod
+    def _decider(ctx: TxnContext, token: str | None, decided_by: str,
+                 authorization: dict[str, str] | None) -> dict[str, Any]:
+        """Who decided, as the record says: the operator's own decision names no Lead actor (register E331)."""
+        if token is None:
+            return {"kind": "operator", **(authorization or {})}
+        return dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead", recorded_by_lead=True,
+                    **(authorization or {}))
+
+    def authority_accept(self, *, token: str | None = None, candidate_id: str, klass: str,
                          decided_by: str, reason: str | None = None,
                          authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
         if klass not in AUTHORITY_CLASSES:
             raise UsageError(f"class must be one of {AUTHORITY_CLASSES}")
-        if decided_by not in {"lead", "operator"}:
-            raise UsageError("an authority decision must name lead or operator as the decider")
-        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
-        with self.k.lead_txn(token, "authority.accept", reason=reason) as ctx:
+        self._check_decider(token, decided_by, authorization)
+        with (self.k.lead_txn(token, "authority.accept", reason=reason) if token is not None
+              else self.k.operator_txn(authorization, "authority.accept", reason=reason)) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
@@ -161,8 +181,7 @@ class ProjectAdmin:
             approval.compare("authority.accept", path, binding,
                              subject["digest"] if subject["kind"] != "file, missing" else None)
             ref = subject["ref"]
-            by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
-                      recorded_by_lead=True, **(authorization or {}))
+            by = self._decider(ctx, token, decided_by, authorization)
             decision = self.k.new_decision(
                 ctx, "authority_acceptance",
                 f"Accepted {candidate['path']} as {klass} authority",
@@ -175,13 +194,12 @@ class ProjectAdmin:
             ctx.summary = f"authority accepted: {candidate['path']} ({klass})"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
-    def authority_reject(self, *, token: str, candidate_id: str, decided_by: str,
+    def authority_reject(self, *, token: str | None = None, candidate_id: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
-        if decided_by not in {"lead", "operator"}:
-            raise UsageError("an authority decision must name lead or operator as the decider")
-        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
-        with self.k.lead_txn(token, "authority.reject", reason=reason) as ctx:
+        self._check_decider(token, decided_by, authorization)
+        with (self.k.lead_txn(token, "authority.reject", reason=reason) if token is not None
+              else self.k.operator_txn(authorization, "authority.reject", reason=reason)) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
@@ -191,8 +209,7 @@ class ProjectAdmin:
             subject = self._candidate_subject(candidate)
             approval.compare("authority.reject", path, binding, subject["digest"])
             ref = subject["ref"]
-            by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
-                      recorded_by_lead=True, **(authorization or {}))
+            by = self._decider(ctx, token, decided_by, authorization)
             decision = self.k.new_decision(ctx, "authority_rejection",
                                          f"Rejected {path} as project authority", reason=reason,
                                          decided_by=by, evidence_refs=[ref])
@@ -203,8 +220,20 @@ class ProjectAdmin:
 
     def manifest_approval(self) -> dict[str, str | None]:
         """The paths and byte SHAs the operator is about to approve."""
-        _, current, changed, first_pin = self._manifest_subject(self.k.store.current())
-        return current if first_pin else {rel: current.get(rel) for rel in changed}
+        return {rel: f["now"] for rel, f in self.manifest_offer()["files"].items()}
+
+    def manifest_offer(self) -> dict[str, Any]:
+        """What an adoption would pin now, from one read of the committed state: each file it would pin, with its pin in
+        force (``pinned``: None for a policy file never pinned, or one pinned absent) and its digest now (``now``:
+        None for an absent file); every pin in force (``pins``); and whether this is the first pin of the policy
+        files. The operator's terminal
+        adoption shows each file's diff between the two and binds ``now`` (register E331)."""
+        state = self.k.store.current()
+        _, current, changed, first_pin = self._manifest_subject(state)
+        pins = {**(state.get(POLICY_PINS) or {}), MANIFEST: state["manifest_sha256"]}
+        rels = sorted(current) if first_pin else changed
+        return {"first_pin": first_pin, "pins": pins,
+                "files": {rel: {"pinned": pins.get(rel), "now": current.get(rel)} for rel in rels}}
 
     def _manifest_subject(
         self, state: dict[str, Any], binding: dict[str, str | None] | None = None,
@@ -225,17 +254,21 @@ class ProjectAdmin:
         changed = ([MANIFEST] if current[MANIFEST] != state["manifest_sha256"] else []) + drift
         return manifest, current, changed, previous is None
 
-    def manifest_adopt(self, *, token: str, reason: str, authorization: dict[str, str] | None = None,
+    def manifest_adopt(self, *, token: str | None = None, reason: str, authorization: dict[str, str] | None = None,
                        only: list[str] | None = None,
                        binding: dict[str, str | None] | None = None) -> dict[str, Any]:
         """Accept a reviewed manual edit of project.yaml or of the policy files it names by re-pinning them (recorded
         decision). A project whose policy files were never pinned has them pinned here. The operator's decision, always
         confirmed at their own terminal: whoever can edit the policy must not also approve the edit, and a Lead holding
         the raw credential is refused like a Lead session (PR #118 review, finding 1). ``only`` is the switch offer's:
-        the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen."""
+        the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen. With no
+        ``token`` it is the operator's own transaction (register E331): no Lead credential, no Lead actor on the
+        record, and the seat left to its holder; with one, the Lead transaction the switch offer still runs."""
         require_operator_attribution(True, authorization, "adopting an edit of project.yaml or the policy files")
         # Current Lead authority is checked before any state-dependent answer.
-        with self.k.lead_txn(token, "manifest.adopt", reason=reason, _adopting_manifest=True) as ctx:
+        txn = (self.k.lead_txn(token, "manifest.adopt", reason=reason, _adopting_manifest=True) if token is not None
+               else self.k.operator_txn(authorization, "manifest.adopt", reason=reason, _adopting_manifest=True))
+        with txn as ctx:
             binding = approval.require_binding("manifest.adopt", "project policy", "approval subject", binding)
             manifest, current, changed, first_pin = self._manifest_subject(ctx.state, binding)
             manifest_sha = current[MANIFEST]
@@ -261,12 +294,13 @@ class ProjectAdmin:
             title = f"Adopted {what} at the switch offer" if only is not None \
                 else f"Adopted a reviewed manual edit of {what}"
             decision = self.k.new_decision(ctx, "manifest_adoption", title,
-                                         reason=reason, decided_by=dict(ctx.actor, kind="operator",
-                                                                        recorded_by_lead=True, **(authorization or {})),
+                                         reason=reason, decided_by=self._decider(ctx, token, "operator", authorization),
                                          evidence_refs=[f"{rel}@{sha if sha is not None else 'missing'}"
                                                         for rel, sha in sorted((binding or {}).items())])
             ctx.state["manifest_sha256"] = manifest_sha
             ctx.state[POLICY_PINS] = pins
+            # The adopted bytes, for the diff the next adoption shows (register E331): kept only if still those bytes.
+            ctx.after_commit.append(lambda: pinned_copies.keep_files(self.k.aew_root, current))
             policy = self.k._execution_policy(manifest, pins)[0]
             # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
             self.steering.on_adopt(ctx, policy)
@@ -773,6 +807,7 @@ class Engine:
         Coordination.register_at_init(state, policy)
         files.update(steering_mod.seed_at_init(state, policy, policy_digests_of(manifest, raws, aew_root)))
         ControlStore(aew_root).create(state, files)
+        pinned_copies.keep_files(aew_root, {MANIFEST: state["manifest_sha256"], **state[POLICY_PINS]})  # register E331
         return cls(repo_root, aew_root)
 
     # ------------------------------------------------------------------ delegation (one owner per operation)
@@ -799,7 +834,7 @@ class Engine:
     def workspaces_root(self) -> Path:
         return self._k.workspaces_root()
 
-    def authority_accept(self, *, token: str, candidate_id: str, klass: str, decided_by: str,
+    def authority_accept(self, *, token: str | None = None, candidate_id: str, klass: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
         return self._project.authority_accept(token=token, candidate_id=candidate_id,
@@ -812,7 +847,7 @@ class Engine:
     def authority_list(self) -> dict[str, Any]:
         return self._project.authority_list()
 
-    def authority_reject(self, *, token: str, candidate_id: str, decided_by: str,
+    def authority_reject(self, *, token: str | None = None, candidate_id: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
         return self._project.authority_reject(token=token, candidate_id=candidate_id,
@@ -1191,7 +1226,10 @@ class Engine:
     def manifest_approval(self) -> dict[str, str | None]:
         return self._project.manifest_approval()
 
-    def manifest_adopt(self, *, token: str, reason: str, authorization: dict[str, str] | None = None,
+    def manifest_offer(self) -> dict[str, Any]:
+        return self._project.manifest_offer()
+
+    def manifest_adopt(self, *, token: str | None = None, reason: str, authorization: dict[str, str] | None = None,
                        only: list[str] | None = None,
                        binding: dict[str, str | None] | None = None) -> dict[str, Any]:
         return self._project.manifest_adopt(token=token, reason=reason,

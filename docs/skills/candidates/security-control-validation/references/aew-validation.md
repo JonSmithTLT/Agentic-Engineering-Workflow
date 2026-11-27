@@ -24,7 +24,9 @@ restricted records in the assigned destination.
 The October 24 rule covers fake operator approval, a forged owner fact,
 and credential access or acting as the operator outside containment. Assess
 whether the contained agent can cause the outcome on its own with what AEW
-provides. The ordinary review process still covers product correctness.
+provides. If a contained agent cannot cause a governed outcome on its own,
+leave it out of AEW security findings, residuals and register rows. The
+ordinary review process still covers product correctness.
 
 The cited public repository files were consulted at revision
 `8a1ed7b291fe7a6d4592696248226bde157426a4`.

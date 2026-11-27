@@ -30,7 +30,7 @@ from typing import Any, NamedTuple
 from aew.engine import operator_decisions as OD
 from aew.engine import transitions as T
 from aew.errors import NotFound
-from aew.harness.contract import CREATE_TICKET, HELD_SEAT_IN_A_GUIDE
+from aew.harness.contract import CREATE_TICKET
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -495,9 +495,8 @@ def _setup() -> Section:
     lines = [
         "- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, "
         "and gives them no authority. Classifying them tells AEW which documents govern the work and which only orient "
-        "it, and it blocks nothing. On a session started with `aew opencode --acquire`, the operator classifies after "
-        "you exit, at their own terminal: they take the seat with `aew lead acquire`, or with `aew lead takeover` if "
-        f"your exit left it held, and then classify. {HELD_SEAT_IN_A_GUIDE}.",
+        "it, and it blocks nothing. The operator classifies at their own terminal, with no Lead credential, while you "
+        "work: your seat stays yours.",
     ]
     return Section("setup", "Before the first Ticket", "Authority candidates and the operator's classification",
                    "you start work in a project, or the operator asks how to classify its documents", tuple(lines))
@@ -625,9 +624,8 @@ def _rules(gates_policy: dict[str, Any], post_verify: bool, post_checks: list[st
              "pass counts."),
         Rule("Which documents govern the work is the operator's decision, made at their own terminal: `aew authority "
              "list` shows the authority candidates `aew init` found, and `aew authority accept` and `aew authority "
-             "reject` are refused in your session. On a session started with `aew opencode --acquire`, don't ask for "
-             "it during the session: classifying needs a credential that path never shows, and a takeover would turn "
-             "you read-only."),
+             "reject` are refused in your session. The operator needs no Lead credential for it, and your seat stays "
+             "yours, so you can ask them during the session."),
         # The one place the Lead is told its free tools (E367); a test pins them to its rules' `LEAD_FREE_TOOLS`.
         Rule("Look at the project before you describe work in it. You cannot edit files, but you can read and search "
              "them with your read, glob and grep tools."),

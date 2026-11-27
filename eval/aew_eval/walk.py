@@ -1,9 +1,8 @@
 """A frozen schedule walked block by block under its preregistered budget: the part of a lane that knows no skill.
 
 Nothing here imports the skill evaluation: it reads a frozen ``aew/eval-prereg/v1`` record and F19's ledger, and gives
-each cell that still needs an attempt to F19's runner (:func:`aew_eval.runner.run_cell`). It is written to be lifted
-into ``eval/aew_eval`` as the shared walker for paired cells (the operator, 2026-11-26); :mod:`skill_eval.run` adds
-what a skill evaluation needs around it.
+each cell that still needs an attempt to F19's runner (:func:`aew_eval.runner.run_cell`). The operator approved
+sharing the walker across feature cells on 2026-11-26.
 
 * **Blocks.** A block is one case and repetition's cells, in their drawn order (:func:`blocks`).
 * **Budget.** Every attempt is charged: its reported cost, or its arm's cap when the cost is unknown or the attempt

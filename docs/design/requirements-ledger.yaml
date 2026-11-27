@@ -653,6 +653,9 @@ sources:
     no_requirements:
       "5. Raw-history search": heading; requirements in its subsections
 
+  - prefix: DPR
+    path: docs/design/proposals/dashboard-run-provider-routes-v0.1.md
+    role: proposal
   - prefix: DCR
     path: docs/design/proposals/dashboard-configuration-read-v0.1.md
     role: proposal
@@ -2899,6 +2902,9 @@ requirements:
   DMS-27: {section: "8. What is the web developer's", kind: process, tracked_by: [F20.8], statement: "The web developer's handoff: W1 (contract, approval records keeping 0.1.2 as an accepted predecessor, versioned envelopes, parsers, the two capability names, fixtures), a Maps page and a search page under History shown only while history_search is present, user-initiated and never polled, the browser checks, and their decisions (the integrated known value, the fence's rendering, navigation, W1 amendments, the frontend commit for S3)"}
   DMS-28: {section: "9. Slices", kind: sequencing, tracked_by: [F20.8], statement: "S0 then W1, then S1 (maps) and S2 (search, after PR #148) independently, one pull request each, never stacked, each with an independent review to CLEAR; S3 after the web UI, with the operator's approval of the new frontend baseline; a W1 run red despite S0 is S0's fault, fixed in a new main-line pull request"}
   DMS-29: {section: "Appendix A. The OpenAPI additions", kind: requirement, tracked_by: [F20.8], statement: "The exact OpenAPI additions as fenced YAML merged in order into 0.1.2: info.version 0.1.3 and the compatibility rule, the maps and history_search capability keys, the shared, maps and search schemas (every integer bounded by 2^53 - 1), and the six paths with their parameters and responses"}
+  DPR-01: {section: "Proposed route", kind: requirement, tracked_by: [E148], statement: "Add an authenticated GET and HEAD route for invocation provider routing through C0, using the same lookup, errors and validator as the existing invocation detail."}
+  DPR-02: {section: "Proposed route", kind: requirement, tracked_by: [E148], statement: "Project at most the first 250 recorded runs. Return only identification, recognized network mode, recorded relay status, and the family check for a configured relay. Represent missing or unusable facts as null."}
+
   DCR-01: {section: "1. Authority", kind: decision, tracked_by: [F46.1], statement: "The operator approved the F46 breakdown (2026-10-11) and signed off the F46.1 proposal's slices (2026-10-12); the proposal's section 8 names this slice, the change note for contract 0.1.4 that the web developer applies, the main line editing nothing in web/; the designer's D3 (@i locators are display-only masked extensions to RFC 6901) is carried here and D4 (the read-session boundary) is F1c's"}
   DCR-02: {section: "2. What changes, and what does not", kind: decision, tracked_by: [F46.1], statement: "D1: 0.1.4 is additive: every 0.1.3 path, parameter and response schema keeps its shape and envelope version; the new responses carry 0.1.4; /capabilities gains the configuration key only through the Capabilities exception"}
   DCR-03: {section: "2. What changes, and what does not", kind: decision, tracked_by: [F46.1], statement: "D2, D4: contract first, through the note; Appendix A's shapes are the projection's real output, and where the proposal's Appendix A differs the projection is the owner and each difference is listed"}

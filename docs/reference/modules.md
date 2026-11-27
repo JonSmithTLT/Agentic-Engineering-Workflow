@@ -507,6 +507,8 @@ None.
 - `aew.engine.recall`
 - `aew.engine.transitions`
 - `aew.errors`
+- `aew.harness.base`
+- `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.harness.notify`
 - `aew.harness.runlog`

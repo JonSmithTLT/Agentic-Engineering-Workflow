@@ -262,11 +262,15 @@ def test_containment_hides_env_files_under_a_directory_named_git_from_a_worker(l
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
 
 
-def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch):
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
+def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch, scan):
     """The scan fails closed for a worker too: a project directory it cannot list as the launching account (searchable
-    but not readable, 0311), or can list but not search (0400), is masked whole, so a `.env` file there cannot be read
+    but not readable, 0311), or can list but not search (0400), is read through a user namespace of the account and
+    its `.env` file masked on its own, or, where that cannot run, masked whole, so a `.env` file there cannot be read
     by absolute path. The layout is built as an unprivileged account lists (``listing_as_unprivileged``), as these tests
     may run as root. Synthetic values only."""
+    if scan == "fallback":
+        monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, "no namespace in this test"))
     locked, listed = lab.repo / "locked", lab.repo / "listed"
     for d in (locked, listed):
         d.mkdir()
@@ -280,7 +284,8 @@ def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab,
     finally:
         locked.chmod(0o700)
         listed.chmod(0o700)
-    assert {str(locked.resolve()), str(listed.resolve())} <= set(layout.env_dirs)
+    where = layout.env_read_through if scan == "namespace" else layout.env_dirs
+    assert {str(locked.resolve()), str(listed.resolve())} <= set(where), (scan, layout.env_dirs)
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
     assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
 
@@ -327,6 +332,21 @@ def test_a_env_named_link_that_masks_nothing_neither_refuses_a_launch_nor_emptie
     done = lab.sh(layout, f"cat {lab.repo}/src/main.py {host} {lab.repo}/host.env {lab.repo}/src/.env; echo end")
     assert done.returncode == 0, done.stderr
     assert done.stdout.split() == ["SYNTHETIC-SOURCE", "SYNTHETIC-HOST-FILE", "SYNTHETIC-HOST-FILE", "end"], done.stdout
+
+
+def test_a_env_named_link_to_a_credentials_file_in_the_home_directory_reads_as_empty_in_a_workers_sandbox(lab):
+    """The operator's ruling of 2026-11-27: a `.env`-named link in the project to a plain file in the operator's home
+    under another name masks that file, so a worker reads it as empty through the link and by its own path, and the
+    layout names the link with its target. Synthetic values only."""
+    creds = lab.home / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "app.env").symlink_to(creds)
+    layout = lab.layout("implementer")
+    assert (str(lab.repo.resolve() / "app.env"), str(creds.resolve())) in layout.env_outside
+    done = lab.sh(layout, f"cat {lab.repo}/app.env {creds}; echo end")
+    assert done.returncode == 0 and done.stdout.split() == ["end"], done.stdout + done.stderr
+    assert creds.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):

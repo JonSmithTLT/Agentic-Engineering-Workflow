@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import unprivileged_scandir
 from host_env import GUARDED
 from unprivileged_scandir import listing_as_unprivileged
 
@@ -29,6 +30,35 @@ pytestmark = GUARDED
 @pytest.fixture
 def fake_bwrap(monkeypatch):
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+
+
+NO_NAMESPACE = "no user namespace in this test"
+
+
+@pytest.fixture
+def no_namespace(monkeypatch):
+    """The `.env` scan as on a host where it cannot read a directory through a user namespace: its fallback."""
+    monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, NO_NAMESPACE))
+
+
+@pytest.fixture
+def namespace_reads(monkeypatch):
+    """The `.env` scan's user namespace as one that reads every directory this account owns: the child's walk, run
+    here with the host's own listing (not ``listing_as_unprivileged``'s), as a namespace that maps the account to root
+    lists what it owns whatever its mode. Each path in the returned set stays unreadable there, as a directory another
+    account owns does. Pure, so it runs on every platform; the real child is tested in a sandbox."""
+    theirs: set[str] = set()
+
+    def walk(starts, root, rules):
+        with pytest.MonkeyPatch.context() as host:
+            for name, real in (("scandir", unprivileged_scandir._SCANDIR), ("stat", unprivileged_scandir._STAT),
+                               ("lstat", unprivileged_scandir._LSTAT)):
+                host.setattr(os, name, real)
+            walked = L._walk([d for d in starts if d not in theirs], root, rules, set())
+        return {**walked, "dirs": sorted({*walked["dirs"], *(d for d in starts if d in theirs)})}, None
+
+    monkeypatch.setattr(L, "_walk_in_namespace", walk)
+    return theirs
 
 
 @pytest.fixture
@@ -1958,11 +1988,12 @@ def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_pa
 
 
 def test_a_directory_the_env_scan_cannot_read_is_masked_whole_and_named_and_the_run_still_launches(
-        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
-    """The scan fails closed: a directory it cannot list (searchable but not readable, as 0311 is on POSIX), one it can
-    list but not search (0400), one holding an entry whose type it cannot read, and the deepest directory reached on a
-    path too long to list are each masked whole by an empty directory, as a `.env` file in it may still be read by name,
-    and named on the Lead's launch line. None refuses the launch, so a Lead cannot stop the next one by changing a mode.
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
+    """Where no user namespace can read it, the scan fails closed: a directory it cannot list (searchable but not
+    readable, as 0311 is on POSIX), one it can list but not search (0400), one holding an entry whose type it cannot
+    read, and the deepest directory reached on a path too long to list are each masked whole by an empty directory, as
+    a `.env` file in it may still be read by name, and named on the Lead's launch line with why the namespace could
+    not read them. None refuses the launch, so a Lead cannot stop the next one by changing a mode.
     The listing is refused by name, so the test runs on every platform."""
     repo = tmp_path / "repo"
     for d in ("locked", "listed", "odd", "deep/long", "fine"):
@@ -1978,16 +2009,43 @@ def test_a_directory_the_env_scan_cannot_read_is_masked_whole_and_named_and_the_
         scan = L.project_env_masks(repo)
         layout = lead_layout(tmp_path)
     dirs = [os.path.join(real, d) for d in ("deep", "listed", "locked", "odd")]
-    assert scan == L.EnvScan([os.path.join(real, "fine", ".env")], dirs)
+    assert scan == L.EnvScan([os.path.join(real, "fine", ".env")], dirs, fallback=NO_NAMESPACE)
     assert set(layout.env_dirs) == set(dirs) and set(layout.hide_dirs) >= set(dirs)
+    assert layout.env_fallback == NO_NAMESPACE and NO_NAMESPACE in C.tree_masks_line(layout)
     assert {p: by for p, by in layout.tree_masks if p in dirs} == dict.fromkeys(dirs, L.PROJECT_ENV_DIR)
     argv = C.bwrap_argv(layout, ["agent"])
     assert all(argv[argv.index(d) - 1] == "--tmpfs" for d in dirs)
     assert all(d in C.tree_masks_line(layout) for d in dirs)
 
 
+def test_a_directory_this_account_cannot_read_is_read_through_a_user_namespace_and_its_env_files_masked_one_by_one(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, namespace_reads):
+    """The quick check of #592, m3 (the operator, 2026-11-27): a directory the scan cannot list or search is walked
+    again through a user namespace of this account, which reads what the account owns whatever its mode, so its `.env`
+    files are masked one by one and nothing there is masked whole, for the Lead and a worker alike. The launch line
+    says which directories were read that way. What the namespace cannot read either (another account's) is masked
+    whole as before."""
+    for role in ("lead", "implementer"):
+        base = tmp_path / role
+        repo = base / "repo"
+        for d in ("locked", "listed", "theirs"):
+            (repo / d / "sub").mkdir(parents=True)
+            (repo / d / "sub" / ".env").write_text("SYNTHETIC=1\n")
+        real = os.path.realpath(repo)
+        locked, listed, theirs = (os.path.join(real, d) for d in ("locked", "listed", "theirs"))
+        namespace_reads.add(theirs)
+        with listing_as_unprivileged(monkeypatch, unlistable=(locked, theirs), unsearchable=(listed,)):
+            layout = lead_layout(base) if role == "lead" else run_layout(base, role)
+        assert set(layout.env_masks) >= {os.path.join(locked, "sub", ".env"), os.path.join(listed, "sub", ".env")}
+        assert set(layout.env_read_through) == {locked, listed} and layout.env_dirs == (theirs,), role
+        assert not {locked, listed} & set(layout.hide_dirs), role
+        if role == "lead":
+            line = C.tree_masks_line(layout)
+            assert line is not None and locked in line and listed in line and "user namespace" in line
+
+
 def test_a_containment_hide_entry_in_the_leads_tree_that_cannot_be_checked_masks_its_directory_whole(
-        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
     """The same rule for a containment.hide entry in the Lead's own tree: one whose directory cannot be searched reads
     as absent, so it is not left unmasked as absent at the launch, but its directory is masked whole and named."""
     repo = tmp_path / "repo"
@@ -2005,7 +2063,7 @@ def test_a_containment_hide_entry_in_the_leads_tree_that_cannot_be_checked_masks
 
 
 def test_a_writable_root_in_a_directory_the_env_scan_masks_whole_is_refused(
-        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
     """A directory masked whole hides all it holds, so a `containment.writable` root in one is refused, as a root
     under any mask is: it is never bound back over the mask, where the scan did not look. That stops the launch until
     the directory's permissions are given back, and shows nothing."""
@@ -2083,6 +2141,33 @@ def test_a_env_named_link_to_a_file_outside_the_project_or_one_a_run_needs_never
     argv = C.bwrap_argv(layout, ["agent"])
     masked = {argv[i + 2] for i, a in enumerate(argv[:-2]) if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
     assert not masked & kept
+
+
+def test_a_env_named_link_to_a_plain_file_in_the_home_directory_masks_it_and_names_it_but_never_one_of_the_runs_own(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """The operator's ruling of 2026-11-27 ("Yes agree with your recommendations on 592"): a `.env`-named link to a
+    plain file in the operator's home directory under another name, such as a credentials file, masks it, which hides
+    it at both paths, and the layout names the link and its target. One whose target is one of the run's own (its
+    scratch directory here) masks nothing and is named with why."""
+    base = tmp_path / "w"
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    note = base / "run" / "scratch" / "note.txt"
+    note.parent.mkdir(parents=True)
+    note.write_text("x\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "app.env").symlink_to(creds)
+    (repo / "note.env").symlink_to(note)
+    layout = run_layout(base, "implementer", home=str(base))
+    real = os.path.realpath(repo)
+    assert os.path.realpath(creds) in layout.env_masks and os.path.realpath(note) not in layout.env_masks
+    assert layout.env_outside == ((os.path.join(real, "app.env"), os.path.realpath(creds)),)
+    assert [p for p, _ in layout.env_links] == [os.path.join(real, "note.env")]
+    argv = C.bwrap_argv(layout, ["agent"])
+    assert os.path.realpath(creds) in {argv[i + 2] for i, a in enumerate(argv[:-2])
+                                       if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
 
 
 def test_a_project_whose_top_cannot_be_searched_is_refused_naming_the_entry_and_the_fix(tmp_path, monkeypatch):

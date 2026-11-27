@@ -492,13 +492,22 @@ def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spac
     assert (lab.repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
+def no_namespace(monkeypatch) -> None:
+    """The `.env` scan as on a host where no user namespace can read a directory: its fallback, masking it whole."""
+    monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, "no user namespace in this test"))
+
+
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
 def test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_however_its_mode_is_set(
-        lead_lab, monkeypatch):
+        lead_lab, monkeypatch, scan):
     """The scan fails closed: a directory it cannot list as the launching account (searchable but not readable, 0311),
-    and one holding an entry whose type it cannot read, are masked whole, so a `.env` file in either cannot be read by
-    name from the Lead's sandbox, nor its mode changed back. The layout is built as an unprivileged account lists
-    (``listing_as_unprivileged``), as these tests may run as root. Synthetic values only."""
+    and one holding an entry whose type it cannot read, are read through a user namespace of the account, so a `.env`
+    file in either is masked on its own, or where that cannot run they are masked whole; either way the file cannot be
+    read by name from the Lead's sandbox, even after its mode is changed back. The layout is built as an unprivileged
+    account lists (``listing_as_unprivileged``), as these tests may run as root. Synthetic values only."""
     lab = lead_lab
+    if scan == "fallback":
+        no_namespace(monkeypatch)
     for d in ("locked", "odd"):
         (lab.repo / d).mkdir()
         (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
@@ -512,16 +521,24 @@ def test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_howe
     finally:
         (lab.repo / "locked").chmod(0o700)
     assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
-    assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    # masked whole, the directory is read-only too; read through the namespace, only its `.env` file is masked
+    assert ("rc=0" in done.stdout) == (scan == "namespace"), done.stdout
+    where = layout.env_read_through if scan == "namespace" else layout.env_dirs
+    assert {str((lab.repo / d).resolve()) for d in ("locked", "odd")} <= set(where), (scan, layout.env_dirs)
     assert (lab.repo / "locked" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
 
 
-def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch(lead_lab, monkeypatch):
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
+def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch(lead_lab, monkeypatch, scan):
     """A Lead that takes a directory's permissions away in one session cannot read a `.env` file there in the next by
     giving them back or moving the directory: the next launch's scan cannot list the directory, or can list it but not
-    check what it holds, so it masks it whole, and the launch still starts. Each mode the Lead could set is tried, the
-    readable but unsearchable ones (400, 600, 444) among them. Synthetic values only."""
+    check what it holds, so it reads it through a user namespace of the account and masks the file on its own, or,
+    where that cannot run, masks the directory whole, and the launch still starts. Each mode the Lead could set is
+    tried, the readable but unsearchable ones (400, 600, 444) among them. Synthetic values only."""
     lab = lead_lab
+    if scan == "fallback":
+        no_namespace(monkeypatch)
     sec = lab.repo / "sec"
     sec.mkdir()
     (sec / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
@@ -531,7 +548,7 @@ def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_l
             assert "rc=0" in first.stdout, first.stdout + first.stderr
             with listing_as_unprivileged(monkeypatch):
                 layout = lab.layout(env={"HOME": str(lab.home)})
-            assert str(sec.resolve()) in layout.env_dirs, mode
+            assert str(sec.resolve()) in (layout.env_read_through if scan == "namespace" else layout.env_dirs), mode
             done = lab.sh(layout, "chmod 700 sec; cat sec/.env; grep -rh SYNTHETIC sec 2>/dev/null; "
                                   "mv sec sec2 && cat sec2/.env && mv sec2 sec; echo end")
             assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr

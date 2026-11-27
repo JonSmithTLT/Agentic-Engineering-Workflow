@@ -55,9 +55,11 @@ the operator's account can read.
 from __future__ import annotations
 
 import errno
+import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from collections import Counter
 from collections.abc import Mapping
@@ -229,6 +231,11 @@ class Layout:
     env_links: tuple[tuple[str, str], ...] = ()  # (link, why): `.env`-named links not followed, so masking nothing
     project: str | None = None               # the project whose .env scan each sandbox of this layout repeats
     env_keep: tuple[str, ...] = ()           # what a run needs: a `.env` link's target there is never masked
+    env_home: str | None = None              # the operator's home: a link's target there may be masked (EnvRules)
+    env_needs: tuple[str, ...] = ()          # the run's own directories: a link's target there never is
+    env_outside: tuple[tuple[str, str], ...] = ()  # (link, target): a target outside the project, masked, named
+    env_read_through: tuple[str, ...] = ()   # directories this account cannot read, read through a user namespace
+    env_fallback: str | None = None          # why the scan could not read ``env_dirs`` through one, where it could not
     left_out: tuple[str, ...] = ()           # absent inside: left out of their directories, ``left_out_of``
     left_out_of: tuple[str, ...] = ()        # empty tmpfs at its depth, its other entries put back, then read-only
     put_back: tuple[str, ...] = ()           # those other entries, bound back read-only at their depth
@@ -282,6 +289,8 @@ class Layout:
                 "left_out_of": list(self.left_out_of), "env_masks": list(self.env_masks),
                 "env_dirs": list(self.env_dirs), "env_bulk": list(self.env_bulk),
                 "env_links": [{"path": p, "why": why} for p, why in self.env_links],
+                "env_outside": [{"path": p, "target": t} for p, t in self.env_outside],
+                "env_read_through": list(self.env_read_through), "env_fallback": self.env_fallback,
                 "tree_masks": [{"path": p, "by": by} for p, by in self.tree_masks],
                 "tree_absent": [{"path": p, "by": by} for p, by in self.tree_absent],
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
@@ -446,7 +455,9 @@ def for_check(layout: Layout, requested: str | None = None) -> Layout:
     out = replace(layout, network=network, net_dir=None)
     if layout.project is None:
         return out
-    out = replace(out, **_env_fields(_without_env(out), project_env_masks(layout.project, layout.env_keep),
+    out = replace(out, **_env_fields(_without_env(out), project_env_masks(layout.project, layout.env_keep,
+                                                                                home=layout.env_home,
+                                                                                needs=layout.env_needs),
                                      out.writable))
     out = _bounded_env(out)
     _refuse_env_roots([(p, p) for p in out.operator_writable], _env_secrets(out))
@@ -714,18 +725,37 @@ def _unlistable(root: str, exc: OSError) -> ContainmentUnavailable:
 
 
 class EnvScan(NamedTuple):
-    """What :func:`project_env_masks` finds: the `.env` files to mask in place, the directories to mask whole, and the
-    `.env`-named links it does not follow, each with why (named on the launch line, masking nothing)."""
+    """What :func:`project_env_masks` finds: the `.env` files to mask in place, the directories to mask whole, the
+    `.env`-named links it does not follow, each with why (named on the launch line, masking nothing), the links whose
+    target outside the project it masks (``(link, target)``, named on the launch line), the directories this account
+    cannot read that it read through a user namespace (:func:`_walk_in_namespace`), and why it could not do that where
+    it fell back to masking them whole."""
 
     files: list[str]
     dirs: list[str]
     links: tuple[tuple[str, str], ...] = ()
+    outside: tuple[tuple[str, str], ...] = ()
+    read_through: tuple[str, ...] = ()
+    fallback: str | None = None
 
 
 # Left out of the walk, at the project's top only, each where it is a read-only mount of its own, so nothing in the
 # tree can be moved under it: `.aew`, which has masks of its own, and `.git` where the layout binds it so as the git
 # metadata (the quick check of #592, m2: a checked-out branch named like a `.env` file keeps a working git inside).
 ENV_LEFT_OUT = (".aew", ".git")
+# The host's own system trees: a link's target there is never masked, whatever the home directory is
+SYSTEM_TREES = ("/etc", "/usr", "/proc", "/sys", "/dev")
+
+
+class EnvRules(NamedTuple):
+    """Where a `.env`-named link's target is masked (:func:`_env_link`). ``keep``: what a run needs (the interpreter,
+    AEW's package, the git metadata), never masked, and the project's own ``.git`` is left out of the walk where it is
+    here. ``home``: the operator's home directory, where a target outside the project under another name is masked.
+    ``needs``: the run's own directories, where such a target never is."""
+
+    keep: tuple[str, ...] = ()
+    home: str | None = None
+    needs: tuple[str, ...] = ()
 
 
 def _env_named(name: str) -> bool:
@@ -733,10 +763,10 @@ def _env_named(name: str) -> bool:
     return any(fnmatchcase(name, p) for p in ENV_FILES) and not any(fnmatchcase(name, p) for p in ENV_DOCS)
 
 
-def _env_link(link: str, root: str, keep: tuple[str, ...]) -> tuple[str | None, str | None]:
+def _env_link(link: str, root: str, rules: EnvRules) -> tuple[str | None, str | None]:
     """``(target to mask, why not)`` for a `.env`-named link (:func:`project_env_masks`): its target where that is a
     file it masks, else None, with why where the link is named. Never raises, so no link refuses a launch or has its
-    directory masked whole (the operator's ruling of 2026-11-27)."""
+    directory masked whole (the operator's rulings of 2026-11-27)."""
     try:
         mode = os.stat(link).st_mode
     except FileNotFoundError:  # a link to nothing: nothing to read there
@@ -748,69 +778,34 @@ def _env_link(link: str, root: str, keep: tuple[str, ...]) -> tuple[str | None, 
     target = _real(link)
     if _sandbox_own(target):
         return None, None
-    if any(_within(target, k) for k in keep):
+    if any(_within(target, k) for k in rules.keep):
         return None, f"its target {target} is what a run needs, which is never masked"
     if _within(target, root):
         if any(_within(target, os.path.join(root, d)) for d in ENV_LEFT_OUT):
             return None, f"its target {target} is in the project's own {os.path.relpath(target, root).split(os.sep)[0]}"
         return target, None
-    if not _env_named(os.path.basename(target)):
-        return None, f"its target {target} lies outside the project and is not named like a .env file"
-    return target, None
+    if _env_named(os.path.basename(target)):
+        return target, None
+    # Outside the project under another name: masked where it is a plain file of the operator's own home, as a
+    # credentials file kept there is, never a system file or one of the run's own (the operator, 2026-11-27: "Yes agree
+    # with your recommendations on 592")
+    home = _real(rules.home) if rules.home else None
+    if (home and home != os.path.abspath(os.sep) and _within(target, home)
+            and not any(_within(target, n) for n in rules.needs) and not any(_within(target, t) for t in SYSTEM_TREES)):
+        return target, None
+    return None, (f"its target {target} lies outside the project and the home directory, or is one of the run's own, "
+                  "and is not named like a .env file")
 
 
-def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = ()) -> EnvScan:
-    """Every `.env` file in ``project``, at any depth (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), at its real
-    path, sorted: what :func:`for_run` masks in place by the empty read-only file in every layout, so containment hides
-    the project's `.env` files from every tool. A directory is not one: `.env` is also a virtual environment's usual
-    name, and masking that whole would hide the interpreter a run may need. A link to a file is masked by its target,
-    which the mask hides at both paths, where that target is in the project or is itself named like a `.env` file,
-    and is not in ``keep`` (what a run needs: the interpreter, AEW's package, the git metadata). Any other link to a
-    file masks nothing and is named (``links``), as its target reads the same by its own path: one whose target lies
-    outside the project under another name, or in ``keep``, or in the project's own ``.aew`` or ``.git``, and one whose
-    target cannot be followed (a loop, or a path through a file), as nothing can be read through it. A link to
-    nothing, or to a directory, is not a `.env` file.
-
-    The scan, at each launch and for each check's sandbox (:func:`for_check`), is a walk of the whole tree, whatever
-    git makes of it: tracked, untracked and ignored files alike, and a nested repository's or a submodule's own, as
-    each is in the tree a run sees. It leaves out only the project's own ``.aew`` (the store, and the runs' own
-    directories, which have masks of their own) and its own ``.git`` directory where ``keep`` holds it, as the git
-    metadata every layout binds read-only (:data:`ENV_LEFT_OUT`): each is a read-only mount of its own, so nothing in
-    the tree is moved under it. No directory is left out by its name alone: a ``.git`` directory below the top is
-    walked as any other. It follows no link to a directory, so
-    it ends: a directory outside the project that a link inside it points at is not walked. Its cost is the tree's
-    size, one stat for each entry: 2 to 3 s for 200,000 entries in ignored vendored directories, measured on a loaded
-    host, two to three times the walk without the stats.
-
-    It fails closed, and refuses for no directory below the project (the quick checks of #592): every entry is
-    checked by its own stat, never by the listing alone, and a directory the walk cannot list, or one holding an entry
-    it cannot stat (a directory that can be listed but not searched), is in ``dirs``, masked whole by an empty
-    directory as a containment.hide directory is, as a `.env` file in it may still be read by name; one whose path is
-    too long to list, its deepest directory the walk reached. One gone during the walk is not there to hide. The
-    project itself is never masked whole, as AEW reads its store there: one that cannot be listed, or searched, is
-    refused (``project_unlistable``), naming the entry and the fix.
-
-    Its limits: a directory masked whole hides all it holds, what a run needs there included (a containment.writable
-    root in it is refused), so taking such a directory's permissions away stops the project's contained launches, the
-    workers' included, until they are given back; that hides, and shows nothing. The masks are those of the tree as
-    each scan found it: a file first created, moved or replaced by rename during the session, or while a scan walks
-    the tree, is masked from the next scan that finds it (the next launch, or the next check's sandbox), as a
-    containment.hide entry in the run's own tree is from the next launch. A `.env` file in the project's own git
-    directory is not masked: that is git's."""
-    root = _real(project)
-    try:
-        if not stat.S_ISDIR(os.stat(root).st_mode):
-            return EnvScan([], [])
-    except FileNotFoundError:  # no project directory to show, so nothing in it to hide
-        return EnvScan([], [])
-    except OSError as exc:
-        raise _unlistable(root, exc) from exc
-    git = os.path.join(root, ".git")
-    left_out = {os.path.join(root, ".aew"), *((git,) if git in keep else ())}
+def _walk(starts: list[str], root: str, rules: EnvRules, left_out: set[str]) -> dict[str, Any]:
+    """The walk of :func:`project_env_masks` from ``starts`` (each a directory in the project ``root``): ``files``,
+    ``dirs`` (those it cannot read), ``links`` (``[link, why]``) and ``outside`` (``[link, target]``), as JSON. It
+    raises ``project_unlistable`` for ``root`` alone, as only the project is never masked whole."""
     files: set[str] = set()
     dirs: set[str] = set()
     links: dict[str, str] = {}
-    stack = [root]
+    outside: dict[str, str] = {}
+    stack = list(starts)
     while stack:
         top = stack.pop()
         try:
@@ -821,11 +816,12 @@ def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = (
         except OSError as exc:
             if top == root:
                 raise _unlistable(root, exc) from exc
-            dirs.add(os.path.dirname(top) if exc.errno == errno.ENAMETOOLONG else top)
+            dirs.add(os.path.dirname(top) if exc.errno == errno.ENAMETOOLONG and top not in starts else top)
             continue
         below: list[str] = []
         found: list[str] = []
         named: dict[str, str] = {}
+        away: dict[str, str] = {}
         try:
             for entry in entries:
                 # every entry's type by its own lstat, never the listing's: a directory that can be listed but not
@@ -843,9 +839,10 @@ def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = (
                 if stat.S_ISREG(mode):
                     found.append(_real(entry.path))
                 elif stat.S_ISLNK(mode):
-                    target, why = _env_link(entry.path, root, keep)
+                    target, why = _env_link(entry.path, root, rules)
                     found += [target] if target is not None else []
                     named.update({entry.path: why} if why is not None else {})
+                    away.update({entry.path: target} if target is not None and not _within(target, root) else {})
         except OSError as exc:  # an entry this scan cannot check: its directory whole
             if top == root:
                 raise _unlistable(root, exc) from exc
@@ -853,10 +850,128 @@ def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = (
             continue
         files.update(f for f in found if not _sandbox_own(f))
         links.update(named)
+        outside.update(away)
         stack += below
-    hidden = sorted(dirs)
-    return EnvScan(sorted(f for f in files if not any(_within(f, d) for d in hidden)), hidden,
-                   tuple(sorted((p, why) for p, why in links.items() if not any(_within(p, d) for d in hidden))))
+    return {"files": sorted(files), "dirs": sorted(dirs), "links": sorted(links.items()),
+            "outside": sorted(outside.items())}
+
+
+# The child that walks the directories this account cannot read, in a user namespace that maps it to root, so it
+# holds CAP_DAC_READ_SEARCH over the inodes it owns: those a session of its own can take the permissions of (the
+# quick check of #592, m3; the operator, 2026-11-27). It imports this module from the path this process does.
+_NS_CHILD = ("import json, sys; a = json.loads(sys.argv[1]); sys.path.insert(0, a['path']); "
+             "from aew.harness.containment import layout as L; "
+             "print(json.dumps(L._walk(a['starts'], a['root'], L.EnvRules(*a['rules']), set())))")
+NS_SCAN_TIMEOUT_S = 300
+
+
+def _walk_in_namespace(starts: list[str], root: str, rules: EnvRules) -> tuple[dict[str, Any] | None, str | None]:
+    """``(the walk of starts, None)`` from a child in a user namespace of this account (bubblewrap, which containment
+    needs anyway), or ``(None, why)`` where it cannot run: not Linux, no bubblewrap, or one that may not make the
+    namespace or keep the capability in it (a host that restricts unprivileged user namespaces, a setuid bubblewrap).
+    One more process per scan, only where the walk met a directory it cannot read."""
+    if not sys.platform.startswith("linux"):
+        return None, "user namespaces are Linux's"
+    bwrap = find_bwrap()
+    if bwrap is None:
+        return None, "bubblewrap is not installed"
+    package = os.path.dirname(_aew_package())
+    argv = [bwrap, "--die-with-parent", "--unshare-user", "--uid", "0", "--gid", "0", "--cap-add",
+            "CAP_DAC_READ_SEARCH", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--",
+            sys.executable, "-I", "-B", "-c", _NS_CHILD,
+            json.dumps({"path": package, "starts": starts, "root": root, "rules": list(rules)})]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=NS_SCAN_TIMEOUT_S, check=False,
+                              stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"the namespace scan did not finish ({type(exc).__name__})"
+    if done.returncode != 0:
+        last = (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[-1][-200:]
+        return None, f"the namespace scan failed ({last})"
+    try:
+        walked = json.loads(done.stdout)
+    except ValueError:
+        return None, "the namespace scan's result could not be read"
+    return walked, None
+
+
+def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = (), *, home: str | None = None,
+                      needs: tuple[str, ...] = (), namespace: bool = True) -> EnvScan:
+    """Every `.env` file in ``project``, at any depth (:data:`ENV_FILES`, but none of :data:`ENV_DOCS`), at its real
+    path, sorted: what :func:`for_run` masks in place by the empty read-only file in every layout, so containment hides
+    the project's `.env` files from every tool. A directory is not one: `.env` is also a virtual environment's usual
+    name, and masking that whole would hide the interpreter a run may need.
+
+    A `.env`-named link to a file is masked by its target, which the mask hides at both paths, where that target is in
+    the project, or is itself named like a `.env` file, or is a plain file in the operator's ``home`` that is not one
+    of the run's own directories (``needs``) nor in a system tree (:data:`SYSTEM_TREES`); never where it is in ``keep``
+    (what a run needs: the interpreter, AEW's package, the git metadata), or in the project's own ``.aew`` or ``.git``.
+    A target outside the project that is masked is named (``outside``). Any other such link masks nothing and is named
+    with why (``links``), as its target reads the same by its own path, and so is one whose target cannot be followed
+    (a loop, or a path through a file), as nothing can be read through it. A link to nothing, or to a directory, is not
+    a `.env` file.
+
+    The scan, at each launch and for each check's sandbox (:func:`for_check`), is a walk of the whole tree, whatever
+    git makes of it: tracked, untracked and ignored files alike, and a nested repository's or a submodule's own, as
+    each is in the tree a run sees. It leaves out only the project's own ``.aew`` (the store, and the runs' own
+    directories, which have masks of their own) and its own ``.git`` directory where ``keep`` holds it, as the git
+    metadata every layout binds read-only (:data:`ENV_LEFT_OUT`): each is a read-only mount of its own, so nothing in
+    the tree is moved under it. No directory is left out by its name alone: a ``.git`` directory below the top is
+    walked as any other. It follows no link to a directory, so it ends: a directory outside the project that a link
+    inside it points at is not walked. Its cost is the tree's size, one stat for each entry: 1 to 3 s for 200,000
+    entries in ignored vendored directories, measured on loaded hosts, two to three times the walk without the stats.
+
+    It fails closed, and refuses for no directory below the project (the quick checks of #592): every entry is
+    checked by its own stat, never by the listing alone. A directory the walk cannot list, or one holding an entry it
+    cannot stat (a directory that can be listed but not searched), is walked again where ``namespace`` allows, by a
+    child in a user namespace that maps this account to root (:func:`_walk_in_namespace`), which can read the
+    directories this account owns whatever their mode, so the `.env` files there are masked one by one
+    (``read_through``). What that cannot read (a directory another account owns), or all of them where the child
+    cannot run (``fallback`` says why), is in ``dirs``, masked whole by an empty directory as a containment.hide
+    directory is, as a `.env` file in it may still be read by name; one whose path is too long to list, its deepest
+    directory the walk reached. One gone during the walk is not there to hide. The project itself is never masked
+    whole, as AEW reads its store there: one that cannot be listed, or searched, is refused (``project_unlistable``),
+    naming the entry and the fix.
+
+    Its limits: a directory masked whole hides all it holds, what a run needs there included (a containment.writable
+    root in it is refused), so where the namespace cannot read it, taking such a directory's permissions away stops
+    the project's contained launches, the workers' included, until they are given back; that hides, and shows nothing.
+    The masks are those of the tree as each scan found it: a file first created, moved or replaced by rename during the
+    session, or while a scan walks the tree, is masked from the next scan that finds it (the next launch, or the next
+    check's sandbox), as a containment.hide entry in the run's own tree is from the next launch. A `.env` file in the
+    project's own git directory is not masked: that is git's."""
+    root = _real(project)
+    try:
+        if not stat.S_ISDIR(os.stat(root).st_mode):
+            return EnvScan([], [])
+    except FileNotFoundError:  # no project directory to show, so nothing in it to hide
+        return EnvScan([], [])
+    except OSError as exc:
+        raise _unlistable(root, exc) from exc
+    rules = EnvRules(keep, home, needs)
+    git = os.path.join(root, ".git")
+    walked = _walk([root], root, rules, {os.path.join(root, ".aew"), *((git,) if git in keep else ())})
+    through: tuple[str, ...] = ()
+    fallback = None
+    if walked["dirs"] and namespace:
+        again, fallback = _walk_in_namespace(walked["dirs"], root, rules)
+        if again is not None:
+            through = tuple(d for d in walked["dirs"] if d not in again["dirs"])
+            walked = {key: sorted({*map(_hashable, walked[key]), *map(_hashable, again[key])})
+                      for key in ("files", "links", "outside")} | {"dirs": again["dirs"]}
+    hidden = walked["dirs"]
+
+    def shown(path: str) -> bool:
+        return not any(_within(path, d) for d in hidden)
+
+    return EnvScan([f for f in walked["files"] if shown(f)], hidden,
+                   tuple((p, why) for p, why in walked["links"] if shown(p)),
+                   tuple((p, t) for p, t in walked["outside"] if shown(p)), through, fallback if hidden else None)
+
+
+def _hashable(item: Any) -> Any:
+    """A walk's JSON item, a path or a ``[path, text]`` pair, as a set can hold it."""
+    return tuple(item) if isinstance(item, list) else item
 
 
 def _unmasked(files: tuple[str, ...], covered: tuple[str, ...], paths: list[str]) -> tuple[str, ...]:
@@ -886,6 +1001,9 @@ def _env_fields(base: Mapping[str, Any], scan: EnvScan, writable: tuple[str, ...
     fields["hide_files"] = (*base["hide_files"], *env["env_masks"])
     fields["hide_dirs"] = (*base["hide_dirs"], *env["env_dirs"], *bulk)
     fields["env_links"] = tuple((p, why) for p, why in scan.links if not any(_within(p, c) for c in (*covered, *bulk)))
+    fields["env_outside"] = tuple((p, t) for p, t in scan.outside if t in env["env_masks"])
+    fields["env_read_through"] = scan.read_through
+    fields["env_fallback"] = scan.fallback if env["env_dirs"] else None
     fields["tree_masks"] = (*base["tree_masks"], *((p, _ENV_LABELS[key][0]) for key in _ENV_LABELS for p in env[key]
                                                    if any(_within(p, w) for w in writable)))
     return fields
@@ -939,7 +1057,9 @@ def _bounded_env(layout: Layout) -> Layout:
         bulk = [b for b in bulk if not _within(b, chosen)] + [chosen]
         files = {f for f in files if not _within(f, chosen)}
         over -= 3 * n - 4
-    scan = EnvScan(sorted(files), list(layout.env_dirs), layout.env_links)
+    scan = EnvScan(sorted(files), list(layout.env_dirs), layout.env_links,
+                   tuple((p, t) for p, t in layout.env_outside if t in files), layout.env_read_through,
+                   layout.env_fallback)
     return replace(layout, **_env_fields(_without_env(layout), scan, layout.writable, bulk=tuple(sorted(bulk))))
 
 
@@ -1089,10 +1209,26 @@ def tree_masks_line(layout: Layout) -> str | None:
     if fixed:
         out.append(f"{'; '.join(fixed)}. A file replaced or first created there during the session is seen inside "
                    "until the next launch; a write there by your own tools needs root, or a directory you cannot read")
-    links = [(p, why) for p, why in layout.env_links if any(_within(p, w) for w in layout.writable)]
+
+    def mine(path: str) -> bool:
+        return any(_within(path, w) for w in layout.writable)
+
+    links = [(p, why) for p, why in layout.env_links if mine(p)]
     if links:
         out.append(f"named like a .env file but not followed, so masking nothing: {listed(tuple(links))}. To have one "
-                   "masked, make it the file itself, or a link to a file in the project or named like a .env file")
+                   "masked, make it the file itself, or a link to a file in the project, in your home directory, or "
+                   "named like a .env file")
+    away = [(p, f"its target {t}") for p, t in layout.env_outside if mine(p)]
+    if away:
+        out.append(f"named like a .env file and masked at its target outside the project, which reads as empty there "
+                   f"too in contained runs: {listed(tuple(away))}")
+    through = [d for d in layout.env_read_through if mine(d)]
+    if through:
+        out.append("not readable by this account, so read through a user namespace of its own, and their .env files "
+                   f"masked one by one: {', '.join(through)}")
+    if layout.env_fallback and any(mine(d) for d in layout.env_dirs):
+        out.append(f"the directories masked whole as the .env scan cannot read them could not be read through a user "
+                   f"namespace either: {layout.env_fallback}")
     return ". ".join(out) or None
 
 
@@ -1769,7 +1905,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     # file each, no directory emptied and refilled (the review of #592).
     # A `.env` link's target is never masked where it is what a run needs (the operator's ruling of 2026-11-27).
     env_keep = tuple(dict.fromkeys((*readonly, *interpreter_binds(), _real(_aew_package()))))
-    scan = project_env_masks(project, env_keep)
+    # the run's own directories: a `.env` link's target in the home directory is never masked there
+    own: list[str] = [*env_keep, str(ws), *writable, _real(run), *((_real(runs),) if runs else ())]
+    env_needs = tuple(dict.fromkeys(own))
+    scan = project_env_masks(project, env_keep, home=_real(home), needs=env_needs)
     covered = (*plan.dirs, *plan.left_out)
     env_dirs = _unmasked(plan.files, covered, scan.dirs)
     env_files = _unmasked(plan.files, covered, scan.files)
@@ -1820,6 +1959,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     visible=tuple(visible), hide_runs=tuple(hide_runs),
                     **_env_fields(plan.fields(), scan, writable), mask_file=str(mask),
                     project=_real(project) if os.path.isdir(project) else None, env_keep=env_keep,
+                    env_home=_real(home), env_needs=env_needs,
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,

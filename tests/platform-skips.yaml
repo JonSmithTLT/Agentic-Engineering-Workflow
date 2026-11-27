@@ -340,6 +340,10 @@ skipped:
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
       tests/unit/test_containment_layout.py.
+    tests/integration/test_containment.py::test_a_env_named_link_to_a_credentials_file_in_the_home_directory_reads_as_empty_in_a_workers_sandbox: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the layout is tested on every platform in
+      tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).

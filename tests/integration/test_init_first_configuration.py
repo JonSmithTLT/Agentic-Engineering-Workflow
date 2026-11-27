@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 from pathlib import Path
 from typing import Any
@@ -126,7 +127,7 @@ def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
     res = init(root, "--model", "opencode/big")
     assert "provider_note" not in res.json["first_configuration"]
     command, fenced = P.commands(res.json["next"])[0]
-    assert not fenced and command == "aew lead acquire --expect-rev 0"
+    assert not fenced and command == "aew lead acquire"
     assert run_aew("-C", str(root), *shlex.split(command)[1:]).returncode == 0
 
 
@@ -168,19 +169,20 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     root = repo(tmp_path)
     assert init(root, *GOOD).returncode == 0
     classify = [a for a in actions(root) if a.startswith("classify authority candidates")]
-    assert classify and f"aew lead release {K.EXPECT_REV}" in classify[0]
-    token = run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").json["token"]
+    assert classify and "aew lead release" in classify[0]
+    token = run_aew("-C", str(root), "lead", "acquire").json["token"]
     env = {"AEW_LEAD_TOKEN": token}
+    shown = Engine.discover(root).authority_candidate("C-001")
     accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation",
-                       "--decided-by", "lead", "--expect-rev", "1", env=env)
+                       "--decided-by", "lead", "--approval-digest", shown["digest"], env=env)
     assert accepted.returncode == 0, accepted.stderr
-    take = ("-C", str(root), "lead", "acquire", "--expect-rev", "2")
+    take = ("-C", str(root), "lead", "acquire")
     held = run_aew(*take)
     assert held.returncode != 0 and held.error["code"] == "PERMISSION_DENIED", held.stderr
-    released = run_aew("-C", str(root), "lead", "release", "--expect-rev", "2", env=env)
+    released = run_aew("-C", str(root), "lead", "release", env=env)
     assert released.returncode == 0, released.stderr
     assert run_aew("-C", str(root), "status", "--json").json["lead"]["status"] == "vacant"
-    again = run_aew(*take[:-1], "3")
+    again = run_aew(*take)
     assert again.returncode == 0, again.stderr
 
 
@@ -236,10 +238,10 @@ def test_flagless_init_names_both_missing_settings_and_orders_the_route(tmp_path
     assert K.HELD_SEAT in guidance
     assert guidance.endswith("Then start the Lead with `aew opencode --acquire`")
     assert [command for command, _ in P.commands(guidance)] == [
-        "aew lead acquire --expect-rev 0",
+        "aew lead acquire",
         K.MANIFEST_ADOPT.strip("`"),
         "aew opencode --acquire",  # the held-seat warning
-        f"aew lead release {K.EXPECT_REV}",
+        "aew lead release",
         "aew opencode --acquire",
     ]
     for command, fenced in P.commands(guidance):
@@ -340,6 +342,32 @@ def test_the_contained_tuis_childdiag_directory_is_a_writable_root_the_real_path
     assert str(children) in doc["containment"]["writable"], doc["containment"]
 
 
+def test_the_offline_world_settles_its_tool_offers_in_setup_recorded_and_never_counted(tmp_path):
+    """The operator's ruling on Q5 (2026-11-26): AEW's tool offers are a setup fixture of the offline world, recorded
+    but not counted. Each needed tool is declined, and no optional one, as the screen's `none` answers, in the register
+    the world's own `aew` reads, so a reopen on the operator's terminal meets no consent screen; where AEW places no
+    tools, nothing is offered or recorded."""
+    from aew.capability import consent
+
+    op = operator(tmp_path)
+    res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
+    assert res.returncode == 0, res.stderr
+    declined = S.settle_tool_offers(op.lab, op.ledger)
+    recorded = [o for o in op.ledger.observations if str(o.get("fixture", "")).startswith("tool offer declined")]
+    assert set(op.ledger.counts().values()) == {0}, op.ledger.counts()
+    if not consent.binds_here():
+        assert declined == [] and recorded == []
+        return
+    assert [o["fixture"] for o in recorded] == [f"tool offer declined: {n}" for n in declined]
+    # The register's own entries, as the world's child `aew` reads them: the needed tool declined, no optional one.
+    listed = run_aew("-C", str(op.root), "capability", "list", "--json", env=op.lab.env)
+    assert listed.returncode == 0, listed.stderr
+    said_no = {c["provider"] for c in json.loads(listed.stdout)["capabilities"]
+               if "the operator declined to download it" in (c.get("cause") or "")}
+    assert said_no == {"ripgrep"} == set(declined), listed.stdout[-2000:]
+
+
 def test_a_fixture_is_checked_with_the_bytes_it_changes(tmp_path):
     """The hook pins nothing itself: a fixture the policy refuses is refused by the real path, with nothing written."""
     op = operator(tmp_path)
@@ -390,7 +418,7 @@ def test_a_first_configured_project_raises_to_run_as_its_template_says(tmp_path,
 
     root = repo(tmp_path)
     assert init(root, *GOOD).returncode == 0
-    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+    assert run_aew("-C", str(root), "lead", "acquire").returncode == 0
     engine = Engine.discover(root)
     policy, _ = engine.execution_policy()
     assert policy["notify"]["command"] == ["aew", "notify", "desktop"] and policy["steering"]["mode"] == "crawl"

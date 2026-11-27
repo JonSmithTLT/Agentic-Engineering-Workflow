@@ -15,7 +15,7 @@ def new_project(tmp_path: Path) -> Project:
     repo = make_git_repo(tmp_path / "repo", {"README.md": "# fixture\n", "docs/adr/0001-use-aew.md": "# ADR 1\n"})
     p = Project(repo)
     p.ok("init")
-    p.token = p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
+    p.token = p.ok("lead", "acquire", "--session-label", "lead-a")["token"]
     return p
 
 
@@ -29,7 +29,7 @@ def test_a_manual_manifest_edit_right_after_a_transition_reaches_manifest_adopt(
     manifest = p.root / ".aew" / "project.yaml"
     manifest.write_bytes(manifest.read_bytes() + b"# reviewed manual edit\n")
     p.ok("lead", "show")  # reads work
-    res = p.aew("checkpoint", "--next", "y", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("checkpoint", "--next", "y", env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "manifest adopt" in res.error["message"], res.stderr
     p.adopt_policy("reviewed edit")
     assert manifest.read_bytes().endswith(b"# reviewed manual edit\n")

@@ -78,13 +78,9 @@ def test_the_result_schema_is_valid_and_every_object_in_it_is_closed():
 
 
 @pytest.mark.parametrize("catalog", CATALOGS)
-def test_expect_rev_is_required_on_every_stage_and_absent_from_every_query(catalog):
+def test_the_retired_revision_is_absent_from_every_tool(catalog):
     for t in catalog.values():
-        props = t.input_schema["properties"]
-        if t.kind in (contract.STAGE, contract.DECISION):
-            assert "expect_rev" in props and "expect_rev" in t.input_schema["required"], t.name
-        else:
-            assert "expect_rev" not in props, t.name
+        assert "expect_rev" not in _property_names(t.input_schema), t.name
 
 
 @pytest.mark.parametrize("catalog", CATALOGS)
@@ -98,11 +94,11 @@ def test_no_argument_can_carry_a_credential(catalog):
 def test_checkpoint_text_is_bounded():
     ctx_profile = NORMAL
     with pytest.raises(AdapterInputError) as exc:
-        check_call("checkpoint", {"expect_rev": 1, "note": "x" * (contract.NOTE_MAX + 1)}, ctx_profile)
+        check_call("checkpoint", {"note": "x" * (contract.NOTE_MAX + 1)}, ctx_profile)
     assert exc.value.code == "INVALID_ARGUMENTS"
     with pytest.raises(AdapterInputError):
-        check_call("checkpoint", {"expect_rev": 1, "next": "x" * (contract.NEXT_MAX + 1)}, ctx_profile)
-    check_call("checkpoint", {"expect_rev": 1, "note": "x" * contract.NOTE_MAX, "next": "y" * contract.NEXT_MAX},
+        check_call("checkpoint", {"next": "x" * (contract.NEXT_MAX + 1)}, ctx_profile)
+    check_call("checkpoint", {"note": "x" * contract.NOTE_MAX, "next": "y" * contract.NEXT_MAX},
                ctx_profile)
 
 
@@ -111,7 +107,8 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
+        "steering",
         "resolve", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
@@ -126,7 +123,7 @@ def test_a_designed_row_is_refused_before_the_runner(monkeypatch):
     designed = contract.TOOLS["integration_publish"]._replace(status=contract.DESIGNED)
     monkeypatch.setitem(contract.TOOLS, "integration_publish", designed)
     with pytest.raises(AdapterInputError) as refused:
-        check_call("integration_publish", {"expect_rev": 1, "work_id": "T-0001", "prepared_candidate": "c"}, NORMAL)
+        check_call("integration_publish", {"work_id": "T-0001", "prepared_candidate": "c"}, NORMAL)
     assert refused.value.code == "TOOL_NOT_BUILT"
     assert "integration_publish" not in {t.name for t in contract.exposed(NORMAL)}
 
@@ -155,7 +152,8 @@ def test_judgment_bearing_rows_name_their_judgments_and_others_name_none(catalog
 def test_only_workflow_advancing_rows_are_progression_rows(catalog):
     from aew.engine.primitives import spec_for
 
-    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "steering": "changes the steering mode",
+    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "report_write": "records a Lead report",
+                                               "steering": "changes the steering mode",
                                                "message_send": "records a message"}
     for t in catalog.values():
         if t.name in contract.NON_PROGRESSION_STAGES:
@@ -192,18 +190,20 @@ def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
 
 
 def test_explain_takes_a_stage_with_that_stages_own_arguments():
-    """M4-E E4: a stage's arguments are checked against its own schema, `expect_rev` aside; `work_id` may be given
+    """M4-E E4: a stage's arguments are checked against its own schema; `work_id` may be given
     once, beside the stage."""
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001"}, NORMAL).name == "explain"
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001"},
+                      NORMAL).name == "work_show"
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001",
                                   "arguments": {"work_id": "T-0001"}}, NORMAL)  # the same unit twice is fine
-    assert check_call("explain", {"stage": "ticket_draft", "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
-    assert check_call("explain", {"stage": "integration_publish",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_draft",
+                                   "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
+    assert check_call("work_show", {"explain": True, "stage": "integration_publish",
                                   "arguments": {"work_id": "T-0001", "prepared_candidate": "c"}}, NORMAL)
 
 
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
-    offered = contract.TOOLS["explain"].input_schema["properties"]["entrypoint"]["enum"]
+    offered = contract.TOOLS["work_show"].input_schema["properties"]["entrypoint"]["enum"]
     assert set(offered) == {n for n, e in ENTRYPOINTS.items() if e.covered_by is None}
     assert "dispatch.launch" not in offered and "lead_broker.relay" not in offered
 
@@ -211,26 +211,26 @@ def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
 # ---------------------------------------------------------------------------------------------- classification
 
 SYNTHETIC = Tool("synthetic_start", contract.STAGE, POLICY_RESOLVED, "a declared-primitive stage",
-                 contract._obj({"expect_rev": contract.EXPECT_REV, "execution": contract.EXECUTION}),
+                 contract._obj({"execution": contract.EXECUTION}),
                  expands_to=("work.assign", "harness.launch"), promotes=("execution",), dispatches=True,
                  mutates=True, progression=True)
 
 
 @pytest.mark.parametrize(("t", "arguments", "want"), [
-    (SYNTHETIC, {"expect_rev": 1}, POLICY_RESOLVED),
-    (SYNTHETIC, {"expect_rev": 1, "execution": {"model": "p/m"}}, JUDGMENT_BEARING),  # an override promotes
+    (SYNTHETIC, {}, POLICY_RESOLVED),
+    (SYNTHETIC, {"execution": {"model": "p/m"}}, JUDGMENT_BEARING),  # an override promotes
     (contract.TOOLS["status"], {}, MECHANICAL),
-    (contract.TOOLS["checkpoint"], {"expect_rev": 1}, MECHANICAL),
+    (contract.TOOLS["checkpoint"], {}, MECHANICAL),
     (contract.TOOLS["cli"], {"argv": ["status"]}, JUDGMENT_BEARING),
     (contract.TOOLS["ticket_request_verification"], {}, JUDGMENT_BEARING),
     (contract.TOOLS["integration_publish"], {}, JUDGMENT_BEARING),
     # Its primitives are declared (M4-E E5a): policy-resolved, unless an execution override promotes it.
-    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001"}, POLICY_RESOLVED),
-    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001", "execution": {"model": "p/m"}},
+    (contract.TOOLS["ticket_start"], {"work_id": "T-0001"}, POLICY_RESOLVED),
+    (contract.TOOLS["ticket_start"], {"work_id": "T-0001", "execution": {"model": "p/m"}},
      JUDGMENT_BEARING),
-    (contract.TOOLS["ticket_draft"], {"expect_rev": 1, "title": "t", "risk_class": 1}, JUDGMENT_BEARING),
+    (contract.TOOLS["ticket_draft"], {"title": "t", "risk_class": 1}, JUDGMENT_BEARING),
     # Its expansion names primitives nobody has declared yet (E5b declares them): fail closed.
-    (contract.TOOLS["ticket_request_verification"], {"expect_rev": 1, "work_id": "T-0001"}, JUDGMENT_BEARING),
+    (contract.TOOLS["ticket_request_verification"], {"work_id": "T-0001"}, JUDGMENT_BEARING),
     (None, {}, JUDGMENT_BEARING),
 ])
 def test_the_effective_class_never_drops_below_the_base_and_fails_closed(t, arguments, want):
@@ -282,8 +282,8 @@ def test_the_schema_refuses_an_auto_runnable_wait_or_unknown_action():
 
 
 def test_a_decision_never_carries_a_default():
-    decision = {"decision": "PUBLISH", "subject": "T-0001", "evidence": [], "tool": None, "arguments": None,
-                "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
+    decision = {"decision": "PUBLISH", "subject": "T-0001", "owner": "operator", "evidence": [], "tool": None,
+                "arguments": None, "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
     validate_def("surface", "decision", decision, source="test")
     with pytest.raises(ValidationFailed):
         validate_def("surface", "decision", {**decision, "default": "PUBLISH"}, source="test")
@@ -295,44 +295,49 @@ def test_a_decision_never_carries_a_default():
 @pytest.mark.parametrize(("name", "arguments", "profile", "code"), [
     ("no_such_tool", {}, NORMAL, "UNKNOWN_TOOL"),
     (7, {}, NORMAL, "UNKNOWN_TOOL"),
-    ("ticket_prepare", {"expect_rev": 1}, NORMAL, "INVALID_ARGUMENTS"),  # names no Ticket
-    ("ticket_start", {"expect_rev": 1, "work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
-    ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
-    ("integration_publish", {"expect_rev": 1, "work_id": "T-0001"}, RECOVERY, "INVALID_ARGUMENTS"),  # no candidate
+    ("ticket_prepare", {}, NORMAL, "INVALID_ARGUMENTS"),  # names no Ticket
+    ("ticket_start", {"work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
+    ("ticket_draft", {"title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("integration_publish", {"work_id": "T-0001"}, RECOVERY, "INVALID_ARGUMENTS"),  # no candidate
     # M4-E E5b: only the follow_up choice takes, and needs, the Ticket that follows it up
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
+    ("resolve", {"subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
+    ("resolve", {"subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
+    ("resolve", {"subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
+    ("resolve", {"subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     # ITEMS 55, addendum 4: only replace_gate takes, and needs, a replacement that is not blank
-    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "rationale": "r"}, NORMAL,
+    ("resolve", {"subject": "S-0001#gate:x", "choice": "replace_gate", "rationale": "r"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "replacement": " ",
+    ("resolve", {"subject": "S-0001#gate:x", "choice": "replace_gate", "replacement": " ",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "replacement": "check:unit",
+    ("resolve", {"subject": "ANM-0001", "choice": "accept_risk", "replacement": "check:unit",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
-    ("explain", {"role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
-    ("explain", {"stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_draft", "arguments": {"title": "t"}}, NORMAL, "INVALID_ARGUMENTS"),  # no class
-    ("explain", {"work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),  # arguments need a stage
+    ("work_show", {"explain": True}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
+    ("work_show", {"explain": True, "role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
+    ("work_show", {"explain": True, "stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_draft", "arguments": {"title": "t"}},
+     NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("work_show", {"explain": True, "work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),
     # a stage takes no dispatch argument, and one unit (PR #170 review, finding 5)
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"}, NORMAL,
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
-     "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "card": "c"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}}, NORMAL,
-     "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "card": "c"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}},
+     NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1", "R-1"]}, NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1"], "timeout_s": 601}, NORMAL, "INVALID_ARGUMENTS"),
 ])
@@ -461,7 +466,7 @@ def _runner_primitive(choice: str) -> str:
                 raise _Called(name)
             return record
 
-    args = {"expect_rev": 1, "subject": _SUBJECT.get(choice, "X-0001"), "choice": choice, "rationale": "r"}
+    args = {"subject": _SUBJECT.get(choice, "X-0001"), "choice": choice, "rationale": "r"}
     with pytest.raises(_Called) as called:
         run.RUNNERS["resolve"](run.Call(Engine(), SurfaceContext(lead_session=None, generation=None), args, "t"))
     return _FIRST_CALL[str(called.value)]
@@ -534,11 +539,11 @@ def test_the_steering_tool_never_offers_request_confirmation_and_request_raise_s
     for entry in _steering_as_a_run_receives_it():
         properties = entry["inputSchema"]["properties"]
         assert properties["action"]["enum"] == ["lower", "request_raise"] == list(contract.STEERING_ARGUMENTS)
-        assert set(properties) - {"expect_rev", "action"} == set(owned)
+        assert set(properties) - {"action"} == set(owned)
         assert "request_confirmation" not in json.dumps(entry) and "action_ref" not in properties
     with pytest.raises(AdapterInputError):
-        check_call("steering", {"expect_rev": 1, "action": "request_confirmation", "rationale": "r"}, NORMAL)
-    check_call("steering", {"expect_rev": 1, "action": "request_raise", "mode": "walk", "rationale": "r"}, NORMAL)
+        check_call("steering", {"action": "request_confirmation", "rationale": "r"}, NORMAL)
+    check_call("steering", {"action": "request_raise", "mode": "walk", "rationale": "r"}, NORMAL)
 
 
 def test_the_steering_text_says_what_works_as_a_run_receives_it():

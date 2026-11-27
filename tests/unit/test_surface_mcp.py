@@ -73,7 +73,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools():
     # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`, E5a `ticket_draft` and
     # `ticket_start`, E5b the two request stages (and `resolve`'s dispositions), E6a `ticket_prepare` and
     # `integration_publish` (with its `verification_evidence`).
-    assert names == ["status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint",
+    assert names == ["status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
                      "steering", "resolve", "ticket_draft", "ticket_start", "ticket_request_review",
                      "ticket_request_verification", "ticket_prepare", "integration_publish"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
@@ -81,6 +81,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools():
     by_name = {t["name"]: t for t in normal["tools"]}
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
     assert not by_name["checkpoint"]["annotations"]["readOnlyHint"]
+    assert not by_name["report_write"]["annotations"]["readOnlyHint"]
     assert not by_name["steering"]["annotations"]["readOnlyHint"]
     assert not by_name["resolve"]["annotations"]["readOnlyHint"]
     assert mcp.advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
@@ -104,9 +105,9 @@ def test_a_call_returns_the_stage_result_as_structured_content_with_is_error_fro
 @pytest.mark.parametrize(("profile", "params", "code"), [
     ("normal", {"name": "nope", "arguments": {}}, "UNKNOWN_TOOL"),
     # Every catalog row is built since E6a: a designed row's refusal is tested in test_surface_contract.
-    ("normal", {"name": "ticket_prepare", "arguments": {"expect_rev": 1}}, "INVALID_ARGUMENTS"),
+    ("normal", {"name": "ticket_prepare", "arguments": {}}, "INVALID_ARGUMENTS"),
     ("normal", {"name": "cli", "arguments": {"argv": ["status"]}}, "TOOL_NOT_EXPOSED"),
-    ("normal", {"name": "checkpoint", "arguments": {"expect_rev": "one"}}, "INVALID_ARGUMENTS"),
+    ("normal", {"name": "checkpoint", "arguments": {"expect_rev": 1}}, "INVALID_ARGUMENTS"),
     ("recovery", {"name": "status", "arguments": "not an object"}, "INVALID_ARGUMENTS"),
 ])
 def test_ill_formed_calls_are_input_errors_that_never_reach_the_broker(profile, params, code):
@@ -286,7 +287,7 @@ def test_a_tool_call_without_an_id_is_dropped_unrun(capsys):
     spy = Spy()
     server = mcp.Server(spy)
     assert server.handle({"jsonrpc": "2.0", "method": "tools/call",
-                          "params": {"name": "checkpoint", "arguments": {"expect_rev": 3}}}) is None
+                          "params": {"name": "checkpoint", "arguments": {}}}) is None
     assert server.handle({"jsonrpc": "2.0", "method": "ping"}) is None
     assert spy.calls == []
     assert "dropped tools/call sent without an id" in capsys.readouterr().err
@@ -360,18 +361,21 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
 # catalog and measured against the live compact MCP listing. The figures answer §8's G3 question. Each landing
 # slice re-measures the row it actually registers. E231 owns the overall byte ceiling.
 
-def _proposed(section: str, lands: str) -> list[dict[str, Any]]:
-    """The surface map's proposed homes landing in ``lands`` (A1-0's `proposed_tools` and `proposed_choices`): the
-    names, steps and pairs the candidates take, never restated here."""
+def _proposed(section: str, *names: str) -> list[dict[str, Any]]:
+    """The surface map's proposed homes of these names (A1-0's `proposed_tools` and `proposed_choices`), in the map's
+    order: the steps and pairs the candidates take, never restated here. They are named, not found by where they land:
+    the map's `lands` now names register rows, and the plan's sub-slices A1a-1 and A1a-2 are no longer keys there
+    (register E233, the lands guard)."""
     reg = yaml.safe_load((ROOT / "docs" / "implementation" / "surface-map.yaml").read_text(encoding="utf-8"))
-    return [p for p in reg[section] if p["lands"] == lands]
+    return [p for p in reg[section] if p["name"] in names]
 
 
 def _a1_rows() -> dict[str, dict[str, Any]]:
     """Each A1 change to the advertised surface, by the sub-slice that makes it, as edits of today's catalog rows."""
     t = contract.TOOLS
-    [rework_home] = _proposed("proposed_tools", "A1a-1")
-    choices = _proposed("proposed_choices", "A1a-2")
+    [rework_home] = _proposed("proposed_tools", "ticket_rework")  # the plan's A1a-1
+    choices = _proposed("proposed_choices", "accept_plan", "reconcile")  # the plan's A1a-2
+    assert len(choices) == 2, "the A1a-2 choices are in the map until their homes are built"
     status, resolve, resume, review = t["status"], t["resolve"], t["resume"], t["ticket_request_review"]
     runs = {"type": "string", "pattern": "^(all|INV-[0-9]+)$",
             "description": "'all', or an invocation id: its runs in detail"}
@@ -433,7 +437,7 @@ def _entry_bytes(row: contract.Tool) -> int:
 
 # The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
 # catalog moves them here first.
-A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 955, "A1a-2": 341,
+A1_SPIKE = {"A1a-1 fold": -319, "A1a-1 status.runs": 119, "ticket_rework": 864, "A1a-2": 341,
             "A1b resume readOnlyHint": 1}
 
 

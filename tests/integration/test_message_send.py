@@ -19,14 +19,12 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-# Full catalogs with messaging off, including E328's optional bindings, and E126's two `resolve` choices and its
-# description naming them (`add_scope`, `add_scope_signed`: nothing else in either list moved); E160's `plan.assess`
-# among the `explain` tool's entrypoints (its enum, `contract.EXPLAINABLE`); E160 slice 2b's `assess_plan` choice in
-# `resolve`'s enum and its description naming it (`dispatches` is not advertised); and E183's `steering` row, which
-# offers `lower` and `request_raise` only and says what works (nothing else moved).
-OFF_LIST_SHA = {"normal": "3a447dc1feed23ca0e6747c9809fb03e25fe46879fa54932152843cbec1b7acb",
-                "recovery": "4d9953ff4642884992c913f01c593b8e95aab7c0068ea818b9b5925b3a1a38be"}
-OFF_CLI_SHA = "a41be44bdbc4576c97801655c17d508b32493744d21e8b24d2416e0d12d8a1cc"
+# The off catalogs carry E329's scoped inputs and E335's integration publication owner wording.
+# The compact resume description also says decisions name their owners. E157 adds `report_write` and moves the
+# explanation inputs to `work_show`.
+OFF_LIST_SHA = {"normal": "35b81b3d22b127f12a7d3a2b91141caaaed1e8265636d34772b3a65b981c72ec",
+                "recovery": "070fa4140745bb4bb1855dbea336e9e6ceafba919cae1627bd42cd0abc1b01c6"}
+OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
 
 
 def digest(value):
@@ -35,7 +33,7 @@ def digest(value):
 
 def call(w, *, ctx=None, **arguments):
     return run.run_tool(w.e, ctx or SurfaceContext.outside_session(switches=switches_for(w.e)), "message_send",
-                        {"expect_rev": w.rev(), "to": w.inv, "body": "Check the shutdown edge.", **arguments},
+                        {"to": w.inv, "body": "Check the shutdown edge.", **arguments},
                         token=w.token)
 
 
@@ -51,7 +49,7 @@ def broker(w):
 
 def forwarded(b, w, *, ingress="mcp", **arguments):
     return bridge.call("lead.tool", {"name": "message_send", "profile": "normal", "ingress": ingress,
-                                    "arguments": json.dumps({"expect_rev": w.rev(), "to": w.inv,
+                                    "arguments": json.dumps({"to": w.inv,
                                                              "body": "Check shutdown.", **arguments})},
                        endpoint=b.server.address, key=b.server.key_hex)
 
@@ -95,7 +93,7 @@ def test_an_unadopted_switch_edit_leaves_message_send_absent(tmp_path):
     assert not w.coordination_files()
 
 
-def test_message_send_creates_no_invocation_run_or_credential_and_leaves_expect_rev_valid(tmp_path):
+def test_message_send_creates_no_invocation_run_or_credential_and_leaves_the_revision_unchanged(tmp_path):
     w = world(tmp_path)
     before, rev = w.control_bytes(), w.rev()
     first = call(w)
@@ -125,7 +123,7 @@ def test_a_retried_call_after_a_lost_broker_reply_returns_the_existing_message(t
 def test_own_shell_typed_send_uses_its_credential_without_a_broker(tmp_path):
     w = world(tmp_path)
     answer = cli(w, "lead", "tool", "message_send", "--arguments",
-                 json.dumps({"expect_rev": w.rev(), "to": w.inv, "body": "Check shutdown."}))
+                 json.dumps({"to": w.inv, "body": "Check shutdown."}))
     assert answer.returncode == 0, answer.stderr
     out = json.loads(answer.stdout)
     assert out["ok"] and out["result"]["message"]["channel"] == "cli"
@@ -142,20 +140,21 @@ def test_mcp_lists_and_sends_through_the_real_broker_with_its_launch_snapshot(tm
         monkeypatch.delenv(contract.ENV_SWITCHES)  # later environment edits do not change this server's snapshot
         assert "message_send" in {t["name"] for t in server.dispatch("tools/list", {})["tools"]}
         answer = server.dispatch("tools/call", {"name": "message_send", "arguments": {
-            "expect_rev": w.rev(), "to": w.inv, "body": "Check shutdown."}})
+            "to": w.inv, "body": "Check shutdown."}})
         assert not answer["isError"]
         assert answer["structuredContent"]["result"]["message"]["channel"] == "lead_mcp"
         assert w.token not in json.dumps(answer)
 
 
-def test_message_send_with_a_stale_expect_rev_is_refused_and_never_retried(tmp_path):
+def test_an_unrelated_commit_does_not_refuse_or_retry_a_message(tmp_path):
     w = world(tmp_path)
-    rev = w.rev()
-    w.lead("checkpoint", note="The state changed.")
-    before = w.control_bytes()
-    out = call(w, expect_rev=rev)
-    assert not out["ok"] and out["stopped"]["boundary"] == "stale_revision"
-    assert not w.coordination_files() and w.control_bytes() == before
+    before = w.rev()
+    w.lead("checkpoint", note="Another project fact was recorded.")
+    committed = w.control_bytes()
+    out = call(w)
+    assert out["ok"] and out["revision"] > before
+    assert len(w.e.message_thread(w.inv)["messages"]) == 1
+    assert w.control_bytes() == committed
 
 
 def test_a_superseded_generation_cannot_send(tmp_path, monkeypatch):
@@ -165,7 +164,7 @@ def test_a_superseded_generation_cannot_send(tmp_path, monkeypatch):
     old = SurfaceContext(lead_session={"holds": True}, generation=w.e.store.current()["lead"]["generation"],
                          switches=contract.ALL_SWITCHES)
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **kw: {"authorized_by": "operator-tty (test)"})
-    w.e.lead_takeover(expect_rev=w.rev(), reason="the seat was lost", session_label="lead-b")
+    w.e.lead_takeover(reason="the seat was lost", session_label="lead-b")
     out = call(w, ctx=old)
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority"
     assert not w.coordination_files()
@@ -209,6 +208,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
     expected = {
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
+        "report_write": "Save a Lead report and return its read command.",
         # E183: what works, and no confirmation request.
         "steering": "Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and "
                     "walk you take each step yourself. Lowering needs the operator's raise first; with no "
@@ -226,7 +226,9 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
                                        "and launch the verifiers policy requires.",
         "ticket_prepare": "Accept the verification, if one is due, and prepare the integration candidate. "
                           "Publication stays a separate decision.",
-        "integration_publish": "Publish the prepared integration candidate: calling this is your publication decision.",
+        # E335: PUBLISH is the operator's (the owner table's), so the text no longer calls it the Lead's.
+        "integration_publish": "Publish the prepared integration candidate: calling this carries out the operator's "
+                               "publication decision.",
         "message_send": "Record a coordination message for an active worker, not a scope change. "
                         "Deliver at next step (default), turn end or relaunch.",
     }
@@ -249,7 +251,8 @@ def test_broker_snapshot_does_not_follow_an_adoption_mid_session(tmp_path):
     w = world(tmp_path, messaging=None)
     with broker(w) as b:
         set_messaging(w.root, "enabled")
-        w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="enable messaging", authorization=OPERATOR)
+        w.e.manifest_adopt(token=w.token, reason="enable messaging", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
         assert switches_for(w.e) == contract.ALL_SWITCHES
         assert forwarded(b, w)["adapter_input_error"]["code"] == "UNKNOWN_TOOL"
     with broker(w) as fresh:
@@ -267,7 +270,8 @@ def test_an_on_broker_cannot_record_after_the_operator_disables_messaging(tmp_pa
     w = world(tmp_path)
     with broker(w) as b:
         set_messaging(w.root, "disabled")
-        w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="disable messaging", authorization=OPERATOR)
+        w.e.manifest_adopt(token=w.token, reason="disable messaging", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
         assert b.surface_switches == contract.ALL_SWITCHES
         answer = forwarded(b, w)["stage_result"]
         assert not answer["ok"] and answer["stopped"]["error"]["code"] == "MESSAGING_DISABLED"

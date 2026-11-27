@@ -84,11 +84,30 @@ def end_this_worker() -> None:
 
 # Keep the cancellation workload live for the full six-minute plant deadline on either runner.
 CANCEL_CASES = 720 if sys.platform == "linux" else 180
+# The Linux cancel plant's odd cases spend their time in a fixture's setup instead of the test's call, as a real
+# integration test builds its world in fixtures: a worker the cancellation catches there has no test frame to give,
+# which is the state the proof never saw while every case slept in its call (register E3, linux-cancel-live-stack).
+SETUP_HELD = KIND == "cancel" and sys.platform == "linux"
+
+
+def held_in_setup(step: int) -> bool:
+    return SETUP_HELD and step % 2 == 1
+
+
+def case_seconds(step: int) -> int:
+    return 2 + step % 4
+
+
+@pytest.fixture
+def planted_setup(request):
+    step = request.node.callspec.params["step"]
+    if held_in_setup(step):
+        time.sleep(case_seconds(step))
 
 
 @pytest.mark.parametrize("step", range(CANCEL_CASES if KIND == "cancel" else 90) if KIND in CHAIN else [0])
 @pytest.mark.parametrize("kind", [KIND])
-def test_death(kind, step, request):
+def test_death(kind, step, request, planted_setup):
     if kind in CHAIN:
         selected = 2 + int(os.environ.get("GITHUB_RUN_ID", "0")) % 3
         if kind == "oom" and step == 0:
@@ -99,7 +118,8 @@ def test_death(kind, step, request):
                 reach_memory_limit()
             else:
                 end_this_worker()
-        time.sleep(2 + step % 4)
+        if not held_in_setup(step):
+            time.sleep(case_seconds(step))
         return
     if kind == "normal":
         return

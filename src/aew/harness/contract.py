@@ -57,19 +57,20 @@ PLAN_LOGIN_FAILURES = {
 }
 
 
-def plan_login_recovery(provider: str, invocation: str, *, retryable: bool = False) -> str:
+def plan_login_recovery(provider: str, invocation: str, run: str, *, retryable: bool = False) -> str:
     step = ("Wait until the store is available" if retryable else
             f"AEW never refreshes this login. Renew it at the operator's terminal (`opencode auth login {provider}`)")
-    cancel = fields_command(f"aew invoke cancel {invocation} {EXPECT_REV}", "reason", "plan login unavailable")
-    return f"{step}, then relaunch with `aew harness launch {invocation} {EXPECT_REV}`, or cancel it with:\n\n{cancel}"
+    cancel = fields_command(f"aew invoke cancel {invocation}", "reason", "plan login unavailable")
+    return (f"{step}, then relaunch with `aew harness launch {invocation} --prior-value {run}`, "
+            f"or cancel it with:\n\n{cancel}")
 
 
-def plan_login_failure(cause: Any, provider: str, invocation: str) -> str | None:
+def plan_login_failure(cause: Any, provider: str, invocation: str, run: str) -> str | None:
     detail = PLAN_LOGIN_FAILURES.get(cause) if isinstance(cause, str) else None
     if detail is None:
         return None
     return (f"the operator's {provider} plan login {detail}. "
-            + plan_login_recovery(provider, invocation, retryable=cause == "plan_login_unreadable_retryable"))
+            + plan_login_recovery(provider, invocation, run, retryable=cause == "plan_login_unreadable_retryable"))
 
 
 # Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
@@ -220,10 +221,6 @@ def invocation_of_run(run: str) -> str | None:
     return head if run.startswith("R-") and sep and n.isdigit() and head else None
 
 
-# What a printed command puts where the current revision goes: it names where the reader finds it (ITEMS 56; a bare
-# `N` named nothing). Every printed `--expect-rev` is `EXPECT_REV`; tests/helpers/printed_commands.py fills it.
-REVISION = "<revision from aew status>"
-EXPECT_REV = f"--expect-rev {REVISION}"
 # A steering step for several runs names one of them: the reader picks the run the step lists (#547 review m1).
 NAMED_RUN = "<run named here>"
 
@@ -259,13 +256,13 @@ def _scalar(value: str) -> str:
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
 _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "
-HELD_SEAT = f"{_HELD_SEAT}`aew lead release {EXPECT_REV}` gives it up"
+HELD_SEAT = f"{_HELD_SEAT}`aew lead release` gives it up"
 # D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
 HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
 
 
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
-CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
+CREATE_TICKET = fields_block("aew work create ticket --class <0-4>", {
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
@@ -346,15 +343,23 @@ class LaunchContract:
         return preamble(self) + "\n\n" + self.pack_text + (continuation_text(self) or "")
 
 
+# The preamble's title: what a run's first message starts with (``LaunchContract.prompt``: the preamble, then the pack),
+# which the run's own text names when it says what that message holds.
+RUN_HEADING = "# AEW harness run"
+
+
 def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
     # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
-    # 2026-09-30, R-INV-0007-1).
-    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+    # 2026-09-30, R-INV-0007-1). The check command is the pack's own, since this says "exactly as the contract shows"
+    # (#613 review, m3); imported here because the pack's module imports the bridge, which imports this one.
+    from aew.knowledge.context import OPERATION_COMMANDS
+
+    commands = ", ".join([*([OPERATION_COMMANDS["check.run"]] if "check.run" in c.operations else []),
                           "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
-        f"# AEW harness run {c.run}",
+        f"{RUN_HEADING} {c.run}",
         "",
         f"You are AEW invocation **{c.invocation}**: a bounded `{c.role}` (role card `{card}`) for "
         f"work unit **{c.work_unit}**. The AEW launch contract below is authoritative; this harness session is "
@@ -636,7 +641,7 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
     return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"
 
 
-MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"
+MANIFEST_ADOPT = "`aew manifest adopt --reason <reason>`"
 
 
 # The Lead seat's credential-emitting commands, whole (``lead_broker.CREDENTIAL_EMITTING`` takes their paths from here),
@@ -644,3 +649,17 @@ MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"
 # "handoff", while `aew lead handoff cancel` is Lead-reachable).
 SEAT_COMMANDS = ("aew lead acquire", "aew lead takeover", "aew lead release", "aew lead handoff offer",
                  "aew lead handoff accept")
+
+
+def relaunchable(status: str) -> bool:
+    """Whether a run observed in ``status`` leaves its active invocation with no live run and nothing to ingest: it
+    ended, crashed, was stopped, was lost or never started, without its expected output. The invocation keeps its
+    authority and is relaunched or cancelled (M3-B1): the engine's guidance says so for exactly these, and the action
+    projection offers the relaunch (register E233). A record that cannot be read is neither."""
+    return status not in (*LIVE_RUNS, ENDED_WITH_EVIDENCE, UNREADABLE)
+
+
+def launch_command(invocation: str, prior_value: str) -> str:
+    """The command that launches, or relaunches, a harness run for ``invocation``: the ASSIGNED hint and the action
+    projection's launch both read it here (#612 review, N3)."""
+    return f"aew harness launch {invocation} --prior-value {prior_value}"

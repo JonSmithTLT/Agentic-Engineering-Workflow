@@ -35,7 +35,8 @@ if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
 
 # Who carried the dispatch to the engine: the CLI, the Lead broker's relay, or a direct engine call (tests).
-_CHANNEL: contextvars.ContextVar[str] = contextvars.ContextVar("aew_dispatch_channel", default="direct")
+DIRECT, CLI = "direct", "cli"
+_CHANNEL: contextvars.ContextVar[str] = contextvars.ContextVar("aew_dispatch_channel", default=DIRECT)
 
 
 @contextlib.contextmanager
@@ -46,6 +47,12 @@ def channel(name: str) -> Iterator[None]:
         yield
     finally:
         _CHANNEL.reset(token)
+
+
+def current_channel() -> str:
+    """The channel carrying the call in progress (:func:`channel`): who asks the operator to confirm is read from it
+    (``operator_decisions.required``)."""
+    return _CHANNEL.get()
 
 
 # --------------------------------------------------------------------------------------------- the registry

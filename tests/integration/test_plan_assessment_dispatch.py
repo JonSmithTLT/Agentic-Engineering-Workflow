@@ -44,12 +44,9 @@ def lab(tmp_path):
 
 
 def follow(p, printed, fenced, *, env=None, stdin=None, **values):
-    """Run a command exactly as the product printed it: its placeholders filled as a reader fills them (the revision
-    from `aew status`, and ``values``, e.g. ``file=...``), its heredoc (or ``stdin``, for a `--fields -` the reader
-    writes) as stdin, with the Lead credential."""
+    """Follow the printed command with observed values and its heredoc or supplied stdin, as the Lead would."""
     head, body = P.split(printed, fenced)
     body = stdin if body is None else body
-    head = head.replace("<revision from aew status>", str(p.rev()))
     for name, value in values.items():
         head = head.replace(f"<{name}>", value)
     head, body = P.fill(head), (P.fill(body) if body is not None else None)
@@ -73,7 +70,7 @@ def assess(p, wid, *args):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -208,7 +205,9 @@ def test_a_ticket_with_no_plan_is_assessed_by_following_the_refusals_steps(tmp_p
     plan.write_text("1. Change calc/core.py.\n", encoding="utf-8")
     # as_posix: the reader's shell line is split as a POSIX shell splits it, where a backslash is an escape
     proposed = follow(p, *printed(error["message"], "plan propose"), file=plan.as_posix())
-    follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]))
+    shown = Engine.discover(p.root).status(wid)["work_unit"]["plans"][-1]
+    follow(p, *printed(error["message"], "plan accept"), n=str(proposed["revision_number"]),
+           **{"shown digest": shown["sha256"]})
     assert assess(p, wid)[1]["plan_revision"]["revision"] == proposed["revision_number"]
 
 
@@ -246,7 +245,7 @@ def in_lead_session(lab, tmp_path, name, steps):
 def typed_step(p, command, arguments):
     """A Lead session's model running a printed typed call, ``arguments`` on stdin with its last result's revision."""
     head, _ = P.split(command, False)
-    return {"do": "aew", "args": shlex.split(head)[1:], "stdin": json.dumps({"expect_rev": p.rev(), **arguments})}
+    return {"do": "aew", "args": shlex.split(head)[1:], "stdin": json.dumps(arguments)}
 
 
 def answered(entry):
@@ -351,7 +350,7 @@ def test_a_code_reviewer_is_offered_no_plan_assessment_and_an_assessor_only_its_
 
 def resolve_assess(p, env, subject, rationale="the plan rests on code I have not read"):
     """The Lead's typed route (E160 slice 2b): `resolve`, choice `assess_plan`, through `aew lead tool`."""
-    arguments = {"expect_rev": p.rev(), "subject": subject, "choice": "assess_plan", "rationale": rationale}
+    arguments = {"subject": subject, "choice": "assess_plan", "rationale": rationale}
     return run_aew("-C", str(p.root), "lead", "tool", "resolve", "--arguments", "-", input=json.dumps(arguments),
                    env={**env, "AEW_LEAD_TOKEN": p.token})
 
@@ -406,7 +405,7 @@ def test_a_lead_session_assesses_a_plan_through_resolve_and_never_through_its_sh
         script.write_text(json.dumps([
             {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
             {"call": "status", "arguments": {}},
-            {"call": "resolve", "arguments": {"expect_rev": "$revision", "subject": f"{wid}{E.PLAN_ITEM}",
+            {"call": "resolve", "arguments": {"subject": f"{wid}{E.PLAN_ITEM}",
                                               "choice": "assess_plan", "rationale": "the plan rests on unread code"}},
         ]), encoding="utf-8")
         res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
@@ -452,7 +451,7 @@ def test_a_launch_that_fails_after_the_dispatch_still_reports_the_committed_step
     monkeypatch.setattr(engine, "launch_dispatched", fails)
     rev = p.rev()
     out = run.run_tool(engine, SurfaceContext.outside_session(), "resolve",
-                       {"expect_rev": rev, "subject": f"{wid}{E.PLAN_ITEM}", "choice": "assess_plan",
+                       {"subject": f"{wid}{E.PLAN_ITEM}", "choice": "assess_plan",
                         "rationale": "r"}, token=p.token)
     assert [s["primitive"] for s in out["completed_steps"]] == ["plan.assess"], out["stopped"]
     assert out["completed_steps"][0]["revision"] == rev + 1 == p.rev()
@@ -513,7 +512,7 @@ def test_a_scope_add_with_an_active_plan_assessor_is_recorded_and_its_entry_is_f
     card = custom_assessor_card(p) if custom else E.ASSESSOR_CARD
     _, out = assess(p, wid, *(("--card", card) if custom else ()))
     assign(p, wid)
-    arguments = {"expect_rev": p.rev(), "subject": SC.item_id(wid, "tests/test_core.py"), "choice": SC.CHOICE,
+    arguments = {"subject": SC.item_id(wid, "tests/test_core.py"), "choice": SC.CHOICE,
                  "rationale": "the change to core needs its existing test extended"}
     added = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
                          token=p.token)
@@ -548,8 +547,11 @@ def test_a_gate_replacement_with_an_active_plan_assessor_is_recorded_and_its_ent
         s.state["work"][story]["policy"] = {"mandatory_gates": [prose], "min_descendant_class": None,
                                             "rationale": None}
         s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="a parent written before ITEMS 55"))
-    arguments = {"expect_rev": p.rev(), "subject": gate_ops.item_id(story, prose), "choice": "replace_gate",
-                 "replacement": "check:unit", "rationale": "the targeted check is that standard"}
+    subject = gate_ops.item_id(story, prose)
+    shown = next(item for item in engine.gate_items(story) if item["id"] == subject)
+    arguments = {"subject": subject, "choice": "replace_gate", "replacement": "check:unit",
+                 "approval_digest": shown["approval_subjects"]["check:unit"]["digest"],
+                 "rationale": "the targeted check is that standard"}
     replaced = run.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "resolve", arguments,
                             token=p.token)
     assert replaced["ok"], replaced["stopped"]

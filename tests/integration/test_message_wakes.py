@@ -267,7 +267,7 @@ def test_a_new_generation_is_not_suppressed_by_the_previous_sessions_post(w):
         queue(w, b, poster).tick()
         assert W.posted_messages(w.root / ".aew", old_generation) == {mid}
     offer = w.lead("lead_handoff_offer", carry_invocations=[])["offer"]
-    w.token = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="next-lead")["token"]
+    w.token = w.e.lead_handoff_accept(offer=offer, session_label="next-lead")["token"]
     poster.target = "session-new"
     with broker(w) as b:
         assert b.generation != old_generation

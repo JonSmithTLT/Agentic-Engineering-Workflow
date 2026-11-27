@@ -5,7 +5,7 @@
   "description": "Register E126 (the operator's order of 2026-11-03; the designer's decisions of 2026-11-03, §2): one exact test path added to one mutating Ticket's scope on the record, with a reason (the typed `resolve` tool, choice `add_scope` or `add_scope_signed`). Written once, immutable, beside the Ticket (`work/<T>/scope-corrections/<SC>.yaml`) and pointed to from its control state (`scope_corrections`). The Ticket's own record is never rewritten.",
   "type": "object",
   "required": ["schema", "id", "work_unit", "path", "signs", "names_module", "at_base", "created_by_ticket", "base_commit",
-               "rationale", "signoff", "stops", "unchecked", "obligations", "by", "generation", "expected_revision",
+               "rationale", "signoff", "stops", "unchecked", "obligations", "by", "generation",
                "rev", "at", "decision", "stale_invocations"],
   "additionalProperties": false,
   "properties": {
@@ -43,7 +43,7 @@
     "obligations": {"description": "Dispatch's hard triggers on the widened scope, and the add's own obligation naming the path.", "type": "array", "items": {"type": "object", "required": ["code"]}},
     "by": {"description": "The actor: the Lead, or the operator through the Lead seat.", "type": "object"},
     "generation": {"description": "The Lead generation that added it.", "type": "integer", "minimum": 1},
-    "expected_revision": {"description": "The control revision the write expected.", "type": "integer", "minimum": 0},
+    "expected_revision": {"description": "Historical caller revision on records written before E329.", "type": "integer", "minimum": 0},
     "rev": {"description": "The control revision the add committed.", "type": "integer", "minimum": 1},
     "at": {"type": "string"},
     "decision": {"description": "The decision record of the add.", "type": "string", "pattern": "^D-[0-9]{4,}$"},
@@ -60,7 +60,7 @@
           "role": {"type": ["string", "null"]},
           "commands": {"type": "array", "items": {"type": "string"}},
           "fields": {"type": "object", "additionalProperties": {"type": ["string", "integer"]}},
-          "arguments": {"description": "E160: a plan assessor's typed re-dispatch, the arguments `aew lead tool resolve --arguments -` reads on stdin, less the Lead's expect_rev", "type": "object"},
+          "arguments": {"description": "E160: a plan assessor's typed re-dispatch, the arguments `aew lead tool resolve --arguments -` reads on stdin", "type": "object"},
           "operator": {"description": "E160: for an assessor of another card than the built-in one, the operator's --card form of the re-dispatch, which the typed route cannot take", "type": "string"}
         }
       }

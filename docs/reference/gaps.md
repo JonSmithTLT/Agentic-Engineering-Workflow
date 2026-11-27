@@ -103,7 +103,6 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.faults:pause`: open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.lock:FileLock._join_queue`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.lock:FileLock._join_queue`: open of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.lock:FileLock._open`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -111,6 +110,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.migrate_ops:Migration.discard_unreachable`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.reports:Reports.write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.scope_ops:ScopeCorrections._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
@@ -173,7 +173,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.runlog:_open_append`: os.open of a path this reading cannot place: `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
+- `aew.harness.runlog:_open_append`: os.open of a path this reading cannot place: `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `root` of `OutageStore.__init__`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:write_live`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call

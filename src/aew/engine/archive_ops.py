@@ -115,13 +115,16 @@ def pinned_records(entry: dict[str, Any], raw: bytes,
     doc = _yaml(entry, raw)
     if closure is not None and doc.get("schema") == LEGACY_ARCHIVE_SCHEMA:
         closure["legacy"][entry["id"]] = entry["seq"]
-    unit = doc["unit"]
+    return sorted(set(unit_pins(doc["unit"]) + [(e["path"], e["sha256"]) for e in doc.get("cited_evidence") or []]))
+
+
+def unit_pins(unit: dict[str, Any]) -> list[tuple[str, str]]:
+    """Files pinned directly by a committed work unit, whether hot or archived."""
     pins = []
     if unit.get("record") and unit.get("record_sha256"):
         pins.append((unit["record"], unit["record_sha256"]))
     pins += [(p["path"], p["sha256"]) for p in unit.get("plans") or [] if p.get("path") and p.get("sha256")]
     pins += [(e["path"], e["sha256"]) for e in unit.get("evidence") or [] if e.get("path") and e.get("sha256")]
-    pins += [(e["path"], e["sha256"]) for e in doc.get("cited_evidence") or []]
     if unit.get("completion_record") and unit.get("completion_sha256"):
         pins.append((unit["completion_record"], unit["completion_sha256"]))
     pins += [(s["path"], s["sha256"]) for s in unit.get("stage_intents") or []]  # its ended stages (M4-E E3)

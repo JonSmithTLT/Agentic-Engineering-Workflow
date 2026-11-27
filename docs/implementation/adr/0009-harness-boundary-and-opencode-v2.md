@@ -2387,3 +2387,9 @@ and the run's launch snapshot are enabled, `aew harness send` records either tim
 A recorded shell send can wake a held session. A switch mismatch refuses both timings and asks the Lead to relaunch
 under the adopted policy. When both are disabled, the original next-step request path and the turn-end refusal
 still apply. See the [coordination amendment](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+Launch and relaunch bind the prior run of the named invocation, or `none` when the invocation has no run. The locked launch checks the current run, active invocation and Lead authority before rotating the credential. A changed run requires a new decision. The state revision still identifies durable dispatch and launch commits.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

@@ -36,6 +36,7 @@ from harness_conformance import (
     sync_dir,
 )
 from invariants import assert_control_invariants
+from operator_confirms import asked
 
 from aew.engine.api import Engine
 from aew.harness import bridge, lead_broker, runlog
@@ -56,7 +57,7 @@ NEGATIVE_TEST = (SUBTRACT_PATCH["tests/test_subtract.py"] + "\n\ndef test_subtra
 # ---------------------------------------------------------------------------------------------- the Lead's steps
 
 def lead(*args: str) -> dict[str, Any]:
-    """A Lead command at the current revision, through the Lead session's broker."""
+    """A Lead command through the Lead session's broker."""
     return {"do": "lead", "args": list(args)}
 
 
@@ -70,10 +71,10 @@ def plan_ticket(tmp_path: Path) -> list[dict[str, Any]]:
     plan = sync_dir(tmp_path) / "lead-plan.md"
     return [{"do": "write", "files": {str(plan): PLAN}}, lead(*TICKET),
             lead("plan", "propose", "--assurance", "none", WID, "--file", str(plan), "--affected", "calc/core.py"),
-            lead("plan", "accept", WID, "--revision", "1")]
+            asked(lead("plan", "accept", WID, "--revision", "1"), sync_dir(tmp_path))]
 
 
-def review_to_done(first: int) -> list[dict[str, Any]]:
+def review_to_done(first: int, sync: Path) -> list[dict[str, Any]]:
     """The Lead's steps from a reported implementation to DONE. The reviewer, the verifier and the integration
     verifier are harness runs of INV-<first>, INV-<first+1> and INV-<first+2>; the Lead ingests what they
     recorded, reading the ids from ``harness wait``."""
@@ -89,7 +90,7 @@ def review_to_done(first: int) -> list[dict[str, Any]]:
             lead("invoke", "create", WID, "--role", "verifier", "--scope", "integration", "--launch"),
             wait(integration),
             lead("verify", "ingest", WID, "--evidence", "{evidence:verify}"),
-            lead("integrate", "publish", WID)]
+            asked(lead("integrate", "publish", WID), sync)]
 
 
 # ---------------------------------------------------------------------------------------------- the roles' steps
@@ -232,7 +233,7 @@ def operator_takeover(lab: HarnessLab, reason: str) -> str:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        return Engine.discover(lab.root).lead_takeover(expect_rev=lab.project.rev(), reason=reason,
+        return Engine.discover(lab.root).lead_takeover(reason=reason,
                                                        session_label="operator")["token"]
     finally:
         aew.operator.authorize = original
@@ -257,7 +258,7 @@ def at14_ticket_end_to_end(lab: HarnessLab, driver: Driver, tmp_path: Path) -> N
         lead("work", "assign", WID, "--launch"),                              # 4
         lead("work", "transition", WID, "--to", "RUNNING"),
         wait("R-INV-0001-1"),                                                 # 6
-        *review_to_done(2),
+        *review_to_done(2, sync),
         {"do": "aew", "args": ["resume", "--json"]}])
     lead_session_ok(res, steps)
     assigned = steps[4]["stdout_json"]
@@ -368,7 +369,8 @@ def at15_disposable_harness(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
 
     # --- the Lead completes the Ticket (from yet another session: the Lead's sessions are disposable too) --------
     script_review_to_done(lab, driver, sync, 2)
-    res, steps = driver.lead(lab, "lead-at15-c", [*review_to_done(2), {"do": "aew", "args": ["resume", "--json"]}])
+    res, steps = driver.lead(lab, "lead-at15-c", [*review_to_done(2, sync),
+                                                  {"do": "aew", "args": ["resume", "--json"]}])
     lead_session_ok(res, steps)
     control = lab.ok("work", "show", WID)["control"]
     assert control["state"] == "DONE"
@@ -513,7 +515,7 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
         lead("harness", "launch", "INV-0001", "--replace"),                                     # 9: rotation
         wait(r2),
         lead("lead", "handoff", "offer"),                                                       # 11
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "0"]},                        # 12
+        {"do": "aew", "args": ["lead", "acquire", ]},                        # 12
         lead("work", "assign", WID),                                                            # 13: no --launch
         {**lead("checkpoint", "--next", "x"), "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},  # 14
         {"do": "scan", "out": str(sync / "lead-hits"), "roots": roots},                         # 15

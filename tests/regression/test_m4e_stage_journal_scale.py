@@ -27,12 +27,12 @@ def ended_stages(p, tmp_path: Path, n: int) -> list[str]:
     out = []
     for i in range(n):
         e = Engine.discover(p.root)
-        sid = e.stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest="0" * 64, arguments={},
+        sid = e.stage_open(token=p.token, tool="probe", contract_digest="0" * 64, arguments={},
                            judgment_inputs=[], base_class="MECHANICAL", effective_class="MECHANICAL",
                            plan=[{"primitive": "checkpoint"}], subject=wid if i % 2 else None,
                            ingress="test")["intent"]
         with SI.step(sid, 1, final=True):
-            e.checkpoint(token=p.token, expect_rev=p.rev(), note=f"stage {i}")
+            e.checkpoint(token=p.token, note=f"stage {i}")
         out.append(sid)
     return out
 

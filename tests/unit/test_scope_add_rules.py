@@ -137,7 +137,7 @@ def test_a_live_implementer_is_told_with_harness_send_and_a_reader_is_redispatch
                                                          messaging=True)
     assert impl["commands"] == ["aew lead tool message_send --arguments -"], impl
     assert impl["fields"]["to"] == "INV-0001" and "tests/test_a.py" in impl["fields"]["body"], impl
-    assert impl["fields"]["expect_rev"] == 8  # the revision the add commits
+    assert "expect_rev" not in impl["fields"]
     check_call("message_send", impl["fields"], "normal", frozenset({contract.MESSAGING}))
     assert not any("harness send" in c for c in impl["commands"] + reader["commands"])
     assert reader["commands"][0].startswith("aew invoke cancel INV-0002")

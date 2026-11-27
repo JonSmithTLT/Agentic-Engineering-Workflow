@@ -67,10 +67,20 @@ def _dispose(a: argparse.Namespace) -> Any:
     from aew.surface.context import SurfaceContext
     from aew.surface.errors import AdapterInputError
 
-    arguments = {"expect_rev": a.expect_rev, "subject": a.subject, "choice": a.choice, "rationale": a.rationale,
+    arguments = {"subject": a.subject, "choice": a.choice, "rationale": a.rationale,
                  **({"follow_up": a.follow_up} if a.follow_up else {})}
+    engine = _engine(a)
+    binding = a.approval_digest
+    if _approval_terminal(a):
+        shown = engine.disposition_approval(a.subject)
+        print(f"Dispose of {a.subject}: {shown['subject']}\nShown SHA-256 {shown['digest']}",
+              file=sys.stderr, flush=True)
+        if binding is None:
+            binding = shown["digest"]
+    if binding is not None:
+        arguments["approval_digest"] = binding
     try:
-        return run.run_tool(_engine(a), SurfaceContext.outside_session(), "resolve", arguments, token=_lead_token(a))
+        return run.run_tool(engine, SurfaceContext.outside_session(), "resolve", arguments, token=_lead_token(a))
     except AdapterInputError as exc:
         err = UsageError(exc.message, **exc.details)
         err.code = exc.code  # the adapter's own code: an input error, never an engine refusal
@@ -85,8 +95,7 @@ def _add_launch(q: argparse.ArgumentParser) -> None:
 
 def _dispatch(args: argparse.Namespace, op: str, **kwargs: Any) -> Any:
     engine = _engine(args)
-    out = getattr(engine, op)(token=_lead_token(args), expect_rev=args.expect_rev,
-                              execution_profile=_execution(args), launch=args.launch, **kwargs)
+    out = getattr(engine, op)(token=_lead_token(args), execution_profile=_execution(args), launch=args.launch, **kwargs)
     return engine.launch_dispatched(out) if args.launch else out
 
 
@@ -156,7 +165,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--priority-reason", help="why this priority: `status` shows it beside the level")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_create(
-        token=_lead_token(a), expect_rev=a.expect_rev, kind=a.kind, title=a.title, risk_class=a.risk_class,
+        token=_lead_token(a), kind=a.kind, title=a.title, risk_class=a.risk_class,
         mutating=not a.non_mutating, parent=a.parent, depends_on=a.depends_on, scope_paths=a.scope,
         goal_backwards=a.goal, contract=a.contract, mandatory_gates=a.mandatory_gate,
         min_descendant_class=a.min_descendant_class, rationale=a.rationale, external_refs=a.external_ref,
@@ -269,7 +278,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_reclassify(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, risk_class=a.risk_class, reason=a.reason))
+        token=_lead_token(a), work_id=a.work_id, risk_class=a.risk_class, reason=a.reason))
     q = wsub.add_parser("depend", help="add/remove dependency edges; recorded decision (Lead)")
     q.add_argument("work_id")
     q.add_argument("--add", action="append", default=[], metavar="ID[:mutating|evidence]")
@@ -277,7 +286,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_depend(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, add=a.add, remove=a.remove,
+        token=_lead_token(a), work_id=a.work_id, add=a.add, remove=a.remove,
         reason=a.reason))
     q = wsub.add_parser("acknowledge-input", help="accept a stale source-bound input for the current commit (Lead)")
     q.add_argument("work_id")
@@ -297,7 +306,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_reconcile(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, to=a.to, reason=a.reason))
+        token=_lead_token(a), work_id=a.work_id, to=a.to, reason=a.reason))
 
     q = wsub.add_parser("dispose", help="dispose of a finding or claim policy marks requires_disposition, or of an "
                                         "anomaly (Lead; the typed `resolve` tool's CLI form)")
@@ -306,7 +315,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--choice", required=True, choices=["accept_risk", "follow_up", "not_applicable"])
     q.add_argument("--follow-up", dest="follow_up", help="with --choice follow_up: the Ticket that follows it up")
     q.add_argument("--rationale", required=True, help="why (recorded with the disposition)")
-    _add_lead(q)
+    _add_approval(q)
     q.set_defaults(handler=_dispose)
 
     p = sub.add_parser("dispatch", help="the dispatch predicate (M4-A): what a dispatch would be decided now")
@@ -357,7 +366,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_propose(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, body=_read_text_arg(a.file),
+        token=_lead_token(a), work_id=a.work_id, body=_read_text_arg(a.file),
         reason=a.reason, affected_paths=a.affected, **_assurance(a)))
     q = psub.add_parser("lint", help="deterministic plan lint of a Ticket's accepted (or named) plan (read-only)")
     q.add_argument("work_id")
@@ -377,7 +386,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     _add_assurance(q)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).plan_adopt(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence,
+        token=_lead_token(a), work_id=a.work_id, evidence_id=a.evidence,
         source=a.source, reason=a.reason, **_assurance(a)))
     q = psub.add_parser("assess", help="dispatch an independent assessor of a unit's accepted plan revision (Lead; "
                                       "once a revision's assessment counts, it is not assessed again)")
@@ -416,7 +425,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).invoke_cancel(
-        token=_lead_token(a), expect_rev=a.expect_rev, invocation=a.invocation, reason=a.reason))
+        token=_lead_token(a), invocation=a.invocation, reason=a.reason))
     q = isub.add_parser("show")
     q.add_argument("invocation")
     q.set_defaults(handler=lambda a: _engine(a).invoke_show(a.invocation))
@@ -506,12 +515,11 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     src.add_argument("--file", action=fields.FileInput, help="message file, or - for stdin")
     q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
                    help="when the agent receives it: next-step (the default) or turn-end")
-    q.add_argument("--expect-rev", type=int, help="optional revision this send was written against")
     q.add_argument("--idempotency-id", help="a stable retry identity when coordination messaging is on")
     add_token(q)
     q.set_defaults(handler=lambda a: _engine(a).harness_send(
         token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when,
-        expect_rev=a.expect_rev, idempotency_id=a.idempotency_id))
+        idempotency_id=a.idempotency_id))
     q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
     q.add_argument("run")
     add_token(q)
@@ -543,7 +551,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--evidence", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).evidence_ingest(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
+        token=_lead_token(a), work_id=a.work_id, evidence_id=a.evidence))
 
     p = sub.add_parser("review", help="Lead: ingest a review report")
     rsub = p.add_subparsers(dest="review_cmd", required=True)
@@ -552,7 +560,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--evidence", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).review_ingest(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
+        token=_lead_token(a), work_id=a.work_id, evidence_id=a.evidence))
 
     p = sub.add_parser("verify", help="Lead: ingest verification; classify failures")
     vsub = p.add_subparsers(dest="verify_cmd", required=True)
@@ -561,7 +569,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--evidence", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).verify_ingest(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, evidence_id=a.evidence))
+        token=_lead_token(a), work_id=a.work_id, evidence_id=a.evidence))
     q = vsub.add_parser("classify", help="Lead-owned verification-failure classification (WC §8)")
     q.add_argument("work_id")
     q.add_argument("--as", dest="classification", required=True,
@@ -599,7 +607,7 @@ def _approved(a: argparse.Namespace, op: str, method: str, **kwargs: Any) -> Any
                 binding = shown["digest"]
             print(f"{op} {a.work_id}: {shown['subject']}\nShown SHA-256 {shown['digest']}",
                   file=sys.stderr, flush=True)
-    return getattr(engine, method)(token=token, expect_rev=a.expect_rev, work_id=a.work_id,
+    return getattr(engine, method)(token=token, work_id=a.work_id,
                                    binding=binding, **kwargs)
 
 
@@ -609,7 +617,7 @@ def _promote(a: argparse.Namespace) -> Any:
     prior = a.prior_value
     if prior is None and _approval_terminal(a):
         prior = engine.prior_value("work_promote", a.work_id)
-    return engine.work_promote(token=token, expect_rev=a.expect_rev, work_id=a.work_id, to=a.to,
+    return engine.work_promote(token=token, work_id=a.work_id, to=a.to,
                                title=a.title, reason=a.reason, risk_class=a.risk_class, prior_value=prior)
 
 
@@ -619,7 +627,7 @@ def _bound_prior(a: argparse.Namespace, method: str, **kwargs: Any) -> Any:
     prior = a.prior_value
     if prior is None and _approval_terminal(a):
         prior = engine.prior_value(method, kwargs.get("work_id") or kwargs["invocation"])
-    return getattr(engine, method)(token=token, expect_rev=a.expect_rev, prior_value=prior, **kwargs)
+    return getattr(engine, method)(token=token, prior_value=prior, **kwargs)
 
 
 def _plan_accept(a: argparse.Namespace) -> Any:
@@ -632,7 +640,7 @@ def _plan_accept(a: argparse.Namespace) -> Any:
         if binding is None:
             binding = shown["sha256"]
         print(f"Accept plan {shown['path']} (SHA-256 {shown['sha256']})", file=sys.stderr, flush=True)
-    return engine.plan_accept(token=token, expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision,
+    return engine.plan_accept(token=token, work_id=a.work_id, revision=a.revision,
                               binding=binding)
 
 
@@ -648,7 +656,7 @@ def _breaker_reset(a: argparse.Namespace) -> Any:
     authorization = operator.authorize("RESET the validation circuit breaker: automatic infrastructure retries of "
                                        f"post-integration validation resume ({a.reason})\n"
                                        f"Failures (SHA-256 {binding}):\n{failures or '  none'}")
-    return engine.integrate_breaker_reset(token=token, expect_rev=a.expect_rev, reason=a.reason,
+    return engine.integrate_breaker_reset(token=token, reason=a.reason,
                                           authorization=authorization, binding=binding)
 
 
@@ -660,19 +668,36 @@ def _custody(a: argparse.Namespace) -> Any:
     return _engine(a).custody_run(a.custodian, credential)
 
 
+def _publish(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    candidate = a.candidate
+    if _approval_terminal(a):
+        shown = (engine.status(a.work_id)["work_unit"].get("integration") or {}).get("candidate")
+        if shown is not None:
+            print(f"Publish {a.work_id}: candidate {shown}", file=sys.stderr, flush=True)
+            if candidate is None:
+                candidate = shown
+    return engine.integrate_publish(token=token, work_id=a.work_id, candidate=candidate)
+
+
 def _register_integration(sub: argparse._SubParsersAction) -> Any:
     p = sub.add_parser("integrate", help="Lead-controlled integration: validate, then publish by ref CAS")
     isub = p.add_subparsers(dest="integrate_cmd", required=True)
     for name, method, text in (
         ("prepare", "integrate_prepare", "commit the gated workspace and build the integration candidate"),
-        ("publish", "integrate_publish", "CAS-publish a validated candidate onto the authoritative branch"),
         ("reconcile", "integrate_reconcile", "finish an interrupted publish after inspecting git"),
     ):
         q = isub.add_parser(name, help=text)
         q.add_argument("work_id")
         _add_lead(q)
         q.set_defaults(handler=lambda a, m=method: getattr(_engine(a), m)(
-            token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id))
+            token=_lead_token(a), work_id=a.work_id))
+    q = isub.add_parser("publish", help="CAS-publish a validated candidate onto the authoritative branch")
+    q.add_argument("work_id")
+    q.add_argument("--candidate", help="bind the candidate commit shown in the last result")
+    _add_lead(q)
+    q.set_defaults(handler=_publish)
     # Checks-mode post-integration validation (M4-D5): deterministic, contained, under the entry's lease.
     q = isub.add_parser("validate", help="validate the candidate with the policy's post-integration checks (checks "
                                          "mode): no model, contained, under the lease")
@@ -684,7 +709,7 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
                         "results, labelled with the containment they had, never evidence, never a state change")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).integrate_validate(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, wait=a.wait, diagnostic=a.diagnostic))
+        token=_lead_token(a), work_id=a.work_id, wait=a.wait, diagnostic=a.diagnostic))
     # The integration custodian's own process (M4-E E6a; plan v3 §2.3): started by the engine right after a lease grant,
     # with its custody credential on stdin. It takes no Lead credential (never relayed: the Lead bridge runs only
     # Lead-authenticated commands) and refuses to run where a Lead session's environment is present (S3).
@@ -718,5 +743,5 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).integrate_reorder(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, before=None if a.first else a.before,
+        token=_lead_token(a), work_id=a.work_id, before=None if a.first else a.before,
         reason=a.reason))

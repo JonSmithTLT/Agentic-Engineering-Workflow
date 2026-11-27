@@ -187,3 +187,9 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
       the process exits;
     - a taker stuck in the turnstile holds others back until their timeout;
     - a turnstile that cannot be opened costs fairness, never the lock.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+Control transactions still serialize under the state lock, validate current authority and recover atomically. The transaction allocates and records the next revision against the state it locked. A caller supplies the operation's declared prior item value or approval subject where one is needed. Unrelated transitions do not block a legal operation. The revision continues to order committed transitions and identify durable records.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

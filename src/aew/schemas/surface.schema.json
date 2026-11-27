@@ -81,6 +81,7 @@
       ]
     },
     "kept_stop": {
+      "description": "Historical pre-E329 revision stop retained for reading older stage records.",
       "type": "object", "additionalProperties": false,
       "required": ["n", "boundary", "rev", "error"],
       "properties": {
@@ -96,11 +97,13 @@
     "decision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["decision", "subject", "evidence", "tool", "arguments", "availability", "default",
+      "required": ["decision", "subject", "owner", "evidence", "tool", "arguments", "availability", "default",
                    "cli_fallback"],
       "properties": {
         "decision": {"type": "string", "minLength": 1},
         "subject": {"type": "string", "minLength": 1},
+        "owner": {"enum": ["lead", "operator"],
+                  "description": "Whose decision it is (register E335): one owner per decision kind, from the table of primitive owners; one it does not state is the operator's."},
         "evidence": {"type": "array", "items": {"type": "string"}},
         "tool": {"type": ["string", "null"]},
         "arguments": {"type": ["object", "null"]},
@@ -112,10 +115,9 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["expect_rev", "subject", "choice", "replacement", "approval_digest"],
+            "required": ["subject", "choice", "replacement", "approval_digest"],
             "additionalProperties": false,
             "properties": {
-              "expect_rev": {"type": "integer", "minimum": 0},
               "subject": {"type": "string"},
               "choice": {"const": "replace_gate"},
               "replacement": {"type": "string"},
@@ -123,7 +125,22 @@
             }
           }
         },
-        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]}
+        "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]},
+        "judgment_inputs": {
+          "description": "What the decision's call takes from its owner's judgment (register E388): each field the tool's schema requires that the arguments leave out: `resolve`'s choice with its options, and its rationale as its schema, for the decider to write. Filled in, the call has every field the schema requires; a choice can need more (follow_up its Ticket), which its refusal names. Absent when the arguments are whole.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "choice": {"type": "object", "required": ["options"], "additionalProperties": false,
+                       "properties": {"options": {"type": "array", "minItems": 1, "items": {"type": "string"}}}},
+            "rationale": {"description": "The tool's own schema of the field, for the decider to write.",
+                          "type": "object", "required": ["type"], "additionalProperties": false,
+                          "properties": {"type": {"const": "string"}, "description": {"type": "string"}}}
+          }
+        },
+        "ask_operator": {"type": "string", "minLength": 1,
+                         "description": "The operator's confirmation command, run at their own terminal, which a Lead session's call of the decision waits for (register E351)."}
       }
     },
     "blocker": {
@@ -211,7 +228,17 @@
         "anomalies": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
         "hints": {"description": "reader-only prose; never parsed", "type": "array", "items": {"type": "string"}},
         "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}},
-        "coordination": {"$ref": "#/$defs/coordination_attention"}
+        "coordination": {"$ref": "#/$defs/coordination_attention"},
+        "reports": {
+          "type": "object", "additionalProperties": false, "required": ["label", "items"],
+          "properties": {
+            "label": {"type": "string"},
+            "items": {"type": "array", "items": {
+              "type": "object", "additionalProperties": false, "required": ["id", "title"],
+              "properties": {"id": {"type": "string"}, "title": {"type": "string"}}
+            }}
+          }
+        }
       }
     },
     "stage_result": {

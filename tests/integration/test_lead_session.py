@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from aewflow import create_investigation, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, Project, clean_env, make_git_repo, run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 from invariants import assert_control_invariants
+from operator_confirms import asked, standing_by
 
 from aew.harness import bridge, lead_broker
 from aew.harness.procs import pid_alive
@@ -57,8 +59,13 @@ def session(lab, name: str, steps: list[dict], *, acquire: bool = False, token: 
     """Run ``aew lead session`` to completion with the fake agent as the Lead's harness."""
     argv, transcript = _session_argv(lab, name, steps, acquire)
     # A whole Lead session (several CLI round trips and possibly a run launch) in one call: generous timeout.
-    res = run_aew("-C", str(lab.root), *argv, env={**lab.env, **({"AEW_LEAD_TOKEN": lab.project.token} if token
-                                                                  else {})}, timeout=600)
+    done = threading.Event()
+    standing_by(lab.root, steps, lambda: not done.is_set())  # the operator, for a step that waits on them
+    try:
+        res = run_aew("-C", str(lab.root), *argv, env={**lab.env, **({"AEW_LEAD_TOKEN": lab.project.token} if token
+                                                                      else {})}, timeout=600)
+    finally:
+        done.set()
     return res, _steps(transcript)
 
 
@@ -85,7 +92,7 @@ def takeover(lab, monkeypatch) -> None:
     from aew.engine.api import Engine
 
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator (test)"})
-    lab.project.token = Engine.discover(lab.root).lead_takeover(expect_rev=lab.project.rev(), reason="session lost",
+    lab.project.token = Engine.discover(lab.root).lead_takeover(reason="session lost",
                                                                 session_label="operator")["token"]
 
 
@@ -123,7 +130,7 @@ def test_the_lead_bridge_refuses_what_would_put_a_credential_in_the_session(lab,
     lab.script("default", [{"do": "exit", "code": 0}])
     res, steps = session(lab, "lead-b", [
         {"do": "lead", "args": ["lead", "handoff", "offer"]},
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "0"]},
+        {"do": "aew", "args": ["lead", "acquire", ]},
         {"do": "lead", "args": ["lead", "release"]},
         {"do": "lead", "args": ["work", "assign", wid]},                    # would print an invocation credential
         {"do": "lead", "args": ["work", "dispatch", inv, "--launch"]},      # custody goes to the run's supervisor
@@ -146,7 +153,7 @@ def test_the_lead_bridge_refuses_what_would_put_a_credential_in_the_session(lab,
 def test_the_lead_bridge_serves_only_its_own_project(lab, tmp_path):
     other = sample_project(tmp_path / "other")
     res, steps = session(lab, "lead-c", [
-        {"do": "aew", "args": ["-C", str(other.root), "checkpoint", "--next", "x", "--expect-rev", "1"]}])
+        {"do": "aew", "args": ["-C", str(other.root), "checkpoint", "--next", "x", ]}])
     assert code(steps[0]) == "PERMISSION_DENIED" and "different AEW project" in steps[0]["stderr"]
 
 
@@ -171,7 +178,7 @@ def test_an_acquired_seat_is_released_or_held_explicitly(tmp_path, sync):
             {"do": "lead", "args": ["work", "create", "ticket", "--title", "Survey", "--class", "0", "--non-mutating",
                                     "--goal", "g", "--scope", "calc/**"]},
             {"do": "lead", "args": ["plan", "propose", "--assurance", "none", "T-0001", "--file", str(plan)]},
-            {"do": "lead", "args": ["plan", "accept", "T-0001", "--revision", "1"]},
+            asked({"do": "lead", "args": ["plan", "accept", "T-0001", "--revision", "1"]}, sync),
             {"do": "lead", "args": ["work", "dispatch", "T-0001", "--launch"]},
         ], acquire=True, token=False)
         assert [steps[i]["exit"] for i in range(4)] == [0, 0, 0, 0], steps
@@ -240,7 +247,7 @@ def test_both_bridges_hold_the_same_custody_properties(lab, tmp_path, sync, monk
         lab.wait("R-INV-0001-1")
         env_names, op, args = (bridge.ENV_ENDPOINT, bridge.ENV_KEY), "whoami", {}
     else:
-        args = {"argv": ["checkpoint", "--next", "x", "--expect-rev", "1"], "cwd": str(lab.root), "stdin": ""}
+        args = {"argv": ["checkpoint", "--next", "x", ], "cwd": str(lab.root), "stdin": ""}
         steps = parity_steps(sync, kind, {"do": "lead", "args": ["checkpoint", "--next", "parity"]}, "lead.cli", args)
         proc, transcript = start_session(lab, "parity", steps)
         lab.until((sync / "ready").exists, "wait.condition", what="holder ready")
@@ -289,7 +296,7 @@ def test_a_process_the_lead_harness_leaves_behind_ends_before_the_seat_is_releas
     try:
         res, steps = session(lab, "linger", [{"do": "spawn_lingerer", "pidfile": str(pidfile), "go": str(go),
                                               "out": str(out), "args": ["--print-credential", "-C", str(p.root), "lead",
-                                                                        "acquire", "--expect-rev", "0"]}],
+                                                                        "acquire", ]}],
                              acquire=True, token=False)
         assert res.returncode == 0, res.stderr
         assert res.json["processes"] == "clean" and res.json["seat"] == "released", res.json
@@ -308,13 +315,13 @@ def test_a_credential_is_never_issued_onto_a_captured_stdout(tmp_path):
     anything; a script that keeps the credential safe opts in."""
     p = vacant_project(tmp_path)
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
-    res = subprocess.run([sys.executable, "-m", "aew", "-C", str(p.root), "lead", "acquire", "--expect-rev",
-                          str(p.rev())], env=clean_env(), capture_output=True, text=True, encoding="utf-8",
+    res = subprocess.run([sys.executable, "-m", "aew", "-C", str(p.root), "lead", "acquire"], env=clean_env(),
+                         capture_output=True, text=True, encoding="utf-8",
                          stdin=subprocess.DEVNULL, timeout=180, **kwargs)
     assert res.returncode != 0 and '"USAGE"' in res.stderr and "your terminal" in res.stderr, res.stderr
     assert not contains_credential(res.stdout + res.stderr)
     assert p.ok("lead", "show")["status"] == "vacant"
-    assert contains_credential(p.ok("lead", "acquire", "--expect-rev", str(p.rev()))["token"])  # run_aew opts in
+    assert contains_credential(p.ok("lead", "acquire")["token"])  # run_aew opts in
 
 
 def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
@@ -330,11 +337,11 @@ def test_a_pending_handoff_refuses_without_ending_the_session(lab, sync):
         {"do": "wait_file", "path": str(sync / "go2"), "timeout": 120},
         {"do": "lead", "args": ["checkpoint", "--next", "after the cancel"]}])
     lab.until((sync / "ready").exists, "wait.condition", what="Lead session ready")
-    Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token, expect_rev=lab.project.rev())
+    Engine.discover(lab.root).lead_handoff_offer(token=lab.project.token)
     (sync / "go").touch()
     lab.until((sync / "tried").exists, "wait.condition", what="a request during the offer")
     time.sleep(3 * lead_broker.POLL_S)  # the session's watchdog has seen the pending handoff
-    Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token, expect_rev=lab.project.rev())
+    Engine.discover(lab.root).lead_handoff_cancel(token=lab.project.token)
     (sync / "go2").touch()
     out, err = proc.communicate(timeout=120)
     steps = _steps(transcript)

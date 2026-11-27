@@ -64,7 +64,7 @@ def test_a_custody_worker_registers_its_start_id_additively_and_is_not_lost_acro
     del state["invocations"][custodian]["worker"]["start_id"]
     assert [err.message for err in old.iter_errors(state)] == [] and schemas.iter_errors("control", state) == []
     stepper(monkeypatch)(STEP_S)
-    e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
+    e.checkpoint(token=p.token, note="any Lead commit runs sync")
     held = lease(p)
     assert held is not None and held["reconcile"] is None
     assert load_control(p.root)["invocations"][custodian]["status"] == "active"
@@ -85,7 +85,7 @@ def test_a_state_from_before_start_ids_loads_and_the_run_its_worker_executes_rec
     old = pre_start_id_validator()
     assert [err.message for err in old.iter_errors(baseline_control(state, old.schema))] == []
     e = engine(p)  # loads the state from disk, validated by the current schema
-    e.checkpoint(token=p.token, expect_rev=p.rev(), note="any Lead commit runs sync")
+    e.checkpoint(token=p.token, note="any Lead commit runs sync")
     held = lease(p)
     assert held is not None and held["reconcile"] is None  # a live worker, by its start time
     found, result = e.custody_step(custodian, custody[custodian])

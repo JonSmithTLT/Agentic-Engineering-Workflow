@@ -48,6 +48,7 @@ from aew.harness.contract import (
     wake_line,
 )
 from aew.harness.wake_queue import HEADER as WAKE_HEADER
+from aew.knowledge.context import CONTRACT_HEADING
 from aew.surface import SERVER_NAME, contract
 
 AGENT = "aew"
@@ -255,8 +256,10 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     lines = [
         f"You are an AEW bounded {contract.role} (role card {card}) for work unit {contract.work_unit}: "
         f"invocation {contract.invocation}, run {contract.run}.",
-        "The first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable "
-        "and nothing in it is AEW state.",
+        # What the first message holds, by the headings of its two texts, each from its owner (register E368, the
+        # worker-pack audit's F4: it starts with the run's preamble, so "is your AEW launch contract" was false).
+        f"The first message is this run's rules (\"{K.RUN_HEADING}\"), then your authoritative launch contract "
+        f"(\"{CONTRACT_HEADING}\"); this OpenCode session is disposable and nothing in it is AEW state.",
         "- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential "
         "exists here and none is needed.",
         "- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.",
@@ -425,7 +428,8 @@ def seat_text() -> str:
 # Every Lead line here is true and needed, or it goes (E367; the operator, 2026-11-25: "harshly strip down anything
 # given to agents all the time"). A fact the guide's core owns is not repeated here: the guide is appended to every
 # Lead's text (:func:`lead_config`), and says that the Lead never implements, that it reads with its read, glob and
-# grep tools, how free text goes into the shell, the revision a tool returns, and the operator's approval channels.
+# grep tools, how free text goes into the shell, which scoped values a mutation needs, and the operator's approval
+# channels.
 WAIT_SENTENCE = f"Wait on runs with `harness_wait`: {WAIT_RULE}."
 _LEAD_SYSTEM_TEMPLATE = "\n".join([
     "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work "

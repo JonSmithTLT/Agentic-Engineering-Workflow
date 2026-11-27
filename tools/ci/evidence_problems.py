@@ -17,21 +17,24 @@ from evidence_files import (  # noqa: E402
     BEFORE_TESTS,
     BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
+    CONTROLLER,
     FRAME,
     FRESH_S,
     INTERRUPTION_REASONS,
     LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
-    OUTSIDE_CALL,
+    OUTCOME_FILES,
     PREFIX,
     SAMPLING_POLICY,
+    STACK_NOT_OWED,
     WARNING,
     WATCHDOG_HEADER,
+    WORKER_COUNT,
     WORKER_PHASES,
-    cancel_outcome,
     entries,
     failure_overflow,
     finished_without_tests,
+    lifecycle_receipt,
     owner,
     policy_samples,
     priority,
@@ -47,23 +50,40 @@ from evidence_files import (  # noqa: E402
 )
 
 
+def interruption_outcomes(texts: dict, observed: dict):
+    """Each typed outcome an interruption's capture left for this observation, with the interruption's sample reason:
+    the outcome of the same worker identity, test and collection instant, and no other's."""
+    pid, start = observed["pid"], observed["start"]
+    for reason, named in OUTCOME_FILES.items():
+        for row in rows_named(texts, named(pid, start)):
+            if ((row.get("pid"), row.get("start"), row.get("node")) == (pid, start, observed["node"])
+                    and observed.get("collect_at") is not None and row.get("collect_at") == observed["collect_at"]):
+                yield reason, row.get("outcome")
+
+
+def outcome_note(texts: dict, observed: dict) -> str:
+    """The typed outcomes of an observation as a defect names them, so a sighting says why with no artifact download
+    (register E3): `` (warning outcome: straddled a test change)``, or nothing when none was left."""
+    why = "; ".join(f"{reason} outcome: {outcome}" for reason, outcome in interruption_outcomes(texts, observed))
+    return f" ({why})" if why else ""
+
+
 def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) -> bool:
-    """A live worker owes no interruption stack only by a typed cancellation outcome the bundle bears out (register
-    E3), and only for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no
-    retained sample of its identity and no failed sampling attach of it, or one in setup, teardown or between tests by
-    the frames its cancellation collection retained. A worker inside its test's call always owes one."""
+    """A live worker owes no interruption stack only by a typed outcome the bundle bears out (register E3), and only
+    for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no retained sample of
+    its identity and no failed sampling attach of it, or one outside its test's call (STACK_NOT_OWED: in setup,
+    teardown or between tests at the cancellation collection; in setup or teardown at the Linux pre-signal warning,
+    by the operator's decision of 2026-11-26) by the frames that same interruption retained. A worker inside its
+    test's call always owes one."""
     pid, start = observed["pid"], observed["start"]
     policies = list(rows_named(texts, SAMPLING_POLICY))
     failed = any(path.name == sampling_failures(pid, start) for path in texts)
-    for row in rows_named(texts, cancel_outcome(pid, start)):
-        if ((row.get("pid"), row.get("start"), row.get("node")) != (pid, start, observed["node"])
-                or observed.get("collect_at") is None or row.get("collect_at") != observed["collect_at"]):
-            continue
-        if (row.get("outcome") == NOT_SAMPLED and not sampled and not failed and policies
+    for reason, outcome in interruption_outcomes(texts, observed):
+        if (reason == CANCEL_COLLECTION and outcome == NOT_SAMPLED and not sampled and not failed and policies
                 and not any(policy_samples(policy) for policy in policies)):
             return True
-        if row.get("outcome") in OUTSIDE_CALL and any(
-                reason == CANCEL_COLLECTION and pytest_phase(frames) == row["outcome"] for reason, frames in stacks):
+        if outcome in STACK_NOT_OWED[reason] and any(
+                taken == reason and pytest_phase(frames) == outcome for taken, frames in stacks):
             return True
     return False
 
@@ -83,8 +103,10 @@ def before_tests_problems(texts: dict, running: set) -> list[str]:
     """Where the bundle contradicts or lacks its record that the lane was cancelled before any test started (register
     E3). The record stands in for a worker observation and a running name only when every copy agrees, every session
     is listed, every registered worker is listed by identity with its lifecycle receipt, which reached the recorded
-    phase and never execution, a finished session's own files show that it began no test, and no autopsy of a test,
-    watchdog header, interruption record, test result or running name shows a test begun (review of #579, M1 and m1)."""
+    phase and never execution, a session with no worker roster that had not finished (a serial one, whose controller
+    runs its tests itself) lists its controller on the same terms, a finished session's own files show that it began
+    no test, and no autopsy of a test, watchdog header, interruption record, test result or running name shows a test
+    begun (review of #579, M1 and m1)."""
     problems = []
     copies = {json.dumps(row, sort_keys=True) for row in rows_named(texts, BEFORE_TESTS)}
     record = json.loads(copies.pop()) if len(copies) == 1 else {}
@@ -140,9 +162,19 @@ def before_tests_problems(texts: dict, running: set) -> list[str]:
                     problems.append(f"{session}: {ident[1]} is not recorded, by pid and start, before its first test")
             elif name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
                 problems.append(f"{session}/{name}: a worker had started its tests")
+        controller = listed.get((session, CONTROLLER))
+        if controller is not None:
+            pid, start = (published.get(f"{CONTROLLER}-{key}.txt", "").strip() for key in ("pid", "start"))
+            if (not pid.isdecimal() or not start.isdecimal()
+                    or (controller.get("pid"), controller.get("start")) != (int(pid), int(start))):
+                problems.append(f"{session}: {CONTROLLER} is not recorded, by pid and start, before its first test")
+        elif "session-finished.txt" not in published and f"{WORKER_COUNT}.txt" not in published:
+            # Neither finished nor shown to be an xdist session: its controller may run its tests itself.
+            problems.append(f"{session}: a session with no worker roster does not list its {CONTROLLER} before its "
+                            "first test")
     for (session, name), worker in sorted(listed.items()):
-        phases = receipt_phases(files.get(session, {}).get(f"worker-{worker.get('pid')}-{worker.get('start')}"
-                                                           f"-lifecycle.txt", ""))
+        phases = receipt_phases(files.get(session, {}).get(
+            lifecycle_receipt(name, worker.get("pid"), worker.get("start")), ""))
         # The receipt must have reached the recorded phase: a worker can go on collecting after the observation until
         # the lane is ended, so a later phase short of execution still bears it out.
         if phases is None or worker["phase"] not in phases or WORKER_PHASES[-1] in phases:
@@ -368,7 +400,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                               and sample.get("reason") in INTERRUPTION_REASONS and abs(sample["at"] - seen) <= 10]
                     if (not any(test_frame(observed["node"], frames) for _, frames in stacks)
                             and not outside_call(texts, observed, stacks, sampled=bool(samples))):
-                        report("live-stack", f"{path.name}: live worker lacks its interruption stack")
+                        report("live-stack", f"{path.name}: live worker lacks its interruption stack"
+                               + outcome_note(texts, observed))
                 except (KeyError, TypeError, ValueError):
                     report("death-record", f"{path.name}: unreadable live-worker observation")
         if kind == "oom":

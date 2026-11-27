@@ -74,11 +74,11 @@ def test_message_send_is_mechanical_never_auto_runnable_never_journaled_and_disp
     assert "message_send" in run.RUNNERS and "message_send" not in stage.STAGES
 
 
-@pytest.mark.parametrize("change", [{"expect_rev": None}, {"body": ""}, {"body": "x" * 4001},
+@pytest.mark.parametrize("change", [{"expect_rev": 0}, {"body": ""}, {"body": "x" * 4001},
                                     {"when": "queue"}, {"idempotency_id": "invalid/ID"},
                                     {"refs": ["source:x"] * 9}, {"token": "not-an-argument"}])
 def test_message_send_bounds_are_enforced_before_the_runner(change):
-    args = {"expect_rev": 1, "to": "INV-0001", "body": "Check shutdown.", **change}
+    args = {"to": "INV-0001", "body": "Check shutdown.", **change}
     with pytest.raises(AdapterInputError):
         check_call("message_send", args, "normal", contract.ALL_SWITCHES)
 
@@ -95,7 +95,8 @@ OFF_READERS = {
         "Only planned workflow stages; message_send has no planner.", {"_compose": 1}),
     "src/aew/surface/mcp.py": ("Wait classification only; message_send is not a wait.", {"_is_wait": 1}),
     "src/aew/surface/projection.py": (
-        "Only projected workflow actions; message_send is not a projection action.", {"_action": 1, "_project": 1}),
+        "Only projected workflow actions, and the call a decision names (judgment_inputs); message_send is neither a "
+        "projection action nor a decision's tool.", {"_action": 1, "_project": 1, "judgment_inputs": 1}),
     "src/aew/surface/readable.py": (
         "Primitive-to-stage rendering; record-only send has no completed step.", {"<module>": 1}),
     "src/aew/surface/stage.py": (

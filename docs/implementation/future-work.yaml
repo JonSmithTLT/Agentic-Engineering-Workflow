@@ -136,14 +136,14 @@ sections:
     | 24 | E136 | Serving the other eleven skills, batched, after E142 (unfrozen by the operator, 2026-11-11) |
     | 25 | closed: E137 | A publish that stops stale after its first commit, and the stranded stages like it, closed by #437 |
     | 26 | closed: E156 | Refuse a launch with no provider key, close the Lead's OpenCode provider, and Lead permission tightening, closed by #340 |
-    | 27 | E157 | `report_write`: the Lead writes a report itself, kept apart from evidence |
+    | 27 | closed: E157 | `report_write`, its separate store and explicit CLI read. The dashboard goes to the frontend build |
     | 28 | E158 | The consult: the Lead spawns a read-only card on a question in one call, in two PRs |
     | 29 | E164, E165 | The models the Lead may pin: the operator's allow command, and `--model` held to profiles plus the allow-list, always bounded |
     | 30 | E159, E166 | The Lead change, with the light review, requested gates and `review_triggers` levels, and first configuration proposing those levels and keyed profiles |
     | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
     | 32 | E161 | The Lead's skills, after E127 |
     | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
-    | 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+    | 34 | closed: E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches, closed by #611 |
     | 35 | E170 | A command that prints a record's text as written |
     | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
     | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
@@ -2406,7 +2406,7 @@ sections:
   - '#': E135
     Work: 'The skill evaluation: whether a skill helps the weaker models AEW''s workers would use, whether such a model
       picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs'' usage. Its
-      runner is not built'
+      runner is built (`eval/skill_eval/`); the qualification itself has not run'
     Source: The evaluation plan of 2026-10-28, with the operator's limit of USD 10; the designer's decisions of 2026-11-04
     When: '**Evaluation**, before anything beyond the personal alpha, since qualification is owed then for every skill served'
     Notes: 'Filed by the Lead. Earlier result: no detectable benefit on Sonnet and Haiku at about 1.5 times the cost, on
@@ -2448,8 +2448,8 @@ sections:
     Notes: 'Filed by the Lead. Listed keys hide a new violation at the same site: shrink the list, and add no residuals'
 
   - '#': E144
-    Work: '`explain` with a `work_id`, entrypoint `harness.launch` and no `invocation` answers `-32603` from a `KeyError`
-      at `engine/harness_ops.py:110`. It should be an input error'
+    Work: 'The explanation route (`work_show` with `explain: true`) answers `-32603` from a `KeyError` at `engine/harness_ops.py:110`
+      when called with a `work_id`, entrypoint `harness.launch` and no `invocation`. It should be an input error'
     Source: 'Found in the review of #328'
     When: '**Unscheduled**, any idle slot'
     Notes: Filed by the Lead
@@ -2531,20 +2531,6 @@ sections:
     Source: Found while making packs true, 2026-11-04
     When: '**Now.** Item 37 of the Now list, carried by E169'
     Notes: Filed by the Lead
-
-  - '#': E157
-    Work: '`report_write`: the Lead writes a report (an explanation, a plan, an answer) through a typed tool on AEW''s own
-      MCP server, with no gate and no write access added. Reports are their own record kind, outside evidence: AEW assigns
-      the id and path, every evidence, plan and gate resolver refuses one, and they stay out of worker packs, derived knowledge
-      and the Lead''s later context (`resume` lists an id and title; the body comes on an explicit read, framed as data).
-      Size and count bounds are stated in the code. The terminal escapes control sequences, and the site renders no raw
-      HTML and fetches nothing remote. Every view labels it Lead-authored, unreviewed and not evidence, and a plan in it
-      is a proposal, never a Ticket''s plan'
-    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 4; the designer's
-      decision of 2026-11-06, the Lead makes small changes and writes documents itself (v2), §4
-    When: '**Now.** Item 27 of the Now list, first in the alpha after the first-use list. A new system, so it starts only
-      under the limit on half-built work, N = 12 (§1)'
-    Notes: Filed by the Lead. One PR. A document the operator wants in the repository is a Lead change (E159), not a report
 
   - '#': E158
     Work: 'The consult: one typed tool, `consult`, spawns a non-mutating card (investigator, researcher, planner, and `branch_reviewer`
@@ -2681,16 +2667,6 @@ sections:
       decision of 2026-11-06, the Lead's consult (v2), its pointer on adding a model
     When: '**Now.** Item 30 of the Now list, with E159'
     Notes: Filed by the Lead. The profiles serve E164 and E165, and the trigger levels serve E159
-
-  - '#': E167
-    Work: A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never
-      the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`,
-      with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the
-      operator
-    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's
-      decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work (v2), (c)
-    When: '**Now.** Item 34 of the Now list, with E136''s batches. Part of E168''s new system, under the same limit'
-    Notes: Filed by the Lead. Data, the designer's reading
 
   - '#': E168
     Work: 'A review of any local branch or ref, as a non-mutating Ticket: the ref is resolved at dispatch and pinned to
@@ -3202,8 +3178,9 @@ sections:
   - '#': E231
     Work: 'The Lead''s tool budget, decided before E158''s brief: measure the per-request cost of the typed surface against
       what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017''s presentation) or consolidate. `lead-context-pool.yaml`
-      records the approved pool for the contained Lead. TLS-21''s offered-tool ceiling stays separate. If E158 needs a name,
-      `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field'
+      records the approved pool for the contained Lead. TLS-21''s offered-tool ceiling stays separate. For E157, `explain`
+      folds into `work_show` (operator, 2026-11-26). E158 needs its own slot decision. E174, E177 and E173 look first at
+      `resolve` choices or a `status` field'
     Source: The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
     When: '**Gate: before E158''s brief.** The operator chose lossless consolidation (2026-11-10); the combined measurement
       is owed. Slice 1, the scripted probe, merged as #443, and slice 2, the pool gate, as #442 (their notes); the guide''s
@@ -3231,16 +3208,6 @@ sections:
       29 transitions from complete to lower-bound, and `reference check` passed, since it only compares against the re-render.
       Make it fail loudly: a floor on the transition count, or a scan scoped to the engine''s records'
     Source: Steering PR 2 (push wake's first part), 2026-11-08
-    When: '**Unscheduled**, in the small-fixes lane'
-    Notes: Filed by the week's register PR
-
-  - '#': E235
-    Work: '`default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`,
-      but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so
-      on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set. Fix the lookup
-      with a test on the real folder name, and weigh the desktop''s `Programs\ai.opencode.desktop\resources\` copy, whose
-      path moved in that update. Read from the code, not yet run'
-    Source: Found by the Lead, 2026-11-08; works out of the box is the operator's rule
     When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the week's register PR
 
@@ -3272,14 +3239,6 @@ sections:
     Source: 'The operator, 2026-11-08: "yeah it can be skipped for now as lonmg as its tracked"; PR 2''s declaration names
       this row; the week''s decision record of 2026-11-09 lists the Windows wake measurement among the rows owed'
     When: '**Unscheduled**; the measurement is owed before wakes on Windows are claimed'
-    Notes: Filed by the week's register PR
-
-  - '#': E241
-    Work: 'The worker''s route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized
-      request there should still give the false "bridge closed" refusal that #388 fixed for the Lead''s route. Read, not
-      reproduced'
-    Source: 'The quick check of #388, 2026-11-08'
-    When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the week's register PR
 
   - '#': E242
@@ -3326,13 +3285,6 @@ sections:
       and `test_g3_standing.py`. A copy and compare per test fits the budget where a snapshot of ids does not'
     Source: 'The flake plan''s decision D5 (the operator, 2026-11-09: "as recommended")'
     When: '**Unscheduled**, looked at again at the next weekly triage'
-    Notes: Filed by the week's register PR
-
-  - '#': E247
-    Work: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an
-      unreaped `Popen` for a tree member waits its full timeout. Inferred, callers not checked'
-    Source: 'The review of #394, 2026-11-09'
-    When: '**Unscheduled**, for checking'
     Notes: Filed by the week's register PR
 
   - '#': E248
@@ -5022,9 +4974,9 @@ sections:
       takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is removed outright (the operator, 2026-11-25);
       open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification''s
       WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded
-      recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every
-      A operation, and the vertical''s `revision_args` and `stale_retries` at 0. The revision stays as the commit order,
-      the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
+      recovery and the guides) land in the same PR. Tests cover the admission boundary for every A entry and exercise four
+      direct writers through their own handlers. The vertical''s `revision_args` and `stale_retries` are 0. The revision
+      stays as the commit order, the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
     Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
       parts 2, 4 and 5; the operator''s yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"'
     When: '**Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking
@@ -5050,17 +5002,6 @@ sections:
     When: '**Unscheduled**, the seat and settings chain, after E327 merges; its code only when the weaker-contexts register
       is not clear'
     Notes: Filed by the register PR of 2026-11-10. It ends the seat dance a setting change needs today
-
-  - '#': E335
-    Work: The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence
-      and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so
-      the Lead asks every decision and the vertical's exact-decision check fails
-    Source: The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same
-      day (gap X1)
-    When: '**Unscheduled**, the "say what changed" chain, after E334. The designer confirmed it on 2026-11-11 (the same
-      record): one owner per decision kind, from one table of primitive owners, and an unstated owner is the operator''s;
-      its gaps are E350 and E351'
-    Notes: Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
 
   - '#': E336
     Work: 'Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command
@@ -5192,14 +5133,6 @@ sections:
       as known gaps, citing this row'
     Source: The designer's ruling of 2026-11-11 on E334 and E335 (`designer-decisions-2026-11-11-e334-e335.md`), part 2's
       gaps
-    When: '**Unscheduled**, after E335'
-    Notes: Filed by the register PR of 2026-11-11
-
-  - '#': E351
-    Work: 'Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3)
-      is not a kind the action projection emits today, so E335''s owner table has no row for it. Its own decision kind,
-      with its owner, is this row'
-    Source: The designer's ruling of 2026-11-11 on E334 and E335 (`designer-decisions-2026-11-11-e334-e335.md`), part 2
     When: '**Unscheduled**, after E335'
     Notes: Filed by the register PR of 2026-11-11
 
@@ -5399,6 +5332,272 @@ sections:
     When: '**Unscheduled**; the operator places it'
     Notes: Filed by the register reconcile of 2026-11-26. Which fields each provider exposes comes from its pinned API surface,
       not from today's online documentation
+
+  - '#': E395
+    Work: 'A frontend-focused specialised role card, which carries the `frontend-design` skill. The operator: "It''ll also
+      align with the mcp servers and utilities we were planning on jnckuding anyway." Until it exists `frontend-design`
+      stays an unserved candidate, since no built-in card fits it. The card''s archetype, its capabilities and what it requests
+      or offers are the designer''s to shape'
+    Source: 'The operator, 2026-11-26, on E136''s remaining skills: "for 3 we should just track making a front-end focused
+      specialized role card. It''ll also align with the mcp servers and utilities we were planning on jnckuding anyway."'
+    When: '**Unscheduled.** After the designer shapes the card; E136 leaves `frontend-design` to this row'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E396
+    Work: 'A source-research skill, the `researcher` card''s one foundational skill. The Lead suggests it cover: finding
+      and preferring primary sources; naming the subject, its version and the source for every conclusion; provenance, so
+      a reader can find the source again; and stated uncertainty where the sources are silent or disagree. `researcher`
+      holds no skill in `skills:` until it exists, and takes it there when it ships. The operator has it created ("so I
+      can have them created"), and it reaches the repository as a candidate with its public-text check'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created." What the skill should cover is the Lead''s suggestion, not
+      the operator''s requirement'
+    When: '**Unscheduled.** When the operator has had the skill created'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E397
+    Work: 'A general implementation skill, the `engineer` card''s one foundational skill, replacing `test-design`, which
+      it holds in the interim. The Lead suggests it cover how an implementer proceeds whatever the language: reading the
+      Ticket, the plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally
+      and running the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan.
+      When it ships, `engineer` requests it and offers `test-design` again. The operator has it created ("so I can have
+      them created")'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a
+      general implementation skill and a standalone plan-review skill, so those two cards aren''t left on borrowed ones?
+      I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should
+      cover is the Lead''s suggestion, not the operator''s requirement'
+    When: '**Unscheduled.** When the operator has had the skill created'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E398
+    Work: 'A standalone plan-review skill, the `plan_assessor` card''s one foundational skill, replacing `adversarial-review`,
+      which it holds in the interim. It is split from `adversarial-review`''s plan-review reference, so an assessor does
+      not load the code-review procedure to reach it. The Lead suggests it cover judging a plan before the work starts:
+      whether the plan meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers,
+      and whether its tests and verification can show the work done. When it ships, `plan_assessor` requests it. The interim
+      has a known gap: `adversarial-review`''s core steps 5 and 6 need execution a plan assessor lacks, and no run has checked
+      how an assessor behaves with it. The operator has it created ("so I can have them created")'
+    Source: 'The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need
+      to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a
+      general implementation skill and a standalone plan-review skill, so those two cards aren''t left on borrowed ones?
+      I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should
+      cover is the Lead''s suggestion, not the operator''s requirement'
+    When: '**Unscheduled.** When the operator has had the skill created'
+    Notes: Filed by E136's fourth batch
+
+  - '#': E394
+    Work: 'A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session
+      (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor
+      into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree,
+      and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree
+      say it holds one command'
+    Source: 'Found by the builder of #608 while testing E247, 2026-11-26; its review''s M2 asks for the row'
+    When: '**Unscheduled**, in the small-fixes lane'
+    Notes: 'Reproduced at #608''s head: a tree with a sleeping member, then a second `spawn`'
+
+  - '#': E400
+    Work: 'Continuing a stage whose killed run has ended with evidence is refused at its launch: after a forced kill mid-stage,
+      the Lead''s `resolve` (choice `continue`, the RESOLVE_STAGE decision filled in) of the stage left unfinished commits
+      its rebind and stops at `dispatch.launch` with `HARNESS_LAUNCH_FAILED` ("step 2 recorded R-INV-0001-1, and its run
+      ended (ended_with_evidence)"), counted as a refusal. What a stage whose run has already ended with its evidence should
+      offer instead (for example taking that run''s evidence) is not settled here'
+    Source: 'The review of #630 (E388), its m1: V2-forced-mid-stage on #630''s branch keeps one refusal, this one (ledger
+      seq 26; on `main` the shell `aew stage continue` met it, seq 31). Neither C7 (E376) nor C16 (E386) covers it, and
+      E374 is the steering loop''s running stage, while this case runs with steering off'
+    When: '**Unscheduled**; the operator places it. Cited from C5 on the V-01 burn-down'
+    Notes: 'Filed by #630. Reproduced by `pytest -p no:xdist --lane vertical tests/acceptance/test_vertical_path.py -k forced_kill_mid_stage`
+      on #630''s first commit, `282fa456` (the run was of its working tree, whose `src` and vertical helpers that commit
+      holds unchanged), and the same by the full review''s rerun at `2f09ed80`: refusals 1, help_calls 1, shell_aew_calls
+      2'
+
+  - '#': E373
+    Work: 'An empty project offers the action for the operator''s request: the project''s projection offers `ticket_draft`
+      as an AVAILABLE action on a project with no open Ticket, naming the inputs its call needs (title, scope, goal, plan),
+      so a Lead asked for a fix starts from an offered action, not a guessed one. Today `_control_part` returns the project''s
+      part before any action (`src/aew/surface/projection.py:122`) and `_stage_actions` returns nothing for a non-Ticket
+      (`:341-342`), so `ticket_draft`, a built stage (`src/aew/surface/availability.py:173`), is never projected. With it,
+      the scripted Lead fills those inputs from its own draft (`tests/helpers/vertical/lead.py`, `judged`)'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C3), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: `guessed_commands` in every case with a Lead; V01-01 step 4 (W15)'
+    When: '**V-01**, the strict track of the burn-down; it waits for the designer''s answer to the plan''s Q4 (whether the
+      interim offer is `ticket_draft` or step 4 waits for `CREATE_PROPOSED_WORK`). It waits on no other row: E388, which
+      #597 files, covers the choice and rationale of the `resolve` decisions, not an action''s inputs, so naming `ticket_draft`''s
+      inputs is this row''s own'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E374
+    Work: 'RESOLVE_STAGE is offered only for a stage the Lead must resolve: a stage intent the steering loop is running
+      (`auto_run`, the loop active, its next step pending) is not a RESOLVE_STAGE decision. Today `_stage_decisions` lists
+      every unfinished stage intent, the loop''s own included (`src/aew/surface/projection.py:233-243`). What an offered
+      RESOLVE_STAGE carries (the `choice` and `rationale` that `resolve` requires, `src/aew/surface/contract.py:285-295`)
+      is not this row''s: it is E388''s, the row #597 files for the `resolve` decisions'' judgment inputs'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C5), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: `resolve` refused `INVALID_ARGUMENTS` in each steering-on case and in V2''s forced case, each time
+      for a stage the loop was running or had left unfinished'
+    When: '**V-01**, the strict track of the burn-down, after E335 (the owner decides who fills the inputs); whether the
+      loop''s running stage is offered at all waits for the designer''s answer to the plan''s Q9'
+    Notes: 'Filed by the V-01 burn-down PR of 2026-11-26. Narrowed at its review (m2) to the loop''s running stage: the
+      arguments of an offered RESOLVE_STAGE are E388''s (#597). Owed at the merge: whichever of #597 and #601 merges second
+      adds `E388` to C5''s Rows cell in `docs/implementation/v01-burn-down.md`, which nothing checks'
+
+  - '#': E378
+    Work: 'A queue entry AWAITING_DISPOSITION for a conflict is a projected decision (requeue, back to RUNNING, or REPLAN_REQUIRED),
+      with its owner and a typed route, and `ticket_prepare` is not AVAILABLE while the entry awaits disposition. Today
+      `_ticket_actions` emits no decision there (`src/aew/surface/projection.py:246-299`), the only guidance is a hint to
+      `aew integrate requeue` (`src/aew/engine/resume_ops.py:471-476`), and after each requeue `ticket_prepare` is projected
+      AVAILABLE and refused `ILLEGAL_TRANSITION`. The scripted Lead''s gap key includes the revision (`tests/helpers/vertical/lead.py:510-525`),
+      so it loops on that hint until its step budget ends: this row also gives it a loop breaker'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C9), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: V1 semantic-conflict held its hard limit (E333), then looped on the requeue hint'
+    When: '**V-01**, the strict track of the burn-down, after E335; it waits for the designer''s answer to the plan''s Q2'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E379
+    Work: 'The operator''s publish approval covers a compatible rebuild of the same change: the rebuilt candidate on a moved
+      head is re-verified (new evidence, as "reuse work product, not proof" requires), and AEW publishes it without a second
+      question. Today the PUBLISH decision binds the validated candidate (`src/aew/surface/projection.py:270-289`), and
+      the rebuilt one raises a new PUBLISH that the Lead asks again'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C10), from the vertical's re-measure of 2026-11-26
+      at `3640b585`; `vertical-uat.md` §4, the compatible counterpart of the semantic conflict
+    When: '**V-01**, the strict track of the burn-down; it waits for the designer''s answer to the plan''s Q3 on what a
+      publish approval binds (W09, G3''s approval binding)'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E380
+    Work: A gate refusal for a check that changes a tracked file is a projected decision, naming the path (E332 names it
+      in the refusal), so the Lead is not left at RUNNING with nothing offered (`src/aew/surface/projection.py:334-372`,
+      BLOCKED with no decision). With it, the vertical driver stops appending `--expect-rev` to a hinted read command (`tests/helpers/vertical/hints.py:79`
+      appends it to every one), whose refusal it counts today
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C11), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: V1 evidence-mismatch held its hard limit, then stuck at RUNNING'
+    When: '**V-01**, the strict track of the burn-down, after E335; which decision is offered, and whose, waits for the
+      designer''s answer to the plan''s Q6'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E381
+    Work: '`ATTACH_LEAD` on the O-01 wire: V01-01 step 3 (`open`, L01 and L02), admitted by the carrier and reaching its
+      owner with the confirmer''s PIN, so the oracle derives the step as landed and its G3 fallback stops (`tests/helpers/vertical/oracle.py`,
+      `STEPS`). Today the vendored O-01 registry carries it registry-only and the carrier admits one origin (`oracle.py:196-210`).
+      STG-03''s closure left it "proposed, with no row"; F31 holds the owner-side attachment state behind it, not the command'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: the open fallback in every failing case but G3-213'
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E382
+    Work: '`REATTACH_LEAD` on the O-01 wire: V01-01 step 10 (`reopen`, L03), so that with its reads the oracle derives the
+      step as landed and V2''s G3 reopen fallback stops. Today `REATTACH_LEAD` is registry-only. The step''s reads are other
+      rows'': attention and attachments (U01, L07) are E181''s, and waiting and continuation state (U01, catalog C18), which
+      only STG-02 serves today, are E393''s. STG-03''s closure left it "proposed, with no row"'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: the reopen fallback in every V2 case'
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E383
+    Work: '`APPROVE_INTEGRATION` on the O-01 wire: V01-01 step 7 (`publish`, W09 and catalog C10), held by G3, I4-06 and
+      I4-B7, so the operator''s publish is a confirmed approval and the oracle derives the step as landed. Today it is not
+      in the vendored O-01 registry, and no row held it'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: the publish fallback in every case that reaches a publish'
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E384
+    Work: '`aew doctor` has a seat row: a Lead seat held by a session that is no longer running is a WARN naming the dead
+      session and the fix (plain `aew opencode` resumes it, E330; a takeover where resume is refused). Today neither `src/aew/doctor.py:150-162`
+      nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat. With it, the vertical''s `V3_HELD` cites
+      this row instead of G3-C (`tests/acceptance/test_vertical_path.py:753`), which merged with STG-03'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C14), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: V3 stale-lead-session, where doctor named neither cause nor fix'
+    When: '**V-01**, the strict track of the burn-down, after E330 (merged)'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E386
+    Work: 'The forced kill''s own refusal is not the Lead''s: in V2''s forced case, the call in flight when the test kills
+      the session mid-stage (`ticket_start`, refused `BROKER_UNREACHABLE`) is recorded as the scenario''s, not counted under
+      the Lead''s `refusals`, a one-line rule beside E338''s excuses'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C16), from the vertical's re-measure of 2026-11-26
+      at `3640b585`
+    When: '**V-01**, the strict track of the burn-down, beside E338'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E387
+    Work: 'The vertical''s offline world stays offline under `aew doctor`: its `provider-relay` rows (`src/aew/doctor.py:160`,
+      `src/aew/harness/doctor_relay.py`) send the world''s synthetic OpenCode login to the real provider host, which answers
+      HTTP 401, in every V3 case. The world gives doctor''s relay probe a local upstream, or the probe is held off in it,
+      so no offline case reaches a real host'
+    Source: 'The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C17), from the vertical''s re-measure of 2026-11-26
+      at `3640b585`: an observation with no counter; it changes no verdict'
+    When: '**V-01**, the strict track of the burn-down'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E390
+    Work: '`DECIDE_WORK_PROPOSAL` on the O-01 wire: V01-01 step 5 (`plan`, W02; WIS the owner, G3-protected), so the operator''s
+      plan approval is a confirmed decision and the oracle derives the step as landed. Today it is not in the vendored O-01
+      registry, and the act is `plan accept` (`src/aew/cli/work_commands.py:367`). Its owner, WIS, is outside the pinned
+      G3 wire''s owner enum (`g3/aew_g3/g3-wire.schema.json`, `ConsumeRequest.owner`), so it cannot be consumed without
+      a G3 wire change. E351 is the plan''s decision kind in the projection, not this wire action'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26. It says what is owed; the designer's session decides the shape
+
+  - '#': E391
+    Work: '`CREATE_PROPOSED_WORK` on the O-01 wire: V01-01 step 4 (`ask`, W15; WIS the owner, the successor-generation origin),
+      so the Lead''s draft of the operator''s request goes through the wire and the oracle derives the step as landed. Today
+      it is not in the vendored O-01 registry, the carrier admits no successor origin (`tests/helpers/vertical/oracle.py:196-210`),
+      and the act is `work create` or the typed `ticket_draft`. E373 is the interim offer on the typed surface, not this
+      wire action'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26. It says what is owed; the designer's session decides the shape
+
+  - '#': E392
+    Work: '`DELEGATE_NEW_WORKER` on the O-01 wire: V01-01 step 6 (`work`, W10; ADC the owner, the successor-generation origin,
+      a grant naming the Lead generation), so the oracle derives the step as landed. Today it is not in the vendored O-01
+      registry, and the act is `work assign` and `invoke create`. The step''s other part, `CONTINUE_ELIGIBLE_WORK` (catalog
+      C17), already reaches an owner, the STG-02 carrier''s fixture HEB; its production owner goes with E356'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26. It says what is owed; the designer's session decides the shape
+
+  - '#': E393
+    Work: 'The four D-01 0.3.4 reads E181 does not list get a production producer: `/v1/read/waiting`, `/v1/read/continuation-state/{work_id}`,
+      `/v1/read/runs/{execution_id}` and `/v1/read/owner-operations`. Today only the STG-02 slice producer serves them (`src/aew/stg02/server.py:220-240`),
+      with unqualified stamps (under SYS-29), and E356 retires it. Two are on V01-01 step 10 (`reopen`: U01''s waiting,
+      catalog C18''s continuation state), and the vertical''s oracle already derives those two as served, by the slice producer,
+      so this row changes no step''s state today: it is owed so that they stay served once E356 retires that producer. Each
+      read is qualified before it is claimed, as E181''s are (W1 to W5). The designer''s session decides the producer''s
+      shape'
+    Source: The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C12), from the vertical's re-measure of 2026-11-26
+      at `3640b585`, and the wire sizing of 2026-11-26 at `eece01e5` (its §2 and §3), which names V-01's actions and reads
+    When: '**V-01**, the wire track of the burn-down (SYS-46): after the personal alpha, aligned with STG-14 (the operator''s
+      answer to the plan''s Q7, 2026-11-26: "this seems after alpha when we align the wires")'
+    Notes: Filed by the V-01 burn-down PR of 2026-11-26
+
+  - '#': E399
+    Work: 'An evidence record whose body holds a lone carriage return (one not followed by a line feed) is accepted at `submit`,
+      and then its seal fails on every read. Later `evidence ingest` and `work accept` on that unit are refused too, also
+      for a clean second record, until the file is removed by hand. The place to fix is the shared seal read, `knowledge.evidence.read`:
+      it reads the file with universal newlines, so the carriage return comes back as a line feed and the text no longer
+      matches the seal made at `submit`. Either the read keeps the bytes it sealed, or `submit` refuses or normalises such
+      a body; a carriage return and line feed pair is unaffected. With a test that submits such a body and then ingests
+      and accepts on the same unit'
+    Source: Found while building E170's CLI half (#623); the later refusals were found and confirmed by its review (m6),
+      which asked for this row
+    When: '**Unscheduled**; the operator places it'
+    Notes: 'Filed by #623, which does not fix it: the seal read is shared. That pull request''s carriage-return test goes
+      through a work unit''s body, which is read as bytes'
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)
@@ -6203,6 +6402,26 @@ sections:
       reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`''s two "free model" texts were reworded in the change
       that closed this row'
 
+  - '#': E157
+    Was: The Lead writes bounded reports through `report_write`. AEW assigns the id and path, keeps reports apart from evidence,
+      plans, gate inputs and worker packs, and provides an explicit read. The dashboard view was part of the design.
+    Closed: '2026-11-26'
+    By: The SYS-40 backend delivery builds the typed tool, report store, Lead summaries, `aew report show` and plain-text
+      backend accessor. The operator assigned the dashboard route, UI and browser verification to the separate frontend
+      build on 2026-11-26. The SYS-40 board records the live Lead and CLI sign-off still owed.
+
+  - '#': E167
+    Was: A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never
+      the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`,
+      with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the
+      operator
+    Closed: '2026-11-26'
+    By: '#611, E136''s third batch: `technical-writing` ships from AEW''s install, labelled unevaluated; the `technical_writer`
+      card extends the implementer archetype with it in `skills:`, and `code_reviewer` offers it in `optional_skills` (ADR-0006,
+      amendment 2026-11-26; the row''s note of 2026-11-26). A project''s document checks stay its own configuration. No
+      model has run the card: a real run that ends with a document the operator reads is SYS-45''s finish line, and qualification
+      stays owed (E135)'
+
   - '#': E171
     Was: 'The tool-consent prompt, CAP-1''s follow-on: AEW downloads no tool without the operator''s consent. The shipped
       capability record gains `needed`, with a reason naming what degrades without the tool, which the operator''s record
@@ -6317,6 +6536,19 @@ sections:
     Closed: '2026-11-10'
     By: '#420 (`881bfb97`): the Ticket''s priority, set at the draft, and the steering loop''s order by it'
 
+  - '#': E235
+    Was: '`default_binary()` (`src/aew/harness/opencode/adapter.py`) looks for `%APPDATA%\ai.opencode.desktop\cli\<version>\opencode-cli.exe`,
+      but OpenCode Desktop 2.2.6 keeps it in `cli\2.2.6-x64\`, and neither `opencode-cli` nor `opencode` is on PATH, so
+      on such a machine `aew opencode` says there is no OpenCode binary unless `AEW_OPENCODE_BIN` is set'
+    Closed: '2026-11-26'
+    By: '#609 (`42a6ea19`): `default_binary()` reads the pinned version''s folder under the Desktop''s `cli` folder, named
+      for the version alone (first, the layout before 2.2.6) or for the version, a hyphen and `x64` (`2.2.6-x64`, the one
+      architecture name seen: `DESKTOP_CLI_ARCHITECTURES`), and no other name, so never another version''s, a pre-release''s
+      or another suffix''s (#609''s review, M1); the test plants the real folder name with nothing on PATH, and `docs/guides/opencode.md`
+      names it. The Desktop''s `Programs\ai.opencode.desktop\resources\` copy was weighed and is not looked for: its folder
+      names no version, so the pin could not choose it, and the row records no path for it. Not run on a Windows machine
+      with the Desktop installed: the folder name is the row''s. `tests/unit/test_opencode_units.py`'
+
   - '#': E236
     Was: '`tests/unit/test_dashboard_client.py::test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port`
       fails on a Windows host (build 26300) whose `netstat -ano -p TCP` shows no `LISTENING` row for the process''s own
@@ -6325,6 +6557,25 @@ sections:
     Closed: '2026-11-08'
     By: '#383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered
       (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip'
+
+  - '#': E241
+    Was: 'The worker''s route has no size check: `src/aew/cli/work_commands.py` calls `bridge.call` with none, so an oversized
+      request there should still give the false "bridge closed" refusal that #388 fixed for the Lead''s route'
+    Closed: '2026-11-26'
+    By: '#610 (`31c9e598`): reproduced (an oversized `aew submit` inside a run answered `STALE_AUTHORITY`, "the AEW bridge
+      closed during the request"), and fixed in the one place every route passes: `bridge.call` refuses a request over `bridge.MAX_REQUEST`
+      before sending (`USAGE`, reason `request_too_large`, with its size and the limit), so the worker''s commands and the
+      typed tools get it too (the typed client reports it as `INVALID_ARGUMENTS` with the reason, size and limit, on #610''s
+      review), and the Lead''s own check takes its size from the same encoder (`bridge.request_bytes`). `tests/unit/test_harness_units.py`'
+
+  - '#': E247
+    Was: '`ProcessTree.active()` on POSIX treats a group holding only a zombie as alive, so a `close()` caller with an unreaped
+      `Popen` for a tree member waits its full timeout'
+    Closed: '2026-11-26'
+    By: '#608 (`2ddfa1fd`): checked, and it was wrong on Linux, where `killpg(pgid, 0)` succeeds while an unreaped zombie
+      holds the group, so `close()` and `survivors()` waited their whole bound and `survivors()` named the zombie. `active()`
+      now reads the group''s members from `/proc` and counts only one that runs. Another POSIX still answers 1 while the
+      group exists (AEW runs on Linux and Windows). `tests/unit/test_process_tree.py`'
 
   - '#': E251
     Was: 'A printed `aew manifest adopt` runs as printed: the switch offer''s review counted 21 printed mentions in 8 files
@@ -6454,6 +6705,15 @@ sections:
       would hide project paths; the starter kit declares pytest''s caches and the vertical''s U14 fallback is gone (ADR-0002,
       amendment of 2026-11-11). The quick check''s remaining nit on the long-pathspec test is E370'
 
+  - '#': E335
+    Was: The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence
+      and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so
+      the Lead asks every decision and the vertical's exact-decision check fails
+    Closed: '2026-11-26'
+    By: '#597: every decision states its `owner`, one per decision kind, read from one table of primitive owners (`aew.owners.PRIMITIVE_OWNERS`),
+      and one the table does not state is the operator''s; the review and Ticket-verification acceptances are the Lead''s
+      and the scripted Lead takes them. `test_decision_owners` pins E350''s four gaps; E351 is the plan''s own kind'
+
   - '#': E337
     Was: 'A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may
       spend the operator''s stored OpenCode API-key login for its pinned provider when the policy''s `provider_env` names
@@ -6469,6 +6729,16 @@ sections:
     By: '#440 (`35388ef1`), with its follow-ons on #449 (`daf41fcc`): a contained Linux OpenCode worker on the relay route
       uses its provider''s stored API-key login through the built-in upstream, a usable export first, and `aew doctor` names
       the source, never the value. Windows custody is E341; which usage pot a worker draws from is E354 and E355'
+
+  - '#': E351
+    Was: 'Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3)
+      is not a kind the action projection emits today, so E335''s owner table has no row for it. Its own decision kind,
+      with its owner, is this row'
+    Closed: '2026-11-26'
+    By: '#628: a proposed plan revision that `plan accept` would take now is the operator''s `PLAN` decision (the kind''s
+      name is the operator''s ruling of 2026-11-26, Q8), with `plan accept` bound to the plan''s SHA-256 as its `cli_fallback`
+      and the operator''s confirmation command as `ask_operator`; the steering loop stops on it as the operator''s. The
+      wire action is E390, the typed accept E163'
 
   - '#': E354
     Was: 'Which usage pot a worker draws from, PR 1, tightenings only: the stored-login resolver moves to `login.py` and
@@ -6512,6 +6782,76 @@ sections:
     By: '#594: the archetype''s text is scope-neutral, `knowledge.context._scope_duties` adds each scope''s duties only
       where the pack delivers their input, and `test_pack_truth`''s scope-fit guard holds it. Parent scope, outside the
       row, gained only the change duty for the child diffs its pack carries, on #594''s review (m1) (`notes.d/E366/`)'
+
+  - '#': E375
+    Was: 'The scripted Lead''s steering-on policy in the vertical UAT (cluster C6 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`):
+      it called a wait the projection marks `woken`, and took a self-clearing BLOCKED loop stop as a decline, so each steering-on
+      V1 and V2 case counted `mechanical_calls`'
+    Closed: '2026-11-26'
+    By: 'PR #627: with steering on, the scripted Lead ends its turn on a `woken` wait until a wake reaches the fake TUI''s
+      session on the Lead''s server or the operator speaks, and takes a BLOCKED stop as a decline only once its blocker
+      still stands after the run ends, read with the loop''s own selection; `vertical-uat.md` §2 and §3 amended with the
+      operator''s answers to the plan''s Q1 and Q10 (2026-11-26). `mechanical_calls` fell from 5, 5 and 4 to 0 in the steering-on
+      V1, V2-exit and V2-kill cases'
+
+  - '#': E376
+    Was: 'V2''s reopen reaches the seat resume: the vertical''s offline world settles AEW''s tool offers before the first
+      open, as a setup fixture that is recorded and never counted (the operator''s answer to the plan''s Q5); the seat-resume
+      code still counts under `pin_reentries` (cluster C7 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)'
+    Closed: '2026-11-26'
+    By: 'PR #603 (`1b854d6b`): `scripted_operator.settle_tool_offers` answers the consent screen before the first open from
+      the owner (`consent.ask`), each decline recorded as a `setup_fixture` and never counted, and `vertical-uat.md`''s
+      setup boundary quotes the ruling. In its vertical run at `637bc652` the five fresh-terminal reopens reached E330''s
+      seat resume with no takeover; they still fail strict on other clusters, among them C12''s fallbacks and C1 to C4''s
+      counters. Whether the alpha gate now passes is for a rerun of the vertical to confirm'
+
+  - '#': E377
+    Was: 'The scripted Lead''s first words are the readable text of `resume`: the MCP result''s `content[0].text`, not only
+      `structuredContent` (cluster C8 of the V-01 burn-down)'
+    Closed: '2026-11-26'
+    By: 'PR #603 (`1b854d6b`): the scripted Lead keeps the MCP `content` text and takes its first words from the readable
+      head, never the JSON. The rendered resume names T-0001 through its run line in the vertical world, so no product gap
+      was found; a Ticket assigned with no harness run is named only through its runs or decisions, recorded on #603 as
+      an observation'
+
+  - '#': E385
+    Was: 'The #213 reconstruction sees the contained TUI''s diagnostics: its children directory, which the autopsy names
+      in the scripts directory, was outside the contained Lead''s writable roots, so the TUI''s childdiag events were lost
+      with the sandbox (cluster C15 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`; the fix STG-13''s note
+      of 2026-10-30 tracked)'
+    Closed: '2026-11-26'
+    By: 'PR #602 (`e58ffdb1`): the offline world''s `containment.writable` fixture holds the test''s children directory
+      while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by
+      the V-01 burn-down PR (#601), which merged second'
+
+  - '#': E388
+    Was: 'The Lead''s `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and
+      DISPOSE_ANOMALY carried `arguments` with no `choice` and no `rationale`, so a Lead that called the typed `resolve`
+      with exactly what the projection supplied was refused and fell back to the shell'
+    Closed: '2026-11-27'
+    By: 'PR #630: each decision whose call is `resolve` names `judgment_inputs`, the fields the `resolve` schema requires
+      that its arguments leave out: the choice, offered as the choices that run the decision''s primitives (`contract.RESOLVE_CHOICE_PRIMITIVE`,
+      through `projection.DECISION_PRIMITIVES`), and the rationale, as the schema''s own field; REPLACE_GATE and ADD_SCOPE
+      name their rationale the same way. The result schema accepts the field, the readable next step names what to add,
+      and the scripted Lead writes a rationale input in its own words (`vertical-uat.md` §2 amended). Whether the steering
+      loop''s own running stage is offered at all stays E374''s (Q9)'
+
+  - '#': E389
+    Was: 'Refine F19, the evaluation instrument, with the ProjectArchitect research plan''s concepts: merge the good parts
+      of the plan into F19''s architecture and modernise F19 where needed, so that one instrument measures the value of
+      AEW''s features. Not a second evaluation system beside F19. A proposal comes first, read-only, and nothing is built
+      from it until the operator has read it. Its inputs are the plan (judging a brief by what its recipient then achieves,
+      its C1; its experiments A, brief effectiveness, B, question-scoped retrieval, and C, continuation) and R0, whose fixture
+      lists, accounting and decision criteria are candidates and not a plan of record. Concepts only: no ProjectArchitect
+      code, prompts or runtime. Done when the proposal is adopted and F19''s plan and rows carry the result, or the operator
+      refuses it and a note on this row gives the reason'
+    Closed: '2026-11-26'
+    By: 'Closed into F19 as F19''s feature-cell backlog, where its work continues (the operator, 2026-11-26: "Yes to all
+      7 on the F19 proposal"; the second of the Lead''s seven questions was "E389: close it into F19 as F19''s feature-cell
+      backlog, or keep the row? I recommend closing it into F19, which matches what you said about not having two systems.",
+      so the yes is to the Lead''s stated recommendation). Delivered: [the F19 refinement proposal](../research/f19-refinement-proposal-2026-11-26.md)
+      (research, not adopted; ledger FRP), filed and answered in part, not adopted. What the operator decided and what stays
+      open are in F19''s note of 2026-11-26'
 
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)

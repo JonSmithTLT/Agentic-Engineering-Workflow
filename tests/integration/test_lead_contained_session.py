@@ -57,7 +57,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
             {"do": "dump_env", "path": str(sync / "env")},
             {"do": "aew", "args": ["lead", "show"]},
             {"do": "lead", "args": ["checkpoint", "--next", "dispatch T-0001 with --launch"]},
-            {"do": "aew", "args": ["lead", "handoff", "offer", "--expect-rev", "1"]},
+            {"do": "aew", "args": ["lead", "handoff", "offer", ]},
             {"do": "aew", "args": ["resume", "--json"]},
             {"do": "read", "path": str(home / ".local/share/opencode/opencode.db")}]))
         done = at_the_terminal(lab, home, extra={"XDG_RUNTIME_DIR": str(tmp_path / "operator-runtime"),

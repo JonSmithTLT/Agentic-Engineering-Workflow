@@ -22,7 +22,7 @@ from check_evidence_run import bundle_prefix, check_jobs, hosted_step_timeout, i
 from stage_evidence import JOB_CAP
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from flake_register import _api, _gh_read, _pages, check_annotations  # noqa: E402
+from flake_register import CI_WORKFLOW, _api, _gh_read, _pages, check_annotations  # noqa: E402
 
 # A scorecard consumer bounds untrusted ZIP input separately from the publisher, whose deliberate overflow is uncapped.
 # Exceeding the consumer limit is an explicit gap. Never execute or import a file from an Actions artifact.
@@ -233,7 +233,7 @@ def main(argv=None):
         runs = runs[:args.runs]
     rows = []
     for run in runs:
-        if run.get("path") == ".github/workflows/ci.yml":
+        if run.get("path") == CI_WORKFLOW:
             rows.extend(inspect_run(args.repo, run, selections.get((run["id"], run["run_attempt"]))))
     print(format_rows(args.repo, rows))
     return 0

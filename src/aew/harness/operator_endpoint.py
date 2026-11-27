@@ -77,6 +77,8 @@ from aew.harness.operator_client import (
     RESIDUALS,
     WAKE_TIMEOUT_S,
     _request,
+    confirmation_lines,
+    confirmation_text,
     lead_session_problem,
     locator_path,
     no_session_left,
@@ -324,6 +326,8 @@ class OperatorEndpoint:
                     reply = {"ok": True, "result": self._mode_raise(conn, args)}
                 elif op == "capability_change":
                     reply = {"ok": True, "result": self._capability_change(conn, args)}
+                elif op == "decision_confirm":
+                    reply = {"ok": True, "result": self._decision_confirm(conn, args)}
                 else:
                     raise errors.PermissionDenied(f"the operator endpoint does not offer {op!r}",
                                                   offered=list(OPERATIONS))
@@ -517,4 +521,41 @@ class OperatorEndpoint:
             self.console_done()
             self._authorizing.release()
 
+    def _decision_confirm(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
+        """The operator's confirmation of a plan acceptance or a publish (the operator's ruling of 2026-11-26; register
+        E350): previewed by the engine, shown on this console with its code, and recorded, bound to exactly what was
+        shown, once the operator typed the code back at the requesting terminal. A Lead session's `plan accept` or
+        publish then uses it up. G3 has no binding for these yet (``g3_adapter.BINDINGS``): the wire track's
+        DECIDE_WORK_PROPOSAL and APPROVE_INTEGRATION would stand in for the code here, as SET_STEERING_MODE does."""
+        from aew.engine import operator_decisions as OD
+
+        decision, work_id = str(args.get("decision") or ""), str(args.get("work_id") or "")
+        revision = args.get("revision")
+        requester = str(args.get("requester") or "unknown")
+        command = OD.command(decision, work_id)
+        if not self._authorizing.acquire(blocking=False):
+            raise self._busy()
+        try:
+            with self._engine_lock:  # refused here before the operator is asked
+                bound = self.engine.operator_confirmation_preview(
+                    decision, work_id, int(revision) if isinstance(revision, int) else None)
+            code = self._new_code()
+            self._show_challenge(operator.challenge(
+                code, [f"Project '{bound['project']}': CONFIRM {confirmation_text(bound)}",
+                       *confirmation_lines(bound),
+                       f"  guarantee           : {GUARANTEE} (not production authority until F18.6)"],
+                requested_by=requester, requester_reported=True,
+                purpose=f"the Lead may then carry out this {decision} once (no credential is issued)",
+                instruction=f"Type the confirmation code {code} into the terminal that ran `{command}` (not here); "
+                            "anything else there refuses."))
+            conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
+                                                               "bound": bound}}, default=str).encode("utf-8"))
+            principal = self._await_code(conn, code, command)
+            with self._engine_lock:
+                out = self.engine.operator_confirm(principal, bound)
+            self.console(f"\n(the operator confirmed the {decision} of {work_id}: {out['confirmation']})\n")
+            return out
+        finally:
+            self.console_done()
+            self._authorizing.release()
 

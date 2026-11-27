@@ -26,7 +26,8 @@ from aew import roles, skills
 from aew.harness import lead_broker
 from aew.harness.opencode import lead, projection
 
-LEAD_LIST = ["delegation-handoffs", "engineering-planning", "requirements-clarification"]
+# E161's three, and `ci-evidence-triage` by the operator's answer of 2026-11-26 (E136's fourth batch).
+LEAD_LIST = ["ci-evidence-triage", "delegation-handoffs", "engineering-planning", "requirements-clarification"]
 AT = projection.skills_at("/p/.aew/local/harness/lead", "/")
 
 
@@ -155,7 +156,7 @@ def test_the_text_names_what_the_copy_delivered_never_a_failed_one(tmp_path, mon
                         else real(n))
     engine = SimpleNamespace(aew_root=tmp_path / ".aew")
     planned, at = lead.deliver_lead_skills(engine)
-    assert planned["exposed"] == ["engineering-planning", "requirements-clarification"]
+    assert planned["exposed"] == [name for name in LEAD_LIST if name != "delegation-handoffs"]
     config = projection.lead_config(skills_dir=at, skills_planned=planned)
     assert "`delegation-handoffs`" not in lead_agent(config)["system"]
     assert effect(lead_agent(config)["permissions"], "skill", "delegation-handoffs") == "ask"

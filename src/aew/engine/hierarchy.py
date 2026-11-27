@@ -18,8 +18,6 @@ import hashlib
 from collections import deque
 from typing import Any
 
-from aew.harness.contract import EXPECT_REV
-
 PARENT_KINDS = {"ticket": {"story", "epic"}, "story": {"epic"}, "epic": set()}
 PARENT_STATES = ("PLANNING", "IN_PROGRESS", "ACCEPTANCE_PENDING", "DONE", "CANCELLED")
 TERMINAL = frozenset({"DONE", "CANCELLED"})
@@ -125,7 +123,7 @@ def derive_parent(state: dict[str, Any], work_id: str, kid_map: dict[str, list[s
     failed = (unit.get("parent_verification") or {}).get("awaiting_classification")
     if failed:
         attention.append(f"parent verification {failed} failed: classify it (`aew verify classify {work_id} --as "
-                         f"<CLASS> --reason <reason> {EXPECT_REV}`)")
+                         f"<CLASS> --reason <reason>`)")
     blocked = bool(open_tickets) and all(s == "BLOCKED" for s in open_tickets)
     return {"state": phase, "attention": attention, "blocked": blocked}
 

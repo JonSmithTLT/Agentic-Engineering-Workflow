@@ -34,8 +34,6 @@ from conftest import IS_WINDOWS, run_aew
 from fake_harness import AGENT, IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
 
-from aew.harness import contract as K
-
 IMPLEMENT = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit"},
              {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
 REVIEW = {"claim": "independent review of the change against plan and contracts",
@@ -82,8 +80,7 @@ def test_a_scope_glob_with_a_comma_is_refused_saying_to_repeat_the_option(tmp_pa
     p = sample_project(tmp_path)
     rev = p.rev()
     ticket = ["work", "create", "ticket", "--title", "Fix negatives", "--class", "0", "--goal", "negatives print -$1"]
-    res = p.aew(*ticket, "--scope", "calc/core.py,tests/test_core.py", "--expect-rev", str(rev),
-                env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*ticket, "--scope", "calc/core.py,tests/test_core.py", env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     message = res.error["message"]
     assert "calc/core.py,tests/test_core.py" in message and "repeat --scope" in message, message
@@ -167,7 +164,7 @@ def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_p
 
 
 def _refusal(p, *args, stdin=None) -> str:
-    res = p.aew(*args, "--expect-rev", str(p.rev()), input=stdin, env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), input=stdin, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error["message"]
 
@@ -204,16 +201,16 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     fresh = Project(repo)
     fresh.ok("init")
     actions = "\n".join(fresh.ok("resume", "--json")["next_actions"])
-    assert "aew authority accept <candidate> --class <" in actions and K.EXPECT_REV in actions, actions
+    assert "aew authority accept <candidate> --class <" in actions, actions
     _each_parses(actions)
 
     p = sample_project(tmp_path / "sample")  # `repo` above is tmp_path/repo
     wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--scope", "calc/**")["id"]
     story = create_unit(p, "story", "s")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> {K.EXPECT_REV}"
+    propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card>"
     assert propose in actions, actions
-    assert f"aew plan accept {wid} --revision <n> {K.EXPECT_REV}" in actions, actions
+    assert f"aew plan accept {wid} --revision <n>" in actions, actions
     assert f"aew work create ticket --parent {story}" in actions, actions
     _each_parses(actions)
     plan = tmp_path / "plan.md"
@@ -221,7 +218,7 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan))
     p.lead("plan", "accept", wid, "--revision", "1")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    assert f"aew work assign {wid} --launch {K.EXPECT_REV}" in actions, actions
+    assert f"aew work assign {wid} --launch" in actions, actions
     _each_parses(actions)
 
 

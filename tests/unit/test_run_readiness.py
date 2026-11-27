@@ -122,15 +122,15 @@ def test_the_no_deadline_route_is_followed_from_where_it_is_shown_to_an_accepted
     assert "end the Lead session first" in said and "aew lead acquire" not in said, said
     assert f'"{S.PINNED_EDIT}"' in said and f"\n### {S.PINNED_EDIT}\n" in QUICKSTART.read_text(encoding="utf-8")
     assert "start the Lead again with `aew opencode --acquire` and raise to Run again" in said
-    engine.lead_release(token=project.token, expect_rev=project.rev())  # the Lead session ends
+    engine.lead_release(token=project.token)  # the Lead session ends
     detail = run_ready(Engine.discover(project.root))["detail"]
     assert "aew lead acquire" in detail and K.HELD_SEAT in detail, detail
     # the section's commands, at the operator's terminal
-    project.token = Engine.discover(project.root).lead_acquire(expect_rev=project.rev(), session_label="op")["token"]
+    project.token = Engine.discover(project.root).lead_acquire(session_label="op")["token"]
     profiles(project, RUN_READY)  # the edit, adopted
-    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
+    Engine.discover(project.root).lead_release(token=project.token)
     # the Lead starts again (`aew opencode --acquire`), and the raise is asked again
-    project.token = Engine.discover(project.root).lead_acquire(expect_rev=project.rev(), session_label="lead")["token"]
+    project.token = Engine.discover(project.root).lead_acquire(session_label="lead")["token"]
     engine = Engine.discover(project.root)
     raise_to(engine, "run")
     assert engine.steering_view()["effective"] == "run"
@@ -141,7 +141,7 @@ def test_doctor_and_status_never_say_run_is_ready_while_no_lead_holds_the_seat(p
     vacant seat is what Run lacks, with the command that fills it."""
     command, _ = recorder(tmp_path)
     adopt(project, command=command)
-    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
+    Engine.discover(project.root).lead_release(token=project.token)
     engine = Engine.discover(project.root)
     live(monkeypatch)
     check = run_ready(engine)

@@ -123,6 +123,19 @@ def tool_parts(step: dict[str, Any]) -> list[dict[str, Any]] | None:
             for path in sorted(step.get("files") or {})]
 
 
+def skill_parts(step: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The tool part a completed ``skill`` call leaves (``{"do": "skill", "id": ID}``): what a run's ``loaded`` record
+    counts (``adapter.skill_loads``: ``state.status`` and ``state.input.id``). The fake applies no skill rules, so the
+    script says which id the "model" loaded; whether the run exposed it is the reader's question."""
+    if step.get("do") != "skill":
+        return None
+    at = now_ms()
+    return [{"type": "tool", "id": new_id("call"), "name": "skill", "executed": True,
+             "time": {"created": at, "ran": at, "completed": at},
+             "state": {"status": "completed", "input": {"id": step.get("id")}, "metadata": {"truncated": False},
+                       "content": [{"type": "text", "text": "loaded"}]}}]
+
+
 def new_id(prefix: str) -> str:
     return f"{prefix}_{secrets.token_hex(12)}"
 
@@ -371,7 +384,7 @@ class FakeOpenCode:
     def run_step(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
         msg = self.assistant(s, i, "tool-calls", tool="shell",
-                             parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
+                             parts=skill_parts(step) or (tool_parts(step) if self.knobs.get("tool_parts") else None))
         call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
         self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell",
                                                  "assistantMessageID": msg["id"]})
@@ -395,7 +408,7 @@ class FakeOpenCode:
         if do == "hang":
             s.interrupted.wait()
             return "interrupted"
-        if do == "model_step":
+        if do in ("model_step", "skill"):  # a skill call runs no process of the agent's
             return None
         step_file = self.state / "steps" / f"{i}.json"
         step_file.parent.mkdir(exist_ok=True)
@@ -599,10 +612,13 @@ class FakeOpenCode:
             info = {"id": sid, "projectID": "fake", "title": body.get("title"), "agent": body.get("agent"),
                     "model": {"variant": "default", **(body.get("model") or {})}, "location": body.get("location"),
                     "permissions": body.get("permissions") or [], "metadata": body.get("metadata") or {},
-                    "cost": 0, "tokens": {"input": 0, "output": 0}, "time": {"created": now_ms()}}
+                    "cost": 0, "tokens": {"input": 0, "output": 0},
+                    # `updated` is required in the pinned schema (Session.Info.time): the Lead broker's poster picks
+                    # the session to wake by it (`lead_wake.LeadPoster.session`)
+                    "time": {"created": now_ms()}}
+            info["time"]["updated"] = info["time"]["created"]
             if self.knobs.get("live_usage") is not None:
                 info["tokens"] = zero_usage()
-                info["time"]["updated"] = info["time"]["created"]
             with self.lock:
                 self.sessions[sid] = Session(info)
             self.persist()
@@ -979,13 +995,16 @@ def tui(argv: list[str], scripts: Path) -> int:
     """The Lead's TUI (``--server``): the Lead's model acts in the server's environment, which AEW sets to the TUI's,
     without the password the real server removes from it (``--stdio``, measured on 2.2.6)."""
     (scripts / TUI_ARGV).write_text(json.dumps(argv), encoding="utf-8")
-    for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"):
-        os.environ.pop(name, None)
+    popped = [os.environ.pop(name, None) for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD")]
+    password = next((p for p in popped if p), "")
     spec = json.loads((scripts / TUI_SCRIPT).read_text(encoding="utf-8"))
     if isinstance(spec, dict) and spec.get("driver") == "vertical":  # the vertical UAT's scripted Lead (a policy)
         from vertical import lead
 
-        return lead.main(scripts / TUI_SCRIPT)
+        # The TUI keeps the password to reach its server, where the broker posts wakes; its model's shell never
+        # gets it (vertical-uat.md §2: the wake channel).
+        url = argv[argv.index("--server") + 1] if "--server" in argv[:-1] else None
+        return lead.main(scripts / TUI_SCRIPT, server=(url, password) if url else None)
     import fake_agent
 
     sys.argv = ["fake_agent", "--script", str(scripts / TUI_SCRIPT), "--transcript", str(scripts / TUI_TRANSCRIPT)]

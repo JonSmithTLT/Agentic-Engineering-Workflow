@@ -5,7 +5,7 @@ raw Lead credential**. ``aew lead session -- <harness command>`` holds the Lead 
 memory, serves a Lead bridge, and runs the Lead's harness (an OpenCode TUI in ``aew opencode``) with
 only the bridge's coordinates in its environment. The ``aew`` CLI routes every Lead-authenticated
 command to the bridge when no credential is supplied, and the broker runs the same command handler with
-the held credential, so the engine's checks (current Lead, expected revision) stay authoritative.
+the held credential, so the engine's checks (current Lead authority and scoped bindings) stay authoritative.
 
 It is the invocation bridge (``bridge.BridgeServer``: JSON only, key challenge, exact arguments,
 redaction, drain) with these operations: ``lead.cli {argv, cwd, stdin}`` relays one Lead-authenticated command,
@@ -59,7 +59,7 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
-from aew.harness.contract import EXPECT_REV, SEAT_COMMANDS
+from aew.harness.contract import SEAT_COMMANDS
 from aew.maps.query import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
@@ -107,6 +107,9 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # (A-44).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
                      frozenset({"operator", "ping"}), frozenset({"notify", "desktop"}), frozenset({"notify", "file"}))
+# The operator's confirmation of a plan acceptance or a publish, at the operator endpoint (the operator's ruling of
+# 2026-11-26; register E350): a Lead session's `plan accept` or publish needs it, so the session never gives it.
+OPERATOR_CONFIRMS = frozenset({"operator", "confirm"})
 # The capability register's operator changes (STG-15, CAP-1; the designer's ruling 1): they change what every
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
@@ -120,7 +123,7 @@ TYPED_ONLY: dict[frozenset[str], str] = {frozenset({"plan", "assess"}): "plan.as
 # Commands only the operator runs, at their own terminal: never relayed, never a typed tool (A1 §1).
 CREDENTIAL_REPORT = frozenset({"credentials"})  # operator-only read of host-side credential provenance
 OPERATOR_ONLY = (CREDENTIAL_EMITTING + OPERATOR_CONFIRMED + OPERATOR_DECIDED + OPERATOR_ENDPOINT + OPERATOR_REGISTER
-                 + (CREDENTIAL_REPORT,))
+                 + (CREDENTIAL_REPORT, OPERATOR_CONFIRMS))
 # The typed surface's own transports: they reach the broker through `lead.tool`, never through `lead.cli`.
 NOT_RELAYED = (frozenset({"lead", "tool"}), frozenset({"lead", "mcp"}))
 # Every Lead-authenticated command a Lead session may relay. Fail closed: a Lead-authenticated command missing from
@@ -198,7 +201,8 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("history search", _LOCAL + " (its derived index is rebuilt privately)"),
     ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message lost", _LOCAL),
     ("message thread", _LOCAL),
-    ("plan lint", _LOCAL), ("role list", _LOCAL), ("role show", _LOCAL), ("role validate", _LOCAL),
+    ("plan lint", _LOCAL), ("record body", _LOCAL), ("report show", _LOCAL),
+    ("role list", _LOCAL), ("role show", _LOCAL), ("role validate", _LOCAL),
     ("settings show", _LOCAL), ("work list", _LOCAL), ("work ready", _LOCAL), ("work roles", _LOCAL),
     ("work show", _LOCAL), ("work tree", _LOCAL),
     ("capability list", "a read of the operator's capability register, which the sandbox shows read-only"),
@@ -251,6 +255,10 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` changes the capability register, which every contained run reads, so it is "
                 "the operator's, approved at the operator endpoint in their own terminal; a Lead session cannot run "
                 "it: `aew capability list` shows the register, and the operator makes the change")
+    if OPERATOR_CONFIRMS <= path:
+        return ("`aew operator confirm` is the operator's own confirmation, at the operator endpoint from their own "
+                "terminal, that a plan may be accepted or a candidate published; a Lead session cannot give it: ask "
+                "the operator to run it, then carry out the step")
     if any(p <= path for p in OPERATOR_ENDPOINT):
         from aew.surface.contract import STEERING_STEP
 
@@ -412,7 +420,12 @@ class LeadBroker:
             from aew.harness.wake_queue import clear_serving
 
             self._wakes.join(10)
-            clear_serving(self._wakes_root, self.generation)
+            try:
+                clear_serving(self._wakes_root, self.generation)
+            except OSError as exc:  # the rest of the close still runs: the bridge, the loop and the record's closed_at
+                # A mark left behind posts nothing: the liveness record this close ends says the broker is gone.
+                sys.stderr.write(f"aew: the Lead broker could not remove its wake mark ({exc}); its closed liveness "
+                                 "record says no broker posts wakes\n")
         self.server.close()
         self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)
@@ -588,7 +601,7 @@ class LeadBroker:
 
     def _session(self, problem: str | None) -> dict[str, Any]:
         out: dict[str, Any] = {"holds": problem is None, "generation": self.generation,
-                               "session_label": self.session_label}
+                               "session_label": self.session_label, "session_id": self.session_id}
         if problem:
             out["detail"] = problem
         return out
@@ -1057,7 +1070,7 @@ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     cwd = Path(args.cwd or os.getcwd()).resolve()
     sent, stdin = _as_bytes(argv, args, cwd)
     request = {"argv": sent, "cwd": str(cwd), "stdin": stdin}
-    size = len(json.dumps({"op": "lead.cli", "args": request}).encode("utf-8"))  # as bridge.call sends it, escapes too
+    size = len(bridge.request_bytes("lead.cli", request))  # as bridge.call sends it, escapes too
     if size > bridge.MAX_REQUEST:
         raise errors.UsageError(f"this command and its text make a {size}-byte request, and a Lead session's broker "
                                 f"takes at most {bridge.MAX_REQUEST}: nothing was sent, so split the text or shorten "
@@ -1244,7 +1257,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
                              f"{result['generation']}; carried: {carried}; processes left: "
                              f"{seat.describe_leftovers(previous)}\n")
         else:
-            result = engine.lead_acquire(expect_rev=state["revision"], session_label=session_label,
+            result = engine.lead_acquire(session_label=session_label,
                                          kind=opencode_kind or seat.LEAD_ACQUIRE)
         token = result.pop("token")
         generation = result["generation"]
@@ -1320,7 +1333,7 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")
     left = seat.remaining(previous, survivors, ownership)
     if not (keep_seat or active or left is None or left) and state["lead"]["status"] == "active":
-        engine.lead_release(token=token, expect_rev=state["revision"])
+        engine.lead_release(token=token)
         return "released"
     if opencode:
         seat.write_leftovers(engine.aew_root, generation, left)
@@ -1330,7 +1343,7 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     if left is None or left:
         outcome = f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
         if left is None or isinstance(left, int):
-            outcome += (f"; to free the seat instead, run `aew lead takeover --reason <reason> {EXPECT_REV}` "
-                        f"at your own terminal, then `aew lead release {EXPECT_REV}` with the new revision")
+            outcome += ("; to free the seat instead, run `aew lead takeover --reason <reason>` "
+                        "at your own terminal, then `aew lead release`")
         return outcome
     return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

@@ -41,8 +41,7 @@ def _parse(command: str, *, fenced: bool) -> argparse.Namespace:
         assert match, f"the body is not one single-quoted value: {line!r}"
         key, value = match.groups()
         assert getattr(args, key) == value.replace("''", "'"), (key, getattr(args, key), value)
-    if "--expect-rev" in command:
-        assert args.expect_rev == 17
+    assert "--expect-rev" not in command
     return args
 
 
@@ -83,7 +82,7 @@ def _adapter_for_catalog(models: list[dict[str, object]]) -> adapter_module.Open
     adapter.client = _CatalogClient(models)
     adapter.directory = "."
     adapter._relayed = False
-    adapter.contract = SimpleNamespace(invocation="INV-1234")
+    adapter.contract = SimpleNamespace(invocation="INV-1234", run="R-INV-1234-1")
     return adapter
 
 
@@ -252,11 +251,11 @@ def test_a_stage_launch_failure_keeps_the_stages_own_abandon_remedy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     """The stage's remedy is abandoning the intent; an `invoke cancel` alone leaves it unresolved and the subject
-    blocked (#313 review, F4). The abandon command comes with its revision and a `rationale:` body."""
+    blocked (#313 review, F4). The abandon command includes the `rationale:` body."""
     message = _stage(monkeypatch, tmp_path, harness_contract.UNCONFIRMED)
     abandon = [args for command, fenced in _commands(message)
                if (args := _parse(command, fenced=fenced)).__dict__.get("stage_cmd") == "abandon"]
-    assert [(a.intent, a.expect_rev, a.rationale) for a in abandon] == [("SI-0003", 17, "stage launch failed")]
+    assert [(a.intent, a.rationale) for a in abandon] == [("SI-0003", "stage launch failed")]
     assert len(message) < 2000  # the intent keeps its stopped error's message[:2000]
 
 
@@ -264,7 +263,8 @@ def test_a_relaunch_hint_without_an_invocation_names_where_to_find_one() -> None
     """With no id in reach the placeholder names its source; it is never a bare `<INV>` (#313 review, F1)."""
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         send_route("disabled", "enabled", "next-step")
-    assert "aew harness launch <invocation from aew harness status> --expect-rev" in raised.value.message
+    command = "aew harness launch <invocation from aew harness status> --prior-value <run from aew harness status>"
+    assert command in raised.value.message
     assert "<INV>" not in raised.value.message
 
 
@@ -276,7 +276,7 @@ def test_fields_command_roundtrip(value: str) -> None:
     """Whatever the value, the printed block is one command line, a body of one line, and `EOF` alone, and the value
     arrives as written: a quote is doubled, and a line break or other unprintable character is escaped in a
     double-quoted scalar, so no body line can be `EOF` (#313 review, N3)."""
-    block = harness_contract.fields_command(f"aew invoke cancel INV-1 {harness_contract.EXPECT_REV}", "reason", value)
+    block = harness_contract.fields_command("aew invoke cancel INV-1", "reason", value)
     [(command, fenced)] = _commands(block)
     assert fenced and len(command.splitlines()) == 3
     [args] = P.parse(command, fenced=True)
@@ -297,4 +297,28 @@ def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(
     monkeypatch.setattr("aew.engine.harness_ops.require_lead", lambda *_args, **_kwargs: {})
     with pytest.raises(MessagingSnapshotMismatch) as raised:
         harness.harness_send(token="token", run=run, text="hello")
-    assert "`aew harness launch INV-0012 --expect-rev <revision from aew status>`" in raised.value.message
+    assert "`aew harness launch INV-0012 --prior-value R-INV-0012-1`" in raised.value.message
+
+
+@pytest.mark.parametrize("status", [harness_contract.STARTING, harness_contract.RUNNING, harness_contract.UNREADABLE,
+                                    harness_contract.ENDED_WITH_EVIDENCE, harness_contract.LAUNCH_FAILED,
+                                    harness_contract.ENDED_WITHOUT_EVIDENCE, harness_contract.CRASHED,
+                                    harness_contract.TERMINATED, harness_contract.UNCONFIRMED, harness_contract.LOST])
+def test_a_run_is_relaunchable_exactly_where_the_guidance_says_relaunch(status, tmp_path, monkeypatch):
+    """Register E233: the action projection offers a relaunch where ``contract.relaunchable`` says so, and that is
+    where the engine's own guidance for the run tells the Lead to relaunch it, for every status a run is observed
+    in, an ordinary end and a rejected credential alike."""
+    harness = Harness.__new__(Harness)
+    harness.k = SimpleNamespace(tmp=tmp_path, aew_root=tmp_path, execution_policy=lambda: ({"provider_env": []}, None),
+                                store=SimpleNamespace(current=lambda: {"lead": {}}))
+    harness._wait_on = lambda runs, _state: f"wait on {runs}"  # type: ignore[method-assign]
+    harness._after_run = lambda *_args: "ingest it"  # type: ignore[method-assign]
+    monkeypatch.setattr(runlog, "run_dir", lambda *_args: tmp_path)
+    monkeypatch.setattr("aew.engine.harness_ops.E.scan", lambda *_args: ([], None))
+    state = {"invocations": {"INV-1": {"status": "active", "work_unit": "WU-1", "role": "implementer",
+                                         "runs": [{"run": "RUN-1"}]}}}
+    relaunch = "`aew harness launch INV-1 --prior-value RUN-1`"
+    for record in (None, _PROVIDER_AUTH):
+        monkeypatch.setattr(runlog, "observed_status", lambda *_args, record=record: (status, record))
+        [row] = harness.harness_resume(state)
+        assert (relaunch in row["action"]) == harness_contract.relaunchable(status), row["action"]

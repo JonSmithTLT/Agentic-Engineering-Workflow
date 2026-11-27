@@ -22,6 +22,7 @@ NOT_DISPATCHING = {
     "authority accept", "authority list", "authority reject", "check run", "checkpoint", "context pack",
     "context show", "dashboard open", "dashboard serve", "dashboard status",  # reads only (F20.3)
     "lead mode lower", "lead mode raise", "operator ping", "operator serve",  # steering records only (M4-E E2)
+    "operator confirm",  # records the operator's confirmation of a plan or a publish, never a dispatch (register E350)
     "notify desktop", "notify file",  # show or append a notification, open no project (register E104)
     "dispatch explain", "doctor", "evidence ingest", "gate show", "gate waive", "guide",
     "harness config", "harness interrupt", "harness send", "harness status", "harness stop", "harness wait",
@@ -43,13 +44,15 @@ NOT_DISPATCHING = {
     "message list", "message lost", "message thread", "message unseen",  # conditional coordination reads (F9-A)
     "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
-    "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
+    "plan propose", "plan reconfirm", "record body", "report show", "resume", "review ingest", "role list", "role show",
+    "role validate", "status",
     "credentials",  # retained provider records and policy, no dispatch
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
     "capability add", "capability check", "capability fetch", "capability host-copies", "capability import",
     "capability list", "capability remove",  # the host's capability register (STG-15, CAP-1): outside the engine
     "g3 request",  # the operator's G3 approval, then one O-01 submission over HTTP (STG-03, G3-D): no engine dispatch
     "usage show",  # the usage ledger's projections (F25 R9): a read, no transaction
+    "read",  # the local D-01 outage reader (A-45): no dispatch channel or transaction
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
     "work close", "work create", "work depend", "work list", "work move", "work promote", "work ready",
     "work reclassify", "work reconcile", "work roles", "work show", "work staff", "work transition", "work tree",

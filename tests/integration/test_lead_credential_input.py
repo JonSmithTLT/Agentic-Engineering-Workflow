@@ -33,7 +33,7 @@ def test_a_token_value_on_the_command_line_is_refused_before_anything_runs(proje
     variable, and the command does not run: the revision is unchanged."""
     rev = project.rev()
     token = project.token if value == "project-token" else value
-    res = project.aew(*CHECKPOINT, "--token", token, "--expect-rev", str(rev))  # a --token value, refused
+    res = project.aew(*CHECKPOINT, "--token", token)  # a --token value, refused
     assert res.returncode == 2 and res.error["code"] == "USAGE", res.stderr
     assert res.error["details"]["reason"] == "token_on_command_line"
     assert "hidden prompt" in res.error["message"] and lead_credential.ENV in res.error["message"]
@@ -50,7 +50,7 @@ def test_inside_a_lead_session_a_token_value_is_refused_before_the_broker_is_ask
     from aew.cli.main import main
 
     rev = project.rev()
-    argv = ["-C", str(project.root), *CHECKPOINT, "--token", "x", "--expect-rev", str(rev)]  # a --token value, refused
+    argv = ["-C", str(project.root), *CHECKPOINT, "--token", "x", ]  # a --token value, refused
     with monkeypatch.context() as m:
         m.setenv("AEW_LEAD_BROKER", "unreachable")
         assert main(argv) == 2
@@ -63,7 +63,7 @@ def test_off_a_terminal_a_command_without_the_credential_refuses_with_the_per_se
     """No terminal (as a harness tool call runs, and as every test's CLI runs): the refusal says how to give the
     credential safely, each form with the shell it is for, and why only for the session; nothing ran."""
     rev = project.rev()
-    res = project.aew(*CHECKPOINT, "--expect-rev", str(rev))
+    res = project.aew(*CHECKPOINT)
     assert res.returncode == 2 and res.error["details"]["reason"] == "lead_credential_required", res.stderr
     _forms_given(res.error)
     assert lead_credential.PER_SESSION_WHY in res.error["message"]
@@ -73,7 +73,7 @@ def test_off_a_terminal_a_command_without_the_credential_refuses_with_the_per_se
 
 def test_with_the_variable_set_for_the_session_the_command_proceeds(project: Project):
     rev = project.rev()
-    out = project.ok(*CHECKPOINT, "--expect-rev", str(rev), env={lead_credential.ENV: project.token})
+    out = project.ok(*CHECKPOINT, env={lead_credential.ENV: project.token})
     assert out["revision"] == rev + 1
 
 
@@ -103,8 +103,8 @@ def test_at_a_terminal_the_command_asks_at_a_hidden_prompt_and_proceeds(project:
         os.execv(sys.executable, [sys.executable, "-m", "aew", *sys.argv[1:]])
     """)
     rev = project.rev()
-    proc = subprocess.Popen([sys.executable, "-c", wrapper, "-C", str(project.root), *CHECKPOINT, "--expect-rev",
-                             str(rev)], stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=clean_env())
+    proc = subprocess.Popen([sys.executable, "-c", wrapper, "-C", str(project.root), *CHECKPOINT], stdin=slave,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=clean_env())
     shown, sent = bytearray(), False
     reply = project.token.encode() if answer == "credential" else b""
     try:
@@ -237,7 +237,7 @@ def test_two_commands_in_one_process_each_ask(project: Project, monkeypatch, cap
     monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
     monkeypatch.setattr(operator, "ask_hidden", lambda prompt, **k: asked.append(prompt) or project.token)
     for _ in range(2):
-        assert main(["-C", str(project.root), *CHECKPOINT, "--expect-rev", str(project.rev())]) == 0, \
+        assert main(["-C", str(project.root), *CHECKPOINT, ]) == 0, \
             capsys.readouterr().err
     assert len(asked) == 2
     assert lead_credential.take_prompted() == ""

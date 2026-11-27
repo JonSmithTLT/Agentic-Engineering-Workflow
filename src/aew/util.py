@@ -25,6 +25,12 @@ IS_WINDOWS = sys.platform == "win32"
 _BYTE_ORDER_MARKS = ((codecs.BOM_UTF8, "utf-8"), (codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be"))
 
 
+def escape_display_controls(text: str) -> str:
+    """Escape terminal and bidi controls while preserving tabs and line feeds."""
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]",
+                  lambda match: f"\\u{ord(match[0]):04x}", text)
+
+
 def decode_text(raw: bytes, *, source: str) -> str:
     """Text given to AEW is UTF-8. A byte-order mark is honoured and removed: UTF-8's, which Windows PowerShell 5.1
     writes for ``-Encoding utf8``, and UTF-16's, which it writes for ``>`` and ``Out-File``. Anything else that is
@@ -349,13 +355,32 @@ def write_temp(directory: Path, data: bytes, prefix: str) -> Path:
     return Path(tmp)
 
 
+SHARING_WAIT_S = 5.0  # how long a replace or a removal waits out a Windows sharing refusal before it raises
+
+
 def replace_with_retry(src: Path, dst: Path) -> None:
     # Windows refuses to replace a file another process holds open (editors,
     # indexers, antivirus). Retry briefly instead of failing the transition.
-    deadline = time.monotonic() + 5.0
+    deadline = time.monotonic() + SHARING_WAIT_S
     while True:
         try:
             os.replace(src, dst)
+            return
+        except PermissionError:
+            if not IS_WINDOWS or time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
+
+
+def unlink_with_retry(path: Path) -> None:
+    """Remove ``path`` if present, waiting out a Windows sharing refusal as :func:`replace_with_retry` does: Python's
+    ``open`` never grants ``FILE_SHARE_DELETE``, so any reader that has the file open (a lock-free reader in this or
+    another process, an indexer, antivirus) makes a removal fail with WinError 32 for as long as it holds it. The last
+    refusal is raised."""
+    deadline = time.monotonic() + SHARING_WAIT_S
+    while True:
+        try:
+            path.unlink(missing_ok=True)
             return
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:

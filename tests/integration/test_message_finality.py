@@ -156,7 +156,7 @@ def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacem
     def submit_after_message(role, kind, meta, body="", *, expect_ok=True):
         assert expect_ok
         inv = engine.invocation_whoami(invocation_token=role.token)["invocation"]
-        message = engine.message_record_lead(token=p.token, expect_rev=p.rev(), to=inv, body="Follow-up", when=when)
+        message = engine.message_record_lead(token=p.token, to=inv, body="Follow-up", when=when)
         text = CP.submission(meta) + body
         evidence = engine.submit(invocation_token=role.token, kind=kind, text=text)
         captured.update(inv=inv, message=message["message"]["id"], kind=kind, text=text, evidence=evidence)
@@ -174,9 +174,10 @@ def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacem
         return {"to": _TRANSITIONS[route]} if route in _TRANSITIONS else {"evidence": evidence}
 
     def ingest(evidence):
-        args: dict[str, Any] = {"token": p.token, "expect_rev": p.rev(), "work_id": wid}
+        args: dict[str, Any] = {"token": p.token, "work_id": wid}
         if route in _TRANSITIONS:
-            return engine.work_transition(**args, to=_TRANSITIONS[route])
+            prior = engine.prior_value("work_transition", wid)
+            return engine.work_transition(**args, to=_TRANSITIONS[route], prior_value=prior)
         if primitive.startswith("verify.ingest"):
             return engine.verify_ingest(**args, evidence_id=evidence,
                                         scope="integration" if primitive == "verify.ingest.integration" else None)
@@ -193,14 +194,17 @@ def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacem
     stage = _stage_for_route(route, state["work"][wid], original["evidence"])
     if stage:
         name, stage_arguments = stage
-        explained = surface.run_tool(engine, SurfaceContext.outside_session(), "explain",
-                                     {"stage": name, "work_id": wid, "arguments": stage_arguments})["result"]
+        explained = surface.run_tool(engine, SurfaceContext.outside_session(), "work_show", {
+            "explain": True, "stage": name, "work_id": wid, "arguments": stage_arguments,
+        })["result"]
         assert explained["availability"] == "BLOCKED"
         assert "PENDING_LEAD_MESSAGE" in explained["reason_codes"]
     assert engine.store.read_committed() == state and report_path.read_bytes() == old_bytes
 
     creds = _capture_launch_credentials(engine, monkeypatch)
-    run = engine.harness_launch(token=p.token, expect_rev=p.rev(), invocation=captured["inv"])["run"]
+    invocation = captured["inv"]
+    run = engine.harness_launch(token=p.token, invocation=invocation,
+                                prior_value=engine.prior_value("harness_launch", invocation))["run"]
     credential = creds[run]
     posted = engine.message_next_post(credential=credential, run=run, permit=lambda: True)
     assert posted["message"]["id"] == captured["message"]
@@ -215,12 +219,14 @@ def test_every_result_writer_refuses_pending_messages_and_pins_only_the_replacem
     if route == "integration-verify-fail":
         assert engine.store.read_committed()["work"][wid]["state"] == "VERIFICATION_FAILED"
     if route == "executor-record":
-        assert engine.work_accept(token=p.token, expect_rev=p.rev(), work_id=wid)["ok"]
+        observed = engine.approval_subject(wid, "work.accept")
+        assert observed is not None and observed["subject"]["record"]["id"] == new_id
+        assert engine.work_accept(token=p.token, work_id=wid, binding=observed["digest"])["ok"]
 
 
 def _stage_for_route(route: str, unit: dict[str, Any], evidence: str) -> tuple[str, dict[str, Any]] | None:
     if route == "implementation-review":
-        return "ticket_request_review", {}
+        return "ticket_request_review", {"prior_value": unit["state"]}
     if route == "ticket-review":
         return "ticket_request_verification", {"review_evidence": evidence}
     if route == "ticket-verify":
@@ -275,7 +281,7 @@ def test_a_message_recorded_after_submission_stays_final_and_is_listed_if_ingest
     assert w.e.message_lost()["messages"] == lost
     assert before == (w.control_bytes(), w.thread_path().read_bytes())
     monkeypatch.setattr(aew.operator, "authorize", lambda *_args, **_kw: OPERATOR)
-    w.e.lead_takeover(expect_rev=w.rev(), reason="resume the work", session_label="new")
+    w.e.lead_takeover(reason="resume the work", session_label="new")
     assert w.e.message_lost()["messages"] == lost
     assert before[1] == w.thread_path().read_bytes()
 
@@ -324,7 +330,7 @@ def test_takeover_releases_only_an_unconfirmed_post(implementation, monkeypatch,
         w.e.message_confirm_delivery(credential=credential, run=run, ids=[mid], via="live",
                                      transport_ref="admitted-transport")
     monkeypatch.setattr(aew.operator, "authorize", lambda *_args, **_kwargs: OPERATOR)
-    takeover = w.e.lead_takeover(expect_rev=w.rev(), reason="take over the disconnected seat", session_label="next")
+    takeover = w.e.lead_takeover(reason="take over the disconnected seat", session_label="next")
     w.token = takeover["token"]
     assert w.inv in takeover["interrupted_invocations"]
     w.lead("work_reconcile", work_id=w.wid, to="RUNNING", reason="inspected the report and workspace")
@@ -346,7 +352,8 @@ def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resu
     mid = w.send()["message"]["id"]
     first = submit(w, token=keys[original])
     set_messaging(w.root, "disabled")
-    w.lead("manifest_adopt", reason="temporarily turn delivery off", authorization=OPERATOR)
+    w.lead("manifest_adopt", reason="temporarily turn delivery off", authorization=OPERATOR,
+           binding=w.e.manifest_approval())
     runlog.write_record(runlog.run_dir(w.e.aew_root, original), {"status": contract.ENDED_WITH_EVIDENCE})
 
     with pytest.raises(PendingLeadMessage) as held:
@@ -357,7 +364,8 @@ def test_pending_report_recovery_restores_the_disabled_delivery_lane_before_resu
     assert w.e._coordination.continuation_messages(w.e.store.read(), w.inv)[0] == []
 
     set_messaging(w.root, "enabled")
-    w.lead("manifest_adopt", reason="resume message delivery", authorization=OPERATOR)
+    w.lead("manifest_adopt", reason="resume message delivery", authorization=OPERATOR,
+           binding=w.e.manifest_approval())
     successor = w.lead("harness_launch", invocation=w.inv, replace=True)["run"]
     continuation = w.e.harness_contract(w.e.store.read(), w.inv, successor).continuation
     assert continuation["messages"] == [mid]

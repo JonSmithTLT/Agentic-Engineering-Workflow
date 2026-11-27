@@ -16,7 +16,6 @@ from aew.engine import conflicts as C
 from aew.engine import gates as G
 from aew.engine.dispatch import Blocker, GuardRegistration
 from aew.errors import GitError, IntegrityError
-from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import read_record
 from aew.policy import execution as X
 from aew.snapshot.fingerprint import changed_paths
@@ -209,6 +208,6 @@ class Assurance:
         facts["digests"]["class0_subject"] = A.subject_measure(i["scope"], i["files"], self.k.policy("gates"))
         return [Blocker(x["code"], x["message"] + " (Class 0 is refused, not reclassified: raise the class with "
                                                   f"`aew work reclassify {work_id} --class <0-4> --reason <reason> "
-                                                  f"{EXPECT_REV}`, or make "
+                                                  f"`, or make "
                                                   "the Ticket eligible)", x.get("details") or {})
                 for x in found]

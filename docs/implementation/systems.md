@@ -6,9 +6,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 9 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-40, SYS-47, SYS-48
 
-**partly_built:** 16 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-51, SYS-53
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-45, SYS-51, SYS-53
 
 **built_off:** 3 — SYS-12, SYS-14, SYS-23
 
@@ -16,11 +16,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-45, SYS-46, SYS-49, SYS-50, SYS-52
+**designed_only:** 16 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-33, SYS-34, SYS-35, SYS-36, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 7 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 9 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-40, SYS-47, SYS-48
 
-**Limit's count / wip_limit:** 9 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-51, SYS-53
+**Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-45, SYS-51, SYS-53
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -28,17 +28,17 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-40, SYS-42, SYS-43, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 20 — SYS-02, SYS-05, SYS-09, SYS-22, SYS-42, SYS-43, SYS-45, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-40, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
 **Board state:** partly_built
 
-**Who:** designer (E118's mechanism), then Lead (E118, E247)
+**Who:** designer (E118's mechanism), then Lead (E118)
 
 **Now:** 5
 
-**Own slices left:** 2 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118); ProcessTree.active() with a group holding only a zombie, for checking (E247) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
+**Own slices left:** 1 — E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) (E118) — **Next:** E118: the Lead's server moved out of the shell's reach, after the designer's choice of mechanism (on the Now list, before first use). Its other two parts are built: every contained start clears the Lead's saved permissions, and the login seed checks the credential table's columns first (E118's note of 2026-11-24) — E118 — 1 small PR (estimate; BOARD v2 §0), after the designer's choice
 
 **Switch:** containment.mode (execution policy) — default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then refuses every launch — not read from the code
 
@@ -48,11 +48,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E235, H-1); operator (H-1's live re-probe and the real default-flow run)
+**Who:** Lead (H-1); operator (H-1's live re-probe and the real default-flow run)
 
 **Now:** 6
 
-**Own slices left:** 2 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
+**Own slices left:** 1 — H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) (E35) — **Next:** H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics row are in place; no evidence the re-probe ran) — E35 — 1-2 PRs (estimate)
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
 
@@ -68,17 +68,17 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
-### SYS-40 — Lead reports (report_write)
+### SYS-22 — Specialist skills delivered to runs and the Lead
 
-**Board state:** designed_only
+**Board state:** staged
 
 **Who:** Lead
 
-**Now:** 27
+**Now:** 24
 
-**Own slices left:** 1 — report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) (E157) — **Next:** report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) — E157 — 1 PR (estimate; the designer's reading, small-changes design §6)
+**Own slices left:** 2 — E136: what its four batches left: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`'s one foundational skill, once the source-research skill is written (E396) (E136); the Lead's skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: what its four batches left: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`'s one foundational skill, once the source-research skill is written (E396) — E136 — 1 or 2 batched PRs after the operator's answers (estimate)
 
-**Wired:** none
+**Wired:** pack
 
 ### SYS-42 — Lead small change (operator-approved, light review at class 1)
 
@@ -101,6 +101,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Now:** 31
 
 **Own slices left:** 2 — the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal — E160 — about 1 PR (estimate; same source)
+
+**Wired:** none
+
+### SYS-45 — Branch review and document work (ref_review, technical_writer)
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 35
+
+**Own slices left:** 2 — the site's half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its surface-map entry (E170's note of 2026-11-26) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the site's half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its surface-map entry (E170's note of 2026-11-26) — E170 — 1 small PR, the web developer's (estimate; the designer's reading, skills design (e))
 
 **Wired:** none
 
@@ -196,15 +208,15 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ### SYS-32 — Independent outage reader (aew read)
 
-**Board state:** designed_only
+**Board state:** awaiting_signoff
 
 **Who:** Lead
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — E108: the aew read command over the store, reusing the D-01 wire's stamps without the server; the eight served reads not yet built anywhere; the non-writer declaration and tests; the surface-map entry (E108); G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there (E108) — **Next:** E108: the aew read command over the store, reusing the D-01 wire's stamps without the server; the eight served reads not yet built anywhere; the non-writer declaration and tests; the surface-map entry — E108 — 2-3 PRs (estimate; BOARD v2 §2)
+**Own slices left:** 1 — G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there (E108) — **Next:** G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there — E108 — a per-host run, no PR (estimate)
 
-**Wired:** none
+**Wired:** cli:read
 
 ### SYS-39 — Integration pipeline (ADR-0004 queue, custody worker, workspaces)
 
@@ -219,6 +231,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
 **Wired:** cli:integrate prepare, cli:integrate publish, cli:integrate validate, cli:integrate reconcile, cli:integrate defer, cli:integrate reorder, cli:integrate requeue, cli:integrate custody, cli:integrate breaker status, cli:integrate breaker reset, tool:integration_publish, tool:ticket_prepare
+
+### SYS-40 — Lead reports (report_write)
+
+**Board state:** awaiting_signoff
+
+**Who:** Lead
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** tool:report_write, cli:report show
 
 ### SYS-46 — The V-01 command wire after I-6 (I-7's O-01 0.9, and the I-1 to I-5 commands in O-01 0.7 and 0.8)
 
@@ -258,7 +282,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 10 — SYS-29, SYS-22, SYS-41, SYS-51, SYS-45, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 8 — SYS-29, SYS-41, SYS-51, SYS-06, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -271,18 +295,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route (E356); Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route — E356 — 1 PR (estimate), with I-6's route
 
 **Wired:** none
-
-### SYS-22 — Specialist skills delivered to runs and the Lead
-
-**Board state:** staged
-
-**Who:** Lead
-
-**Now:** 24
-
-**Own slices left:** 3 — E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner. Its qualification, before anything beyond the personal alpha, is a release gate on E135's row, outside this finish line (E135); the Lead's skills (E161), built: the `lead` list and its three skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 — E136 — about 3 batched PRs (estimate)
-
-**Wired:** pack
 
 ### SYS-41 — Lead consult (spawn a non-mutating agent for the Lead's own question)
 
@@ -310,27 +322,15 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** cli:map search
 
-### SYS-45 — Branch review and document work (ref_review, technical_writer)
-
-**Board state:** designed_only
-
-**Who:** Lead
-
-**Now:** 34
-
-**Own slices left:** 3 — the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) (E167); raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c)) (E170); a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the archetype's new kind, the `branch_reviewer` card and its skill-fit check (skills design (d)) (E168) — **Next:** the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches) — E167 — inside SYS-22's estimate
-
-**Wired:** none
-
 ### SYS-06 — Typed agent surfaces (the Lead's catalog and transports)
 
 **Board state:** partly_built
 
-**Who:** Lead (E231's next part, E233, E241, E367, E368)
+**Who:** Lead (E231's next part, E233, E367, E368)
 
 **Now:** 44
 
-**Own slices left:** 5 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eleven dead ends, and the lands guard (E233); The worker route's size check (E241); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with the pack-truth extensions and a size budget, after E367 (the operator, 2026-11-25) (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
+**Own slices left:** 4 — The Lead's tool budget, decided before E158 (E231); The Lead's exits: four of E133's eleven dead ends are left, each waiting on a decision (the plan route, the wait at RUNNING, the queue disposition), and a project with no execution profile offers no dispatch. The lands guard is E233's other pull request, in the row's notes (E233); The Lead's system text and tool list made true and smaller, with a Lead-text truth test, after the guide's core plus pointers (the operator, 2026-11-25) (E367); Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator, 2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now"). The Lead's plan, not an operator ruling: the rewrite is written as a draft and held unmerged until it can be measured; whether it waits for the refined F19 is the operator's to confirm (E368) — **Next:** The Lead's tool budget, decided before E158 — E231 — a decision, then 0-1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
 

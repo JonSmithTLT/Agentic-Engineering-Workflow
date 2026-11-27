@@ -42,8 +42,34 @@ def project(tmp_path, monkeypatch):
 
 def resolve(p, sid: str, choice: str, *, token: str | None = None, rationale: str = "the stage is still wanted",
             **extra: Any) -> dict[str, Any]:
-    arguments = {"expect_rev": p.rev(), "subject": sid, "choice": choice, "rationale": rationale, **extra}
-    return R.run_tool(Engine.discover(p.root), CTX, "resolve", arguments, token=token or p.token)
+    arguments = {"subject": sid, "choice": choice, "rationale": rationale, **extra}
+    engine = Engine.discover(p.root)
+    if choice == "continue" and "approval_digest" not in arguments:
+        shown = stage.assess(engine, engine.stage_intent(sid))["approval"]
+        arguments["approval_digest"] = shown["digest"]
+    return R.run_tool(engine, CTX, "resolve", arguments, token=token or p.token)
+
+
+def judged(decision: dict[str, Any], choice: str | None = None,
+           rationale: str = "the Lead's own reason") -> dict[str, Any]:
+    """A decision's call as a Lead makes it from the projection alone (register E388): the decision's arguments, and
+    each judgment input it names filled in, a choice from its ``options`` (the first, or ``choice``, which must be
+    offered) and anything else, the rationale, in the Lead's own words."""
+    out = dict(decision["arguments"])
+    for name, offer in decision["judgment_inputs"].items():
+        if "options" in offer:
+            assert choice is None or choice in offer["options"], (choice, offer)
+            out[name] = choice or offer["options"][0]
+        else:
+            out[name] = rationale
+    return out
+
+
+def stage_decision(p, sid: str) -> dict[str, Any]:
+    projection = R.run_tool(Engine.discover(p.root), CTX, "status", {})["projection"]
+    [decision] = [d for d in projection["decisions_required"] if d["decision"] == "RESOLVE_STAGE"]
+    assert decision["evidence"] == [sid]
+    return decision
 
 
 def unfinished(p) -> dict[str, dict[str, Any]]:
@@ -58,11 +84,11 @@ def crash_at(monkeypatch, primitive: str, *, call_no: int = 1) -> None:
     real = stage.STEP_RUNNERS[primitive]
     calls = [0]
 
-    def dying(c, args, rev):
+    def dying(c, args):
         calls[0] += 1
         if calls[0] == call_no:
             raise faults.InjectedFault(f"crash before {primitive}")
-        return real(c, args, rev)
+        return real(c, args)
 
     monkeypatch.setitem(stage.STEP_RUNNERS, primitive, dying)
 
@@ -85,7 +111,7 @@ def take_over(p) -> str:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        return Engine.discover(p.root).lead_takeover(expect_rev=p.rev(), reason="the Lead's session was lost",
+        return Engine.discover(p.root).lead_takeover(reason="the Lead's session was lost",
                                                      session_label="lead-b")["token"]
     finally:
         aew.operator.authorize = original
@@ -111,15 +137,57 @@ def test_resume_lists_an_unfinished_stage_with_its_rechecks(project, monkeypatch
     [decision] = [d for d in projection["decisions_required"] if d["decision"] == "RESOLVE_STAGE"]
     assert decision["tool"] == "resolve" and decision["evidence"] == [sid] and decision["default"] == "NONE"
     assert decision["arguments"] == {  # The binding is prefilled and the Lead still chooses the action.
-        "expect_rev": p.rev(), "subject": sid, "approval_digest": row["approval"]["digest"],
+        "subject": sid, "approval_digest": row["approval"]["digest"],
     }
     cli = p.ok("resume", "--json")  # another process, where the test's probe stage does not exist
     assert [s["intent"] for s in cli["stage_intents"]] == [sid] and cli["stage_intents"][0]["failing"] == ["contract"]
     assert cli["stage_intents"][0]["checks"]["contract"]["status"] == "unknown_stage"
     assert "no longer has a stage probe_notes" in cli["stage_intents"][0]["checks"]["contract"]["message"]
-    assert any(sid in a and "aew stage continue|abandon" in a for a in cli["next_actions"])
+    action = next(a for a in cli["next_actions"] if f"({sid}) is unfinished" in a)
+    assert f"`aew stage continue {sid} --rationale <reason> --approval-digest <shown digest>`" in action
+    assert f"`aew stage abandon {sid} --rationale <reason>`" in action
+    assert "`aew resume --json` shows the approval digest" in action
     assert sid in p.aew("resume").stdout  # the rendered view names it too
     assert_control_invariants(p)
+
+
+@pytest.mark.parametrize("choice", contract.STAGE_CHOICES)
+def test_a_lead_that_fills_the_stage_decisions_judgment_inputs_resolves_it_through_the_typed_call(
+        project, monkeypatch, choice):
+    """Register E388: RESOLVE_STAGE names what its `resolve` call takes from the Lead, the choice (offered: the
+    choices that run `stage.resolve`, from the contract) and the rationale (the schema's own field), so the decision's
+    arguments with those filled in are the whole call, and it resolves the stage, whichever choice is offered."""
+    p = project
+    sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    decision = stage_decision(p, sid)
+    schema = contract.tool("resolve", contract.ALL_SWITCHES).input_schema
+    assert decision["owner"] == "lead"
+    assert decision["judgment_inputs"] == {"choice": {"options": list(contract.STAGE_CHOICES)},
+                                           "rationale": schema["properties"]["rationale"]}
+    assert set(decision["arguments"]) | set(decision["judgment_inputs"]) >= set(schema["required"])
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", judged(decision, choice), token=p.token)
+    assert out["ok"], out["stopped"]
+    si = Engine.discover(p.root).stage_intent(sid)
+    assert si["status"] == ("COMPLETED" if choice == "continue" else "ABANDONED")
+    assert si["resolution"]["choice"] == choice and si["resolution"]["rationale"] == "the Lead's own reason"
+    assert hot(p) == {}
+    assert_control_invariants(p)
+
+
+def test_the_stage_decisions_arguments_alone_are_refused_naming_each_judgment_input(project, monkeypatch):
+    """Register E388: the decision's arguments without its judgment inputs are an input error that reaches nothing,
+    and its violations name each input the decision names, so a Lead refused knows what to supply."""
+    p = project
+    sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    decision = stage_decision(p, sid)
+    rev = p.rev()
+    with pytest.raises(AdapterInputError) as exc:
+        R.run_tool(Engine.discover(p.root), CTX, "resolve", decision["arguments"], token=p.token)
+    assert exc.value.code == "INVALID_ARGUMENTS"
+    named = sorted(name for name in decision["judgment_inputs"]
+                   if any(f"'{name}' is a required property" in v for v in exc.value.details["violations"]))
+    assert named == sorted(decision["judgment_inputs"]) == ["choice", "rationale"]
+    assert p.rev() == rev and list(hot(p)) == [sid]  # nothing committed
 
 
 # ---------------------------------------------------------------------------------------------- continue and abandon
@@ -147,13 +215,14 @@ def test_continue_runs_the_stage_from_its_first_uncommitted_step(project, monkey
 def test_abandon_closes_the_intent_and_never_undoes_a_committed_step(project, monkeypatch):
     p = project
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    observed_digest = unfinished(p)[sid]["approval"]["digest"]
     out = resolve(p, sid, "abandon", rationale="no longer wanted")
     assert out["ok"] and out["result"]["status"] == "ABANDONED", out["stopped"]
     si = Engine.discover(p.root).stage_intent(sid)
     assert si["status"] == "ABANDONED" and len(si["steps"]) == 1 and si["rebound"] == []
     assert si["resolution"]["rationale"] == "no longer wanted"
     assert load_control(p.root)["next_action"] == "step 2"  # step 1's effect stands
-    again = resolve(p, sid, "continue")
+    again = resolve(p, sid, "continue", approval_digest=observed_digest)
     assert not again["ok"] and again["stopped"]["boundary"] == "not_found"  # an ended stage is never continued
     assert_control_invariants(p)
 
@@ -168,7 +237,7 @@ def test_takeover_mid_stage_needs_explicit_continue(project, monkeypatch):
     stacked = call(p, "probe_notes")
     assert not stacked["ok"] and stacked["stopped"]["error"]["details"]["reason"] == "open_intent"
     with pytest.raises(StaleAuthority) as exc, SI.step(sid, 2, final=True):
-        Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="implicit")
+        Engine.discover(p.root).checkpoint(token=p.token, note="implicit")
     assert exc.value.details["reason"] == "not_owner"
     row = unfinished(p)[sid]
     assert (row["owner_generation"], row["current_generation"], row["rebind"]) == (1, 2, True)
@@ -262,7 +331,8 @@ def test_continue_re_resolves_the_stage_contract(project, monkeypatch, change):
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
     row, planner = PROBES["probe_notes"]
     if change == "contract":
-        schema = contract._obj({**row.input_schema["properties"], "extra": {"type": "string"}}, ("expect_rev",))
+        schema = contract._obj({**row.input_schema["properties"], "extra": {"type": "string"}},
+                               tuple(row.input_schema.get("required", ())))
         monkeypatch.setitem(contract.TOOLS, "probe_notes", row._replace(input_schema=schema))
     elif change == "plan":
         monkeypatch.setitem(stage.STAGES, "probe_notes", lambda a: [{**s, "args": {**s["args"], "next": "other"}}
@@ -437,9 +507,8 @@ def test_continue_never_completes_a_stage_over_a_run_that_never_started(project,
                 assert "the launch failed" not in error["message"]
             else:
                 invocation = load_control(p.root)["work"][wid]["implementer_invocation"]
-                assert (f"the launch failed. Relaunch it with `aew harness launch {invocation} --expect-rev "
-                        "<revision from aew status>`") in error["message"]
-                assert f"aew stage abandon {sid} --expect-rev <revision from aew status>" in error["message"]
+                assert f"Relaunch it with `aew harness launch {invocation} --prior-value {run}`" in error["message"]
+                assert f"aew stage abandon {sid} --fields" in error["message"]
             assert error["details"]["committed"] is True
             assert si["status"] == "STOPPED_AT_BOUNDARY" and si["stopped"]["boundary"] == "launch_failed"
             assert si["stopped"]["n"] == 2 and si["resolution"]["choice"] == "continue"
@@ -473,8 +542,8 @@ def test_a_continued_launch_relaunches_only_through_harness_launch_with_a_rotate
         lab.script("default", [{"do": "note", "text": "relaunched"}])
         # Run 1 was recorded moments ago with no record yet, so it may still be starting: the relaunch replaces it
         # (`aew harness launch --replace`), revoking its credential either way.
-        relaunched = Engine.discover(p.root).harness_launch(token=p.token, expect_rev=p.rev(), invocation=inv,
-                                                            replace=True)
+        relaunched = Engine.discover(p.root).harness_launch(token=p.token, invocation=inv,
+                                                            replace=True, prior_value=run)
         state = load_control(p.root)
         second = state["invocations"][inv]["runs"][-1]
         assert relaunched["run"] == second["run"] != run and second["kind"] == "relaunch" and len(spawned) == 1
@@ -493,29 +562,30 @@ def test_aew_stage_continue_and_abandon_are_the_resolve_tool(project, monkeypatc
     StageResult as the typed `resolve`."""
     p = project
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
+    binding = unfinished(p)[sid]["approval"]["digest"]
     res = p.aew("stage", "abandon", sid, "--rationale", "from the shell",
-                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     out = res.json
     assert out["surface"] == "aew/surface/v1" and out["tool"] == "resolve" and out["ok"]
     assert out["stage_intent_id"] == sid and out["result"]["status"] == "ABANDONED"
-    res = p.aew("stage", "continue", sid, "--rationale", "again", "--expect-rev", str(p.rev()),
+    res = p.aew("stage", "continue", sid, "--rationale", "again", "--approval-digest", binding,
                 env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 1 and res.json["stopped"]["boundary"] == "not_found"  # a StageResult, ok false
-    blank = p.aew("stage", "abandon", sid, "--rationale", "  ", "--expect-rev", str(p.rev()),
-                  env={"AEW_LEAD_TOKEN": p.token})
+    blank = p.aew("stage", "abandon", sid, "--rationale", "  ", env={"AEW_LEAD_TOKEN": p.token})
     assert blank.returncode != 0 and blank.error["code"] == "INVALID_ARGUMENTS"
 
 
 def test_a_blank_rationale_is_an_input_error_that_reaches_nothing():
     with pytest.raises(AdapterInputError) as exc:
-        check_call("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "continue", "rationale": " \n"},
+        check_call("resolve", {"subject": "SI-0001", "choice": "continue", "rationale": " \n"},
                    "normal")
     assert exc.value.code == "INVALID_ARGUMENTS"
     # E5b's dispositions are built: an accept_risk is well formed; a follow_up without its Ticket is not
-    check_call("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "rationale": "x"}, "normal")
+    check_call("resolve", {"subject": "ANM-0001", "choice": "accept_risk", "rationale": "x",
+                           "approval_digest": "a" * 64}, "normal")
     with pytest.raises(AdapterInputError):
-        check_call("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "rationale": "x"},
+        check_call("resolve", {"subject": "ANM-0001", "choice": "follow_up", "rationale": "x"},
                    "normal")
 
 
@@ -535,7 +605,7 @@ def test_a_continued_stage_ends_where_an_uninterrupted_one_and_its_primitives_do
     assert resolve(continued, sid, "continue")["ok"]
     e = Engine.discover(direct.root)
     for step in PROBES["probe_notes"][1]({"note": "n"}):
-        e.checkpoint(token=direct.token, expect_rev=direct.rev(), note=step["args"]["note"],
+        e.checkpoint(token=direct.token, note=step["args"]["note"],
                      next_action=step["args"]["next"])
     views = [end_state(x.root) for x in (whole, continued, direct)]
     assert differences(views[0], views[1]) == [] and differences(views[0], views[2]) == []

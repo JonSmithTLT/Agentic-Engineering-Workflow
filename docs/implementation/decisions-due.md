@@ -25,6 +25,54 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E373
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q4: "On a project with no open Ticket, should the projection offer `ticket_draft`, with its judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"
+
+**Blocks:** -
+
+### E374
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q9: "For a stage the steering loop is running, is that decision offered at all, or is it the mechanism's until the loop stops?" E335's branch makes RESOLVE_STAGE the Lead's.
+
+**Blocks:** -
+
+### E378
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q2: "When an integration candidate conflicts with the moved head and its queue entry awaits disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and through which typed route?"
+
+**Blocks:** -
+
+### E379
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q3: "Does the operator's publish approval cover a compatible rebuild of the same change on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further question. The projection asks again. The operator owns the threshold.
+
+**Blocks:** -
+
+### E380
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which decision does the projection offer, and is it the operator's?"
+
+**Blocks:** -
+
+### E381
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** design
+
+**What:** The design of the V-01 wire track's actions that have none (the burn-down's Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`, which STG-03's closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381, E382 and E383 now hold their work; the shape of each is the designer's
+
+**Blocks:** E382, E383
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design
@@ -98,3 +146,7 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 **Blocks:** -
 
 ## Blocked until then
+
+- **E382** waits for E381 (design, designer, by V-01)
+
+- **E383** waits for E381 (design, designer, by V-01)

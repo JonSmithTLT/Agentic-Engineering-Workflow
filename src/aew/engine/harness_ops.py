@@ -45,7 +45,6 @@ from aew.errors import (
     MessagingSnapshotMismatch,
     NotFound,
     RunLive,
-    StaleRevision,
     TurnEndNeedsMessaging,
     UsageError,
 )
@@ -168,16 +167,17 @@ class Harness:
             stop = K.fields_command(f"aew harness stop {previous['run']}", "reason", "superseded run is still live")
             return blocker_from(RunLive(
                 f"{previous['run']} may still be running; stop it with:\n\n{stop}\n\n"
-                f"or relaunch with `aew harness launch {invocation} {K.EXPECT_REV} "
+                f"or relaunch with `aew harness launch {invocation} --prior-value {previous['run']} "
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+    def harness_launch(self, *, token: str, invocation: str, replace: bool = False,
                        request_id: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
         request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
-        with self.k.lead_txn(token, expect_rev, "harness.launch", request=request) as ctx:
+        with self.k.lead_txn(token, "harness.launch", request=request) as ctx:
+            approval.require_binding("harness.launch", invocation, "run", prior_value)
             if request is not None and ctx.replayed is not None:
                 replay = ctx.replayed
                 invocation = replay["invocation"]
@@ -306,7 +306,7 @@ class Harness:
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                           f"with `aew harness launch {inv_id} {K.EXPECT_REV}` (the credential "
+                                           f"with `aew harness launch {inv_id} --prior-value {run}` (the credential "
                                            "rotates)", **base,
                                           **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
@@ -331,7 +331,7 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      f"with `aew harness launch {inv_id} {K.EXPECT_REV}` "
+                                      f"with `aew harness launch {inv_id} --prior-value {run}` "
                                       "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
@@ -570,12 +570,12 @@ class Harness:
         answer = {"runs": out}
         if invocation and state["invocations"][invocation]["status"] == "active":
             prior = approval.run_value(state["invocations"][invocation])
-            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), state["revision"], prior)
+            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), prior)
         return answer
 
     @staticmethod
     def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:
-        launch = f"aew harness launch {invocation} {K.EXPECT_REV} --prior-value {run['run']}"
+        launch = f"aew harness launch {invocation} --prior-value {run['run']}"
         if runlog.possibly_live(K.UNCONFIRMED, run["launched_at"]):
             return (f"Wait for the {runlog.UNCONFIRMED_GRACE_S:g}-second launch grace period. "
                     f"If the run is still unconfirmed, relaunch with `{launch}`.")
@@ -833,7 +833,7 @@ class Harness:
         return name, text
 
     def _lead_request(self, token: str, run: str, kind: str, payload: dict[str, Any], *, current: bool,
-                      reason: str | None = None, send_when: str | None = None, expect_rev: int | None = None,
+                      reason: str | None = None, send_when: str | None = None,
                       idempotency_id: str | None = None) -> dict[str, Any]:
         """Record and deliver a Lead request for a run. Work and invocation state do not change. Like the Lead seat
         operations, it needs no expected revision: it names one run and is checked against the state it commits on.
@@ -848,11 +848,7 @@ class Harness:
             route = "request"
             if send_when is not None:
                 route = send_route(self.coordination.project_switch(s.state), run_messaging_snapshot(entry), send_when,
-                                   invocation=inv_id)
-                if expect_rev is not None and expect_rev != s.revision:
-                    raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}: read again, "
-                                        "then decide whether the message still holds", expected=expect_rev,
-                                        current=s.revision)
+                                   invocation=inv_id, run=run)
             if current:
                 if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
                     raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
@@ -862,8 +858,8 @@ class Harness:
                     raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
                 if status not in K.LIVE_RUNS:
                     raise IllegalTransition(
-                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
-                        "its invocation")
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} --prior-value {run}` "
+                        "to continue its invocation")
             if send_when is not None:
                 body = payload["text"]
                 if route == "coordination":
@@ -890,7 +886,7 @@ class Harness:
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
     def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN,
-                     expect_rev: int | None = None, idempotency_id: str | None = None) -> dict[str, Any]:
+                     idempotency_id: str | None = None) -> dict[str, Any]:
         """Deliver a Lead message to a running agent. ``when`` is its timing (F9-A plan v4 amendment 2 §1, §3, §4;
         register E55): ``next-step``, the default, reaches the agent at its next step boundary without interrupting it
         (OpenCode ``steer``); ``turn-end`` reaches it after its current turn (OpenCode ``queue``), and exists only
@@ -916,7 +912,7 @@ class Harness:
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.
         return self._lead_request(token, run, "send", {"text": text}, current=True, send_when=when,
-                                  expect_rev=expect_rev, idempotency_id=idempotency_id)
+                                  idempotency_id=idempotency_id)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         """Stop a run's current turn, keeping its session: `harness send` continues it. Work and invocation state do
@@ -985,13 +981,13 @@ class Harness:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced, inv_id)} (the run itself decides nothing)")
             elif plan_failure := K.plan_login_failure(
-                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
+                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id, run
             ):
                 action = f"{run} ended because {plan_failure}"
             elif (_reason_code(record) == K.PROVIDER_AUTH_FAILED
                   and (inv.get("execution_profile") or {}).get("credential") == "plan_login"):
                 action = (f"{run} ended because the provider rejected the operator's plan login. "
-                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id))
+                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id, run))
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
                     try:
@@ -1001,24 +997,33 @@ class Harness:
                         provider_env = []
                 names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
                     "provider_env"))]  # else the names this run was launched with
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}`, or "
+                          f"relaunch with `{K.launch_command(inv_id, run)}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "harness run ended")
-                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"{K.EXPECT_REV}` (its credential rotates) or cancel it with:"
-                          f"\n\n{cancel}")
+                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with "
+                          f"`{K.launch_command(inv_id, run)}` (its credential rotates) or cancel it with:\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
         return out
+
+    @staticmethod
+    def unlaunched(state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for: a dispatch made without `--launch`,
+        or a stage that stopped before its launch. ``harness_resume`` lists none of them (it reads runs), and a
+        `harness launch` starts each (register E233). Never the lease's custodian (``integration_attempt``), which an
+        engine process works for, not a harness."""
+        return [inv_id for inv_id, inv in sorted(state["invocations"].items())
+                if inv["status"] == "active" and inv["work_unit"] == work_id and not inv.get("runs")
+                and inv.get("kind") != "integration_attempt"]
 
     def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
                    inv_id: str) -> str:
@@ -1039,7 +1044,7 @@ class Harness:
         if command is None:
             return "ingest it"
         return f"ingest it: {self._stage_for_report(state, inv)}" + ", ".join(
-            f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+            f"`{command} {wid} --evidence {e}`" for e in records)
 
     def _after_assessment(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
                           inv_id: str) -> str:
@@ -1057,7 +1062,7 @@ class Harness:
             standing = f"{counted['id']} already counts for {wid}'s accepted plan, so it is history"
         else:
             standing = f"it is bound to a plan revision that is no longer {wid}'s accepted one, so it counts for none"
-        end = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}", "reason",
+        end = K.fields_command(f"aew invoke cancel {inv_id}", "reason",
                                "its plan assessment is recorded")
         return (f"its plan assessment {', '.join(mine) or '(none)'} is recorded and nothing ingests it: {standing}. "
                 f"End {inv_id}, which retires its observation and credential, with:\n\n{end}\n")
@@ -1078,14 +1083,14 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
+            step = f"`aew work transition {wid} --to {to} --prior-value RUNNING`"
             stage = self.gates.stage_for(state, wid, "RUNNING", to)
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
-            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
-                    "its gates require)")
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY "
+                    "--prior-value RUNNING` (as its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING {K.EXPECT_REV}`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING --prior-value ASSIGNED`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
@@ -1196,7 +1201,8 @@ def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
             else X.MESSAGING_DISABLED)
 
 
-def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
+def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None,
+               run: str | None = None) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Both on goes through the coordination record. Mismatch has priority over a timing's
@@ -1204,7 +1210,7 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                  f"{K.EXPECT_REV}`) and send to the new run")
+                  f"--prior-value {run or '<run from aew harness status>'}`) and send to the new run")
         raise MessagingSnapshotMismatch(
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)

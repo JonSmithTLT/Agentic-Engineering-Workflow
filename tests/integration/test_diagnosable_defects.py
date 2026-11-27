@@ -108,7 +108,7 @@ def test_e138_checkpoint_commits_before_the_runner_raises(project, monkeypatch):
     assert not out["ok"] and out["stage_intent_id"] is None
     assert [s["primitive"] for s in out["completed_steps"]] == ["checkpoint"]
     assert out["stopped"]["error"]["details"]["committed"] == 1
-    assert out["result"]["next_action"].startswith("Read `status` before retrying with a fresh `expect_rev`")
+    assert out["result"]["next_action"].startswith("Read `status`")
 
 
 def test_e138_failure_after_a_completed_stage_names_the_tool(project, monkeypatch):
@@ -124,7 +124,7 @@ def test_e138_failure_after_a_completed_stage_names_the_tool(project, monkeypatc
     assert not out["ok"] and out["stopped"]["at"] == "probe_notes"
     assert out["stopped"]["error"]["details"]["committed"] == 2
     assert out["result"]["status"] == "COMPLETED"
-    assert out["result"]["next_action"].startswith("Read `status` before retrying with a fresh `expect_rev`")
+    assert out["result"]["next_action"].startswith("Read `status`")
 
 
 def test_e138_mcp_process_names_its_own_failure():
@@ -173,7 +173,7 @@ def test_e138_projection_failure_keeps_the_cause_and_committed_count(project, mo
     cause = "cause ``` " + "x" * 10_000 + "END"
     monkeypatch.setattr(run, "_projection", fail_with(errors.IntegrityError(cause, cwd=str(project.root))))
     with pytest.raises(errors.Defect) as caught:
-        run.run_tool(engine, CTX, "checkpoint", {"expect_rev": project.rev()}, token=project.token)
+        run.run_tool(engine, CTX, "checkpoint", {}, token=project.token)
     defect = caught.value
     assert defect.details["cause_code"] == "INTEGRITY_ERROR" and defect.details["committed"] == 1
     assert "cause ｀｀｀" in defect.message and "END" not in defect.message
@@ -187,7 +187,7 @@ def test_e138_projection_failure_keeps_the_cause_and_committed_count(project, mo
         except errors.Defect as exc:
             raise bridge.rebuild_error(exc.to_dict()) from None
 
-    out = mcp_call(forward, "checkpoint", {"expect_rev": project.rev()})
+    out = mcp_call(forward, "checkpoint", {})
     error = out["error"]
     assert error["code"] == mcp.INTERNAL_ERROR and "INTEGRITY_ERROR" in error["message"]
     typed = error["data"]["aew_error"]
@@ -237,7 +237,7 @@ def test_e138_broker_telemetry_preserves_the_cause_code(held, monkeypatch):
     _p, _wid, engine, _broker = held
     monkeypatch.setattr(run, "_projection", fail_with(errors.IntegrityError("synthetic projection failure")))
     with pytest.raises(errors.Defect) as caught:
-        broker_call("checkpoint", {"expect_rev": engine.store.current()["revision"]})
+        broker_call("checkpoint", {})
     line = tool_calls.read(engine.aew_root)[-1]
     assert line["error_code"] == "DEFECT" and line["exception"] == "IntegrityError"
     assert line["defect"] == caught.value.details["defect"] and line["cause_code"] == "INTEGRITY_ERROR"

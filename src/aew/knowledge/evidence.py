@@ -143,6 +143,19 @@ def _scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]
     return records, problems
 
 
+def locate(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> list[tuple[str, Path]]:
+    """Each unit whose evidence directory lists a record of this id, with the record's file (register E170); one, for
+    a record AEW wrote, and none when no unit holds it. The file is found by listing each directory, never by a path
+    built from ``evidence_id`` (an id is a caller's text). The caller reads it (:func:`read`) and holds it to its
+    unit."""
+    found = []
+    for work_id in work_ids:
+        directory = evidence_dir(aew_root, work_id)
+        if directory.is_dir():
+            found += [(work_id, path) for path in sorted(directory.glob("*.md")) if path.stem == evidence_id]
+    return found
+
+
 def next_seq(aew_root: Path, work_id: str) -> int:
     directory = evidence_dir(aew_root, work_id)
     return 1 + (len(list(directory.glob("*.md"))) if directory.is_dir() else 0)
@@ -162,8 +175,7 @@ def one_of(values: dict[str, str | None]) -> str:
 
 def assessor_call(work_id: str, rationale: str) -> tuple[str, dict[str, Any]]:
     """The Lead's call that dispatches an assessor of ``work_id``'s accepted plan: the command, and the arguments it
-    reads on stdin as JSON, less ``expect_rev`` (the revision of the Lead's last result, which every typed call
-    takes)."""
+    reads on stdin as JSON."""
     return (f"aew lead tool {ASSESS_TOOL} --arguments -",
             {"subject": f"{work_id}{PLAN_ITEM}", "choice": ASSESS_CHOICE, "rationale": rationale})
 
@@ -185,6 +197,19 @@ def submit_operations(operations: Iterable[str], role: str, scope: str | None) -
     assessment (#581 review, F1). The grant itself is the archetype's; this narrows only what is offered."""
     allowed = kinds_for(role, scope)
     return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
+
+
+# The capability a configured check's evidence names as its method (``check_run``, and a validation run's checks):
+# running one is targeted test execution, sealed and bound to the snapshot. So the operation that runs a check serves
+# that capability for a role that holds it, and such a role is never sent to its shell for it: a shell run records
+# nothing it can cite (register E368, the worker-pack audit's F3: the verifier was told to use its shell).
+CHECK_CAPABILITY = "targeted_test_execution"
+OPERATION_CAPABILITIES: dict[str, tuple[str, ...]] = {"check.run": (CHECK_CAPABILITY,)}
+
+
+def served_by_operation(operations: Iterable[str]) -> dict[str, str]:
+    """Each capability that one of ``operations`` serves, with that operation (``OPERATION_CAPABILITIES``)."""
+    return {capability: op for op in operations for capability in OPERATION_CAPABILITIES.get(op, ())}
 
 
 def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None) -> None:

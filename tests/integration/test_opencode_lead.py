@@ -105,7 +105,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
         {"do": "dump_env", "path": str(sync / "env")},
         {"do": "child_env", "path": str(sync / "child"), "shell_path": str(sync / "shell")},
         {"do": "lead", "args": ["checkpoint", "--next", "dispatch T-0001 with --launch"]},
-        {"do": "aew", "args": ["lead", "handoff", "offer", "--expect-rev", "1"]},
+        {"do": "aew", "args": ["lead", "handoff", "offer", ]},
         {"do": "aew", "args": ["resume", "--json"]}])
     assert res.returncode == 0, res.stderr
     out = res.json

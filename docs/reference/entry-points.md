@@ -40,6 +40,13 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Starts, `-m`:** `aew.harness.opencode.projection:lead_mcp_command`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 
+### `aew read`
+
+- **Kind:** non_writer
+- **Why:** the operator's outage reader uses the committed store without a lock, recovery or a running service
+- **Declares itself at:** `aew.cli.main:_main`
+- **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
+
 ### `aew.harness.supervisor`
 
 - **Kind:** store_writer

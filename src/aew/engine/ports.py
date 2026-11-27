@@ -89,7 +89,8 @@ class InvocationsPort(Protocol):
 
     @staticmethod
     def card_ref(inv: dict[str, Any]) -> dict[str, Any] | None: ...
-    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None: ...
+    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed", *,
+                            reason: str | None = None, decision: str | None = None) -> None: ...
     def current_snapshot(self, unit: dict[str, Any]) -> dict[str, Any] | None: ...
     @staticmethod
     def execution_provenance(inv: dict[str, Any]) -> dict[str, Any]: ...
@@ -171,7 +172,7 @@ class GatesPort(Protocol):
 class WorkCommandsPort(Protocol):
     """What other collaborators use of ``WorkCommands``."""
 
-    def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
+    def work_reconcile(self, *, token: str, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
 
@@ -208,7 +209,7 @@ class StatusViewsPort(Protocol):
     """What other collaborators use of ``StatusViews``."""
 
     def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
-                       housekeeping: bool = True) -> list[str]: ...
+                       housekeeping: bool = True, pinned_failures: list[str] | None = None) -> list[str]: ...
 
 
 class SteeringPort(Protocol):

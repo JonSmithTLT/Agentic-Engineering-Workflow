@@ -49,6 +49,8 @@ from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_re
 from fake_harness import SCRIPTS_ENV, HarnessLab
 from fake_opencode import TUI_SCRIPT, write_launcher
 
+from aew import hoststate
+from aew.capability import consent
 from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
@@ -67,6 +69,9 @@ from vertical.ledger import (
     at_least,
 )
 
+# The operator's decisions AEW asks them to confirm at the operator endpoint (the operator's ruling of 2026-11-26),
+# by the label the Lead's question carries: `aew operator confirm <label> <T>`.
+CONFIRMED = ("plan", "publish")
 # Declared and nested under the vertical lane's --test-timeout (G3 H5): the operator's waits fail first, by name, and
 # record why the Lead was silent (`lead_silent`).
 Fixture = Callable[[dict[str, Any]], None]  # one of the offline world's changes to the execution policy
@@ -152,7 +157,7 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
-    steering_console: Any = None  # the operator endpoint's console, once a raise started it (one per run)
+    steering_console: Any = None  # the operator endpoint's console, once a step started it (one per run)
     session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
     chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
@@ -241,30 +246,25 @@ class Operator:
         """``aew manifest adopt``, as the quickstart documents it, confirmed at the operator's terminal (in-process)."""
         from aew.engine.api import Engine
 
-        rev = self.rev()  # read from `aew status`, as the quickstart says
-        self.typed(f"{step}:status", "aew status")
-        self.typed(step, f'aew manifest adopt --reason "{reason}" --expect-rev {rev}',
-                   ["manifest", "adopt", "--reason", reason, "--expect-rev", str(rev)])
+        self.typed(step, f'aew manifest adopt --reason "{reason}"', ["manifest", "adopt", "--reason", reason])
         self.typed(f"{step}:prompt", self.credential)  # at the hidden prompt it asks with (CS-4 addendum 12)
-        Engine.discover(self.root).manifest_adopt(token=self.credential, expect_rev=rev, reason=reason,
-                                                  authorization={"authorized_by": "operator-tty"})
+        engine = Engine.discover(self.root)
+        engine.manifest_adopt(token=self.credential, reason=reason, binding=engine.manifest_approval(),
+                              authorization={"authorized_by": "operator-tty"})
 
     def takeover(self, step: str, reason: str) -> None:
         """``aew lead takeover`` at the operator's terminal (the challenge channel substituted in-process, as AT-1)."""
         import aew.operator
         from aew.engine.api import Engine
 
-        rev = self.rev()
-        self.typed(f"{step}:status", "aew status")
         original = aew.operator.authorize
         aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (vertical UAT)"}
         try:
-            token = Engine.discover(self.root).lead_takeover(expect_rev=rev, reason=reason,
-                                                             session_label="operator")["token"]
+            token = Engine.discover(self.root).lead_takeover(reason=reason, session_label="operator")["token"]
         finally:
             aew.operator.authorize = original
-        self.typed(step, f'aew lead takeover --reason "{reason}" --expect-rev {rev}',
-                   ["lead", "takeover", "--reason", reason, "--expect-rev", str(rev)], shown=token)
+        self.typed(step, f'aew lead takeover --reason "{reason}"',
+                   ["lead", "takeover", "--reason", reason], shown=token)
         self.credential = token
         self.lab.project.token = token
 
@@ -369,14 +369,22 @@ class Operator:
                     hook(msg)
                 self.check_heads(f"before answering {label}")
                 # Steps 5 and 7 are G3 approvals through the confirmer; while they have not landed the operator
-                # answers in chat, which is their fallback (review of #306, F1).
+                # answers in chat, which is their fallback (review of #306, F1), and confirms the answer at the
+                # operator endpoint with its typed code (`confirm`), the interim the operator ruled on 2026-11-26:
+                # "Its me basically approving a plan fits requirements and final verification of the outputs actually
+                # does what I want it to". That is the decision itself, so the fallback still stands and no expected
+                # count moves: it is recorded with the decision, and the G3 approval replaces it when the step lands.
                 if label == "plan":
-                    self.workaround("plan", "the plan approved in chat to the Lead", step="answer:plan")
+                    self.workaround("plan", "the plan approved in chat to the Lead, and confirmed with `aew operator "
+                                            "confirm plan`, the code typed back", step="answer:plan")
                 elif label == "publish":
-                    self.workaround("publish", "the publish approved in chat to the Lead", step="answer:publish")
+                    self.workaround("publish", "the publish approved in chat to the Lead, and confirmed with `aew "
+                                               "operator confirm publish`, the code typed back", step="answer:publish")
                 answer = self.answers.get(label, "yes")
-                self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead",
-                                     detail=msg.get("detail"))
+                detail = msg.get("detail")
+                if label in CONFIRMED and answer.startswith("y"):  # the decision is given where AEW asks for it
+                    detail = {**(detail or {}), "confirmed": self.confirm(label, str(msg.get("text")))}
+                self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead", detail=detail)
                 if label == "publish" and answer.startswith("y"):
                     self.publish_approved = True
                 self.say(f"answer:{label}", answer)
@@ -385,6 +393,45 @@ class Operator:
                     self.reports.append(msg)
                 self.check_heads(f"at the Lead's {kind}")
                 return msg
+
+    def endpoint_console(self) -> Any:
+        """The operator endpoint, run in its own terminal the first time a step needs it, and its console: both
+        terminals are this process (the in-process channel AT-1 uses on Windows); the endpoint and its codes are real.
+        A later step, after a reopen too, uses the same one."""
+        from notifier import Console
+
+        from aew.engine.api import Engine
+        from aew.harness import operator_endpoint
+
+        if self.steering_console is None:
+            self.steering_console = Console()
+            endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(self.root), console=self.steering_console,
+                                                          dev=True, timeout=30)
+            endpoint.start()
+            self.closers.append(endpoint.close)
+            self.typed("endpoint:serve", "aew operator serve --dev")
+        return self.steering_console
+
+    def confirm(self, decision: str, question: str) -> dict[str, Any]:
+        """The operator's yes to a plan or a publish, given where AEW asks for it (the operator's ruling of 2026-11-26):
+        `aew operator confirm` at their own terminal, with the code the endpoint's console shows typed back. It is the
+        decision itself, recorded with it, and never a counted challenge (``Ledger.console_challenge``). The Ticket is
+        the one the Lead's question names, as a human reads it there."""
+        from aew.harness import operator_client
+
+        named = re.search(r"\b[TSE]-\d{4,}\b", question)
+        if named is None:
+            return {"refused": "the question names no Ticket to confirm"}
+        command = ["operator", "confirm", decision, named[0]]
+        console = self.endpoint_console()
+        self.typed(f"confirm:{decision}", "aew " + " ".join(command), command)
+        try:
+            out = operator_client.request_confirmation(self.lab.aew_root, decision, named[0],
+                                                       ask=lambda prompt: console.code())
+        except Exception as exc:  # recorded, never hidden: the Lead's call is then refused, and says so  # noqa: BLE001
+            self.ledger.observe("confirmation_refused", decision=decision, work=named[0], error=str(exc)[:300])
+            return {"command": "aew " + " ".join(command), "refused": str(exc)[:300]}
+        return {"command": "aew " + " ".join(command), "confirmation": out["confirmation"]}
 
     def end_session(self, session: Session, how: str = "exit") -> int | None:
         """``/exit`` in the TUI (the primary way), or the session killed from outside."""
@@ -431,9 +478,11 @@ class Operator:
 # ---------------------------------------------------------------------------------------------- the world
 
 
-def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None) -> HarnessLab:
+def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | None = None,
+              host_data: Path | None = None) -> HarnessLab:
     """A fresh repository with the sample, and the offline world around it (the fake harness and OpenCode). The
-    sample declares check caches in policy and has no `.gitignore` entry for them."""
+    sample declares check caches in policy and has no `.gitignore` entry for them. ``host_data`` is the world's
+    host-state base where AEW places its tools: a caller that has already built a synthetic home passes its own."""
     files = {**workers.SAMPLE, **(extra or {})}
     repo = make_git_repo(tmp / "repo", files)
     scripts = tmp / "fake-scripts"
@@ -453,7 +502,41 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
            # The operator's OpenCode login: one synthetic key, which the contained Lead relays and the fake TUI never
            # calls. A contained Lead with no provider relayed is refused at start (the designer's ruling of 2026-11-06).
            "OPENCODE_DB": str(operator_login(tmp / "operator-opencode"))}
+    if consent.binds_here():
+        # The world's own host state, so the tool offers it settles in setup (:func:`settle_tool_offers`) are its
+        # own and no other test's: the session's shared base would carry its "no" into every later test. Only where
+        # AEW places its tools: elsewhere nothing is offered as needed, and the host's base stays the session's.
+        env[hoststate.base_variable()] = str(host_data or tmp / "host-data")
     return HarnessLab(Project(repo), tmp, env)
+
+
+def settle_tool_offers(lab: HarnessLab, ledger: Ledger) -> list[str]:
+    """Setup's fixture of the offline world: AEW's tool offers settled before the first open, so a reopen on the
+    operator's terminal meets no consent screen. The operator's ruling of 2026-11-26 (question Q5 of the V-01
+    re-measure), in part: "setup fixture that is recorded but not counted. [...] Aew saying a critical item is missing
+    isnt a ux failure its common sense. [...]" The world has no route to a tool's source, so it answers the screen
+    ``none``: each needed tool is declined and no optional one, which is what :func:`consent.ask` gives for that
+    answer, in the register the world's ``aew`` reads. Each decline is recorded, never counted. AEW's line at the
+    start naming a declined needed tool stays, and counts nothing. Returns the tools declined.
+
+    Setup only: its one vertical caller is ``configure``, before the first open, and it records under ``init``
+    whenever it is called. A tool that becomes needed after setup is not settled: its screen meets the next reopen."""
+    from aew.capability import store
+
+    base = lab.env.get(hoststate.base_variable())
+    if base is None:  # where AEW places no tools (:func:`new_world`), nothing needed is offered
+        return []
+    with mock.patch.object(store, "ROOT_OVERRIDE", None), \
+            mock.patch.dict(os.environ, {hoststate.base_variable(): base}):
+        directory = store.root()  # where the world's `aew` keeps its register, from the owner
+    # The screen's own answer, from its owner: what `none` declines is `consent.ask`'s to say (review of #603, m1).
+    shown = [offer for offer in consent.offers(directory) if not offer.declined_at]
+    declined = consent.ask(shown, lambda _prompt: consent.NONE).declined
+    consent.decline(declined, directory)
+    for offer in declined:
+        ledger.observe("setup_fixture", step="init", fixture=f"tool offer declined: {offer.provider}",
+                       needed=offer.needed)
+    return [offer.provider for offer in declined]
 
 
 def operator_login(directory: Path) -> Path:
@@ -495,7 +578,8 @@ def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str,
     writable = [lab.env[SCRIPTS_ENV], str(lab.tmp / "sync")]
     # The test's children directory, where the Lead's TUI writes its childdiag files (``mark_helper_dir`` names it in
     # the scripts). Outside the writable roots, the contained TUI wrote them into the sandbox's private /tmp, and
-    # the #213 autopsy found no ``events-*`` (STG-13's note of 2026-10-30; the V-01 re-measure of 2026-11-26, C15).
+    # the #213 autopsy found no ``events-*`` (STG-13's note ``2026-10-30-test-stg13-vertical-linux-pty.md``; the V-01
+    # re-measure of 2026-11-26, C15).
     # The product's own TUI diagnostics are its XDG directories, which the Lead's layout already makes writable.
     children = autopsy.child_dir()
     if children is not None:

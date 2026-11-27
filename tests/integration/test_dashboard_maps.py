@@ -393,7 +393,7 @@ def test_an_inputs_list_with_a_4_kib_path_at_a_page_boundary_pages_to_its_end(la
 def test_a_control_commit_does_not_expire_a_maps_cursor(world):
     cursor = world.client.data("/maps/structural?limit=1")["next_cursor"]
     p = world.p
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})
     assert world.client.data(f"/maps/structural?limit=1&cursor={cursor}")["items"]
 
 
@@ -1540,8 +1540,7 @@ def test_conditional_replays_and_what_changes_a_maps_validator(lab):
         after_select = tag("/maps")
         assert after_select != after_commit
         assert tag("/project") == project_tag and tag("/work") == work_tag  # 0.1.2 validators: a selection alone
-        p.ok("history", "audit", "--expect-rev", str(p.rev()),
-             env={"AEW_LEAD_TOKEN": p.token})  # an unrelated control commit
+        p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})  # an unrelated control commit
         after_audit = tag("/maps")
         assert after_audit != after_select
         registry = maps_dir(p) / "registry.json"

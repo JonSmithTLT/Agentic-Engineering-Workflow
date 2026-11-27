@@ -9,6 +9,7 @@ flowchart LR
         proc_aew_worker_run["aew (worker run)"]
         proc_aew_dashboard_serve["aew dashboard serve"]
         proc_aew_lead_mcp["aew lead mcp"]
+        proc_aew_read["aew read"]
         proc_aew_stg02_server["aew.stg02.server"]
     end
     subgraph kind_store_writer["kind: store_writer"]
@@ -34,6 +35,7 @@ flowchart LR
             path_pricing["pricing"]
             path_project_yaml["project.yaml"]
             path_records["records"]
+            path_reports["reports"]
             path_roles["roles"]
             path_work["work"]
         end
@@ -67,6 +69,7 @@ flowchart LR
     no_writer --> path_local
     no_writer --> path_pricing
     no_writer --> path_records
+    no_writer --> path_reports
     no_writer --> path_state
     no_writer --> path_work
     path_coordination -.-> proc_aew
@@ -94,6 +97,7 @@ flowchart LR
     path_pricing -.-> no_reader
     path_project_yaml -.-> no_reader
     path_records -.-> no_reader
+    path_reports -.-> no_reader
     path_state -.-> no_reader
     path_work -.-> no_reader
 ```
@@ -107,6 +111,7 @@ flowchart LR
 | `aew (worker run)` | non_writer | the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, `check run` and `submit` go through the run's bridge, whose supervisor holds the credential and the lock; nothing else in that process may take the lock |
 | `aew dashboard serve` | non_writer | the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock |
 | `aew lead mcp` | non_writer | the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential |
+| `aew read` | non_writer | the operator's outage reader uses the committed store without a lock, recovery or a running service |
 | `aew.harness.supervisor` | store_writer | a run's supervisor: holds the run's credential and commits through the engine |
 | `aew.kit.__main__` | store_writer | the operator's seeded kit initializes and maps its own repository |
 | `aew.stg02.server` | non_writer | the STG-02 slice's producer: it reads a project's committed state lock-free (dashboard.reader) and writes only its own state directory, never the store |
@@ -126,6 +131,7 @@ flowchart LR
 | `pricing` | other entries of .aew | - | - | yes | yes |
 | `project.yaml` | other entries of .aew | `aew`, `aew.kit.__main__` | - | - | yes |
 | `records` | other entries of .aew | `aew` | `aew` | yes | yes |
+| `reports` | other entries of .aew | - | - | yes | yes |
 | `roles` | other entries of .aew | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | - | - |
 | `state` | the control store | `aew`, `aew.kit.__main__` | `aew`, `aew.kit.__main__` | yes | yes |
 | `work` | other entries of .aew | `aew` | `aew` | yes | yes |
@@ -147,9 +153,9 @@ The `writers` fact of the `writers` records.
 - `aew.engine.disposition_ops:_unlink`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.reports:Reports.write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.scope_ops:ScopeCorrections._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer

@@ -57,6 +57,7 @@ from vertical.scripted_operator import (
     lead_events,
     lead_spec,
     new_world,
+    settle_tool_offers,
     stage_intents,
     staled_by,
     world_fixtures,
@@ -106,6 +107,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         caches=["__pycache__/", "*.pyc", ".pytest_cache/"])
     res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)
     assert res.returncode == 0, res.stderr
+    settle_tool_offers(op.lab, op.ledger)  # a recorded fixture of setup, never counted (the operator, Q5, 2026-11-26)
 
 
 def open_session(op: Operator, step: str, *, steering: bool = False, credential_path: bool = False):
@@ -118,8 +120,7 @@ def open_session(op: Operator, step: str, *, steering: bool = False, credential_
         op.workaround("reopen" if step == "reopen" else "open",
                       "aew lead acquire; export AEW_LEAD_TOKEN=<credential>; aew opencode", step=step)
         if not op.credential:
-            acquired = op.type(f"{step}:acquire", ["lead", "acquire", "--expect-rev", "0", "--session-label",
-                                                   "operator"])
+            acquired = op.type(f"{step}:acquire", ["lead", "acquire", "--session-label", "operator"])
             assert acquired.returncode == 0, acquired.stderr
             op.credential = acquired.json["token"]
             op.lab.project.token = op.credential
@@ -859,21 +860,11 @@ def raise_steering(op: Operator) -> None:
     adopted action): the operator raises the steering mode to Run at the operator endpoint, a decision, not a
     lifecycle step. The endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed
     back; both terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are
-    real. The endpoint starts with the first raise, and a later raise (after a reopen) uses it again."""
-    from notifier import Console
-
-    from aew.engine.api import Engine
-    from aew.harness import operator_client, operator_endpoint
+    real. The endpoint starts with the first step that needs it (`Operator.endpoint_console`)."""
+    from aew.harness import operator_client
 
     op.workaround("raise", "aew operator serve; aew lead mode raise run, the code typed back")
-    if op.steering_console is None:
-        op.steering_console = Console()
-        endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=op.steering_console, dev=True,
-                                                      timeout=30)
-        endpoint.start()
-        op.closers.append(endpoint.close)
-        op.typed("steering:serve", "aew operator serve --dev")
-    console = op.steering_console
+    console = op.endpoint_console()
     op.typed("steering:raise", "aew lead mode raise run")
     try:
         out = operator_client.request_raise(op.lab.aew_root, "run", ask=lambda prompt: console.code())

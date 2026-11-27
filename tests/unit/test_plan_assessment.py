@@ -225,7 +225,7 @@ def test_a_lead_session_reaches_plan_assess_through_its_typed_route_only():
     assert path not in lead_broker.LEAD_REACHABLE and path in lead_broker.DISPATCHES
     assert not any(p <= path for p in lead_broker.OPERATOR_ONLY)
     assert contract.RESOLVE_CHOICE_PRIMITIVE[("assess_plan", "plan")] == "plan.assess"
-    argv = ["plan", "assess", "T-0001", "--launch", "--expect-rev", "3"]
+    argv = ["plan", "assess", "T-0001", "--launch"]
     from aew.surface import lead_text
 
     refusal = lead_broker.refuses_locally(build_parser().parse_args(argv))

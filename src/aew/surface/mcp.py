@@ -58,8 +58,8 @@ BROKER_UNREACHABLE = -32001  # a server error: the Lead broker could not be reac
 # are expected; any credential, or another bridge's coordinates, is not).
 FORBIDDEN_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT", "AEW_AGENT_KEY", "AEW_INVOCATION",
                  "AEW_RUN", "AEW_WORK_UNIT")
-INSTRUCTIONS = ("The AEW Lead's typed tools. Every result is a StageResult: `revision` is the expect_rev for your next "
-                "mutation, and `projection` says which actions are AVAILABLE, BLOCKED or UNKNOWN and which decisions "
+INSTRUCTIONS = ("The AEW Lead's typed tools. Every result is a StageResult: `revision` orders committed events, and "
+                "`projection` says which actions are AVAILABLE, BLOCKED or UNKNOWN and which decisions "
                 "are yours. Decisions never have a default. A result's text opens with lines for the person; the "
                 "result itself is the JSON on the line after its marker.")
 

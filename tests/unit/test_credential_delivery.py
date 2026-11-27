@@ -28,20 +28,20 @@ def parse(*argv: str) -> argparse.Namespace:
     return build_parser().parse_args(list(argv))
 
 
-@pytest.mark.parametrize("argv", [["lead", "acquire", "--expect-rev", "0"],
-                                  ["lead", "takeover", "--expect-rev", "0", "--reason", "x"],
-                                  ["lead", "handoff", "offer", "--expect-rev", "0"],
-                                  ["lead", "handoff", "accept", "--offer", "o", "--expect-rev", "0"],
-                                  ["work", "assign", "T-0001", "--expect-rev", "0"],
-                                  ["work", "dispatch", "T-0001", "--expect-rev", "0"],
-                                  ["invoke", "create", "T-0001", "--expect-rev", "0"],
+@pytest.mark.parametrize("argv", [["lead", "acquire", ],
+                                  ["lead", "takeover", "--reason", "x"],
+                                  ["lead", "handoff", "offer", ],
+                                  ["lead", "handoff", "accept", "--offer", "o", ],
+                                  ["work", "assign", "T-0001", ],
+                                  ["work", "dispatch", "T-0001", ],
+                                  ["invoke", "create", "T-0001", ],
                                   ["dashboard", "serve"], ["dashboard", "open"]])
 def test_every_command_that_issues_a_credential_is_known(argv):
     assert credentials.issues_credential(parse(*argv))
 
 
 @pytest.mark.parametrize("argv", [["status"], ["lead", "show"], ["work", "dispatch", "T-0001", "--launch",
-                                                                 "--expect-rev", "0"], ["dashboard", "status"]])
+                                                                 ], ["dashboard", "status"]])
 def test_commands_that_issue_none_are_not(argv):
     assert not credentials.issues_credential(parse(*argv))
 
@@ -63,26 +63,26 @@ def test_a_session_url_is_delivered_like_a_token(monkeypatch):
 def test_with_no_terminal_a_credential_command_is_refused_before_it_runs(monkeypatch):
     monkeypatch.setattr(credentials, "_open_terminal", lambda: None)
     with pytest.raises(errors.UsageError, match="your terminal"):
-        credentials.before(parse("lead", "acquire", "--expect-rev", "0"))
-    credentials.before(parse("--print-credential", "lead", "acquire", "--expect-rev", "0"))  # a script opted in
+        credentials.before(parse("lead", "acquire"))
+    credentials.before(parse("--print-credential", "lead", "acquire"))  # a script opted in
     credentials.before(parse("status"))  # issues nothing
 
 
 def test_the_credential_goes_to_the_terminal_and_stdout_says_so(monkeypatch):
     term = Terminal()
     monkeypatch.setattr(credentials, "_open_terminal", lambda: term)
-    args = parse("lead", "acquire", "--expect-rev", "0")
+    args = parse("lead", "acquire")
     out = credentials.deliver({"ok": True, "token": CRED, "generation": 1}, args)
     assert out == {"ok": True, "token": credentials.WRITTEN, "generation": 1}
     assert f"token: {CRED}" in term.getvalue()
     inv = credentials.deliver({"invocation": "INV-0001", "invocation_token": CRED},
-                              parse("work", "assign", "T-0001", "--expect-rev", "0"))
+                              parse("work", "assign", "T-0001"))
     assert inv["invocation_token"] == credentials.WRITTEN
 
 
 def test_print_credential_leaves_it_on_stdout(monkeypatch):
     monkeypatch.setattr(credentials, "_open_terminal", lambda: pytest.fail("no terminal write with the flag"))
-    args = parse("--print-credential", "lead", "acquire", "--expect-rev", "0")
+    args = parse("--print-credential", "lead", "acquire")
     assert credentials.deliver({"token": CRED}, args) == {"token": CRED}
 
 

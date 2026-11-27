@@ -9,9 +9,10 @@ Lead broker), and its shell commands run in the TUI's own environment.
 
 1. Read the projection (``status``; ``resume`` once at the start of a session, as its tool description says).
 2. If ``decisions_required`` holds a decision the projection gives to the operator, or one whose ``owner`` is not
-   stated (every one today), ask the operator and wait for the reply. One whose owner is exactly ``lead`` or
-   ``mechanical``, the Lead takes itself and never asks (spec v2: ``decisions_required`` counts operator-owned
-   decisions only). Any other stated owner is asked too, and recorded as ``unknown_owner``.
+   stated (the projection states each one's since register E335), ask the operator and wait for the reply. One
+   whose owner is exactly ``lead`` or ``mechanical``, the Lead takes itself and never asks (spec v2:
+   ``decisions_required`` counts operator-owned decisions only). Any other stated owner is asked too, and recorded
+   as ``unknown_owner``.
 3. Otherwise call the single AVAILABLE action with exactly the arguments the projection supplied. The projection marks
    no action as next today, so a single AVAILABLE action is taken as the next one; when several are AVAILABLE,
    ``ambiguous_next_action`` is recorded and the first in order is taken.
@@ -20,8 +21,9 @@ Lead broker), and its shell commands run in the TUI's own environment.
 **Judgment inputs** (spec v2): where an action, or a decision the projection gives to the Lead or the mechanism,
 names ``judgment_inputs``, the Lead supplies them, its own judgment, with nothing asked (never on the operator's
 decisions, whose choice is the operator's): a value the projection offers (or the first of its ``options``) goes
-into the call's arguments, and the names it carries are recorded. Today's projection names none; projection v2 (A1)
-does.
+into the call's arguments, an input offered with neither (a rationale) the Lead writes in its own words, and the
+names it carries are recorded. The projection names them on a decision whose call needs them (register E388), and
+projection v2 (A1) on its actions.
 
 **Where the policy cannot make progress it falls back, and every fallback is counted** (the ledger classifies each
 call this driver reports; nothing it does goes unreported). The fallbacks are scripted per known gap, so the run
@@ -31,8 +33,8 @@ finishes; they are the only place AEW knowledge appears here:
   a tool the projection did not offer (``guessed_commands``), with its own proposition and plan (its judgement);
 - ``plan_not_accepted``: no decision asks for the proposed plan's approval, so the Lead asks the operator anyway,
   then accepts it from its shell (``shell_aew_calls``), the way the quickstart's ``plan accept`` does;
-- ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell; for
-  ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
+- ``decision_without_tool``: a decision with no typed tool, whoever owns it, runs its ``cli_fallback`` from the
+  shell; for ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
 - ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
   - ``hint_command``: the command a projection hint names, run from the shell with its placeholders filled
     (``vertical.hints``: the revision, the subject, a reason), and ``--launch`` added once a refusal asks for it (each a
@@ -53,8 +55,16 @@ finishes; they are the only place AEW knowledge appears here:
 - ``stuck``: anything else: the Lead tells the operator it is stuck and waits; whatever the operator says next (for
   example after a workaround of their own), it goes on.
 
-**With steering on**, an action the projection marks ``auto_runnable`` is the loop's: the Lead waits for an event
-(the revision moves, or the loop records a stop) and pushes it itself, counted, only when the loop declined.
+**With steering on** (vertical-uat.md, §2 and §3 "Steering on"):
+
+- a wait the projection marks ``woken`` (a broker posts wakes) ends the Lead's turn instead of being called: the next
+  turn starts when a wake reaches the TUI's session on the Lead's server (:class:`WakeChannel`) or the operator says
+  something (the operator's answer to the V-01 burn-down's Q1). Past ``WAKE_WAIT_S`` with neither, the wake is
+  missing: recorded, and the Lead calls the wait itself, counted;
+- an action the projection marks ``auto_runnable`` is the loop's: the Lead waits for an event (the revision moves, or
+  the loop records a stop) and pushes it itself, counted, only when the loop declined. A BLOCKED stop, which the loop
+  does not keep for the Lead (``steering_loop.LEAD_ONLY``), is a decline only when its blocker is still present after
+  the run ends (the operator's answer to the burn-down's Q10): until then the Lead waits on (:meth:`Lead.loop_acts`).
 
 Events go to ``events`` (JSON lines), the Lead's own accounting: with a scripted Lead it is the ground truth for its
 calls (spec §4, ``shell_aew_calls``).
@@ -71,12 +81,18 @@ import subprocess
 import sys
 import threading
 import time
+from base64 import b64encode
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import bounds
 import childdiag
 
+from aew.harness import steering_loop as LOOP
+from aew.harness.contract import LIVE_RUNS
+from aew.surface.contract import WAIT
 from vertical.chat import Gone, Mailbox
 from vertical.hints import NotFollowable, fill_hint, is_usage_error, parse_failed
 from vertical.ledger import OPERATOR_OWNER, SELF_OWNERS
@@ -86,6 +102,9 @@ NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 # innermost wait fails first and names itself (the hang-and-flake diagnosis plan, G3 H5).
 LOOP_WAIT_S = bounds.declare("vertical.loop_wait", 120, within="vertical.conversation", lanes={"vertical"},
                              why="the Lead's wait for the steering loop's event, inside the operator's wait for it")
+WAKE_WAIT_S = bounds.declare("vertical.wake_wait", 300, within="vertical.conversation", lanes={"vertical"},
+                             why="the Lead's ended turn, until a wake or the operator arrives: past it the wake is "
+                                 "missing, and the Lead calls the wait itself, counted")
 POLL_S = 0.25
 TERMINAL = frozenset({"DONE", "CANCELLED"})
 AVAILABLE = "AVAILABLE"
@@ -99,10 +118,62 @@ MCP_ENDED = "the aew-lead MCP server ended"
 PROGRESS = ("REVIEW", "VERIFY", "COMMIT_READY", "RUNNING", "READY", "DONE")
 
 
+class WakeChannel:
+    """How the fake TUI hears a wake: like OpenCode's TUI it holds a session on the Lead's server (``--server``), and
+    the broker posts each wake there as a prompt (``aew.harness.opencode.lead_wake``). Every prompt in the session that
+    the Lead has not seen is a wake: the operator's own lines reach the Lead through the chat, never the server.
+
+    The server's password is the TUI's (it removes it from the environment its model's shell gets), and the server's
+    loopback address is reached directly, never through a proxy the environment names."""
+
+    def __init__(self, url: str, password: str) -> None:
+        where = urlsplit(url)
+        if where.scheme != "http" or where.hostname is None or where.port is None:
+            raise ValueError(f"the Lead's server is not at a local http address: {url!r}")
+        self.host, self.port = where.hostname, where.port
+        self.auth = "Basic " + b64encode(f"opencode:{password}".encode()).decode()
+        self.session: str | None = None
+        self.seen: set[str] = set()
+
+    def _call(self, method: str, path: str, body: Any = None) -> Any:
+        connection = HTTPConnection(self.host, self.port, timeout=10)
+        try:
+            connection.request(method, path, body=None if body is None else json.dumps(body).encode("utf-8"),
+                               headers={"Authorization": self.auth, "Content-Type": "application/json"})
+            reply = connection.getresponse()
+            raw = reply.read()
+        finally:
+            connection.close()
+        if reply.status >= 400:
+            raise OSError(f"{method} {path}: HTTP {reply.status}: {raw[:200]!r}")
+        found = json.loads(raw) if raw else None
+        return found.get("data") if isinstance(found, dict) and "data" in found else found
+
+    def open(self) -> str:
+        """The TUI's session on the Lead's server, where the broker's wakes land."""
+        self.session = str(self._call("POST", "/api/session", {"title": "vertical lead"})["id"])
+        return self.session
+
+    def news(self) -> list[str]:
+        """The ids of the wakes posted to the session since the last look, delivered or still in its inbox."""
+        if self.session is None:
+            return []
+        found = [*(self._call("GET", f"/api/session/{self.session}/inbox") or []),
+                 *(self._call("GET", f"/api/session/{self.session}/message") or [])]
+        fresh = [str(m["id"]) for m in found if isinstance(m, dict) and m.get("id") and m.get("type") == "user"
+                 and str(m["id"]) not in self.seen]
+        fresh = list(dict.fromkeys(fresh))
+        self.seen.update(fresh)
+        return fresh
+
+
 class Lead:
-    def __init__(self, spec: dict[str, Any]) -> None:
+    def __init__(self, spec: dict[str, Any], *, server: tuple[str, str] | None = None) -> None:
         self.spec = spec
         self.steering = bool(spec.get("steering"))
+        # The wake channel: steering on only, where a wait the projection marks `woken` ends the Lead's turn.
+        self.lead_server = server if self.steering else None
+        self.wakes: WakeChannel | None = None
         self.events_path = Path(spec["events"])
         self.lock = threading.Lock()
         self.chat = Mailbox(Path(spec["chat"]), "lead", on_error=self._read_error)
@@ -117,6 +188,7 @@ class Lead:
         self.reports: dict[str, str] = {}
         self.last_state: str | None = None
         self.last_projection: dict[str, Any] | None = None
+        self.last_text: str | None = None  # the last result's readable text, as OpenCode shows it (MCP content)
         self.last_out: dict[str, Any] | None = None
         self.last_refusal = ""  # the last refusal a hint's command met
 
@@ -252,6 +324,7 @@ class Lead:
                                                    or {"code": err.get("code"), "message": err.get("message")}})
             return {"ok": False, "projection": None, "result": None, "stopped": {"error": err}}
         out = reply["result"]["structuredContent"]
+        self.last_text = _text(reply["result"])
         stopped = out.get("stopped")
         if out.get("projection"):
             self.last_projection = out["projection"]
@@ -308,9 +381,16 @@ class Lead:
         goes silent past its bound."""
         Path(self.spec["pidfile"]).write_text(str(os.getpid()), encoding="utf-8")
         self.tools = self.start_mcp()
+        if self.lead_server is not None:
+            try:
+                wakes = WakeChannel(*self.lead_server)
+                self.event("wake_channel", session=wakes.open())
+                self.wakes = wakes
+            except (OSError, ValueError, KeyError, TypeError) as exc:  # recorded: its waits are then called, counted
+                self.event("wake_channel", error=f"{type(exc).__name__}: {exc}"[:300])
         threading.Thread(target=self._listen, daemon=True, name="vertical-chat").start()
         resumed = self.call("resume", {})
-        self.say("status", words=_words(resumed.get("result")), session="started")
+        self.say("status", words=_words(self.last_text), session="started")
         self.subject = _open_ticket(resumed.get("result"))
         self.request = str(self.hear().get("text", ""))  # the operator's first line
         self.event("heard", text=self.request)
@@ -357,32 +437,110 @@ class Lead:
             self.event("ambiguous", available=[a["action"] for a in offered])
         if offered:
             a = offered[0]
+            if self.steering and a.get("kind") == WAIT and a.get("woken"):
+                return self.end_turn(a)
             if self.steering and a.get("auto_runnable") and self.loop_acts(proj):
                 return True  # the loop did it: nothing for the Lead to push
-            mechanical = a.get("kind") == "wait" or bool(a.get("auto_runnable"))
-            self.call(a["action"], self.judged(a, a["arguments"]), offered=True, mechanical=mechanical)
-            return True
+            return self.push(a)
         return self.gap(out, proj)
+
+    def push(self, a: dict[str, Any]) -> bool:
+        """Call an offered action with the projection's arguments. A wait, or a step the loop could run, is a
+        mechanical call (``mechanical_calls``: steering on, it is held to 0)."""
+        mechanical = a.get("kind") == WAIT or bool(a.get("auto_runnable"))
+        self.call(a["action"], self.judged(a, a["arguments"]), offered=True, mechanical=mechanical)
+        return True
+
+    def end_turn(self, a: dict[str, Any]) -> bool:
+        """Steering on, a wait the projection marks ``woken``: a broker posts wakes, so the Lead ends its turn instead
+        of calling the wait (vertical-uat.md §2; the operator's answer to the V-01 burn-down's Q1). Its next turn
+        starts when a wake reaches its session or the operator says something. With no wake channel, or past
+        ``WAKE_WAIT_S`` with neither, it records why and calls the wait itself, counted as before."""
+        if self.wakes is None:
+            self.event("wake_unheard", action=a["action"], why="the TUI holds no session on the Lead's server")
+            return self.push(a)
+        self.event("turn_ended", action=a["action"], arguments=a.get("arguments"))
+        self.doing("turn_ended", action=a["action"])
+        deadline = time.monotonic() + WAKE_WAIT_S
+        failed: str | None = None
+        while time.monotonic() < deadline:
+            try:
+                news = self.wakes.news()
+            except (OSError, ValueError) as exc:  # the server did not answer: looked at again within the bound
+                error = f"{type(exc).__name__}: {exc}"[:300]
+                if error != failed:  # each new error once, as loop_acts records each new reading
+                    self.event("wake_read_error", error=error)
+                    failed = error
+                news = []
+            if news:
+                self.event("woken", wakes=news)
+                self.doing("working")
+                return True
+            try:
+                msg = self.inbox.get(timeout=POLL_S)
+            except queue.Empty:
+                continue
+            self.event("heard", text=str(msg.get("text", "")))
+            self.doing("working")
+            return True
+        self.event("wake_missed", action=a["action"], why=f"no wake and no operator line within {WAKE_WAIT_S:.0f}s")
+        return self.push(a)
 
     def loop_acts(self, proj: dict[str, Any]) -> bool:
         """Steering on: an action the projection marks ``auto_runnable`` is the loop's to run. The Lead waits for an
         event: the revision moves (the loop acted: True), or the loop has recorded a stop at this projection's revision
-        or later (it will not act: False, and the Lead pushes it, counted; the stop's code is recorded). A stop recorded
-        before the Lead looked counts too, so the bound only covers a loop that is genuinely silent."""
+        or later that declines it (it will not act: False, and the Lead pushes it, counted; the stop's code is
+        recorded). A stop recorded before the Lead looked counts too, so the bound only covers a loop that is genuinely
+        silent.
+
+        A BLOCKED stop is a decline only when its blocker is still present after the run ends (vertical-uat.md §3,
+        "Steering on"; the operator's answer to the V-01 burn-down's Q10). The loop keeps BLOCKED out of the stops
+        only the Lead can clear (``steering_loop.LEAD_ONLY``): it can clear on its own, and the loop then acts. So the
+        Lead reads it with the loop's own selection (:meth:`loop_reads`) and declines only once that reading has
+        stood, with no live run, for one of the loop's own looks (``steering_loop.COARSE_S``, the longest the loop
+        goes without re-projecting): a blocker the run's end clears is the loop's to act on, and the Lead's push
+        after it would be a mechanical call. Each new reading is recorded (``loop_blocked``), never counted."""
         rev = int(proj.get("revision") or 0)
         deadline = time.monotonic() + LOOP_WAIT_S
+        told: tuple[Any, ...] | None = None
+        reading: dict[str, Any] | None = None
+        standing: float | None = None  # when the Lead first read the blocker standing with no live run
         while time.monotonic() < deadline:
             out = self.call("status", {})
             loop = _loop(out.get("result"))
-            if (out.get("projection") or {}).get("revision") != rev:
+            project = out.get("projection") or {}
+            if project.get("revision") != rev:
                 return True
             stop = loop.get("stop") or {}
             if loop.get("status") != "running" and int(stop.get("revision") or -1) >= rev:
-                self.event("loop_declined", stop=stop)
-                return False
+                if stop.get("code") != LOOP.BLOCKED:
+                    self.event("loop_declined", stop=stop)
+                    return False
+                reading = self.loop_reads(project)
+                standing = (standing or time.monotonic()) if reading["stands"] else None
+                if standing is not None and time.monotonic() - standing >= LOOP.COARSE_S:
+                    self.event("loop_declined", stop=stop, now=reading)
+                    return False
+                if (stop.get("at"), stop.get("condition"), reading) != told:
+                    self.event("loop_blocked", stop=stop, now=reading)
+                    told = (stop.get("at"), stop.get("condition"), reading)
             time.sleep(POLL_S)
-        self.event("loop_declined", stop=None, why=f"no loop event within {LOOP_WAIT_S:.0f}s")
+        self.event("loop_declined", stop=None, why=f"no loop event within {LOOP_WAIT_S:.0f}s", now=reading)
         return False
+
+    def loop_reads(self, project: dict[str, Any]) -> dict[str, Any]:
+        """What the loop's own selection (``steering_loop.select``) makes of what the Lead reads now: the project and
+        the Lead's Ticket, which in the vertical are every live unit. ``stands`` when it still stops, and is not a
+        BLOCKED stop whose subject's run is still live (that blocker can clear when the run ends). A run is live by its
+        status in the projection's ``runs``, as the harness contract owns it (``LIVE_RUNS``), never by the wait the
+        projection offers for it (review of #627, m3)."""
+        units = [self.call("status", {"work_id": self.subject}).get("projection") or {}] if self.subject else []
+        picked = LOOP.select(project, units)
+        if not isinstance(picked, LOOP.Stop):
+            return {"action": picked.action.get("action"), "stands": False}  # the loop acts on its next look
+        live = any(r.get("status") in LIVE_RUNS for u in units for r in u.get("runs") or [])
+        return {"code": picked.code, "message": picked.message, "run_live": live,
+                "stands": picked.code != LOOP.BLOCKED or not live}
 
     def decide(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         asked = ("decision", d["decision"], tuple(d.get("evidence") or []))
@@ -405,6 +563,11 @@ class Lead:
             # (judgment inputs are the Lead's, for actions and its own decisions only; review of #213, F3).
             self.call(d["tool"], d["arguments"], offered=True)
             return True
+        return self.without_tool(d)
+
+    def without_tool(self, d: dict[str, Any]) -> bool:
+        """A decision, whoever owns it, with no typed call: its ``cli_fallback`` from the shell, counted, when it is
+        concrete (the gap ``decision_without_tool``), else stuck."""
         cli = list(d.get("cli_fallback") or [])
         if d["decision"] == "RECONCILE" and "<phase>" in cli:
             # The known gap: an INTERRUPTED Ticket is reconciled to the phase it was interrupted from, with a reason,
@@ -421,9 +584,10 @@ class Lead:
 
     def judged(self, item: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
         """The call's arguments with the Lead's own judgments supplied where the projection names ``judgment_inputs``
-        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first);
-        it fills only what the projection's arguments leave out. A list names the judgments the complete arguments
-        carry. Either way the names are recorded as the Lead's, never asked of the operator."""
+        (spec v2). A mapping offers a value per argument (or ``options`` to choose from: the Lead takes the first, or
+        neither, a field's schema such as a decision's ``rationale``: the Lead writes it, register E388); it fills
+        only what the projection's arguments leave out. A list names the judgments the complete arguments carry.
+        Either way the names are recorded as the Lead's, never asked of the operator."""
         inputs = item.get("judgment_inputs")
         if not inputs:
             return arguments
@@ -434,6 +598,8 @@ class Lead:
                     offer = offer["options"][0]
                 elif isinstance(offer, dict) and "value" in offer:
                     offer = offer["value"]
+                elif isinstance(offer, dict):  # nothing offered: the Lead's own words
+                    offer = f"the Lead's judgment: {name} for {item.get('subject') or self.subject}, from its evidence"
                 out.setdefault(str(name), offer)
         self.event("judgment", tool=item.get("action") or item.get("tool"),
                    inputs=sorted(map(str, inputs)) if isinstance(inputs, (dict, list)) else inputs)
@@ -450,7 +616,7 @@ class Lead:
         if d.get("tool") and d.get("arguments") is not None and d["tool"] in self.tools:
             self.call(d["tool"], self.judged(d, d["arguments"]), offered=True)
             return True
-        return self.stuck(f"decision {d.get('decision')} is the {d.get('owner')}'s and offers no typed call")
+        return self.without_tool(d)
 
     def decision_refused(self, d: dict[str, Any], proj: dict[str, Any]) -> bool:
         """A decision still required after its answer was acted on (its call refused): one ``explain``, then its
@@ -460,13 +626,14 @@ class Lead:
         self.seen[rung] = step + 1
         if step == 0:
             self.event("gap", gap="decision_refused", decision=d["decision"])
-            self.call("explain", {"work_id": self.subject}, why=f"decision {d['decision']} still required")
+            self.call("work_show", {"explain": True, "work_id": self.subject},
+                      why=f"decision {d['decision']} still required")
             return True
         cli = list(d.get("cli_fallback") or [])
         if step == 1 and d["decision"] == "RESOLVE_STAGE":
             # The known gap: an unfinished stage (often the steering loop's, or one a lost session left) whose typed
             # call lacks the choice and rationale. The Lead continues it with its own rationale, from the shell, as
-            # the decision's command names (`aew stage <continue|abandon> <intent> --rationale <why> --expect-rev <r>`).
+            # the decision's command names (`aew stage continue <intent> --rationale <why> --approval-digest <shown>`).
             self.event("gap", gap="resolve_stage", why="the stage's typed resolution was refused; its command needs a "
                                                         "choice and a rationale")
             cli = [("continue" if x == "<continue|abandon>" else
@@ -486,10 +653,10 @@ class Lead:
         message = str(error.get("message") or "")
         if argv[:2] == ["stage", "continue"] and "abandon" in message.lower():
             self.event("gap", gap="refusal_names_a_step", why=message[:300], code=error.get("code"))
-            rev = self.call("status", {"work_id": self.subject}).get("revision")
+            self.call("status", {"work_id": self.subject})
             self.shell(["stage", "abandon", argv[2], "--rationale",
-                        "the refusal says the stage's subject moved: abandon it and decide anew from the projection",
-                        "--expect-rev", str(rev)], why="the refusal names abandon as the step to take")
+                        "the refusal says the stage's subject moved: abandon it and decide anew from the projection"],
+                       why="the refusal names abandon as the step to take")
 
     # ------------------------------------------------------------------ the counted fallbacks
 
@@ -499,8 +666,7 @@ class Lead:
         self.seen[("no_ticket",)] = 1
         self.event("gap", gap="no_ticket", why="the project's projection offers no action for the operator's request")
         draft = dict(self.spec["draft"])
-        args = {"expect_rev": proj.get("revision"), **draft}
-        out = self.call("ticket_draft", args, why="no_ticket")
+        out = self.call("ticket_draft", draft, why="no_ticket")
         found = (out.get("projection") or {}).get("subject")
         if out.get("ok") and found and found != "project":
             self.subject = found
@@ -518,7 +684,7 @@ class Lead:
             return self.gap_plan(proposed[-1], proj)
         if self.seen[key] == 1:
             self.event("gap", gap="no_available_action", why="no decision and no AVAILABLE action")
-            self.call("explain", {"work_id": self.subject}, why="no AVAILABLE action")
+            self.call("work_show", {"explain": True, "work_id": self.subject}, why="no AVAILABLE action")
             return True
         hinted = self.hinted_command(proj)
         if hinted is not None and self.seen[key] == 2:
@@ -545,7 +711,7 @@ class Lead:
         (``fill_hint``), and ``--launch`` once a refusal asks for it (each a counted call). A hint the Lead cannot
         complete runs nothing and is recorded; the next read goes on to whatever else the policy has, or stuck."""
         try:
-            argv = fill_hint(hint, self.subject, proj.get("revision"))
+            argv = fill_hint(hint, self.subject)
         except NotFollowable as exc:
             self.event("gap", gap="hint_not_followable", why=str(exc), hint=hint)
             return True
@@ -555,12 +721,8 @@ class Lead:
             return True
         error = out.get("error") or {}
         message = str(error.get("message") or "")
-        if "unrecognized arguments: --expect-rev" in message:  # a read command takes none
-            self.hint_retry(argv[:-2], why="hint_command: the usage error refused --expect-rev")
-        elif "--launch" in message and not parse_failed(error):
-            rev = self.call("status", {"work_id": self.subject}).get("revision")
-            self.hint_retry([*argv[:-2], "--launch", "--expect-rev", str(rev)],
-                            why="hint_command: the refusal asked for --launch")
+        if "--launch" in message and not parse_failed(error):
+            self.hint_retry([*argv, "--launch"], why="hint_command: the refusal asked for --launch")
         elif is_usage_error(error):
             self.hint_usage_error(argv, error)
         else:
@@ -588,12 +750,11 @@ class Lead:
         self.seen[("redispatch",)] = 1
         self.last_refusal = ""
         self.event("gap", gap="redispatch", why="no active implementer invocation, and nothing offered")
-        rev = str(proj.get("revision"))
         if unit.get("mutating", True):
-            argv = ["invoke", "create", str(self.subject), "--role", "implementer", "--launch", "--expect-rev", rev]
+            argv = ["invoke", "create", str(self.subject), "--role", "implementer", "--launch"]
         else:
             argv = ["work", "redispatch", str(self.subject), "--reason", "the interrupted attempt is gone",
-                    "--launch", "--expect-rev", rev]
+                    "--launch"]
         self.shell(argv, why="redispatch: a new attempt after the interrupted one")
         return True
 
@@ -609,7 +770,7 @@ class Lead:
                           detail={"decision": None, "gap": "publish_not_offered", "tool": "integration_publish"})
         if not answer.lower().startswith(("y", "approve", "ok", "go")):
             return self.stuck("the operator did not approve the publish")
-        args = {"expect_rev": proj.get("revision"), "work_id": self.subject, "prepared_candidate": candidate,
+        args = {"work_id": self.subject, "prepared_candidate": candidate,
                 **({"verification_evidence": report} if report else {})}
         self.call("integration_publish", args, why="publish_not_offered")
         return True
@@ -622,8 +783,11 @@ class Lead:
                           detail={"decision": None, "gap": "plan_not_accepted", "tool": "aew plan accept (shell)"})
         if not answer.lower().startswith(("y", "approve", "ok")):
             return self.stuck("the operator did not approve the plan")
-        self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--expect-rev",
-                    str(proj.get("revision"))], why="plan_not_accepted")
+        binding = plan.get("sha256")
+        if not binding:
+            return self.stuck("the proposed plan's digest was not shown")
+        self.shell(["plan", "accept", str(self.subject), "--revision", str(number), "--approval-digest", binding],
+                   why="plan_not_accepted")
         return True
 
     def stuck(self, why: str) -> bool:
@@ -707,12 +871,22 @@ def _open_ticket(result: Any) -> str | None:
     return None
 
 
-def _words(result: Any) -> str | None:
-    """What the resume says in words, if it says anything that is not a data field (a headline or a summary)."""
-    for key in ("headline", "summary", "message", "where_things_stand"):
-        if isinstance((result or {}).get(key), str):
-            return result[key]
-    return None
+def _text(result: Any) -> str | None:
+    """A tool result's text, what OpenCode shows the person and its model reads (the MCP ``content``'s text blocks),
+    never ``structuredContent``."""
+    blocks = [b.get("text") for b in (result or {}).get("content") or []
+              if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+    return "\n".join(blocks) if blocks else None
+
+
+def _words(text: str | None) -> str | None:
+    """What the result says in words, as a person reads it: the text's first paragraph (up to its first blank line),
+    which the data it carries for a model follows. None when it has none (V-01 re-measure of 2026-11-26, C8).
+
+    The cut is the blank line ``readable.render`` puts before its JSON marker, pinned by the unit test against
+    ``readable.JSON_MARKER``. A readable body that ever held a blank line of its own would end the words there."""
+    head = (text or "").split("\n\n", 1)[0].strip()
+    return head or None
 
 
 def _append(path: Path, line: str) -> None:
@@ -766,12 +940,13 @@ def recorded(lead: Lead) -> childdiag.DeathHook:
     return hook
 
 
-def main(spec_path: Path) -> int:
+def main(spec_path: Path, *, server: tuple[str, str] | None = None) -> int:
     """The scripted Lead's session. Nothing ends it without a record (review of #213, H2): an exception in its main
     thread is recorded as ``lead_error`` with the step it was on and whose fault it is, then the session ends; a
-    thread that dies (the uncaught-exception hook) is recorded as ``thread_died``. Both through ``childdiag.died``."""
+    thread that dies (the uncaught-exception hook) is recorded as ``thread_died``. Both through ``childdiag.died``.
+    ``server``: the Lead's server, its address and password, as the TUI was given them (its wake channel)."""
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    lead = Lead(spec)
+    lead = Lead(spec, server=server)
     forget = childdiag.on_death(recorded(lead))
     try:
         lead.run()

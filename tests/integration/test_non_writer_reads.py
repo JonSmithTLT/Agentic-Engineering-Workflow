@@ -305,7 +305,7 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     assign(p, wid)
-    rev = p.rev()  # a read in this process, a writer: before the lock goes, or it would create it again itself
+    p.rev()  # a read in this process, a writer: before the lock goes, or it would create it again itself
     lock = p.root / ".aew" / LOCK_REL
     lock.unlink()  # a locked read or a session would create it again
     packs = p.root / ".aew" / "local" / "packs"
@@ -318,7 +318,7 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
         assert res.returncode == 0, (args, res.stderr)
     assert worker_surface.changes(before, worker_surface.snapshot(p.root / ".aew")) == []  # no pack, no lock
     mutation = run_aew("-C", str(p.root), "work", "create", "ticket", "--title", "x", "--class", "1",
-                       "--expect-rev", str(rev), env={**(env or {}), "AEW_LEAD_TOKEN": p.token})
+                       env={**(env or {}), "AEW_LEAD_TOKEN": p.token})
     assert mutation.error["code"] == "PERMISSION_DENIED", mutation.stderr
     assert mutation.error["details"]["reason"] == "non_writer_process"
     whoami = run_aew("-C", str(p.root), "whoami", env=env)  # to the bridge, which is not there: never the store

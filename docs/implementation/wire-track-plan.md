@@ -1,39 +1,83 @@
 # The wire track: a build plan (STG-14 / I-6 first, then the rest of the wire V-01 needs)
 
-- **Status:** Draft for the operator's discussion (2026-11-27); not approved; nothing is built until the operator
-  returns and the designer's session has answered.
+- **Status:** Draft for the operator's discussion (2026-11-27); not approved. Nothing lands, W0 included, before the
+  operator has discussed it on their return home (the operator's words are quoted in the next section). That the
+  designer's end-of-week session should also have answered first is the Lead's framing, not the operator's words.
 - **In the repository:** committed as a draft so that the operator, the designer and the builders discuss one text.
   - It decides nothing. Each question in §7 and §9 is the operator's or the designer's.
   - It changes no register row, board entry or threshold. Those changes are W0's (§6) and the later PRs'.
   - Requirement IDs appear only as IDs (AGENTS.md §7).
-- **Read at:** `origin/main` `2db9b762` (#596, E329's scoped bindings). Citations were re-checked at `57f150d9`
-  (#631), which added only register notes. Citations in Appendix A are at `eece01e5`.
+- **Read at:** `origin/main` `2db9b762` (#596, E329's scoped bindings). Citations in §1 to §10 were re-checked at
+  `33236ab4` (#622), the base of revision 4, and are given at that commit. Citations in Appendix A are at `eece01e5`,
+  except where a line names `33236ab4`.
 
-## The operator's rulings of 2026-11-27, as given
+## The operator's words of 2026-11-27, and the author's reading of them
 
-Relayed to the plan's author on 2026-11-27, and quoted as given:
-- "start wave 1; build on O-01 0.9's envelope admitting 0.8's 42; lift E181's "after I-6" as long as it does not
-  depend on wire work; WIP allowance and batched G3 reinstalls OK."
-- The hard constraint: "live UAT at the end of this week — nothing may change behaviour the operator or Lead uses
-  before then (commands, refusal codes, defaults, effective modes, what launches read, G3 consent content, Lead-facing
-  text, vertical counts)."
-- Later the same day: "the wire track is a major change and will NOT start building until the operator is back at
-  their dev environment (about 3-4 days) and the designer's session has answered."
+This section quotes the operator verbatim (times UTC, typing as given). Everything under "The author's reading" is
+proposed, to be confirmed with the operator at the discussion. None of it is a ruling, and W0 records none of it until
+the operator confirms it.
 
-**What follows from them:**
-- **Timing:** wave 1 (§6) is ready to start on the operator's return, after the designer's session. Only W0, a
-  docs-only PR, can land before then.
+**The five questions the Lead put to the operator** (2026-11-27, about 03:43):
+1. Start the first wave (W0, A1, F1, F2, B1, C1, D1), with a fresh review of the plan first?
+2. Wire target: build on O-01 0.9's envelope while admitting 0.8's 42 actions?
+3. E181 (the D-01 production reads) is placed after I-6; lift that so it runs now in its own lane?
+4. Board work-in-progress allowance: the board is at 10 of its 12-system limit; starting SYS-29, SYS-46 and E181's
+   system takes it to 12–13.
+5. G3 reinstalls: A3 changes the G3 wire version, so every host needs a reinstall (the operator's act); batch it with
+   the designer's owner-list change if timing lines up.
+
+**The operator's answers, verbatim:**
+- 03:56: "1 and 2 yup thats my understanding. That makes sense as long as it isnt dependent on wire work.  Most of the
+  others seem fine as a side effect. Do you think we have enough work to get this work started without making arw
+  unoperational for the uat?"
+- 04:08: "No im wondering if this is somwthing that should be planned but wait until inget back to my dev env because
+  this seems to be a MAJOR change?"
+- 04:09: "Yup keep going with yhe plan that definetly has value its just going to be put into aew plans sk we can
+  discuss it when I get back home"
+- 04:14: "Yes hold W0, fix C4 now"
+
+**Earlier words that set the timing:**
+- 2026-11-25 04:52: "Yup the actual.testing will be done in bulk at the end of the week when I get back home and can
+  access my dev env again"
+- 2026-11-26 09:39: "It'll be roughly.3 or 4 days from now."
+
+**The author's reading, to be confirmed with the operator:**
+- **Item 1 (start wave 1):** "1 and 2 yup" reads as yes at 03:56. The messages of 04:08 and 04:09 then put the work
+  into a plan to be discussed "when I get back home", which the author reads as superseding "start wave 1". The
+  operator held W0 at 04:14 ("Yes hold W0"). So nothing lands, W0 included, before the discussion.
+- **Item 2 (the wire target):** read as yes: 0.9's envelope, with 0.8's 42 admitted.
+- **Item 3 (E181's lift):** read as yes, on the condition "as long as it isnt dependent on wire work". **Ambiguity 1:**
+  the message does not say which item that condition qualifies. It may qualify item 3 (the lift), or items 1 and 2.
+  This plan assumes item 3.
+- **Items 4 and 5 (the WIP allowance, batched G3 reinstalls):** read as covered by "Most of the others seem fine as a
+  side effect". **Ambiguity 2:** "most" leaves at least one of items 3 to 5 not "fine", and the message does not say
+  which. No cap was stated for the allowance; R9 counts 12 or 13.
+- **The UAT:** the operator asked, at 03:56, whether the work can start "without making arw unoperational for the
+  uat?". The Lead reads that question as a constraint: before the operator's end-of-week testing (2026-11-25), no PR
+  may change what the operator or the Lead uses (§6, "The constraint"). It is the Lead's reading of a question, not a
+  stated ruling.
+- **The timing:** the operator is back at their dev environment "roughly.3 or 4 days" from 2026-11-26. That wave 1
+  should also wait until the designer's end-of-week session has answered is the Lead's framing, not the operator's
+  words.
+- **C4:** the operator asked at 04:14 for C4 to be fixed now. The author reads it as the burn-down's C4 (`expect_rev`
+  on every call). That fix is outside this plan; W0's edit of C4 (§6) is re-read against what it lands.
+
+**What follows, if that reading is confirmed:**
+- **Timing:** nothing lands before the discussion, W0 included. Wave 1 (§6) would start after it (and, in the Lead's
+  framing, after the designer's session).
 - **Briefs the designer's answers may re-cut (§6 marks each):**
   - the G3 owner enum (§7 item 3): A1, A2 and F2;
   - how an owner that is not built yet is answered (item 7): A1 and A2;
-  - steering's on-switch and lapse target (item 10): B1a and C1a.
+  - steering's on-switch and lapse target (item 10): B1a and C1a;
+  - the set-level problem table (item 11): A2.
 
 ## History
 
 - **Revision 1 (2026-11-26 to 27):** the first plan, for STG-14 alone. It was then widened, at the operator's request,
   to the whole wire track, "as hard and as parallel as the dependencies allow". It folds in the wire sizing of
   2026-11-26 (Appendix A).
-- **Revision 2 (2026-11-27):** answers an independent review (NEEDS CHANGES, 16 findings) and the rulings above.
+- **Revision 2 (2026-11-27):** answers an independent review (NEEDS CHANGES, 16 findings) and the operator's answers
+  above.
   - **Wave 1 is strictly dormant and additive.**
     - B1 is split into B1a, a record nothing reads, and B2, the cut-over.
     - C1 is split into C1a, a store and setting-type table that no launch, `settings show` or digest reads, and C2, the
@@ -49,11 +93,19 @@ Relayed to the plan's author on 2026-11-27, and quoted as given:
   - **E1** waits for the assessor's record.
   - **Escalations restated:** the paid class is now a missing placement, ruled before C2. The steering item is widened
     to the standing default against I6-06.g's lapse.
-  - **W0** records rulings instead of asking for them.
+  - **W0** records the operator's answers instead of asking for them.
   - **Smaller fixes:** the four D-01 routes, the merge order, the D-01 host, test paths, and line citations.
 - **Revision 3 (2026-11-27):**
-  - Reframed for the operator's later ruling: the wire waits for the operator's return and the designer's session.
+  - Reframed for the operator's later messages: the wire waits for the operator's return (and, in the Lead's framing,
+    the designer's session).
   - Prepared to commit as a plan for discussion. The sizing it relies on is now Appendix A.
+- **Revision 4 (2026-11-27):** answers the independent review of this plan's pull request.
+  - The operator's words are quoted verbatim, with the five questions they answered. Every reading of them is marked
+    proposed, to be confirmed, with its two ambiguities named. W0 is held by the operator, and nothing lands before the
+    discussion.
+  - Appendix A's "today" for plan and publish includes #618's `aew operator confirm` (A.10).
+  - The merge order is stated once (R12), the designer's re-cut list includes item 11, the shared ADR has one creator,
+    and the citations in §1 to §10 are at `33236ab4`.
 
 **Contents:**
 1. What governs
@@ -125,7 +177,7 @@ from the register's notes and SYS-29's `serves_claims`; each PR in section 3 nam
 | The steering mode (R-01's record) | Modes, ranks, a standing record and a per-generation override with `rev`, operator raise through the endpoint, Lead `lower`, requests, A1 §1.3 records, the loop's eligibility | `src/aew/engine/steering.py:60-200`, `:490-600` | Close. The override is bound to one generation and falls back on its end (`effective`, `:172-191`), as I6-06.g. **Gaps:** no generation-start record with an R-01-issued version (E230's Work says so: "a generation-start record, which the built engine doesn't have"); `raise_mode` refuses with engine errors, not I6-06.a's reasons; it is reached only through the operator endpoint, never O-01 |
 | SET_STEERING_MODE's G3 consent | The G3 bridge: `BINDINGS = {"mode_raise": "SET_STEERING_MODE"}`, owner label `ADC` | `src/aew/harness/g3_adapter.py:37-39`; overlay `src/aew/stg02/g3_overlay.py:1-11` and `src/aew/stg02/overlay/set-steering-mode.json` (carries A-43's target) | A bridge "until O-01 convergence folds it in" (the overlay's docstring). The G3 wire's `ConsumeRequest.owner` enum is `ADC, HEB, IF13, RESOURCE_POLICY_ISSUER` (`g3/aew_g3/g3-wire.schema.json:349-355`), so R01 cannot consume without an A-26 change |
 | Settings read (IF-13's definitions, read side) | F46.1's configuration projection with its digest and per-field locators | `src/aew/engine/configuration.py:1-50` (`DIGEST_SCHEME = "aew/config-digest/v2"`), `src/aew/policy/config_paths.py`, `aew settings show` (`src/aew/cli/settings_commands.py`) | The digest is the natural `expected_functional_snapshot`; the locator encoder the natural `setting_path`. There is no write half: F46.2 was merged into STG-14 as a note |
-| Settings write | `aew manifest adopt` (Lead credential, `OPERATOR_DECIDED`), now with a scoped `binding` | `src/aew/engine/api.py:1182-1186`; broker classification `src/aew/harness/lead_broker.py:91-96` | The opposite of I6-04: whole-file adopt, instant effect, no revision store, no transition, no consent. The F46.2 note says I-6's `ADOPT_MANIFEST_EDIT` supersedes it |
+| Settings write | `aew manifest adopt` (Lead credential, `OPERATOR_DECIDED`), now with a scoped `binding` | `src/aew/engine/api.py:1191-1195`; broker classification `src/aew/harness/lead_broker.py:91-96` | The opposite of I6-04: whole-file adopt, instant effect, no revision store, no transition, no consent. The F46.2 note says I-6's `ADOPT_MANIFEST_EDIT` supersedes it |
 | Model routes | Routing card > class > archetype > default, provider connections, model ids | execution policy (`src/aew/policy/execution.py`), `src/aew/harness/models.py` | A route is a setting of the definition (I6-05): buildable as a typed path. Nothing checks a route against a standing policy at dispatch |
 | Resource limits, standing policy | Execution-policy limits and pricing (`src/aew/schemas/pricing.schema.json`, `src/aew/harness/usage.py`); no issuer, no issued policy decision, no `rate_basis` (`grep -r rate_basis src` finds nothing) | | Under IF10-04 a configuration file is a projection, never an issued policy: **the issuer's records do not exist** |
 | Host qualification | Nothing: `grep -ri host_profile src` finds nothing; the host assessor (STG-26) has no register row (E308 Notes; Appendix A.5) | | REVOKE_HOST_QUALIFICATION can only answer `NOTHING_QUALIFIED` until assessments exist |
@@ -140,7 +192,7 @@ from the register's notes and SYS-29's `serves_claims`; each PR in section 3 nam
 3. **The oracle needs a driver as well as a carrier.** A step lands only at `REACHES_OWNER` (`LANDED = 3`,
    `tests/helpers/vertical/oracle.py:44-48`, `:206-213`), and a landed step the scripted operator cannot drive is a
    `no_driver` problem that fails the verdict (`scripted_operator.py:205-215`; `test_vertical_path.py:218-227`). The
-   ledger says the PIN path is not wired ("No PIN is entered yet (no confirmer exists to observe)", `ledger.py:306`).
+   ledger says the PIN path is not wired ("No PIN is entered yet (no confirmer exists to observe)", `ledger.py:305`).
    So every G3 step needs the vertical's G3 driver (PR F2 below) before it can land green.
 4. **The oracle reads one owner action** (`Facts.owner_action`, `oracle.py:143`, `:213`) from the STG-02 carrier
    only (`code_facts`, `:177-203`). It must read a set, from the new carrier, before the second action lands (PR F1).
@@ -158,7 +210,7 @@ missing; **AFTER x** blocked on another increment; **OPERATOR** needs an operato
 |---|---|---|---|---|
 | **STG-14 / SYS-29** | I-6: the O-01 route at 0.9's envelope with 0.8's 42 admitted, and I-6's five types plus P07 and P11's profile half | 12 setting, 13 raise | **NOW, dormant until the UAT:** the wire (A1), the engine owners (B1a, C1a, D1). **NOW, after the UAT:** the route (A2, additive), its cut-overs (A3, B2, C2, C3, D2). **AFTER the designer's agenda item 1:** REVOKE_HOST_QUALIFICATION (E1), whose record is the one the designer is asked for. **DESIGNER:** REQUEST_CHARGE_RECONCILIATION's consume (R01 not in the G3 owner enum), and the first standing policy's placement before C2 (§9.1, C2) | See section 3 |
 | **E356** | Retire the STG-02 producer; move the G3 client's tests | none | **AFTER** STG-14's route (PR A2) and the oracle's repoint (F1); coordinate with `web/src/stg02/` (the web developer's) | - |
-| **E181** | D-01 0.3.4 production reads (16 routes), W1 to W5 | 3, 8, 10 (reads) | **NOW** (A-12, A-25 adopted). The operator lifted "After I-6" on 2026-11-27, provided the work does not depend on wire work; W0 records that. R1 needs only the D-01 schema and problem matrix in `aew.stg02.adopted`, which E356 keeps, so it qualifies. Unmounted by default until the UAT. `attachments` waits for F31/ATTACH_LEAD | None. The host is an implementation choice: the dashboard server process, behind a switch, recorded in an ADR with A2's loopback and peer-UID choice |
+| **E181** | D-01 0.3.4 production reads (16 routes), W1 to W5 | 3, 8, 10 (reads) | **NOW** (A-12, A-25 adopted) **if the lift is confirmed.** Lifting "After I-6", on the condition "as long as it isnt dependent on wire work", is proposed — the author's reading of 2026-11-27, to be confirmed (ambiguity 1 in the opening section); W0 records it once confirmed. R1 needs only the D-01 schema and problem matrix in `aew.stg02.adopted`, which E356 keeps, so it qualifies. Unmounted by default until the UAT. `attachments` waits for F31/ATTACH_LEAD | None. The host is an implementation choice: the dashboard server process, behind a switch, recorded in an ADR that R1 creates and A2 amends with its loopback and peer-UID choice |
 | **E393** | The four reads E181 does not list (`waiting`, `continuation-state/{work_id}`, `runs/{execution_id}`, `owner-operations`) | 10 (`waiting`, `continuation-state`) | **AFTER** E181's framework. The row says "The designer's session decides the producer's shape"; the shape is D-01 0.3.4's, adopted, so the designer's item is a confirmation, not a design | Confirmation only |
 | **E381** | ATTACH_LEAD on the wire | 3 open | **DESIGNER** (decision due on E381, `decisions-due.md:68-72`): the action's design ("proposed, with no row" since STG-03), the ceremony question Q-C1, and the attachment record (F31) it rests on | The L02 design: what the consent binds, whether it stands per unchanged basis (A-56's shape), and its relation to `FUNCTIONAL_UNQUALIFIED` |
 | **E382** | REATTACH_LEAD | 10 reopen | **DESIGNER** (waits for E381, `decisions-due.md:150`), then **AFTER** E381 and the reads `attention`, `attachments` (E181) and `waiting`, `continuation-state` (E393) | L03 design; Q-C2 (routine reattach with no consent); Q-D2 (is REAFFIRM_ELIGIBLE_CHILD_GRANTS on the path); Q-O3 (does the seat-resume code stay) |
@@ -183,7 +235,7 @@ REAFFIRM_ELIGIBLE_CHILD_GRANTS (only if Q-D2 says so), CREATE_PROPOSED_WORK (E39
 (STG-14, NOW), SET_STEERING_MODE (STG-14, NOW on the bridge).
 
 Reads (8 to 9): `attachments` (+ `{id}`), `attention`, `assurance`, `resolve`, `work/{kind}/{id}`, `packages` (E181,
-NOW after the operator's OK; `attachments` AFTER F31), `waiting`, `continuation-state` (E393, AFTER E181's framework).
+NOW if the lift is confirmed; `attachments` AFTER F31), `waiting`, `continuation-state` (E393, AFTER E181's framework).
 
 **So only two of V-01's ten actions are buildable before the designer's session: both are STG-14's.** The rest of
 wave 1 is the shared machinery every later action needs (the carrier, the vertical's driver, the D-01 framework) and the
@@ -247,8 +299,8 @@ before any owner state (I6-11); origin, then owner state, then the activation ho
 and delegated origins are answered `HELD ORIGIN_NOT_ESTABLISHED` until their origins exist (as STG-02's addendum 5). An
 action with no registered owner is never consumed (the requester's preview refuses to ask for a consent: risk R7). The
 route listens on loopback only, for the operator's UID by peer check (as the operator endpoint), since every I-6 member
-is protected and G3 carries the authority. That host choice is an implementation choice, recorded in an ADR in this PR
-together with R1's.
+is protected and G3 carries the authority. That host choice is an implementation choice. E181-R1 (wave 1) creates the
+ADR for both hosts; A2 adds its choice to it as an amendment section.
 - **The additive condition:** no `aew` command, launch, broker or endpoint starts or calls it. Its entry point
   (`src/aew/process_kind.py`) is registered but not started by default. The dispatch table is empty, so it serves no
   owner. A test pins that the default process tree and every command's behaviour are unchanged. If a builder cannot meet
@@ -277,7 +329,8 @@ together with R1's.
   by verify_g3.py") is re-derived. I6-12 says the largest I-6 member renders in 29 lines.
 - **Operational:** `wire_version` changes from `o01-command-0.2-review-candidate` to `o01-command-0.9-candidate`, so
   every host's G3 service needs a reinstall. The "older service" path already explains it (`g3_adapter.py:47-50`).
-  Reinstalls are batched (operator, 2026-11-27): A3 and the enum amendment in one if both are ready.
+  Reinstalls are batched (proposed — the author's reading of 2026-11-27, to be confirmed): A3 and the enum amendment
+  in one if both are ready.
 - Tests:
   - `test_canonical_bytes_and_the_set_digest_are_unchanged_by_the_move` (golden from today's `stg02.wire`);
   - `test_g3_renders_every_i6_member_within_30_lines` (derived from the schema, as `verify_i2.py` does);
@@ -341,7 +394,7 @@ map, or Lead-facing text. It imports nothing from `aew.o01`.
   issuer), the `steering` mode (R-01), checks (AEV), grants and floors (ADC), messaging (CNI), and the containment lane
   (the installation).
 
-**It must not change:** `manifest_pin_ok` (`engine/base.py:385`, `api.py:1188`) or any launch's read; `aew manifest
+**It must not change:** `manifest_pin_ok` (`engine/base.py:385`, `api.py:1197`) or any launch's read; `aew manifest
 adopt`; `config_paths` (no owner column added to it); `engine/configuration.py`'s projection; `aew settings show`'s
 output; or `DIGEST_SCHEME`'s digest. Nothing that runs reads the store. It imports nothing from `aew.o01`.
 - Shared files: a schema in `src/aew/schemas/` plus its name in `schemas/__init__.py` (`:30-45`); an invariant in
@@ -467,7 +520,7 @@ developer has moved off the routes.**
 
 ```
  WAVE 1 (before the UAT: dormant, additive)          =UAT=   AFTER THE UAT (cut-overs)
- [W0 board/register: records the rulings]
+ [W0 board/register: records the confirmed answers; held]
  [A1 wire vendored, unimported] ---------------------------> [A2 carrier, if held] -> [A3 G3 on new wire + reinstall]
  [A2 carrier, additive: not started by default] -----------------------------------^          |
  [F1 oracle: a set of owner actions, + new carrier] ---------------------------------------+   |
@@ -514,13 +567,13 @@ the rules in §9.2 (R1 to R6, R13).
 
 | Lane | PRs, in order | Owns (new, or mainly its own) | Touches shared | Waits on |
 |---|---|---|---|---|
-| **A. Wire core** | A1, A2, then after the UAT A3, A4 | `src/aew/o01/__init__.py`, `adopted.py`, `owners.py`, `carrier.py`, `ledger.py`, `server.py`, vendored `src/aew/o01/adopted/**`; `tools/reference_families/o01_*.py`; `tests/unit/test_o01_*.py`, `tests/integration/test_o01_route.py`; after the UAT, `g3/aew_g3/wire.py`, `src/aew/g3client.py`, `src/aew/stg02/wire.py`, and the deletion of `src/aew/stg02/{commands,server,ledger,world}.py` | `pyproject.toml` (package-data), `src/aew/process_kind.py`, `docs/reference/*` (render), an ADR (the route's host, with E) | nothing (A1); A1 merged (A2); the UAT, A2 (A3); A3, F1, F3, E393, `web/` (A4) |
-| **B. R-01 steering** | B1a, then after the UAT B2 | `src/aew/engine/steering.py` (B1a adds functions only), `src/aew/o01/owners/r01_steering.py` (B2), `tests/unit/test_steering_generation_record.py` (new); B2 also `src/aew/harness/g3_adapter.py`, `tests/integration/test_steering_loop.py`, `tests/integration/test_g3_endpoint_adapter.py` | `src/aew/schemas/control.schema.json` (`steering`, `:588-600`), `tests/helpers/invariants.py`, `docs/reference/*`; B2 also `src/aew/engine/api.py`, `docs/implementation/surface-map.yaml` | nothing (B1a); the UAT, A2, agenda item 10 (B2) |
-| **C. IF-13 settings** | C1a, then after the UAT C2, C3; E1 after the designer | `src/aew/engine/if13.py`, `src/aew/policy/setting_types.py`, `src/aew/schemas/profile-revision.schema.json`, `tests/unit/test_if13*.py`; C2 `src/aew/o01/owners/if13.py`; C3 `src/aew/settings_change.py`, `src/aew/cli/settings_commands.py`, `tests/unit/test_settings_set*.py` | `src/aew/schemas/__init__.py` (`:30-45`), `control.schema.json` (if control state), `tests/helpers/invariants.py`, `docs/reference/*`; C2 also `src/aew/policy/config_paths.py`, `src/aew/engine/configuration.py`, `src/aew/engine/base.py` (`manifest_pin_ok`), `api.py`; C3 also `src/aew/harness/lead_broker.py`, `surface-map.yaml` | nothing (C1a); the UAT, A2, the placement ruling (C2); C2, F2 (C3) |
+| **A. Wire core** | A1, A2, then after the UAT A3, A4 | `src/aew/o01/__init__.py`, `adopted.py`, `owners.py`, `carrier.py`, `ledger.py`, `server.py`, vendored `src/aew/o01/adopted/**`; `tools/reference_families/o01_*.py`; `tests/unit/test_o01_*.py`, `tests/integration/test_o01_route.py`; after the UAT, `g3/aew_g3/wire.py`, `src/aew/g3client.py`, `src/aew/stg02/wire.py`, and the deletion of `src/aew/stg02/{commands,server,ledger,world}.py` | `pyproject.toml` (package-data), `src/aew/process_kind.py`, `docs/reference/*` (render), the ADR E181-R1 creates (A2 amends it with the route's host) | nothing (A1); A1 and F1 merged (A2); the UAT, A2 (A3); A3, F1, F3, E393, `web/` (A4) |
+| **B. R-01 steering** | B1a, then after the UAT B2 | `src/aew/engine/steering.py` (B1a adds functions only), `src/aew/o01/owners/r01_steering.py` (B2), `tests/unit/test_steering_generation_record.py` (new); B2 also `src/aew/harness/g3_adapter.py`, `tests/integration/test_steering_loop.py`, `tests/integration/test_g3_endpoint_adapter.py` | `src/aew/schemas/control.schema.json` (`steering`, `:602-614`), `tests/helpers/invariants.py`, `docs/reference/*`; B2 also `src/aew/engine/api.py`, `docs/implementation/surface-map.yaml` | nothing (B1a); the UAT, A2, agenda item 10 (B2) |
+| **C. IF-13 settings** | C1a, then after the UAT C2, C3; E1 after the designer | `src/aew/engine/if13.py`, `src/aew/policy/setting_types.py`, `src/aew/schemas/profile-revision.schema.json`, `tests/unit/test_if13*.py`; C2 `src/aew/o01/owners/if13.py`; C3 `src/aew/settings_change.py`, `src/aew/cli/settings_commands.py`, `tests/unit/test_settings_set*.py` | `src/aew/schemas/__init__.py` (`:31-46`), `control.schema.json` (if control state), `tests/helpers/invariants.py`, `docs/reference/*`; C2 also `src/aew/policy/config_paths.py`, `src/aew/engine/configuration.py`, `src/aew/engine/base.py` (`manifest_pin_ok`), `api.py`; C3 also `src/aew/harness/lead_broker.py`, `surface-map.yaml` | nothing (C1a); the UAT, A2, the placement ruling (C2); C2, F2 (C3) |
 | **D. Resource policy issuer** | D1, then after the UAT D2 | `src/aew/policy/issuer.py`, `src/aew/schemas/standing-policy.schema.json`, `tests/unit/test_issuer*.py`; D2 `src/aew/o01/owners/issuer.py` | `src/aew/schemas/__init__.py`, `tests/helpers/invariants.py`, `docs/reference/*`; D2 also `src/aew/policy/execution.py`, `src/aew/harness/usage.py`, `api.py` | nothing (D1); the UAT, A2 (D2) |
-| **E. D-01 reads** | R1 (framework, unmounted), then R2 (reads, mounted), R3 (E393's four ports) | `src/aew/d01/**` (new), `tests/unit/test_d01_*.py`, `tests/integration/test_d01_*.py` | `src/aew/dashboard/server.py` (the switched mount; SYS-03's file), `src/aew/process_kind.py` (if needed), `docs/reference/*`, the ADR (with A) | nothing (R1); F3 and the UAT (R2); R2 (R3) |
+| **E. D-01 reads** | R1 (framework, unmounted), then R2 (reads, mounted), R3 (E393's four ports) | `src/aew/d01/**` (new), `tests/unit/test_d01_*.py`, `tests/integration/test_d01_*.py` | `src/aew/dashboard/server.py` (the switched mount; SYS-03's file), `src/aew/process_kind.py` (if needed), `docs/reference/*`, the ADR (R1 creates it; A2 amends it) | nothing (R1); F3 and the UAT (R2); R2 (R3) |
 | **F. Vertical instrument** | F1, F2, F3 | `tests/helpers/vertical/oracle.py`, `scripted_operator.py`, `ledger.py`, `report.py`, `tests/acceptance/test_vertical_path.py`, and reuse of `tests/helpers/g3.py` | `docs/implementation/v01-burn-down.md` (its guard is `tests/unit/test_v01_burn_down.py`). Never `vertical-uat.md` (the operator's) | nothing (F1, F2); F1 (F3) |
-| **W. Board and register** | W0, then notes per PR | `docs/implementation/systems.yaml`, `future-work.yaml` + `notes.d/`, `decisions-due.yaml`, the burn-down's C4 and C12 rows (with F's guard) | the rendered pages through `tools/register.py render` | nothing |
+| **W. Board and register** | W0 (held until the discussion), then notes per PR | `docs/implementation/systems.yaml`, `future-work.yaml` + `notes.d/`, `decisions-due.yaml`, the burn-down's C4 and C12 rows (with F's guard) | the rendered pages through `tools/register.py render` | the operator's discussion, and their confirmation of each answer W0 records |
 
 **No wave-1 PR imports a module another wave-1 PR is adding** (AGENTS.md §3, nothing builds on a moving target).
 - B1a, C1a and D1 expose engine functions that return the owner's own reasons. They import nothing from `aew.o01`.
@@ -541,9 +594,11 @@ the rules in §9.2 (R1 to R6, R13).
 ## 6. Wave 1: the exact list, in merge order, with the builder briefs
 
 **When.**
-- **W0 (docs only)** can land now.
-- **Items 2 to 10** are ready to start on the operator's return to their dev environment (about 3 to 4 days), once the
-  designer's end-of-week session has answered (the operator, 2026-11-27). No builder starts before both have happened.
+- **W0 (docs only)** is held by the operator (2026-11-27 04:14: "Yes hold W0, fix C4 now"). It lands only after the
+  operator's discussion, and records only what the operator confirms there.
+- **Items 2 to 10** are proposed to start after that discussion, on the operator's return to their dev environment
+  ("roughly.3 or 4 days" from 2026-11-26). That they also wait until the designer's end-of-week session has answered is
+  the Lead's framing. No builder starts before the discussion.
 - **Before starting,** the Lead re-reads each brief against the session's answers. A brief marked **[designer may
   change: item N]** is re-cut where that answer differs from this plan's assumption:
   - **The G3 owner enum, agenda item 3:** A1's bridge table and owner labels, A2's consume path for R01, WIS, CNI and
@@ -557,7 +612,8 @@ the rules in §9.2 (R1 to R6, R13).
 - **If the UAT has run by then:** the freeze below still applies until the operator lifts it. Wave 1 stays dormant
   either way, and the cut-overs remain the later PRs.
 
-**The constraint every brief carries (the operator, 2026-11-27).** Before the end-of-week live UAT, no PR may change
+**The constraint every brief carries** (the Lead's reading of the operator's question of 2026-11-27 03:56, "without
+making arw unoperational for the uat?"; to be confirmed). Before the operator's end-of-week testing, no PR may change
 anything the operator or the Lead uses. That covers:
 - `aew` commands and their output;
 - refusal codes;
@@ -571,31 +627,34 @@ anything the operator or the Lead uses. That covers:
 Every PR ships a test that pins the part of that list it could touch. Each PR is reviewed under AGENTS.md §1 and merged
 one at a time under §4. CI (`assurance`) must be green at the head, and the head is cited in the PR body.
 
-**Merge order:** W0, A1, F1, F2, then B1a, C1a, D1 and E181-R1 in any order (each as it clears review), then F3 (after
-F1), then A2 if its additive condition holds; otherwise A2 waits for the UAT. **After the UAT:** A3 (alone, with the
-batched reinstall), B2, C2 (after the placement ruling), C3, D2, R2 (after F3), R3, then A4 last. A later PR merges
-`main` only when it conflicts.
+**Merge order** (the same as R12): W0 (after the discussion), A1, F1, F2, then B1a, C1a, D1 and E181-R1 in any order
+(each as it clears review), then F3 (after F1), then A2 if its additive condition holds; otherwise A2 waits for the
+UAT. **After the UAT:** A2 (if held), A3 (alone, with the batched reinstall), B2, C2 (after the placement ruling), C3,
+D2, R2 (after F3), R3, E1 (after agenda item 1), then A4 last. A later PR merges `main` only when it conflicts.
 
-1. **W0: record the rulings (S, docs only; lane W). Can land now.**
-   - **Scope:** record the operator's rulings of 2026-11-27, ask nothing. That includes the later ruling: the wire
-     track starts on the operator's return, after the designer's session, and only W0 lands before.
+1. **W0: record the confirmed answers (S, docs only; lane W). Held by the operator (2026-11-27 04:14: "Yes hold
+   W0, fix C4 now"); it lands only after the discussion.**
+   - **Scope:** record what the operator confirms at the discussion, quoting the operator verbatim; ask nothing. It
+     records no reading in the opening section that the operator has not confirmed.
    - **`systems.yaml`:**
-     - a `wip_allowance` entry with the operator's words, cap and date ("WIP allowance ... OK", cap 14 to cover SYS-29,
-       SYS-46 and E181's system), so `python tools/systems.py check` passes;
+     - a `wip_allowance` entry that carries the operator's verbatim words, a cap the operator states, and the date
+       (`systems.yaml:14`), so `python tools/systems.py check` passes. No cap is stated today (the answer of 03:56
+       names none; R9 counts 12 or 13), so W0 writes no allowance until the operator states one;
      - SYS-29 stays `designed_only` until A1 starts, so the allowance is recorded ahead of need;
      - E181, E381 to E383 and E390 to E393 listed under SYS-46 (`register: []` today), or E181 under its own read-wire
        system.
    - **The register:**
-     - E181's When amended to the lift and its condition, cited ("as long as it does not depend on wire work",
-       operator, 2026-11-27);
-     - a STG-14 note recording that Q-W1 is answered (0.9's envelope, 0.8's 42 admitted), the batched reinstalls, the
-       wave-1 list (to start on the operator's return, after the designer's session), and the post-UAT hold list (A3,
+     - E181's When amended to the lift and its condition, quoting the operator verbatim ("as long as it isnt
+       dependent on wire work", 2026-11-27 03:56), once the operator confirms which item that condition qualifies;
+     - a STG-14 note recording Q-W1 as the operator confirms it (0.9's envelope, 0.8's 42 admitted), the batched
+       reinstalls if confirmed, the wave-1 list (to start after the discussion), and the post-UAT hold list (A3,
        A4, B2, C2, C3, D2, R2, and A2 unless additive).
-   - **The burn-down:** C4's state "in flight (#596)" (`v01-burn-down.md:52`) becomes "merged (#596); E329 open until a
-     vertical re-measure confirms `revision_args` and `stale_retries` at 0". E329 is still open in the register's §6;
-     its Work names those counters as its proof, and the driver's `--expect-rev` is already gone from `hints.py`.
-     C12's state notes that the wire track is planned and starts on the operator's return, after the designer's
-     session (it is not "started").
+   - **The burn-down:** the operator asked for C4 to be fixed now (04:14), outside this plan, so W0 re-reads C4's
+     state at its own base and changes only what that fix has not. As read at `33236ab4`, C4's state "in flight
+     (#596)" (`v01-burn-down.md:52`) becomes "merged (#596); E329 open until a vertical re-measure confirms
+     `revision_args` and `stale_retries` at 0". E329 is still open in the register's §6; its Work names those counters
+     as its proof, and the driver's `--expect-rev` is already gone from `hints.py`. C12's state notes that the wire
+     track is planned and waits for the operator's discussion (it is not "started").
    - **Must not change:** any code, threshold or vertical count.
    - **Tests:** `tools/register.py render` committed; `python tools/systems.py check`; `tests/unit/test_v01_burn_down.py`;
      the docs-link and ledger tests.
@@ -641,10 +700,10 @@ batched reinstall), B2, C2 (after the placement ruling), C3, D2, R2 (after F3), 
 
      If a builder finds that standing up the test service makes `g3standing.standing` count for the scenario's project,
      F2 is held until B2, and that is said in the PR.
-   - **Owns:** `tests/helpers/vertical/scripted_operator.py`, `ledger.py` (the approval matching that `ledger.py:306`
+   - **Owns:** `tests/helpers/vertical/scripted_operator.py`, `ledger.py` (the approval matching that `ledger.py:305`
      says is owed), and tests.
-   - **Must not change:** the steering raise's path, `approvals` (empty today: `vertical-uat.md:266`), `pin_reentries`,
-     any step state, or `vertical-uat.md`.
+   - **Must not change:** the steering raise's path, `approvals` (empty today: `vertical-uat.md:266-269`),
+     `pin_reentries`, any step state, or `vertical-uat.md`.
    - **Tests:**
      - `test_the_vertical_report_counts_are_equal_before_and_after_f2` (the report run over recorded ledgers);
      - `test_the_driver_enters_a_pin_only_at_a_landed_g3_step`;
@@ -707,8 +766,8 @@ batched reinstall), B2, C2 (after the placement ruling), C3, D2, R2 (after F3), 
      copy), and serves no read yet. It is mounted into the dashboard server only behind an off-by-default switch, or
      not at all in this PR.
    - **Owns:** `src/aew/d01/**`, `tests/unit/test_d01_*.py`.
-   - **Shared:** `src/aew/dashboard/server.py` (only the switch), and an ADR that records the host choice (the
-     dashboard process for D-01, loopback with peer UID for O-01), shared with A2.
+   - **Shared:** `src/aew/dashboard/server.py` (only the switch), and the ADR that records the host choices. R1
+     creates it with the dashboard process for D-01; A2 adds loopback with peer UID for O-01 as an amendment section.
    - **Must not change:** the default dashboard's routes, headers or security surface, `web/`, `aew read`.
    - **Tests:**
      - `test_the_default_dashboard_serves_exactly_todays_routes`;
@@ -749,15 +808,16 @@ Each item names what it unblocks and the evidence. Ordered by what it unblocks o
    (charge reconciliation) and removes the bridge. Asked as Q-D5. Deliverable: the amended pinned wire (then 1 PR and a
    reinstall per host).
 4. **How the Lead reaches the wire (Q-D3) and what authenticates a successor-origin recipient (Q-D4, CS-07):** do the
-   typed tools (`src/aew/surface/contract.py:231-372`) submit through O-01 as the Lead's session origin, and is the
+   typed tools (`src/aew/surface/contract.py:230-387`) submit through O-01 as the Lead's session origin, and is the
    broker's authenticated session that principal? Unblocks E391, E392 and the origin half of every successor action.
-   (Where the routes are hosted is not asked: it is an implementation choice, recorded in an ADR with A2 and R1.)
+   (Where the routes are hosted is not asked: it is an implementation choice, recorded in the ADR R1 creates and A2
+   amends.)
 5. **The dashboard's write door (Q-C5 and the operator's 2026-11-14 direction):** the confirmer is local (G3-01) and a
    website session is never G3 (G3-13). Which AEW endpoint does a dashboard Save call to build the set and ask for the
    consent? The dashboard server is GET/HEAD-only today (SYS-03's purpose). Unblocks F46.4's retirement into I-6.
 6. **Where the first standing policy is placed on V-01's path (I6-05, I6-R02, IF10-04; designer and operator)**
    (§9.1, C2). I6-R02 already prices it ("one more [PIN] for each `ISSUE_STANDING_POLICY` the provider needs"), and V4's
-   budget assumes the covered case (`vertical-uat.md:257-261`). What is missing is placement: which step issues the
+   budget assumes the covered case (`vertical-uat.md:258-262`). What is missing is placement: which step issues the
    first policy for the project's provider and account, whether its PIN joins the operator-owned budget, and whether a
    subscription route's dispatch is "paid" at all. Needed before C2 merges; C2 does not merge with the check
    unenforced unless the designer or the operator rules so.
@@ -782,10 +842,12 @@ Each item names what it unblocks and the evidence. Ordered by what it unblocks o
     whether A-52 RHC releases step 6a (Appendix A.2, row 23); whether 0.9 keeps STG-01 0.5.4's set-level
     problem table (`command-set-problems.json`) unchanged, since 0.9 publishes none.
 
-**For the operator (not the designer).** Ruled on 2026-11-27, and recorded by W0: wave 1 is approved, to start on the operator's return to their dev
-environment, after the designer's end-of-week session (the later ruling of the same day); Q-W1 (0.9's
-envelope, 0.8's 42 admitted); E181's lift, on its condition; the WIP allowance; batched G3 reinstalls. Still open: Q-O4
-(do E164's `aew policy route` and E331's terminal adopt ship first and give way, or wait for C2/C3); Q-O3 (does the
+**For the operator (not the designer).** The opening section quotes the operator's answers of 2026-11-27. What this
+plan reads from them is proposed — the author's reading of 2026-11-27, to be confirmed at the discussion, and W0
+records only what is confirmed: wave 1, to start after the discussion (and, in the Lead's framing, after the
+designer's end-of-week session); Q-W1 (0.9's envelope, 0.8's 42 admitted); E181's lift, on its condition (ambiguity
+1); the WIP allowance, with a cap the operator states (ambiguity 2); batched G3 reinstalls (ambiguity 2). Still open:
+Q-O4 (do E164's `aew policy route` and E331's terminal adopt ship first and give way, or wait for C2/C3); Q-O3 (does the
 seat-resume code stay where G3 does not count); the class ruling Q-C4; with the designer, item 6's PIN budget.
 
 ---
@@ -828,14 +890,15 @@ test on the real service's rules (`tests/integration/test_g3_endpoint_adapter.py
 
 - **C1. The wire target.** STG-14's Work says O-01 0.8 (42 actions); `docs/contracts/README.md` calls 0.9 (53) "the
   current selected command wire", and only 0.9's schema is published. This plan builds 0.9's envelope with 0.8's 42
-  admitted (a superset with no conflict: 0.9 carries 0.8 byte-equal except three amended actions). **Answered by the
-  operator, 2026-11-27:** 0.9's envelope, 0.8's 42 admitted. W0 records it on STG-14; STG-14's Work keeps its wording
-  until the register's next edit of that row.
+  admitted (a superset with no conflict: 0.9 carries 0.8 byte-equal except three amended actions). **Proposed — the
+  author's reading of 2026-11-27, to be confirmed:** 0.9's envelope, 0.8's 42 admitted ("1 and 2 yup thats my
+  understanding"). Once confirmed, W0 records it on STG-14; STG-14's Work keeps its wording until the register's next
+  edit of that row.
 - **C2. The first standing policy has no placement on V-01's path (a missing placement, not an unsatisfiable
   invariant).** IF10-04 makes a configuration file "a projection, never an issued policy decision", AEW has no issuer
   yet, and I6-05 holds paid dispatches on a route no current policy covers. The design prices the policy: I6-R02, "one
   more [PIN] for each `ISSUE_STANDING_POLICY` the provider needs", and V4's budget assumes the covered case
-  (`vertical-uat.md:257-261`). What is not placed is which step of V-01's path issues the first policy, whether its PIN
+  (`vertical-uat.md:258-262`). What is not placed is which step of V-01's path issues the first policy, whether its PIN
   joins the operator's budget, and whether a subscription route's dispatch is "paid" at all. **Needs a ruling before C2
   merges** (agenda item 6; the budget is the operator's). This plan does not narrow I6-05: C2 does not merge with the
   check unenforced unless the designer or the operator rules so. C2 is after the UAT, so there is no schedule cost this
@@ -894,28 +957,32 @@ test on the real service's rules (`tests/integration/test_g3_endpoint_adapter.py
   (`tests/unit/test_v01_burn_down.py`) fails when a cluster names a closed row: the PR that closes a C12 row edits the
   burn-down in the same change (its "How it stays true").
 - **R9. The build board's WIP limit.** `systems.md:23` reads "10 / 12"; SYS-29 and SYS-46 are `designed_only`. Starting
-  both, plus a system for E181, takes the count to 12 or 13. The operator allowed it on 2026-11-27; W0 records it as a
-  `wip_allowance` entry (`systems.yaml:14`: "the operator's words, cap and quoted date"), so `tools/systems.py check`
-  passes.
+  both, plus a system for E181, takes the count to 12 or 13. Whether the operator allowed it is proposed — the
+  author's reading of 2026-11-27, to be confirmed: "Most of the others seem fine as a side effect" may cover it
+  (ambiguity 2), and it names no cap. Once confirmed, W0 records a `wip_allowance` entry with the operator's verbatim
+  words and a cap the operator states (`systems.yaml:14`: "the operator's words, cap and quoted date"), so
+  `tools/systems.py check` passes.
 - **R10. `web/` is the web developer's.** E356 removes routes `web/src/stg02/wire.ts` calls. Do not change `web/`; land
   A4 only after the web developer has moved off them, and keep the four D-01 routes STG-02 serves (`waiting`,
   `runs/{execution_id}`, `continuation-state/{work_id}`, `owner-operations`; `stg02/server.py:9-12`) until E393
   replaces them.
-- **R11. G3 reinstalls are operator acts on a host** (A3, the enum PR). Batched, as the operator allowed on
-  2026-11-27: A3 and the enum amendment in one reinstall if the designer's session lands the enum before A3 merges.
+- **R11. G3 reinstalls are operator acts on a host** (A3, the enum PR). Batched (proposed — the author's reading of
+  2026-11-27, to be confirmed, ambiguity 2): A3 and the enum amendment in one reinstall if the designer's session lands
+  the enum before A3 merges.
   Neither happens before the UAT.
 - **R12. Merge order to keep `main` green** (AGENTS.md §4: one at a time; a red `main` first).
-  - **Wave 1, before the UAT:** W0, A1, F1, F2, then B1a, C1a, D1 and E181-R1 in any order, then F3, then A2 only if
-    additive.
+  - **Wave 1, before the UAT:** W0 (after the discussion), A1, F1, F2, then B1a, C1a, D1 and E181-R1 in any order,
+    then F3, then A2 only if additive.
   - **After the UAT:** A2 (if held), A3 alone (with the batched reinstall), B2, C2 (after the placement ruling), C3, D2,
     R2, R3, E1 (after agenda item 1), then A4 last.
   - Each later PR merges `main` only when it conflicts.
 - **R13. Shared schema, package and invariant files** (the review's finding 6): `pyproject.toml`
   `[tool.setuptools.package-data]` (A1 adds `"aew.o01"`; a lane adding package data appends one line);
-  `src/aew/schemas/__init__.py` (`:30-45`, the name table; C1a and D1 each append one name); `src/aew/schemas/control.schema.json`
-  (`steering`, `:588-600`, B1a; C1a if its store is control state: each adds its own property, never edits another's);
+  `src/aew/schemas/__init__.py` (`:31-46`, the name table; C1a and D1 each append one name); `src/aew/schemas/control.schema.json`
+  (`steering`, `:602-614`, B1a; C1a if its store is control state: each adds its own property, never edits another's);
   `tests/helpers/invariants.py` (B1a, C1a, D1: each appends its own invariant function in its own section, as CLAUDE.md
-  asks "when a new state appears"). The rule is R3's: append in a section of one's own, resolve a conflict by keeping
+  asks "when a new state appears"); the hosts' ADR (E181-R1 creates it; A2 adds an amendment section, never an edit of
+  R1's text). The rule is R3's: append in a section of one's own, resolve a conflict by keeping
   both, and re-run the schema and invariant tests after the merge.
 - **R14. The UAT freeze.** Every wave-1 PR carries the pin test named in its brief (§6). A reviewer who finds a change to
   anything on the operator's list (§6, "The constraint") raises it as a major.
@@ -924,8 +991,8 @@ test on the real service's rules (`tests/integration/test_g3_endpoint_adapter.py
 
 For the designer: agenda items 1 to 3, 7, 10 (a missing authority boundary, a missing design or a conflict with
 adopted text); 6 (a missing placement, with the operator); 4, 5, 8, 9, 11 (shape and confirmations). For the operator:
-Q-O3, Q-O4, Q-C4, and item 6's budget. Answered on 2026-11-27: wave 1, Q-W1, E181's lift, the WIP allowance, batched
-reinstalls.
+Q-O3, Q-O4, Q-C4, and item 6's budget. Wave 1, Q-W1, E181's lift, the WIP allowance and batched reinstalls are
+proposed — the author's reading of 2026-11-27, to be confirmed at the discussion (the opening section).
 
 ---
 
@@ -967,11 +1034,12 @@ members only as `HELD`/not served, and burns no consent on them.
 This appendix is the sizing that the V-01 burn-down and rows E390 to E393 cite as "the wire sizing of 2026-11-26 at
 `eece01e5` (its §2 and §3)". Those two sections are A.2 and A.3 here.
 - **What it was:** a read-only investigation at `origin/main` `eece01e5` (#598), with #601 read for E381 to E383. It
-  decided nothing. Its file:line citations are at `eece01e5`.
+  decided nothing. Its file:line citations are at `eece01e5`, except the corrections for #618, which name `33236ab4`.
 - **What changed in reproducing it:** only the numbering. Its sections become A.1 to A.8, and its verification list
   becomes A.9.
-- **The wire target:** it sized O-01 0.8's 42 actions. The operator has since answered its Q-W1 (0.9's envelope, 0.8's
-  42 admitted).
+- **The wire target:** it sized O-01 0.8's 42 actions. The operator has since answered its Q-W1 ("1 and 2 yup thats
+  my understanding"); that this means 0.9's envelope with 0.8's 42 admitted is proposed — the author's reading of
+  2026-11-27, to be confirmed.
 - **Where this plan corrects it:** §1.4, summarised in A.10.
 
 ### A.1 Ceremony: today against the wire
@@ -1008,8 +1076,9 @@ scenario. That is why A.1.2 counts raw interactions beside the counters.
 
 #### A.1.2 Interaction counts along V-01's ideal path
 
-"Today" is what the operator does on `main` now, on the path the alpha evaluator runs. "Wire" is a straightforward build
-of the contracts: one G3 consent per protected step, as the oracle budgets.
+"Today" is what the operator does on `main` now, on the path the alpha evaluator runs. For plan and publish (rows 5
+and 7) it is `main` at `33236ab4`, after #618 (E350, part); the sizing's own "today", at `eece01e5`, predated #618.
+"Wire" is a straightforward build of the contracts: one G3 consent per protected step, as the oracle budgets.
 
 | # | Step (oracle `STEPS`, `oracle.py:96-130`) | Today: what the operator does | Today's counters | Wire: what the operator does | Wire's counters | Change |
 |---|---|---|---|---|---|---|
@@ -1017,9 +1086,9 @@ of the contracts: one G3 consent per protected step, as the oracle budgets.
 | 2 | configure | options on `aew init` (`--check-command --model --provider`, `oracle.py:101-102`) | 0 | the same | 0 | none |
 | 3 | open (L01, L02 `ATTACH_LEAD`) | `aew opencode`. A vacant seat is taken with **no challenge**: `opencode_kind = VACANT_START` (`src/aew/harness/opencode/lead.py:419-421`), then `lead_acquire`, which authorizes nothing and records the actor as `{"kind": "session"}` (`src/aew/engine/lead_ops.py:198-219`, called from `src/aew/harness/lead_broker.py:1247`). The first open's tool-consent screen is a setup fixture, recorded and not counted (the burn-down's Q5 answer) | 0 | `aew opencode` **plus one G3 PIN** in the confirmer. The registry has `ATTACH_LEAD` as `PROTECTED_G3` (`action-registry-0.8.json`, A-25 L02), and the consent binds "installation, exact predecessor, successor, Lead, profile, classification, command args hash and one-use owner operation" (A-25 `SELECTION-PROFILE-AND-SUBSTITUTABILITY.md`, the L02/L03 row) | 0 (1 budgeted approval) | **+1 PIN. FLAGGED** |
 | 4 | ask (W15 `CREATE_PROPOSED_WORK`) | a chat line | 0 | the same: `CURRENT_SUCCESSOR_GENERATION`, the Lead's own action, with no PIN | 0 | none |
-| 5 | plan (W02 `DECIDE_WORK_PROPOSAL`) | a chat "yes" (V1's decision `plan`, `ledger.py:51`); the Lead records the acceptance through its own route (`plan accept`, `src/aew/engine/work_ops.py:758-760`, Lead token) | 0 (1 decision) | **one G3 PIN**, plus the chat question if the Lead still asks it | 0 (1 budgeted approval, 1 decision) | **+1 PIN. FLAGGED.** Net 0 extra interactions if the confirmer replaces the chat question (Q-C3) |
+| 5 | plan (W02 `DECIDE_WORK_PROPOSAL`) | a chat "yes" (V1's decision `plan`, `ledger.py:51`), then `aew operator confirm plan <T>` at the operator's terminal, with the one-time code the operator endpoint's console shows typed back (#618: `OPERATOR_CONFIRMS`, `src/aew/harness/lead_broker.py:110-112`, at `33236ab4`). The Lead's acceptance (`plan accept`, `src/aew/engine/work_ops.py:758-760`, Lead token) uses that confirmation and is refused without it (`work_ops.py:803-805`, at `33236ab4`) | 0 (1 decision; the confirmation is recorded with it, never counted: `tests/helpers/vertical/scripted_operator.py:371-386`, `:415-419`, at `33236ab4`) | **one G3 PIN**, which stands in for today's typed code (E350's interim, `src/aew/engine/operator_decisions.py`), plus the chat question if the Lead still asks it | 0 (1 budgeted approval, 1 decision) | **A PIN in place of a typed code:** no extra interaction. One fewer if the confirmer also replaces the chat question (Q-C3) |
 | 6 | work (W10, C17) | nothing | 0 | nothing: `DELEGATE_NEW_WORKER` is successor-generation, and `CONTINUE_ELIGIBLE_WORK` is delegated-grant | 0 | none |
-| 7 | publish (W09 `APPROVE_INTEGRATION`) | a chat "yes" (V1's decision `publish`); the Lead publishes through its typed tool (`integration_publish`, `src/aew/surface/contract.py:364-366`: "calling this is your publication decision") | 0 (1 decision) | **one G3 PIN** (plus the chat question, as step 5) | 0 (1 budgeted approval, 1 decision) | **+1 PIN. FLAGGED**, with step 5's caveat |
+| 7 | publish (W09 `APPROVE_INTEGRATION`) | a chat "yes" (V1's decision `publish`), then `aew operator confirm publish <T>` with its typed-back code, as step 5 (#618). The Lead publishes through its typed tool (`integration_publish`, `src/aew/surface/contract.py:364-366`), whose publish uses that confirmation and is refused without it (`src/aew/engine/integration_ops.py:845-848`, at `33236ab4`) | 0 (1 decision; the confirmation recorded with it, as step 5) | **one G3 PIN** in place of the typed code (plus the chat question, as step 5) | 0 (1 budgeted approval, 1 decision) | **A PIN in place of a typed code**, with step 5's caveat |
 | 8 | result | nothing (reads) | 0 | nothing (D-01 reads) | 0 | none |
 | 9 | exit | the harness's own act | 0 | the same | 0 | none |
 | 10 | reopen (L03 `REATTACH_LEAD`) | `aew opencode` resumes the seat. It asks a **typed-back code only when invocations are active or processes are left** (`lead_ops.py:258-265`). Otherwise it resumes with `authorized_by = "operator-tty (seat resume without code)"` (`:257`) | `pin_reentries` +1 when the code is asked (Q5's answer) | `aew opencode` **plus one G3 PIN, every time** | 0 (1 budgeted approval) | The counter improves (−1). The interaction count is the same when work is running, **+1 when nothing is running. FLAGGED (conditional)** |
@@ -1031,14 +1100,15 @@ of the contracts: one G3 consent per protected step, as the oracle budgets.
 
 | Scenario | Today (alpha path) | Wire, straightforward | Wire's `pin_reentries` | Wire's budget |
 |---|---|---|---|---|
-| V1 | 0 codes, 0 PINs, 2 chat decisions | 3 PINs (open, plan, publish), plus 2 chat decisions unless the confirmer replaces them | 0 | 3 |
+| V1 | 0 PINs, 2 chat decisions, each confirmed with `aew operator confirm` and a typed-back code (2 codes, recorded with the decisions, not counted; #618) | 3 PINs (open, plan, publish; the last two in place of the 2 codes), plus 2 chat decisions unless the confirmer replaces them | 0 | 3 |
 | V2 | V1's, plus 0 or 1 resume code (counted, a breach) | 4 PINs | 0 | 4 |
 | V4 | V1's, plus today's 5-counter fallback | 4 PINs (or more, I6-R02) | 0, or over budget | 4 |
 | V1 / V2 / V4, steering on | plus 1 PIN per raise (built today) | 4 / 6 / 5 PINs | 0 | 4 / 6 / 5 |
 
-**What a straightforward build adds:** the PIN at open (+1, every scenario), the PINs at plan and publish (+2, V1's
-path), and the PIN at a reopen with nothing running (+1, conditional). In V1 that is 0 PINs today against 3 on the
-wire. The V-01 counters stay green by construction, because the budget is derived from the same G3 steps.
+**What a straightforward build adds:** the PIN at open (+1, every scenario), the PINs at plan and publish (in place of
+today's two typed codes since #618, so no extra interaction), and the PIN at a reopen with nothing running (+1,
+conditional). In V1 that is 0 PINs and 2 typed codes today against 3 PINs on the wire: one extra interaction, the
+open's. The V-01 counters stay green by construction, because the budget is derived from the same G3 steps.
 
 #### A.1.3 Would a straightforward build breach V-01's thresholds?
 
@@ -1063,8 +1133,8 @@ PIN is "never under `credentials`" (`ledger.py:300-301`). **It breaches on these
 |---|---|---|---|---|---|---|
 | `ATTACH_LEAD` (+1) | No: P05 is resource policy only (`IF10-04`) | No: the type's origin is fixed `PROTECTED_G3` in the registry | No: there is no predecessor generation at a first open | **No.** "the startup unlock (S01-31)" and "a website session or click" are "never G3" (A-37 G3-13). The consent is one-use (G3-08) and lives ≤15 minutes (G3-06) | Only with members known at approval, of one origin class (CS-02), at most 8. A raise can't join: it names the generation the attach creates (the same reason A-39 I6-00 gives for P14) | **A-32 L02 already allows a zero-ceremony open, with no protected authority:** "HEB admits an authority-bearing attachment only with competent operator/governing issuer and G3 as applicable … A separate `FUNCTIONAL_UNQUALIFIED` session association has **zero** protected grant/effect authority". Today's `aew opencode` is that functional association. **Design question Q-C1** |
 | `REATTACH_LEAD` (+1 when idle) | No | No | No: L03 is protected | No (as above) | No | A-32 L03: "governing ADC issuer/trusted platform rule (ADC-02.l) classifies routine vs trust revocation". A-32 A04: "**no new operator approval solely due to conversation change**", for child grants, through `REAFFIRM_ELIGIBLE_CHILD_GRANTS` (successor origin, "no new G3 per child", A-25). So the children's continuity is already ceremony-free; the reattach itself is not. **Design question Q-C2** |
-| `DECIDE_WORK_PROPOSAL` (+1) | No | No: protected | No | No | Several proposals in one set, if pending together | A-32 W01: "no inference from conversation"; W17: "ordinary in-grant delegation preserved, mandatory project scope never inferred". The PIN **is** V1's `plan` decision, so it can replace the chat question rather than add to it (Q-C3) |
-| `APPROVE_INTEGRATION` (+1) | No | No: "An external decision covers exactly this promotion and is spent with it" (A-31 I4, competence paragraph, `I4-PROFILE.md:96`) | No | No | Several packages in one set | The burn-down's Q3 (a compatible rebuild) is the same question one step later. The ledger already reads "publish stays a judgement unless a grant covers it" (`ledger.py:49-50`), but no adopted type issues such a grant: `AUTHORIZE_EXTERNAL_EFFECT` is "not blanket tool whitelist" (A-32 A09). Q-C3 |
+| `DECIDE_WORK_PROPOSAL` (a PIN for a code) | No | No: protected | No | No | Several proposals in one set, if pending together | A-32 W01: "no inference from conversation"; W17: "ordinary in-grant delegation preserved, mandatory project scope never inferred". The PIN **is** V1's `plan` decision, so it can replace the chat question rather than add to it (Q-C3) |
+| `APPROVE_INTEGRATION` (a PIN for a code) | No | No: "An external decision covers exactly this promotion and is spent with it" (A-31 I4, competence paragraph, `I4-PROFILE.md:96`) | No | No | Several packages in one set | The burn-down's Q3 (a compatible rebuild) is the same question one step later. The ledger already reads "publish stays a judgement unless a grant covers it" (`ledger.py:49-50`), but no adopted type issues such a grant: `AUTHORIZE_EXTERNAL_EFFECT` is "not blanket tool whitelist" (A-32 A09). Q-C3 |
 
 **The precedent for less ceremony is already adopted:** A-56 (SMP) amended A-39 so that a raise persists per project
 until "a change that may affect the run". An attach consent that persists per (project, host, harness, model,
@@ -1119,11 +1189,11 @@ contracts' answer where one exists. Otherwise it is marked **Q** and goes to the
 | DISCARD_HELD_RESULT | Protective | C14: "retained audit/provenance … not a publication decision" | nothing | Per act, rare |
 | NARROW_OR_REVOKE_STANDING_POLICY | Protective | I6-02.e: "admitted on the operator's consent alone" | nothing | Per act, rare |
 | REVOKE_HOST_QUALIFICATION | Protective | I6-08.c: "It only reduces" | nothing | Per act, rare |
-| DECIDE_WORK_PROPOSAL | Judgment | W01: "no inference from conversation"; W02: "exact decisions and accepted revision" | `plan accept` (`work_ops.py:758`). Who reaches it is not described here | Each plan is a new judgment, so yes by nature. The question is whether the PIN **replaces** the chat question (Q-C3) |
+| DECIDE_WORK_PROPOSAL | Judgment | W01: "no inference from conversation"; W02: "exact decisions and accepted revision" | `plan accept` (`work_ops.py:758`). (a) no: since #618 a Lead session's acceptance needs the operator's `aew operator confirm plan <T>` at the operator endpoint, which the broker keeps from it (`OPERATOR_CONFIRMS`, `lead_broker.py:110-112`; `work_ops.py:803-805`; both at `33236ab4`). (b) yes. (c) no route today | Each plan is a new judgment, so yes by nature. The question is whether the PIN **replaces** the chat question (Q-C3) |
 | CANCEL_OR_REPLACE_TICKET | Judgment | W03: "cannot mutate protected stable Ticket identity/goals in place" | `work cancel` (Story/Epic, `work_commands.py:244`) | Per act |
 | ANSWER_DECISION_NEED | Judgment | W05: "does not create unrelated grant/effect" | `authority accept|reject` (`commands.py:352-363`): `OPERATOR_DECIDED`. (a) no | Per need |
 | APPROVE_INTERFACE_CHANGE | Judgment | W04: "adoption ≠ implementation" | nothing | Per change |
-| APPROVE_INTEGRATION | Judgment (external) | W09: "Actual publication/integration owner, current AEV/ADC/HEB prerequisites"; I4: "spent with it" | `integrate publish` / `integration_publish` (`contract.py:364`). Who reaches it is not described here | Per promotion (I4), with Q3 open for a compatible rebuild |
+| APPROVE_INTEGRATION | Judgment (external) | W09: "Actual publication/integration owner, current AEV/ADC/HEB prerequisites"; I4: "spent with it" | `integrate publish` / `integration_publish` (`contract.py:364`). (a) no: since #618 a Lead session's publish needs the operator's `aew operator confirm publish <T>` (`OPERATOR_CONFIRMS`; `integration_ops.py:845-848`, at `33236ab4`). (b) yes. (c) no route today | Per promotion (I4), with Q3 open for a compatible rebuild |
 | LIFT_OPERATOR_SUSPENSION | Widening | A03: "Authority-increasing operator action … new G3" | nothing | Per act (A03 says "new G3") |
 | ISSUE_STANDING_POLICY | Widening (money) | P05: "External independently comparable policy issuer" | partly, through policy files and `manifest adopt` (`OPERATOR_DECIDED`) | Per issuance; it **is** the standing mechanism |
 | REQUEST_PROFILE_CHANGE | Widening | P02: "protected change needs G3" | `manifest adopt` (`commands.py:155`), `OPERATOR_DECIDED` | Per change |
@@ -1178,7 +1248,7 @@ contracts:
 |---|---|---|---|---|---|---|---|
 | **S. The Lead's seat** | ATTACH_LEAD, REATTACH_LEAD, HANDOVER_LEAD, TAKEOVER_LEAD, CANCEL_PENDING_LEAD_HANDOFF (5) | Who holds the Lead's authority, and on which model, harness and profile (L02, L05, L06) | Already stopped by `CREDENTIAL_EMITTING`. G3 adds the binding to the exact Lead, profile and classification | Adds nothing on today's host (`RESIDUALS`) | The real gain: a remote request cannot become a Lead | Operator origin, with a **standing consent per unchanged basis** (A-56's shape); a fresh PIN only on a change, a handover or a takeover | Wire as designed: +1 PIN per open and reopen (V1 3 → with the default, 2 after the first session; V2 4 → 2). `pin_reentries` stays 0 either way, and the reopen's code goes |
 | **P. Protective reductions** | CLOSE_ATTACHMENT, SUSPEND_GRANT, REVOKE_LINEAGE, STOP_CHILD_NOW, RELEASE_CHILD_TO_MANUAL, CANCEL_CHILD_OPERATION, DISCARD_HELD_RESULT, NARROW_OR_REVOKE_STANDING_POLICY, REVOKE_HOST_QUALIFICATION (9) | A steered agent stopping or denying the operator's work; a stop claimed but not made (C06: "cancel requested ≠ cancellation confirmed") | The Lead's own stops stay delegated (DELEGATED_CANCEL, `harness stop`) | Nothing | A remote "stop all" must be the operator's | Per act, as designed: rare and protective, never held (I6-10) | 0: none is on V-01's path |
-| **J. The operator's judgments** | DECIDE_WORK_PROPOSAL, CANCEL_OR_REPLACE_TICKET, ANSWER_DECISION_NEED, APPROVE_INTERFACE_CHANGE, APPROVE_INTEGRATION (5) | An approval inferred from conversation (W01) or not the operator's | Not described here | Nothing | The confirmer is local only (G3-01), so a phone cannot approve | Per decision as designed, with **the confirmer replacing the chat question**, so the PIN is the decision, not an extra one | +2 PINs in V1 (plan, publish), budgeted. Net 0 extra interactions if the chat question goes |
+| **J. The operator's judgments** | DECIDE_WORK_PROPOSAL, CANCEL_OR_REPLACE_TICKET, ANSWER_DECISION_NEED, APPROVE_INTERFACE_CHANGE, APPROVE_INTEGRATION (5) | An approval inferred from conversation (W01) or not the operator's | Already stopped for plan and publish by `OPERATOR_CONFIRMS` (#618): the operator confirms at the operator endpoint, which a Lead session cannot reach | Nothing | The confirmer is local only (G3-01), so a phone cannot approve | Per decision as designed, with **the confirmer replacing the chat question**, so the PIN is the decision, not an extra one | +2 PINs in V1 (plan, publish), budgeted, in place of today's two typed codes (#618): no extra interaction, and 2 fewer if the chat question goes |
 | **W. Widening authority, money, external effect** | LIFT_OPERATOR_SUSPENSION, ISSUE_STANDING_POLICY, REQUEST_PROFILE_CHANGE, ADJUST_LEAD_AUTONOMY, OVERRIDE_RISK_FLOOR, AUTHORIZE_EXTERNAL_EFFECT, ADOPT_MANIFEST_EDIT, SET_STEERING_MODE, REQUEST_CHARGE_RECONCILIATION (9) | Escalation of the Lead's own authority, spending, effects outside the host | Already stopped by `OPERATOR_DECIDED` and `OPERATOR_ENDPOINT` | Spending and external effects still matter after an escape; the rest add little | As for J | Per act, as designed. Steering already standing under A-56. ADJUST_LEAD_AUTONOMY is itself the standing lever | V4 +1 PIN (the setting; more under I6-R02). The steering variants +1 per raise, falling to 0 on later sessions under A-56 |
 
 
@@ -1372,8 +1442,10 @@ designer's. Every host's G3 then needs a reinstall (`g3/README.md`, step 1).
   session origin. Cost: M per tool group, 2–4 PRs. One admission path, as I6-06.f already requires of the auto-runner:
   "It submits each step through the same admission path as the Lead's own call". **Recommended for the designer to
   rule (Q-D3).**
-- **Under either option,** `integration_publish` cannot stay the Lead's own decision once W09 is G3, so its tool
-  becomes "request the operator's approval".
+- **Already partly true:** since #618 `integration_publish` is not the Lead's own decision. Its publish needs the
+  operator's `aew operator confirm publish <T>` with a typed-back code (`integration_ops.py:845-848`, at `33236ab4`).
+- **Under either option,** once W09 is G3 the G3 approval stands in for that code (E350's interim,
+  `src/aew/engine/operator_decisions.py`), and the tool becomes "request the operator's approval".
 
 
 ### A.5 The total
@@ -1471,7 +1543,7 @@ Each is put as it would be asked, with its evidence.
 - **Q-C3 (designer):** "For `DECIDE_WORK_PROPOSAL` and `APPROVE_INTEGRATION`, is the PIN in the confirmer the
   operator's decision itself, so that the Lead no longer asks in chat, and can `ADJUST_LEAD_AUTONOMY` ever carry a
   standing 'publish if clean' grant, or is every promotion 'spent with it' (I4)?" Evidence: `ledger.py:49-50`;
-  `I4-PROFILE.md:96`; A-32 A09.
+  `I4-PROFILE.md:96`; A-32 A09; today's `aew operator confirm plan|publish` (#618), which the PIN would replace.
 - **Q-C4 (operator):** "Under the threat model of 2026-10-19 (G3-01: 'Malicious code running as the operator's UID is
   outside the threat model'), which class in A.1.6 is G3 worth its cost for: seat, protective, judgment, widening?"
   Evidence: A.1.5.
@@ -1541,8 +1613,17 @@ Each is put as it would be asked, with its evidence.
   `aew.stg02.wire`, so E356 keeps them.
 - **The oracle:** a landed step also needs the scripted operator's driver (F2), and the oracle reads one owner action
   from STG-02 only (F1, F3).
-- **Q-W1:** answered by the operator on 2026-11-27: 0.9's envelope, 0.8's 42 admitted.
-- **E181's "after I-6":** lifted by the operator on 2026-11-27, on its condition.
-- **Q-D4's hosting half:** an implementation choice, recorded in an ADR with A2 and R1. Its recipient-authentication
-  half stays with the designer.
+- **#618 (E350, part), merged before this plan's base `2db9b762`:** a plan acceptance or a publish that a Lead session
+  carries needs the operator's `aew operator confirm plan|publish <T>` at the operator endpoint, with a typed-back code
+  (`OPERATOR_CONFIRMS`, `src/aew/harness/lead_broker.py:110-112`; `tests/helpers/vertical/scripted_operator.py:371-386`;
+  both at `33236ab4`). The sizing at `eece01e5` predates it. A.1.2's rows 5 and 7 and its totals, A.1.4's two
+  judgment rows, A.1.5's two "who reaches it" cells, A.1.6's row J, A.4.7 and Q-C3's evidence are corrected for it.
+- **`vertical-uat.md` at `33236ab4`:** the sizing's citations `:144-150`, `:151` and `:228-237` (correct at `eece01e5`)
+  are now `:164-170`, `:171` and `:255-264`.
+- **Q-W1:** answered by the operator on 2026-11-27 ("1 and 2 yup thats my understanding"); that this means 0.9's
+  envelope with 0.8's 42 admitted is proposed — the author's reading of 2026-11-27, to be confirmed.
+- **E181's "after I-6":** lifting it, on the condition "as long as it isnt dependent on wire work", is proposed — the
+  author's reading of 2026-11-27, to be confirmed (ambiguity 1 in the opening section).
+- **Q-D4's hosting half:** an implementation choice, recorded in the ADR E181-R1 creates and A2 amends. Its
+  recipient-authentication half stays with the designer.
 - **The paid class:** a missing placement, not an unsatisfiable invariant (§9.1, C2).

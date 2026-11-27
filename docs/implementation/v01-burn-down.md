@@ -90,11 +90,11 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | counter | `help_calls` | C5, C7, C9, C11 | the gap ladder's `work_show` with `explain: true` |
 | counter | `guessed_commands` | C3 | `ticket_draft` on an empty project |
 | counter | `cli_tool_calls` | none | not breached |
-| counter | `shell_aew_calls` | C2, C5, C7, C9, C11 | the plan accept, the stage continue, the reconcile and new attempt, the requeue, the gate reads |
+| counter | `shell_aew_calls` | C2, C5, C7, C9, C11 | the plan accept, the stage continue (gone in V2-forced at `8c85f377`), the reconcile and new attempt, the requeue, the gate reads |
 | counter | `ambiguous_next_action` | none | not breached |
 | counter | `revision_args` | C4 | every case with a Lead; 0 in all 8 at `8c85f377` (C4 done) |
 | counter | `stale_retries` | C4 | not breached; E329 names it as a test; 0 in all 8 at `8c85f377` |
-| counter | `refusals` | C5, C7, C9, C11, C16 | `resolve`, the stale hint, `ticket_prepare`, the driver's read, the forced kill |
+| counter | `refusals` | C5, C7, C9, C11, C16 | `resolve`, the stale hint, `ticket_prepare`, the driver's read (gone at `8c85f377`), the forced kill |
 | counter | `mechanical_calls` | C6 | each steering-on case |
 | hard limit | `semantic_conflict` | none | held |
 | hard limit | `evidence_mismatch` | none | held |
@@ -194,8 +194,8 @@ What changed in each failing case since `f848983e`; the V3 cases are unchanged:
 | V1 evidence-mismatch | fail | `revision_args` 4 to 0; `shell_aew_calls` 3 to 2 (`gate show` once, not twice); `refusals` 1 to 0: the driver's `gate show --expect-rev` refusal is gone | `help_calls` 1; `guessed_commands` 1; the open and plan fallbacks; it ends at RUNNING with `ticket_request_review` BLOCKED, and no result | C11 (E380); C3; C2; C12 |
 | V1 semantic-conflict | fail | `revision_args` 99 to 0 | `help_calls` 47; `shell_aew_calls` 47 (46 `aew integrate requeue`); `refusals` 47 (46 `ticket_prepare`, 1 `integration_publish`); `guessed_commands` 1; the open, plan and publish fallbacks; no result | C9 (E378), the loop; C2; C3; C12 |
 
-Nothing new appeared. The plan accept still carries `--revision 1`, the plan's own revision and not `expect_rev`, so
-`revision_args` does not count it.
+Nothing appeared that no row owns. The plan accept still carries `--revision 1`, the plan's own revision and not
+`expect_rev`, so `revision_args` does not count it.
 
 With the alpha passed, the wire track (C12) now follows, by the operator's answer to Q7 above ("this seems after alpha
 when we align the wires").

@@ -4724,9 +4724,9 @@ systems:
     all three"), split the replacement into four PRs and seat resume. The specs and guards (E326), the class C bindings
     (E327), the class B bindings with CHANGED_SINCE_READ (E328) and seat resume (E330) are built, all optional beside the
     project-wide check until the switch-on (E329). Recorded on the board when the operator placed E329 on 2026-11-25;
-    it was partly built and unrecorded before. The switch-on has merged and E329 closed on 2026-11-27, once the scripted
-    vertical re-measure on main at 8c85f377 read revision_args and stale_retries 0 in the 8 cases the alpha reads. What
-    is left is the finish line''s real run, the operator''s check before the sign-off.'
+    it was partly built and unrecorded before. The switch-on has merged and E329 closed on 2026-11-27 on the vertical
+    re-measure (evidence: the burn-down''s C4). What is left is the finish line''s real run, the operator''s check before
+    the sign-off.'
   evidence:
   - 'src/aew/engine/primitives.py CONTROL_OP_SPECS: a revision class and binding for each checked control operation'
   - 'src/aew/errors.py ChangedSinceRead: code CHANGED_SINCE_READ, the class B and C refusal'

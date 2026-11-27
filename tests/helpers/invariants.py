@@ -428,7 +428,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
         note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
-    51: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
+    51: its resolutions (E3c), hot and cold: see ``resolutions`` below.
+    63: a continue over a launching step's run that has ended (E400): see ``taken_or_moved`` below."""
     from aew.engine import primitives as P
     from aew.engine import stage_intents as S
     from aew.schemas import validate
@@ -488,6 +489,46 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
             if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
                 problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
+        taken_or_moved(si, where)
+
+    def taken_or_moved(si: dict[str, Any], where: str) -> None:
+        """63 (register E400): what a continue took from its launching step's ended run is true. Its commit's summary
+        names each run it took and the evidence it took (``S.took``, read back by ``S.taken_in``; written when the
+        run's status was read, so no clock is compared: #651 review, m2): each such run is one the step launched, its
+        record says it ended with its evidence, and each id named is a sealed record that run produced. A
+        ``snapshot_moved`` stop is only ever over a run that ended with its evidence. The limit: a run the continue
+        found live is not checked here."""
+        resolution, closed, stop = si["resolution"], si["closed"], si.get("stopped")
+        last = si["steps"][-1] if si["steps"] else None
+        runs = ((last or {}).get("outputs") or {}).get("runs") or []
+        if not runs or not resolution or resolution["choice"] != "continue" or not closed \
+                or closed["rev"] != resolution["rev"]:
+            return
+        wid = si["subject"]["id"]
+        produced = {e["id"]: e["producer"].get("run") for e in E.scan(aew, wid)[0]} if wid else {}
+
+        def ended_with_evidence(run: str) -> bool:
+            record = runlog.read_record(runlog.run_dir(aew, run)) or {}
+            return record.get("status") == "ended_with_evidence" and run in produced.values()
+
+        if stop and stop["error"].get("reason") == "snapshot_moved" and not any(map(ended_with_evidence, runs)):
+            problems.append(f"63: {where}: stopped as snapshot_moved over {runs}, none of which left evidence")
+        if si["status"] != S.COMPLETED:
+            return
+        try:
+            [record] = outbox.read_transitions(aew, closed["rev"] - 1, closed["rev"], outbox=hot.get("outbox"))
+        except Exception as exc:  # noqa: BLE001 (the oracle reports, it does not crash)
+            problems.append(f"63: {where}: the continue's commit {closed['rev']} cannot be read: {exc}")
+            return
+        taken = S.taken_in(str(record.get("summary") or ""))
+        if taken is None:
+            problems.append(f"63: {where}: the continue's commit {closed['rev']} names what it took unreadably")
+            return
+        for run, named in taken.items():
+            if run not in runs or not ended_with_evidence(run) or not named \
+                    or any(produced.get(i) != run for i in named):
+                problems.append(f"63: {where}: a continue completed it taking {run}'s evidence {named}, which that "
+                                "run did not end with")
 
     def resolutions(si: dict[str, Any], where: str) -> None:
         """51 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held

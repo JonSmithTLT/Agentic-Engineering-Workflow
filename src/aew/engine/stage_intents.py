@@ -44,9 +44,12 @@ Resolving an ACTIVE intent (E3c) is the current Lead's explicit choice, never in
   digest. It then rebinds the intent to the current Lead generation (F18 §14), recorded in
   ``rebound``, and the surface resumes from the first uncommitted step. A launching step's run with no supervisor
   record, or one that is no longer starting or running, is ``launch_failed``: the continue stops the intent there in
-  the same commit and never completes it over a run that never started. It never relaunches: a relaunch is the Lead's
-  ``harness.launch``, which rotates the credential, so the one lost with the crashed launcher is never used (#142
-  review).
+  the same commit and never completes it over a run that never started. A run that ended with its evidence, sealed and
+  bound to the current snapshot, did the launch's work: the continue takes that evidence (register E400). On a moved
+  snapshot an implementer's is ``snapshot_moved``, a stop whose next step is the Lead's relaunch (or a fresh attempt).
+  The continue itself never relaunches: a
+  relaunch is the Lead's ``harness.launch``, which rotates the credential, so the one lost with the crashed launcher is
+  never used (#142 review).
 
 The engine never imports the typed surface (tests/unit/test_surface_contract.py): the surface hands the engine plain
 data, and this module checks it against the engine's own primitive declarations.
@@ -90,6 +93,34 @@ OUTPUTS = ("units", "invocations", "runs")  # what a step records it created, an
 REFERENCE = "$from"  # a planned argument {"$from": [m, field]} reads the journal's step m
 STEP_STATE = "state"  # a later transition may bind the subject state that step m committed
 ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # judgments that accept a report
+
+
+# What a continue took from a launching step's ended run (register E400), as its commit's summary records it: the one
+# record of what the continue observed, which invariant 63 reads back (#651 review, m2), so no clock is compared. The
+# ids are written as one JSON object ending the summary, so any id reads back whole: a check's evidence id holds the
+# check's configured name, which may hold any character (quick check of #651, m1).
+TOOK_PREFIX = "; took evidence "
+
+
+def took(taken: dict[str, list[str]]) -> str:
+    """The summary clause of a continue that took each run's evidence ids (``{run: [ids]}``), or "" when it took none;
+    ``taken_in`` reads it back."""
+    return f"{TOOK_PREFIX}{json.dumps(taken, sort_keys=True)}" if taken else ""
+
+
+def taken_in(summary: str) -> dict[str, list[str]] | None:
+    """What a continue's commit summary says it took (``took``): ``{}`` when it took nothing, None when the clause is
+    there but does not read back as ``{run: [ids]}``."""
+    at = summary.find(TOOK_PREFIX)
+    if at < 0:
+        return {}
+    try:
+        found = json.loads(summary[at + len(TOOK_PREFIX):])
+    except ValueError:
+        return None
+    ok = isinstance(found, dict) and all(isinstance(r, str) and isinstance(ids, list)
+                                         and all(isinstance(i, str) for i in ids) for r, ids in found.items())
+    return found if ok else None
 
 
 def cold_rel(intent_id: str, work_id: str | None) -> str:
@@ -174,9 +205,13 @@ def unit_state(unit: dict[str, Any] | None) -> dict[str, Any] | None:
 class StageIntents:
     def __init__(self, k: Any, *, archive: Any, obligations: Any = None,
                  automation_guard: Callable[[dict[str, Any], dict[str, str], dict[str, Any],
-                                             list[dict[str, Any]], str], None] | None = None) -> None:
+                                             list[dict[str, Any]], str], None] | None = None,
+                 run_evidence: Callable[[dict[str, Any], str], dict[str, Any] | None] | None = None) -> None:
         self.k = k
         self.archive = archive
+        # (state, run) -> what a run that ended with its evidence left, and whether it is bound to the current
+        # snapshot (``Invocations.run_evidence_binding``): what a continue over that run reads (register E400)
+        self.run_evidence = run_evidence
         # (state, work_id) -> the unit's effective obligations: what a stage that accepts evidence binds (E5b)
         self.obligations = obligations
         self.automation_guard = automation_guard
@@ -351,10 +386,12 @@ class StageIntents:
 
         The commit rebinds the intent to the current generation. With steps still to run it stays ACTIVE, and the
         surface runs them from the first uncommitted one. With every step committed, it ends here: COMPLETED when the
-        last step launched nothing or its run's supervisor still holds it, and STOPPED_AT_BOUNDARY as
-        ``launch_failed`` when that run has no supervisor record or has ended (a crash between the launching
-        assignment's commit and its supervisor's start: #142 review). A launching step followed by others is checked
-        the same way, so no later step runs over a run that never started."""
+        last step launched nothing, its run's supervisor still holds it, or its run ended with its evidence sealed and
+        bound to the current snapshot (that evidence is taken: register E400). It ends STOPPED_AT_BOUNDARY as
+        ``launch_failed`` when that run has no supervisor record or has otherwise ended (a crash between the launching
+        assignment's commit and its supervisor's start: #142 review), its reason ``snapshot_moved`` when an
+        implementer's evidence is bound to a snapshot its workspace has moved from. A launching step followed by others
+        is checked the same way, so no later step runs over a run that never started."""
         if not (rationale and rationale.strip()):
             raise UsageError("continuing a stage needs a rationale")
         with self.k.lead_txn(token, "stage.continue") as ctx:
@@ -393,7 +430,8 @@ class StageIntents:
                 status = ACTIVE
             ctx.summary = (f"stage {si['tool']} ({intent}) continued by Lead generation {generation}: "
                            + {ACTIVE: f"from step {done + 1}", COMPLETED: "completed",
-                              STOPPED: "its launch failed"}[status])
+                              STOPPED: "its launch failed"}[status]
+                           + took(launch.get("taken") or {}))
             ctx.refs.append(intent)
         return {"intent": intent, "status": status, "revision": rev, "next": done + 1, "generation": generation,
                 "launch": launch}
@@ -453,7 +491,7 @@ class StageIntents:
                                                 "primitive moved it)"}
             else:
                 checks["subject"] = {"status": OK, "message": f"{subject['id']} is as the last step left it"}
-        checks["launch"] = self._launch_check(steps[-1] if steps else None, si["id"])
+        checks["launch"] = self._launch_check(steps[-1] if steps else None, si["id"], state=state)
         checks["rebinds"] = {"status": OK, "message": f"{len(si['rebound'])} of {MAX_REBINDS} continues used"} if (
             len(si["rebound"]) < MAX_REBINDS) else {"status": "exhausted",
                                                      "message": f"continued {MAX_REBINDS} times already"}
@@ -486,16 +524,31 @@ class StageIntents:
         """:meth:`recheck` of the unfinished intent ``intent`` (NOT_FOUND when it has ended or never existed)."""
         return self.recheck(state, self._active(state, intent), contract_digest=contract_digest, plan=plan)
 
-    def _launch_check(self, last: dict[str, Any] | None, intent: str) -> dict[str, Any]:
+    def _launch_check(self, last: dict[str, Any] | None, intent: str, *,
+                      state: dict[str, Any] | None = None) -> dict[str, Any]:
         """The run of a launching last step: its supervisor must still hold it (starting or running). No record
         means no supervisor ever ran; any other status means the run is not live. Only the last committed step can
         hold a run that never started: the executor runs no further step until a launch is in its supervisor's
-        custody (#142 review, finding 1)."""
+        custody (#142 review, finding 1).
+
+        One ended run passes (register E400; the operator, 2026-11-27): a run that ended with its evidence, sealed and
+        bound to the snapshot its invocation evaluates now, did the launch's work, so the continue takes that evidence
+        and moves the stage on. The same run on a snapshot that has moved since is ``snapshot_moved`` for an
+        implementer: the stage stops, and its next step is the Lead's relaunch, whose run is told what changed, or a
+        fresh attempt told what this one did (F36's recovery section). Every other status is checked as before."""
         runs = (last or {}).get("outputs", {}).get("runs") or []
         if not runs:
             return {"status": NOT_APPLICABLE, "message": "its last committed step launched no run"}
+        taken: dict[str, list[str]] = {}
         for run in runs:
             observed, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+            left = (self.run_evidence(state, run)
+                    if observed == K.ENDED_WITH_EVIDENCE and self.run_evidence and state is not None else None)
+            if left is not None and left["bound"]:
+                taken[run] = list(left["taken"])
+                continue
+            if left is not None and left["role"] == "implementer" and left["scope"] == "ticket":
+                return _snapshot_moved(last, run, observed, left)
             if observed not in LIVE_RUN:
                 step_n = last["n"] if last else "?"
                 inv = K.invocation_of_run(run) or "<invocation from aew harness status>"
@@ -525,7 +578,12 @@ class StageIntents:
                                    f"here. Read `harness_status` and the run's report before deciding whether to "
                                    f"relaunch it ({relaunch}), cancel its invocation with:\n\n{cancel}\n\n"
                                    "or go on from its evidence"}
-        return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
+        if not taken:
+            return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
+        ended = "; ".join(f"{run} with {', '.join(ids)}" for run, ids in taken.items())
+        return {"status": OK, "runs": list(runs), "taken": taken,
+                "message": f"its launching step's run ended with its evidence, sealed and bound to the current "
+                           f"snapshot ({ended}): the continue takes it and the stage goes on"}
 
     # ------------------------------------------------------------------ the step finalizer
 
@@ -723,6 +781,30 @@ def _refuse_unless_continuable(si: dict[str, Any], check: dict[str, Any]) -> Non
     launch = checks["launch"]
     if launch["status"] == K.UNREADABLE:
         raise IllegalTransition(launch["message"], reason="run_unreadable", intent=si["id"])
+
+
+def _snapshot_moved(last: dict[str, Any] | None, run: str, observed: str, left: dict[str, Any]) -> dict[str, Any]:
+    """The launch check of an implementer's run that ended with its evidence on a snapshot its workspace has since
+    moved from (register E400). The evidence is history, never proof for the current snapshot, so the continue takes
+    none of it, and the stage stops here: the continue starts no run. The next step it names is the operator's choice
+    of 2026-11-27, a relaunch of the same invocation (`harness.launch`, which rotates the credential): the relaunched
+    run's continuation lists the earlier run, marks its evidence STALE and lists the workspace's changed paths
+    (``contract.continuation_text``). The fresh attempt stays the alternative: end the invocation, then dispatch a new
+    implementer, whose pack carries F36's recovery section on this one. Neither is run by the continue: a stage runs
+    only its planned steps (typed Lead surface v0.2 §3.4, rules 2 and 8), and `resolve` expands to no relaunch."""
+    inv, wid = left["invocation"], left["work_unit"]
+    cancel = K.fields_command(f"aew invoke cancel {inv}", "reason",
+                              "its run ended with evidence on a snapshot the workspace has moved from")
+    return {"status": "snapshot_moved", "run": run, "observed": observed, "evidence": list(left["evidence"]),
+            "message": f"step {(last or {}).get('n', '?')} recorded {run}, which ended with its evidence "
+                       f"({', '.join(left['evidence'])}), but {wid}'s workspace has changed since: that evidence is "
+                       "bound to a snapshot that is no longer the current one, so the continue takes none of it and "
+                       "the stage stops here. Relaunch the worker to pick up from where it stopped with "
+                       f"`{K.launch_command(inv, run)}` (the credential rotates; its run is told its earlier run's "
+                       "evidence is stale and which paths changed), or start a fresh attempt: end "
+                       f"{inv} with:\n\n{cancel}\n\nthen dispatch a new implementer with "
+                       f"`aew invoke create {wid} --role implementer --launch`, whose pack carries a recovery section "
+                       f"on what {inv} did"}
 
 
 def _covered_step(si: dict[str, Any], binding: StepBinding, record: dict[str, Any], outputs: dict[str, list[str]],

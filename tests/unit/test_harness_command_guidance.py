@@ -147,6 +147,25 @@ def _stage(monkeypatch: pytest.MonkeyPatch, tmp: Path, status: str) -> str:
     return stages._launch_check({"n": 2, "outputs": {"runs": ["R-INV-0012-1"]}}, "SI-0003")["message"]
 
 
+@pytest.mark.parametrize(("role", "scope"), [("implementer", "ticket"), ("reviewer", "ticket"), ("verifier", "ticket"),
+                                           ("verifier", "integration"), ("implementer", "integration"),
+                                           ("investigator", "observation")])
+def test_a_moved_snapshot_is_snapshot_moved_only_for_a_ticket_implementer(tmp_path, monkeypatch, role, scope):
+    """Register E400 (#651 review, m1): a run that ended with its evidence on a snapshot that has moved stops as
+    ``snapshot_moved`` only for an implementer at ticket scope, whose next step is a relaunch or a fresh attempt with
+    a recovery section; under any other role or scope it stays ``not_live``, as before."""
+    stages = StageIntents.__new__(StageIntents)
+    stages.k = SimpleNamespace(aew_root=tmp_path)
+    stages.run_evidence = lambda state, run: {"invocation": "INV-0012", "work_unit": "T-0007", "role": role,
+                                              "scope": scope, "evidence": ["INV-0012-impl-2"], "taken": [],
+                                              "bound": False}
+    monkeypatch.setattr(runlog, "run_dir", lambda *_args: tmp_path)
+    monkeypatch.setattr(runlog, "observed_status", lambda *_args: ("ended_with_evidence", None))
+    launch = stages._launch_check({"n": 2, "outputs": {"runs": ["R-INV-0012-1"]}}, "SI-0003", state={})
+    expected = "snapshot_moved" if (role, scope) == ("implementer", "ticket") else "not_live"
+    assert launch["status"] == expected, launch
+
+
 def test_an_unreadable_stage_run_pauses_without_reporting_an_end(tmp_path, monkeypatch):
     from aew.engine.stage_intents import _refuse_unless_continuable
 

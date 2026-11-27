@@ -663,7 +663,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
 - `aew.engine.validation_ops`: `Validation._coverage_record` (Path.read_text), `Validation._coverage_record` (sha256_file)
 - `aew.engine.work_ops`: `WorkCommands.plan_accept` (sha256_file), `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
-- `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
+- `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists), `Invocations.run_evidence_binding` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)
 - `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_copy` (Path.is_dir), `run_copy` (Path.is_file), `run_copy` (shutil.copyfile)
 - `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open), `public_snapshot` (open)

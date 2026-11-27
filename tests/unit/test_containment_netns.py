@@ -17,6 +17,7 @@ from aew.errors import ContainmentUnavailable, ValidationFailed
 from aew.harness.containment import layout as L
 from aew.harness.containment import netns, relay
 from aew.harness.containment.egress import Allowlist
+from aew.http_close import REFUSAL_DRAIN_S
 
 pytestmark = GUARDED
 KEY = "synthetic-provider-key-cs3b"
@@ -206,9 +207,12 @@ def test_the_runs_egress_proxy_gets_the_allowlist_its_caller_built_and_the_netwo
 
 def test_the_shim_spec_forwards_the_server_in_and_the_relay_and_egress_out_on_fixed_ports():
     spec = netns.shim_spec("/n", relay_sock=netns.RELAY, egress_sock=netns.EGRESS)
+    # The relay's leg carries the relay's own answer for when it takes no connection; the egress proxy's carries none
     assert spec == {"in": [{"unix": os.path.join("/n", netns.SERVER), "port": netns.SERVER_PORT}],
-                    "out": [{"port": netns.PROVIDER_PORT, "unix": os.path.join("/n", netns.RELAY)},
+                    "out": [{"port": netns.PROVIDER_PORT, "unix": os.path.join("/n", netns.RELAY),
+                             "unreachable": relay.unreachable_answer(), "drain_s": REFUSAL_DRAIN_S},
                             {"port": netns.EGRESS_PORT, "unix": os.path.join("/n", netns.EGRESS)}]}
+    assert "X-AEW-Refusal: relay_unreachable" in spec["out"][0]["unreachable"]
     argv = netns.shim_argv(spec, ["opencode", "serve"])
     assert argv[:3] == [sys.executable, "-I", "-c"] and argv[-3:] == ["--", "opencode", "serve"]
     with open(netns.SHIM, encoding="utf-8") as f:  # the shim's own text, run with an explicit call to its main

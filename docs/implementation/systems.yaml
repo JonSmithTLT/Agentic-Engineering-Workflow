@@ -2642,12 +2642,13 @@ systems:
     it running. Only E123 is live work, the gate before a provider that requires a client certificate; BOARD v2 §4 freezes
     the rest (gateway, usage convergence, routing policy, reference profiles) in HOLD-20.'
   evidence:
-  - src/aew/harness/containment/relay.py:1-23 (credential swap for a sentinel, one fixed upstream; a host-local upstream
+  - src/aew/harness/containment/relay.py:1-83 (credential swap for a sentinel, one fixed upstream; a host-local upstream
     such as F18.8's gateway is allowed)
-  - 'src/aew/harness/containment/relay.py:449-454 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor and no
-    load_cert_chain); a grep of src/ for load_cert_chain, client_cert, certfile, keyfile and mTLS finds nothing'
-  - 'src/aew/schemas/execution.schema.json: no certificate, key or CA field (a case-insensitive grep for ''cert'' and ''tls''
-    finds none)'
+  - 'src/aew/harness/containment/relay.py:1570-1575 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor, for
+    a provider with no client certificate); the client certificate is E123''s, SYS-47: src/aew/harness/containment/client_cert.py:185-196
+    (context: load_cert_chain from the policy''s files). The gateway itself is not built: no other load_cert_chain in src/'
+  - 'src/aew/schemas/execution.schema.json:73 (client_certs, E123''s, SYS-47): the gateway, usage convergence and routing
+    policy have no field of their own'
   - src/aew/harness/containment/__init__.py:70-78 (containment mode is 'required' unless the policy says otherwise where
     containment is supported; Windows runs allow_weaker)
   - 'src/aew/harness/containment/netns.py:82-87 (network mode defaults to proxy_only on Linux, the relay''s route; Windows:
@@ -4298,8 +4299,8 @@ systems:
   evidence:
   - 'src/aew/harness/containment/client_cert.py:49-50 (the policy field containment.network.client_certs and its cert,
     key and ca files), :184 (context: the relay''s TLS context presents the certificate)'
-  - 'src/aew/schemas/execution.schema.json:65 (client_certs, legality_affecting)'
-  - 'src/aew/harness/containment/relay.py:487-499 (a handshake failure answers 502 client_cert_required or client_cert_refused,
+  - 'src/aew/schemas/execution.schema.json:73 (client_certs, legality_affecting)'
+  - 'src/aew/harness/containment/relay.py:1586-1609 (a handshake failure answers 502 client_cert_required or client_cert_refused,
     naming the policy field)'
   - 'src/aew/engine/workspace_ops.py:225-227 (a launch with no relay refuses the provider, client_cert.NO_RELAY); src/aew/engine/readiness.py:65-67
     (aew doctor''s client-cert row)'

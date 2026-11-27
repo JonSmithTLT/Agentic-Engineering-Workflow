@@ -38,7 +38,11 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    over TLS for ``https``;
 5. sends the request and its body (a model call's as it was read, framed by its length; any other's framed as it
    came, by ``Content-Length`` or chunked), then streams the response back as it comes, until the upstream ends it,
-   the client goes away or the stream's time is up.
+   the client goes away or the stream's time is up. It removes a credential from a failed answer's body before it
+   reaches the run: a non-2xx answer to a request that carried one is held first, up to the record's excerpt bound
+   (:data:`EXCERPT_RAW_BYTES`), and any of the request's credential values in its body taken out by the record's own
+   redaction (:class:`_Scrub`). One that holds none goes on exactly as it came; one that does goes on without it,
+   re-framed (:meth:`ProviderRelay._failed_answer`). A 2xx answer streams as it comes, untouched.
 
 **Bounds:** the relay bounds request size, the model-call bodies it holds, concurrency and stream time, each an
 implementation bound below, set by the host-side code that starts the relay and never by a request or the sandbox. A
@@ -58,7 +62,9 @@ is ended (:data:`STREAM_TIMEOUT_REASON`), answered 504 if its head had not come.
 other. A request refused while its body was still arriving (too large, stalled, malformed, or its client closing or
 resetting its connection) is ``refused`` even after its head went upstream, as the upstream never got it whole. A
 non-2xx answer whose body then breaks stays ``forwarded``: the provider had settled the call. A stream the relay itself
-ends, as the run ends or its client goes, stays ``forwarded`` too.
+ends, as the run ends or its client goes, stays ``forwarded`` too. A body with neither length nor chunking that the
+upstream cuts ends at the harness in a clean close, as its own end would: HTTP/1.1 cannot mark it, and the shim's leg
+is a socket file, which carries no reset. Only the record tells the two apart (``upstream_broken``).
 
 **The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
 request target; only a request refused for its operation, once past the path check, also records its method and its
@@ -95,6 +101,7 @@ import socket
 import ssl
 import time
 import urllib.parse
+import zlib
 from collections.abc import Callable, Collection, Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -167,6 +174,9 @@ REQUEST_TOO_LARGE = "request_too_large"
 RELAY_BUSY = "relay_busy"
 STREAM_TIMEOUT_REASON = "stream_timeout"
 UPSTREAM_OUTCOME_UNKNOWN = "upstream_outcome_unknown"
+# The shim's answer when a relay leg's socket file takes no connection (:func:`unreachable_answer`): the relay is gone,
+# as while its run ends, so the harness gets a reason, never a bare reset.
+RELAY_UNREACHABLE = "relay_unreachable"
 # What became of a request, in its entry: answered by the upstream; refused, with nothing (or, for a body refused as it
 # arrived, never the whole request) sent; or unknown, once any byte went upstream and the exchange did not end whole.
 OUTCOMES = ("forwarded", "refused", "unknown")
@@ -594,6 +604,14 @@ class _Refused(Exception):
         return head.encode() + body
 
 
+def unreachable_answer() -> str:
+    """The fixed answer the in-sandbox shim gives on a relay leg whose relay takes no connection
+    (:data:`RELAY_UNREACHABLE`), in the relay's own refusal form. The shim imports nothing of AEW, so ``netns`` puts it
+    in the leg's spec (``netns.shim_spec``)."""
+    return _Refused(502, RELAY_UNREACHABLE, "AEW: the provider relay is not taking connections: the run is ending, or "
+                    "its supervisor stopped. This request was not sent to the provider").response().decode("latin-1")
+
+
 class ProviderRelay(Service):
     """Serves ``listener`` for one run's provider. ``credentials`` maps each sentinel to the value it stands for, or
     ``resolve`` gives that map and the headers to set for each request (raising :class:`Unavailable` when it has
@@ -844,8 +862,8 @@ class ProviderRelay(Service):
                     reserve(framing[1])
             # Only to HTTP/1.1 (_request has checked the version): no 1xx goes to an HTTP/1.0 client, which ignores the
             # expectation, and its body is read all the same (RFC 9110 §15.2, §10.1.1; the review of #587, m1)
-            if head.split(b"\r\n", 1)[0].endswith(b" HTTP/1.1") and any(
-                    k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
+            http11 = head.split(b"\r\n", 1)[0].endswith(b" HTTP/1.1")
+            if http11 and any(k.lower() == "expect" and v.lower() == "100-continue" for k, v in headers):
                 conn.sendall(b"HTTP/1.1 100 Continue\r\n\r\n")
             if entry["operation"] == "model":
                 body = self._read_whole(conn, framing, early, reserve)
@@ -876,14 +894,30 @@ class ProviderRelay(Service):
                 release(reserved)
             deadline = time.monotonic() + self.stream_timeout
             reader, response = self._relay_head(conn, upstream, deadline)
-            answered = True
-            self._count("allowed")
             status = _status_code(response)
-            entry.update(outcome="forwarded", status=status, answered=status)
-            if status is None or not 200 <= status < 300:  # "allowed" means only not blocked; this is how it went
-                self._count(f"upstream_status:{status}")
+            tracked = _Body(response, method)
+            failed = status is None or not 200 <= status < 300
+            if failed:
                 excerpt = _Excerpt(response)
-            entry["ended"] = self._stream(conn, upstream, reader, _Body(response, method), excerpt, deadline)
+            # A failed answer's body is held, and any credential the request carried taken out, before it goes on
+            # (:meth:`_failed_answer`); a 2xx answer, and any answer to a request that carried none, streams as it came
+            holding = failed and bool(_Scrub(held).values) and tracked.kind != "none"
+            ended: str | None = None
+            clean: _Clean | None = None
+            if not holding:
+                conn.sendall(_close_head(response))
+            answered = True  # from here nothing of the relay's own may go to the client: it would read as the answer
+            self._count("allowed")
+            entry.update(outcome="forwarded", status=status, answered=status)
+            if failed:  # "allowed" means only not blocked; this is how it went
+                self._count(f"upstream_status:{status}")
+            if holding:
+                assert excerpt is not None
+                ended, clean = self._failed_answer(conn, upstream, reader, response, tracked, excerpt, held,
+                                                   deadline, http11)
+            if ended is None:
+                ended = self._stream(conn, upstream, reader, tracked, excerpt, deadline, clean)
+            entry["ended"] = ended
             settled = status is not None and status >= 300  # the provider answered no: a cut body changes nothing
             if entry["ended"] in ("upstream_broken", "stream_timeout") and not settled:  # it may have done the call
                 reason = UPSTREAM_OUTCOME_UNKNOWN if entry["ended"] == "upstream_broken" else STREAM_TIMEOUT_REASON
@@ -1117,32 +1151,113 @@ class ProviderRelay(Service):
 
     def _relay_head(self, conn: socket.socket, upstream: socket.socket,
                     deadline: float | None = None) -> tuple[_Reader, bytes]:
-        """The response's head, with ``Connection: close``; interim 1xx heads first, as they come. Returns the reader
-        and the final head as the upstream sent it. One that has not come by ``deadline`` is answered 504
-        (:data:`STREAM_TIMEOUT_REASON`, outcome ``unknown``: the request was sent)."""
+        """The response's final head, its interim 1xx heads sent on first, as they come. Returns the reader and the
+        final head as the upstream sent it, which its caller sends on (:meth:`handle`). One that has not come by
+        ``deadline`` is answered 504 (:data:`STREAM_TIMEOUT_REASON`, outcome ``unknown``: the request was sent)."""
         reader = _Reader(upstream, b"", None)
         while True:
             head = reader.head(deadline)
             status = head.split(b"\r\n", 1)[0].split(b" ")
-            interim = len(status) > 1 and status[1].startswith(b"1") and status[1] != b"101"
-            conn.sendall(head if interim else _close_head(head))
-            if not interim:
+            if not (len(status) > 1 and status[1].startswith(b"1") and status[1] != b"101"):
                 return reader, head
+            conn.sendall(head)
+
+    def _failed_answer(self, conn: socket.socket, upstream: socket.socket, reader: _Reader, response: bytes,
+                       body: _Body, excerpt: _Excerpt, held: list[str], deadline: float,
+                       http11: bool) -> tuple[str | None, _Clean | None]:
+        """Send a failed answer on with the request's credential values (``held``) out of its body. Its first bytes
+        are held first (:meth:`_hold`): a body whole in them that holds none, or in a coding the relay does not read,
+        goes on exactly as it came. One that holds one goes on without it (:class:`_Clean`), framed by its new length
+        when it is whole; one that is not whole yet goes on cleaned as it comes. Returns how the body ended, when it
+        has, and what cleans the rest, when it streams on (:meth:`_stream`)."""
+        raw, payload, ended = self._hold(upstream, reader, body, excerpt, deadline)
+        clean: _Clean | None = None
+        first = b""
+        if excerpt.coding in READABLE_CODINGS:
+            try:
+                clean = _Clean(excerpt.coding, held, chunked=http11)
+                first = clean.take(payload)
+                if ended == "complete":
+                    first += clean.end()
+            except zlib.error:  # not what its coding says: a client cannot read it either
+                clean = None
+        if clean is None or (ended is not None and not clean.scrub.found):
+            conn.sendall(_close_head(response) + raw)
+            return ended, None
+        if ended == "complete":
+            conn.sendall(clean.head(response, len(first)) + first)
+            return ended, None
+        conn.sendall(clean.head(response) + clean.frame(first))  # a body cut here never gets its last chunk
+        return ended, clean
+
+    def _hold(self, upstream: socket.socket, reader: _Reader, body: _Body,
+              excerpt: _Excerpt, deadline: float) -> tuple[bytes, bytes, str | None]:
+        """A failed answer's first bytes, before any of them goes on: until its end, :data:`EXCERPT_RAW_BYTES` (the
+        excerpt's bound), :data:`EXCERPT_DRAIN_S` (a provider's error body comes with its head or right after it) or
+        ``deadline``, whichever comes first. Returns them as the upstream sent them, their payload, and how the body
+        ended (:data:`STREAM_ENDS`) if it did."""
+        raw, payload = bytearray(), bytearray()
+
+        def take(data: bytes) -> None:
+            raw.extend(data)
+            payload.extend(body.feed(data))
+            excerpt.feed(data)
+
+        if reader.buffer:
+            take(reader.take())
+        until = min(time.monotonic() + EXCERPT_DRAIN_S, deadline)
+        ended: str | None = None
+        while not body.done and len(raw) < EXCERPT_RAW_BYTES:
+            left = until - time.monotonic()
+            if left <= 0:
+                break
+            try:
+                upstream.settimeout(left)
+                data = upstream.recv(CHUNK)
+            except TimeoutError:
+                break
+            except OSError:
+                ended = "upstream_broken"
+                break
+            if not data:
+                ended = "complete" if body.kind == "close" else "upstream_broken"
+                break
+            take(data)
+        if body.done:
+            ended = "complete"
+        elif ended is not None and self._closed.is_set():  # the run's end closed it, not the upstream
+            ended = "relay_closed"
+        return bytes(raw), bytes(payload), ended
 
     def _stream(self, conn: socket.socket, upstream: socket.socket, reader: _Reader, body: _Body,
-                excerpt: _Excerpt | None = None, deadline: float | None = None) -> str:
+                excerpt: _Excerpt | None = None, deadline: float | None = None, clean: _Clean | None = None) -> str:
         """The response's body as it streams, until the upstream ends it. A client that goes away ends it at once,
         and so do :meth:`close` and ``deadline`` (:data:`STREAM_TIMEOUT`). ``excerpt`` sees the body's first bytes as
-        they pass (a failed answer's). Returns how it ended (:data:`STREAM_ENDS`): ``upstream_broken`` when the
-        upstream's connection failed, or closed before the end its framing names."""
+        they pass (a failed answer's). ``clean`` is what takes a failed answer's credentials out as it goes
+        (:meth:`_failed_answer`), and ends it once its framing says it has ended. Returns how it ended
+        (:data:`STREAM_ENDS`): ``upstream_broken`` when the upstream's connection failed, or closed before the end its
+        framing names."""
         if deadline is None:
             deadline = time.monotonic() + self.stream_timeout
+
+        def onward(data: bytes) -> bytes:  # what of the upstream's bytes goes to the client
+            payload = body.feed(data)
+            if clean is None:
+                return data
+            if clean.finished:
+                return b""
+            try:
+                out = clean.frame(clean.take(payload))
+                return out + clean.last() if body.done else out
+            except zlib.error:  # the rest is not what its coding says: it ends here, short of its end
+                raise OSError("a failed answer's body is not what its coding says") from None
+
         if reader.buffer:
             data = reader.take()
-            body.feed(data)
+            sent = onward(data)
             if excerpt is not None:
                 excerpt.feed(data)
-            if not _send_by(conn, data, deadline):
+            if not _send_by(conn, sent, deadline):
                 return "complete" if body.done else "stream_timeout"
         with selectors.DefaultSelector() as selector:
             selector.register(upstream, selectors.EVENT_READ)
@@ -1172,11 +1287,16 @@ class ProviderRelay(Service):
                     except OSError:
                         return "complete" if body.done else "upstream_broken"
                     if not data:
+                        if body.kind == "close" and clean is not None:  # the end only the close names
+                            _send_by(conn, clean.last(), deadline)
                         return "complete" if body.done or body.kind == "close" else "upstream_broken"
-                    body.feed(data)
+                    try:
+                        sent = onward(data)
+                    except OSError:
+                        return "upstream_broken"
                     if excerpt is not None:
                         excerpt.feed(data)
-                    if not _send_by(conn, data, deadline):
+                    if not _send_by(conn, sent, deadline):
                         return "complete" if body.done else "stream_timeout"
 
 
@@ -1214,17 +1334,25 @@ class _Body:
             self.kind = "close"
         self.done = self.kind == "none" or (self.kind == "length" and self.left == 0)
 
-    def feed(self, data: bytes) -> None:
-        if self.done or self.kind not in ("length", "chunked"):
-            return
+    def feed(self, data: bytes) -> bytes:
+        """Follow ``data``, the body's next bytes as the upstream sent them, and return its payload: the body's own
+        bytes, without a chunked body's framing (:class:`_Clean` reads it). Once the framing cannot be read, the rest
+        is payload as it comes, as a body without length or chunking is."""
+        if self.done or self.kind == "none":
+            return b""
+        if self.kind == "close":
+            return data
         if self.kind == "length":
+            payload = data[:max(self.left, 0)]
             self.left -= len(data)
             self.done = self.left <= 0
-            return
+            return payload
+        out = bytearray()
         i = 0
         while i < len(data) and not self.done:
             if self.state == "data":  # the chunk's bytes and their CRLF
                 take = min(self.left, len(data) - i)
+                out += data[i:i + max(min(take, self.left - 2), 0)]  # its CRLF is framing
                 i, self.left = i + take, self.left - take
                 if not self.left:
                     self.state = "size"
@@ -1234,7 +1362,7 @@ class _Body:
                 self.line += data[i:]
                 if len(self.line) > MAX_HEAD:  # no chunk-size line or trailer field is this long: framing unknown
                     self.kind = "close"
-                return
+                return bytes(out)
             line, self.line, i = (self.line + data[i:end]).rstrip(b"\r"), b"", end + 1
             if self.state == "trailer":
                 self.done = not line
@@ -1242,8 +1370,9 @@ class _Body:
             size = _chunk_size(line)
             if size is None:
                 self.kind = "close"
-                return
+                return bytes(out + data[i:])
             self.state, self.left = ("trailer", 0) if size == 0 else ("data", size + 2)
+        return bytes(out)
 
 
 def _status_code(head: bytes) -> int | None:
@@ -1259,6 +1388,98 @@ EXCERPT_RAW_BYTES = 16 * 1024
 # close as soon as it has the status). A provider's error body comes with its head or right after it.
 EXCERPT_DRAIN_S = 2.0
 _ELLIPSIS_MASKED = re.compile(r"\S{2,}\.{3}\S{2,}")  # a provider's own masking of a key it was sent (abcd...wxyz)
+REDACTED = b"<redacted>"
+# The codings of a failed answer's body the relay reads to remove a credential from it (:class:`_Clean`), as the
+# record's excerpt reads them (:meth:`_Excerpt.text`); a body in any other passes as it came.
+READABLE_CODINGS = frozenset({"identity", "gzip", "x-gzip", "deflate"})
+
+
+class _Scrub:
+    """The one owner of taking a request's credential values out of what the upstream answered: the record's excerpt
+    (:meth:`_Excerpt.text`) and a failed answer's body on its way to the client (:class:`_Clean`). Each of ``held``
+    (values of four characters or more, the longest first where two start at one place) becomes :data:`REDACTED`.
+    Bytes go through as they come (:meth:`feed`), holding back only what could be the start of a value, until
+    :meth:`end`. :attr:`found` says whether one was taken out."""
+
+    def __init__(self, held: Collection[str]) -> None:
+        self.values = sorted({v.encode() for v in held if len(v) >= 4}, key=len, reverse=True)
+        self.keep = max((len(v) for v in self.values), default=1) - 1
+        self.tail = b""
+        self.found = False
+
+    def feed(self, data: bytes) -> bytes:
+        buf = self.tail + data
+        cut = len(buf) - self.keep  # a value that starts at or after it may not be whole yet
+        out = bytearray()
+        i = 0
+        while True:
+            starts = [(at, -len(v), v) for v in self.values if 0 <= (at := buf.find(v, i)) < cut]
+            if not starts:
+                break
+            at, _, value = min(starts)
+            out += buf[i:at] + REDACTED
+            i = at + len(value)
+            self.found = True
+        out += buf[i:max(cut, i)]
+        self.tail = buf[max(cut, i):]
+        return bytes(out)
+
+    def end(self) -> bytes:
+        self.keep, rest = 0, self.tail
+        self.tail = b""
+        return self.feed(rest)
+
+
+def scrub(data: bytes, held: Collection[str]) -> bytes:
+    """``data`` with each of ``held`` taken out (:class:`_Scrub`)."""
+    scrubbed = _Scrub(held)
+    return scrubbed.feed(data) + scrubbed.end()
+
+
+class _Clean:
+    """A failed answer's body on its way to the client, with the request's credential values taken out
+    (:class:`_Scrub`): its payload de-chunked by its :class:`_Body`, inflated when ``gzip`` or ``deflate``, and sent
+    on unencoded, framed by ``Content-Length`` when it is whole, else chunked to an HTTP/1.1 client (``chunked``) and
+    ended by the close to an HTTP/1.0 one. Only a body in a coding the relay reads comes here
+    (:data:`READABLE_CODINGS`). Raises ``zlib.error`` on a body its coding does not describe."""
+
+    def __init__(self, coding: str, held: Collection[str], *, chunked: bool) -> None:
+        self.scrub = _Scrub(held)
+        self.inflate = (zlib.decompressobj(zlib.MAX_WBITS | (16 if "gzip" in coding else 0))
+                        if coding != "identity" else None)
+        self.chunked = chunked
+        self.finished = False  # its rest and last chunk have gone: what the upstream sends after is not the body
+
+    def take(self, payload: bytes) -> bytes:
+        """What of ``payload`` (the body's next bytes, unframed) can go on now, its credentials out."""
+        return self.scrub.feed(self.inflate.decompress(payload) if self.inflate is not None else payload)
+
+    def end(self) -> bytes:
+        """The rest, once the body has ended."""
+        return self.scrub.feed(self.inflate.flush() if self.inflate is not None else b"") + self.scrub.end()
+
+    def frame(self, data: bytes) -> bytes:
+        """``data`` as it goes to the client: one chunk, or as it is. An empty chunk would end the body, so none."""
+        return b"%x\r\n%s\r\n" % (len(data), data) if self.chunked and data else data
+
+    def last(self) -> bytes:
+        """The body's rest and, chunked, its last chunk, once."""
+        if self.finished:
+            return b""
+        self.finished = True
+        return self.frame(self.end()) + (b"0\r\n\r\n" if self.chunked else b"")
+
+    def head(self, response: bytes, length: int | None = None) -> bytes:
+        """``response`` as it goes to the client: its framing and coding replaced, by ``length`` when the body is
+        whole, else chunked (or none), and ``Connection: close``."""
+        lines = response[:-4].split(b"\r\n")
+        drop = {b"content-length", b"transfer-encoding", b"content-encoding"}
+        kept = [raw for raw in lines[1:] if raw.split(b":", 1)[0].strip().lower() not in drop]
+        if length is not None:
+            kept.append(b"Content-Length: %d" % length)
+        elif self.chunked:
+            kept.append(b"Transfer-Encoding: chunked")
+        return _close_head(b"\r\n".join([lines[0], *kept]) + b"\r\n\r\n")
 
 
 class _Excerpt:
@@ -1299,12 +1520,10 @@ class _Excerpt:
             return
 
     def text(self, held: list[str]) -> str:
-        import zlib
-
         from aew.harness.defects import redact_text
 
         data = _unchunk(bytes(self.raw)) if self.chunked else bytes(self.raw)
-        if self.coding in ("gzip", "x-gzip", "deflate"):
+        if self.coding in READABLE_CODINGS - {"identity"}:
             try:
                 inflate = zlib.decompressobj(zlib.MAX_WBITS | (16 if "gzip" in self.coding else 0))
                 data = inflate.decompress(data, EXCERPT_RAW_BYTES)
@@ -1313,9 +1532,7 @@ class _Excerpt:
         elif self.coding != "identity":
             return f"(a {self.coding} body: not read)"
         # Redacted whole, then cut: a value that crosses the cut is removed whole, never left less its tail
-        text = data[:EXCERPT_RAW_BYTES].decode("utf-8", "replace")
-        for value in sorted((v for v in held if len(v) >= 4), key=len, reverse=True):
-            text = text.replace(value, "<redacted>")
+        text = scrub(data[:EXCERPT_RAW_BYTES], held).decode("utf-8", "replace")
         text = re.sub(re.escape(SENTINEL_PREFIX) + r"\S*", "<redacted placeholder>", text)
         return redact_text(_ELLIPSIS_MASKED.sub("<redacted>", text))[:EXCERPT_BYTES]
 

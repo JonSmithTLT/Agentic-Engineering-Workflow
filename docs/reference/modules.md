@@ -1562,6 +1562,7 @@ None.
 - `aew.harness.opencode.login`
 - `aew.harness.registry`
 - `aew.harness.runlog`
+- `aew.http_close`
 - `aew.policy.execution`
 - `aew.util`
 

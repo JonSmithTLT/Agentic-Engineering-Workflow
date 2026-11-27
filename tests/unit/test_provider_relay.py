@@ -2150,3 +2150,213 @@ def test_a_policy_cannot_list_a_model_call_and_so_take_its_body_out_of_scope():
             ProviderRelay(Upstream(UPSTREAM), {}, operations=(entry,))
         assert caught.value.details["reason"] == "bad_relay_operation"
     assert relay._operation("POST", "/v1/responses", "/v1", {("POST", "/responses")}) == "model"
+
+
+# ------------------------------------------------- a failed answer's body, and each provider's own credential header
+
+class _Answer:
+    """What the client got, as a socket ``http.client`` can parse a response from."""
+
+    def __init__(self, data: bytes) -> None:
+        self.data = data
+
+    def makefile(self, *_: Any, **__: Any) -> Any:
+        import io
+
+        return io.BytesIO(self.data)
+
+
+def parsed(answer: bytes) -> tuple[int, Any, bytes]:
+    """The status, headers and body of ``answer`` as an HTTP client reads them, its framing held to the letter: a body
+    short of its length, or chunked and cut before its last chunk, raises ``http.client.IncompleteRead``."""
+    response = http.client.HTTPResponse(_Answer(answer))  # type: ignore[arg-type]
+    response.begin()
+    return response.status, response.headers, response.read()
+
+
+def answered(parts: list[bytes], *, version: str = "HTTP/1.1", pause: float = 0.0,
+             credentials: dict[str, str] | None = None) -> tuple[bytes, list[dict[str, Any]], ProviderRelay]:
+    """A model call carrying the relay's sentinel, answered by an upstream that sends ``parts`` (``pause`` apart), then
+    closes: what the client got, the record and the relay."""
+    seam, entries = Seam(), []
+    with relayed(seam, record=entries.append, credentials=credentials) as (service, client, token):
+        client.sendall(f"POST /v1/responses {version}\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        for i, part in enumerate(parts):
+            if i and pause:
+                time.sleep(pause)
+            upstream.sendall(part)
+        upstream.close()
+        answer = read_all(client)
+    return answer, entries, service
+
+
+FAILED = f'{{"error": {{"message": "Incorrect API key provided: {SECRET}", "code": "invalid_api_key"}}}}'.encode()
+CLEANED = FAILED.replace(SECRET.encode(), relay.REDACTED)
+LONG = b"x" * (2 * relay.EXCERPT_RAW_BYTES) + FAILED  # its credential lies past the bytes the relay holds first
+
+
+def _failed(framing: str, message: bytes = FAILED, status: bytes = b"401 Unauthorized") -> list[bytes]:
+    """A failed answer that carries ``message``, as the upstream sends it, framed by ``framing``."""
+    head = b"HTTP/1.1 " + status + b"\r\nContent-Type: application/json\r\n"
+    if framing == "length":
+        return [head + b"Content-Length: %d\r\n\r\n" % len(message) + message]
+    if framing == "chunked":  # in chunks of seven bytes, so the credential crosses several of them
+        return [head + b"Transfer-Encoding: chunked\r\n\r\n" + _chunked(message)]
+    if framing == "gzip":
+        body = _gzip(message)
+        return [head + b"Content-Encoding: gzip\r\nContent-Length: %d\r\n\r\n" % len(body) + body]
+    if framing == "close":
+        return [head + b"\r\n" + message]
+    if framing == "slow":  # its second half comes after the relay has stopped holding: chunked as it goes on
+        half = len(message) // 2
+        return [head + b"Transfer-Encoding: chunked\r\n\r\n" + _chunked(message[:half])[:-5],
+                _chunked(message[half:])]
+    raise AssertionError(framing)
+
+
+@pytest.mark.parametrize("framing", ["length", "chunked", "gzip", "close", "slow"])
+@pytest.mark.parametrize("message", [FAILED, LONG], ids=["short", "past-the-hold"])
+def test_a_credential_the_upstream_reflects_never_reaches_the_sandbox(framing, message, monkeypatch):
+    """The relay removes a credential from a failed answer's body before it reaches the run, whatever the body's
+    framing, coding or size, and however the upstream splits it: the rest of the body goes on whole, framed so the
+    client reads it to its end, with the status and other headers the upstream sent."""
+    monkeypatch.setattr(relay, "EXCERPT_DRAIN_S", 0.2)
+    answer, entries, service = answered(_failed(framing, message), pause=0.5 if framing == "slow" else 0.0)
+    assert SECRET.encode() not in answer
+    status, fields, body = parsed(answer)
+    assert status == 401 and fields["Content-Type"] == "application/json" and fields["Connection"] == "close"
+    assert body == message.replace(SECRET.encode(), relay.REDACTED) and "Content-Encoding" not in fields
+    [entry] = entries
+    assert (entry["outcome"], entry["status"], entry["ended"]) == ("forwarded", 401, "complete")
+    assert service.counts() == {"allowed": 1, "upstream_status:401": 1}
+
+
+def test_a_failed_answer_cleaned_as_it_comes_goes_to_an_http_1_0_client_ended_by_the_close(monkeypatch):
+    """An HTTP/1.0 client is never sent chunks: a failed answer the relay cleans as it streams ends with the close."""
+    monkeypatch.setattr(relay, "EXCERPT_DRAIN_S", 0.2)
+    answer, _, _ = answered(_failed("slow"), version="HTTP/1.0", pause=0.5)
+    status, fields, body = parsed(answer)
+    assert status == 401 and "Transfer-Encoding" not in fields and "Content-Length" not in fields
+    assert body == CLEANED and SECRET.encode() not in answer
+
+
+@pytest.mark.parametrize("framing", ["length", "chunked", "gzip", "close"])
+@pytest.mark.parametrize("status", [b"400 Bad Request", b"429 Too Many Requests", b"500 Internal Server Error",
+                                    b"529 Overloaded"])
+def test_a_failed_answer_that_holds_no_credential_reaches_the_sandbox_byte_for_byte_as_before(framing, status):
+    """A provider's own error (a rate limit, an overload, a refusal) holds no credential: the client gets exactly what
+    the upstream sent, its framing and coding untouched, and no refusal header of the relay's."""
+    message = b'{"error": {"type": "provider_error", "message": "upstream says no"}}'
+    [sent] = _failed(framing, message, status)
+    answer, entries, _ = answered([sent])
+    head, _, body = sent.partition(b"\r\n\r\n")
+    assert answer == relay._close_head(head + b"\r\n\r\n") + body
+    assert b"X-AEW-Refusal" not in answer and entries[0]["outcome"] == "forwarded"
+
+
+def test_a_failed_answer_to_a_request_that_carried_no_credential_is_never_held():
+    """A route with nothing to swap in (a client certificate's) has nothing to take out: a failed answer streams as it
+    comes, its head before its body, as before."""
+    seam = Seam()
+    with relayed(seam, credentials={}) as (_, client, _):
+        client.sendall(b"POST /v1/responses HTTP/1.1\r\nContent-Length: 0\r\n\r\n")
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 4\r\n\r\n")
+        head, _ = read_head(client)  # the head is here before any of the body is sent
+        assert head.startswith(b"HTTP/1.1 503 ")
+        upstream.sendall(b"busy")
+        upstream.close()
+        assert read_all(client) == b"busy"
+
+
+def test_a_failed_answer_cut_while_it_is_cleaned_never_reads_as_whole():
+    """An upstream that breaks after the relay stopped holding a failed answer: the client's chunked body lacks its
+    last chunk, so it reads as cut, and the record keeps ``forwarded`` (the provider had settled the call)."""
+    message = LONG[:-len(FAILED)] + SECRET.encode()
+    head = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\n" % (len(message) + 100)
+    answer, entries, _ = answered([head + message])
+    assert SECRET.encode() not in answer
+    with pytest.raises(http.client.IncompleteRead):
+        parsed(answer)
+    [entry] = entries
+    assert (entry["outcome"], entry["status"], entry["ended"]) == ("forwarded", 500, "upstream_broken")
+
+
+def test_a_successful_streamed_answer_is_relayed_byte_for_byte_as_before():
+    """A 2xx answer, an SSE stream in chunks, goes to the client exactly as the upstream sent it, each event as it
+    comes: nothing is held, re-framed or rewritten."""
+    events = [b"data: {\"i\": %d}\n\n" % i for i in range(3)]
+    seam = Seam()
+    with relayed(seam) as (_, client, token):
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\nAuthorization: Bearer {token}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        read_head(upstream)
+        upstream.sendall(CHUNKED + b"%x\r\n%s\r\n" % (len(events[0]), events[0]))
+        got = b""
+        while events[0] not in got:  # the first event is here before the upstream sends the next
+            got += client.recv(4096)
+        rest = b"".join(b"%x\r\n%s\r\n" % (len(e), e) for e in events[1:]) + b"0\r\n\r\n"
+        upstream.sendall(rest)
+        upstream.close()
+        got += read_all(client)
+    assert got == relay._close_head(CHUNKED) + b"%x\r\n%s\r\n" % (len(events[0]), events[0]) + rest
+
+
+@pytest.mark.parametrize("value", [SECRET, "abcd", "aaaa"])
+def test_the_scrub_takes_a_value_out_wherever_the_bytes_are_split(value):
+    """The one redaction owner, fed as a stream: a value cut across any two pieces, or repeated, is taken out whole."""
+    data = b"before " + value.encode() + b" between " + value.encode() + b"aa after"
+    expected = data.replace(value.encode(), relay.REDACTED)
+    for cut in range(len(data) + 1):
+        scrubbed = relay._Scrub([value])
+        assert scrubbed.feed(data[:cut]) + scrubbed.feed(data[cut:]) + scrubbed.end() == expected, cut
+    assert relay.scrub(data, [value]) == expected
+
+
+# Each provider's normal request, as its SDK sends its key (OpenCode's integrations): OpenAI-shaped and OpenCode's own
+# route by a bearer token, Anthropic's, Azure OpenAI's and Google's in their own headers
+@pytest.mark.parametrize(("route", "header", "value"), [
+    ("openai", "Authorization", "Bearer {}"), ("opencode", "Authorization", "Bearer {}"),
+    ("anthropic", "x-api-key", "{}"), ("azure", "api-key", "{}"), ("google", "x-goog-api-key", "{}")])
+def test_each_providers_normal_request_still_gets_its_key(route, header, value):
+    token = relay.sentinel()
+    seam = Seam()
+    service = ProviderRelay(Upstream(UPSTREAM), {token: SECRET}, connect=seam, head_timeout=TIMEOUT,
+                            connect_timeout=TIMEOUT, body_timeout=TIMEOUT, route=route, login="key")
+    client, served = socket.socketpair()
+    client.settimeout(TIMEOUT)
+    thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
+    thread.start()
+    try:
+        client.sendall(f"POST /v1/responses HTTP/1.1\r\n{header}: {value.format(token)}\r\n"
+                       "Content-Length: 0\r\n\r\n".encode())
+        upstream = seam.upstream()
+        head, _ = read_head(upstream)
+        upstream.sendall(OK)
+        upstream.close()
+        assert read_all(client).endswith(b"ok")
+    finally:
+        client.close()
+        thread.join(TIMEOUT)
+        service.close()
+        if seam.far is not None:
+            seam.far.close()
+    assert (header.lower(), value.format(SECRET)) in headers(head) and token.encode() not in head
+
+
+def test_the_certificate_routes_request_carries_no_key_and_still_goes():
+    """A provider reached by a client certificate alone: the relay holds no key and swaps nothing in, and the request
+    goes as it came."""
+    entries: list[dict[str, Any]] = []
+    got, answer, _ = exchange(Seam(), b"POST /v1/chat/completions HTTP/1.1\r\nContent-Length: 0\r\n\r\n",
+                              credentials={}, record=entries.append)
+    assert answer.endswith(b"ok") and not any(k in CREDENTIAL_NAMES for k, _ in headers(got.split(b"\r\n\r\n")[0]))
+    assert entries[0]["swap"] == "none"
+
+
+CREDENTIAL_NAMES = relay.CREDENTIAL_HEADERS

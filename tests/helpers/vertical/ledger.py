@@ -31,8 +31,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from aew.surface.errors import CODES as SURFACE_CODES
-
 # Shadow: the CI job runs and uploads the ledger on every pull request and on main, and is not in `assurance`'s
 # required set. Flipping it to "enforce" is the operator's decision, made when the job is green (vertical-uat.md).
 VERTICAL_MODE = "shadow"
@@ -51,11 +49,9 @@ STEERING_ONLY = frozenset({"mechanical_calls"})
 # V1's operator decisions, exactly: approving the plan and approving the publish (publish stays a judgement unless a
 # grant covers it). Any other question fails the comparison and is reviewed by hand.
 V1_DECISIONS = ("plan", "publish")
-# The typed surface's refusal for a broker it cannot reach. Its owner, `aew.surface.errors.CODES`, has no named
-# constant, so the value is checked against it here: a rename there fails this import, never a silent mismatch.
+# The typed surface's refusal for a broker it cannot reach, owned by `aew.surface.errors.CODES` (no named constant).
+# Its unit test checks it against CODES, not this module: the lane tooling imports this module without aew.
 BROKER_UNREACHABLE = "BROKER_UNREACHABLE"
-if BROKER_UNREACHABLE not in SURFACE_CODES:
-    raise ImportError(f"{BROKER_UNREACHABLE} is no longer one of aew.surface.errors.CODES")
 # Whose decision it is, as the projection states it (spec v2): `decisions_required` counts operator-owned decisions
 # only. The scripted Lead puts to the operator only a decision the projection gives to the operator, or one whose owner
 # is not stated (a fallback's question, which no decision carries: the summary says "owner not stated"; the projection

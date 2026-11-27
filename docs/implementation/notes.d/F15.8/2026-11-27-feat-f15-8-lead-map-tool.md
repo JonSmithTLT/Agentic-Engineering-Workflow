@@ -16,11 +16,12 @@ they were, for the operator and for `--commit`.
   from 26,684 B to 27,453 B, and the listing from 16 to 17 tools, under the ceiling of 20.
 - Messaging off: MCP 11,174 B to 11,950 B (+776, the standard row) and guide 9,184 B to 9,253 B (+69). The pool goes
   from 26,384 B to 27,229 B, and the listing from 15 to 16 tools.
-- The 769 B (messaging on) are the new `F15.8_map_tool` allocation, taken from `operator_reserve` (9,438 B to 8,669 B).
+- The 769 B (messaging on) are the new `F15.8_map_tool` allocation, taken from `operator_reserve` (9,438 B to 8,669 B),
+  as the operator approved on 2026-11-27 ("yes the map.tool can use some reserved room").
   The 40,000 B cap is unchanged. The row bounds `section` by length rather than listing the eight names, about 190 B
   less a request; `show` with no section lists them.
-- With `maps.reads` off, the tool lists, the guide's core and the system text are byte for byte what they were (pinned
-  digests in `tests/unit/test_lead_map_catalog.py`).
+- With `maps.reads` off, the tool lists, the guide's core and the system text are byte for byte what they were:
+  `tests/unit/test_lead_map_catalog.py` compares them with the same surface rendered without the `map` row.
 
 **A limit.** A map read runs inside the broker's serialized section, like `status`. It holds the Lead's other typed
 calls for as long as it runs, and in the worst case that is about 17 s, not a couple of seconds (#654's review, m4). A

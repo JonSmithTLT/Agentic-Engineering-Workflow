@@ -67,7 +67,7 @@ allocations:
   F15.8_map_tool:
     bytes: 769
     kind: measured
-    source: "F15.8's PR A2, the Lead's typed `map` tool, which O2 approved with an allocation under the pool cap (the operator, 2026-11-25; F15.8's notes), from operator_reserve. Measured with the pool gate's own render against main c9d99d16, maps.reads on as a new project holds it. Messaging on: MCP 11084 -> 11784 B (+700, the compact row, 17 tools) and guide 9404 -> 9473 B (+69, the core's line for `map`), so 26684 -> 27453 B. Messaging off: MCP 11174 -> 11950 B (+776, the standard row, 16 tools) and guide 9184 -> 9253 B (+69), so 26384 -> 27229 B. The system and join byte counts are unchanged. With maps.reads off the row and its line are absent and the pool is byte for byte what it was."
+    source: "F15.8's PR A2, the Lead's typed `map` tool, which O2 approved with an allocation under the pool cap (the operator, 2026-11-25; F15.8's notes), from operator_reserve. The operator approved taking the measured 769 B from operator_reserve on 2026-11-27 ('yes the map.tool can use some reserved room'). Measured with the pool gate's own render against main c9d99d16, maps.reads on as a new project holds it. Messaging on: MCP 11084 -> 11784 B (+700, the compact row, 17 tools) and guide 9404 -> 9473 B (+69, the core's line for `map`), so 26684 -> 27453 B. Messaging off: MCP 11174 -> 11950 B (+776, the standard row, 16 tools) and guide 9184 -> 9253 B (+69), so 26384 -> 27229 B. The system and join byte counts are unchanged. With maps.reads off the row and its line are absent and the pool is byte for byte what it was."
   # The room between the derived ceiling (baseline 24797 + the allocations above 6534 = 31331 B) and the operator's
   # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
@@ -75,7 +75,7 @@ allocations:
   operator_reserve:
     bytes: 8669
     kind: reserve
-    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B. F15.8's PR A2 takes its measured 769 B, leaving 9438 - 769 = 8669 B."
+    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B. F15.8's PR A2 takes its measured 769 B, which the operator approved on 2026-11-27, leaving 9438 - 769 = 8669 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers

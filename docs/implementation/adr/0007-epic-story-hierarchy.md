@@ -114,3 +114,27 @@ A Story's or Epic's `state` is recomputed inside every Lead commit (`hierarchy.r
 - Only units in a state the machine never leaves (no rule starts there: DONE and CANCELLED) are not compared: they
   are never live again, and their completion records hold what they met. Nothing revives one: a parent has no reopen,
   and the archive takes only those states and has no way back.
+
+## Amendment 2026-11-27 — a promotion carries what it leaves behind (register E87)
+
+- A promotion is no longer refused for the obligations of the ancestors it leaves behind (those of the promoted unit
+  that are not ancestors of the unit it creates). In the promoting transaction, every obligation they impose on it,
+  their own policy's or one a promotion carried onto them, is copied onto the new Story or Epic as control state,
+  `carried_obligations`: one entry per policy, with its floor (`min_descendant_class`) and rationale, its mandatory
+  gates, its origin (`from`), the ancestor left behind that held it (`via`) and the promotion decision. The key is
+  absent when nothing left behind imposes an obligation. The records stay immutable.
+- Carried entries bind the carrier's descendants exactly as its own `policy` does, so every unit of the promoted
+  subtree keeps the same effective class, non-waivable gates and integration validation. They do not bind the carrier
+  itself: it was never under the ancestors left behind. (F4's plan v8 §3.12a folds a unit's own carried entries into
+  the unit too; that is needed only for a Story or Epic move, which still refuses as the 2026-10-25 amendment says.)
+- One accessor reads them: `hierarchy.ancestor_obligations` (each ancestor's `hierarchy.imposed`: its own policy, then
+  what it carries), and every reader of an inherited floor or mandatory gate goes through it: `gates.effective_class`,
+  `gates.effective_obligations`, `validation.obligation`, `work reclassify`'s floor and the gate repair's owners. A
+  carried obligation is named by its origin, so the effective obligations' sources and the validation binding are
+  unchanged by a promotion that carries it.
+- The 2026-10-25 check stays, run after the carry over the moved subtree, as the backstop: were a carry ever
+  incomplete, the promotion is refused `OBLIGATIONS_DROPPED` as before, changing nothing, with a promotion's remedies.
+- A carried gate is not its holder's own, so the gate repair route (ITEMS 55), which replaces a parent's own gate,
+  does not apply to it: a stuck carried gate's item names its holder and says changing it is the operator's decision.
+- Carrying dependency edges, scope envelopes, guardrails and impact holds, and a Story or Epic move that carries, stay
+  F4's (plan v8 §3.12, §3.12a). A promotion still refuses a change of the inherited dependencies of started work.

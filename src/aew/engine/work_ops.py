@@ -709,8 +709,7 @@ class WorkCommands:
                 raise UsageError(f"{work_id} is class {old}: reclassification raises the class (lowering it is a "
                                  "demotion, which needs its own recorded decision and is not offered here)",
                                  current=old)
-            floors = [(state["work"][a].get("policy") or {}).get("min_descendant_class")
-                      for a in H.ancestors(state, work_id)]
+            floors = [policy.get("min_descendant_class") for _, _, policy in H.ancestor_obligations(state, work_id)]
             floor = max([f for f in floors if f is not None], default=None)
             if floor is not None and risk_class < floor:
                 raise UsageError(f"an ancestor requires at least class {floor} for {work_id}: choose class {floor} or "

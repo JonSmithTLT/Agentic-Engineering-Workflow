@@ -287,6 +287,30 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     assert_control_invariants(p)
 
 
+def test_a_stuck_gate_a_promotion_carried_names_its_holder_and_is_the_operators_decision(tmp_path):
+    """Register E87: a promotion carries a stuck gate with the rest of what it leaves behind. Its item names the unit
+    that now holds it, and this route, which edits only a parent's own gate, is refused for it as the operator's
+    decision, naming where it came from, changing nothing."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective", parent=epic)
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    seed(p, story, [PROSE])
+    carrier = p.lead("work", "promote", child, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
+        "promoted_to"]
+    item = gate_ops.item_id(carrier, PROSE)
+    found = doctor(p)
+    assert found["status"] == "FAIL" and f"{carrier} sets mandatory gate `{PROSE}` (stuck: {child})" in found["detail"]
+    assert f"{carrier} holds `{PROSE}` because a promotion carried it from {story}" in found["detail"]
+    preview = {i["id"]: i for i in status_previews(p)}[item]
+    assert (preview["stuck_units"], preview["replaceable"]) == ([child], False)
+    before = p.rev()
+    error = refusal(resolve(p, item, "check:unit"))
+    assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["carried_from"] == [story], error
+    assert p.rev() == before
+    assert_control_invariants(p)
+
+
 def epic_over_a_story_and_a_ticket(p, tmp_path) -> tuple[str, str, str]:
     epic = create_unit(p, "epic", "Initiative")
     story = create_unit(p, "story", "Objective", parent=epic)

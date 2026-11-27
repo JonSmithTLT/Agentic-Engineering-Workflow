@@ -46,7 +46,7 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 - `blocked_by` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `blocked_descendants` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `cancellation` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `carried_obligations` (input:gate_set): `aew.engine.ticket_fields:load_registry`
+- `carried_obligations` (input:gate_set, in the schema): `aew.engine.ticket_fields:load_registry`
 - `classifications` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `closeout` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `commit_ready_gates` (bookkeeping): `aew.engine.ticket_fields:load_registry`

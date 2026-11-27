@@ -918,6 +918,23 @@
             }
           }
         },
+        "carried_obligations": {
+          "description": "Register E87: what a promotion carried onto the Story or Epic it created from the ancestors it left behind, which binds that unit's descendants exactly as its own policy does (aew.engine.hierarchy.imposed). Written by the promotion only; each entry names its origin (`from`), the ancestor left behind that held it (`via`) and the promotion decision.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "via", "decision", "min_descendant_class", "mandatory_gates"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"type": "string"},
+              "via": {"type": "string"},
+              "decision": {"type": "string"},
+              "min_descendant_class": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+              "mandatory_gates": {"type": "array", "items": {"type": "string"}},
+              "rationale": {"type": ["string", "null"]}
+            }
+          }
+        },
         "scope_corrections": {
           "description": "Register E126: the test paths the Lead added to this mutating Ticket's scope on the record, each with its immutable correction record at `record`. The effective scope is the record's paths and these (aew.engine.scope_ops.effective_meta); archival carries the list into the unit's bundle, which pins each record.",
           "type": "array",

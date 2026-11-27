@@ -1964,19 +1964,15 @@ systems:
     on_by_default: false
     used_in_default_flow: 'no'
   finish_line: F4 per ADR-0016 and plan v8, slices S1 to S7, built and enabled for a project, with a revision recorded and
-    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe, and E87 done on its own row.
+    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe; E87 is done on its own row.
   remaining:
-  - slice: 'E87: a promotion carries a dropped parent''s obligations (carried_obligations) instead of being refused (on
-      its own row)'
-    row: E87
-    estimate: 1-2 PRs (estimate, census)
   - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds'
     row: F4
     estimate: about 15 PRs if released (estimate, census)
   decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
     stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: Lead for E87 (the freeze is decided)
+  who: Lead (the freeze is decided; E87 is done)
   reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 are complete. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
@@ -1990,9 +1986,9 @@ systems:
   - src/aew/engine/coordination_ops.py:1666 (a revision ref is refused, reason no_ticket_revisions), :1773 (ticket_revision
     written as None)
   - src/aew/engine/stage_intents.py:527 (TRA-25 waits for F4)
-  - src/aew/engine/hierarchy_ops.py:54,667 (PROMOTION and the promotion check E87 changes)
+  - src/aew/engine/hierarchy_ops.py:57,170,802 (PROMOTION, and the carry E87 built); src/aew/engine/hierarchy.py:107 (ancestor_obligations)
   - src/aew/engine/scope_ops.py effective_meta, the one accessor for a Ticket's effective scope (E126, built)
-  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), rows E87, E88 (closed), and E126'
+  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), rows E87 (closed), E88 (closed), and E126'
 - id: SYS-19
   name: Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
   purpose: Make a validation record say exactly what was evaluated and what it did not check, and name setup problems before

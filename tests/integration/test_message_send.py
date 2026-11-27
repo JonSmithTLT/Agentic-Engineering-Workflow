@@ -22,8 +22,10 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 # The off catalogs carry E329's scoped inputs and E335's integration publication owner wording.
 # The compact resume description also says decisions name their owners. E157 adds `report_write` and moves the
 # explanation inputs to `work_show`.
-OFF_LIST_SHA = {"normal": "35b81b3d22b127f12a7d3a2b91141caaaed1e8265636d34772b3a65b981c72ec",
-                "recovery": "070fa4140745bb4bb1855dbea336e9e6ceafba919cae1627bd42cd0abc1b01c6"}
+# Refreshed for E168: `ticket_draft`'s input schema gained `review_ref` (removing that one property gives the previous
+# pins, 35b81b3d… and 070fa414…, on both profiles), and nothing else moved.
+OFF_LIST_SHA = {"normal": "8d4bea71e4ffc1d3e0349083d86c3821a11e6e8fb70063cdc28083e32c140c64",
+                "recovery": "6961ce6a3f991a612edd1adcf31f23f0f1e012f0baea5dfbf4a1089850b9ef15"}
 OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
 # The off surface these pins hold is every switch off: `maps.reads` offers the Lead's typed `map` tool (register F15.8,
 # PR A2), so a world that compares against them has it off too.

@@ -267,7 +267,8 @@ class NonMutating:
                           children_digest: str | None = None,
                           env: dict[str, str] | None = None) -> tuple[str, str, dict[str, Any]]:
         """A read-only invocation with its own detached observation worktree at ``commit``; ``env``: the git environment
-        its checkout runs in (a ref review's reads objects only: ``git.OBJECT_ENV``, register E168)."""
+        its checkout runs in (a ref review's reads objects only and downloads no LFS content:
+        ``ref_review.CHECKOUT_ENV``, register E168)."""
         state = ctx.state
         inv_id = format_id("INV", state["counters"].get("invocation", 0) + 1)
         self.prune_observations(state)
@@ -594,7 +595,7 @@ class NonMutating:
         observed = ref_pin["commit"] if ref_pin else commit
         inv_id, inv_token, _ = self.dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=observed,
                                                       attempt=attempt, inputs=inputs,
-                                                      env=git.OBJECT_ENV if ref_pin else None)
+                                                      env=R.CHECKOUT_ENV if ref_pin else None)
         unit["execution"] = {
             "attempt": attempt, "invocation": inv_id, "archetype": chosen.archetype,
             "card": {"id": chosen.id, "version": chosen.meta.get("version"), "sha256": chosen.sha256},
@@ -972,7 +973,8 @@ class NonMutating:
             # The reviewer/verifier observes exactly the source the executor observed.
             inv_id, inv_token, snapshot = self.dispatch_observer(
                 ctx, work_id, card=chosen, scope="observation", commit=ev["evaluated_snapshot"]["base_revision"],
-                subject={"id": record["id"], "sha256": record["sha256"]})
+                subject={"id": record["id"], "sha256": record["sha256"]},
+                env=R.CHECKOUT_ENV if ctx.state["work"][work_id].get("review_ref") else None)  # E168, as its executor's
             ctx.summary = f"{inv_id} ({chosen.id} / {chosen.archetype}) dispatched for {work_id}'s {record['id']}"
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "invocation": inv_id, "invocation_token": inv_token, "role": chosen.archetype,

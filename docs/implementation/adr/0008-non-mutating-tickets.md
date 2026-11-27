@@ -89,8 +89,8 @@ a Ticket only; every other non-mutating Ticket is unchanged.
 
 - **The Ticket names the ref.** `aew work create ticket --non-mutating --review-ref <ref>` (and `ticket_draft`'s
   `review_ref`) records `review_ref`: the ref's full name, resolved at creation and never to a commit. Accepted:
-  `refs/heads/`, `refs/tags/`, `refs/remotes/` (`git.REVIEWABLE_REF_PREFIXES`); `HEAD` is recorded as the branch it is
-  on. Refused: a revision expression, a commit id or an invalid name, another namespace, an ambiguous short name, a
+  `refs/heads/`, `refs/tags/`, `refs/remotes/` (`git.REVIEWABLE_REF_PREFIXES`), and git's short forms of them
+  (`feature/x`, `heads/feature/x`, `tags/v1`); `HEAD` is recorded as the branch it is on. Refused: a revision expression, a commit id or an invalid name, another namespace, an ambiguous short name, a
   detached or unborn `HEAD`, an unknown ref, the authoritative branch itself, and an AEW Ticket branch
   (`PERMISSION_DENIED`, `aew_managed_ref`). The key is in the Ticket field registry's `kind` group: naming another ref
   is a replacement Ticket. A mutating Ticket never names one.
@@ -105,12 +105,15 @@ a Ticket only; every other non-mutating Ticket is unchanged.
   commit", now reads: at the authoritative commit, **except a ref review's executor, whose observation is at its
   attempt's pinned commit**, and the reviewers and verifiers of a ref review, which observe the commit the record
   reviewed (as every reviewer of a record observes the commit its executor observed). The worktree is added at the
-  sha, never at the name, so a ref that moves during dispatch cannot change what is observed; its checkout reads
-  objects only (`git.OBJECT_ENV`). The untrusted-filter guard reads the commit checked out. Readiness, dependencies and
+  sha, never at the name, so a ref that moves during dispatch cannot change what is observed. The executor's and its
+  reviewers' and verifiers' checkouts read objects only and download no LFS content (`ref_review.CHECKOUT_ENV`:
+  `git.OBJECT_ENV` and `GIT_LFS_SKIP_SMUDGE`), so an LFS-tracked file is observed as the pointer file the commit
+  holds. The untrusted-filter guard reads the commit checked out. Readiness, dependencies and
   inputs are still judged at the authoritative commit (`ref_pin.authoritative_commit`). "Another Ticket's unintegrated
   workspace is never visible" holds by refusing AEW's own Ticket branches.
-- **AEW fetches nothing.** Every git call of the resolution, the pin, the diff, the freshness and the checkout runs
-  with replace refs and lazy fetching off.
+- **AEW fetches nothing.** Every git call of the resolution, the pin, the diff, the freshness and the checkouts runs
+  with replace refs and lazy fetching off, and the checkouts with LFS downloads off. A trusted filter driver other than
+  LFS still runs during a checkout, as on every observation: trusting one is the operator's policy decision.
 - **The record kind `ref_review`** (the investigator archetype's, beside `discovery_record`; pinned as the attempt's
   `expected_kind` only for a Ticket that names a ref, so an investigator is never offered it and a branch reviewer
   never a discovery record). Its section: `summary`, `findings` (the one finding shape), `requirement_trace`,
@@ -120,16 +123,18 @@ a Ticket only; every other non-mutating Ticket is unchanged.
 
 | Kind | Content | Freshness |
 |---|---|---|
-| `ref_review` | `summary`, `findings[]`, `requirement_trace[]`, `checked[]`, `not_checked[]`; engine-owned `reviewed_ref`, `verdict` | **Not source-bound** (basis `ref`): CURRENT while the ref still points at the pinned commit; otherwise UNKNOWN with `moved` (`forward`, `rewritten` or `deleted`) and "the ref has moved since this review". Never STALE, never gating: a consumer takes it as it takes external research. The dashboard never caches it by the authoritative head. |
+| `ref_review` | `summary`, `findings[]`, `requirement_trace[]`, `checked[]`, `not_checked[]`; engine-owned `reviewed_ref`, `verdict` | **Not source-bound** (basis `ref`): CURRENT while the ref still points at the pinned commit; otherwise UNKNOWN with `moved` (`forward`, `rewritten`, `deleted`, or `pruned` once the repository no longer holds the reviewed commit) and "the ref has moved since this review". Never STALE, never gating: a consumer takes it as it takes external research. The dashboard never caches it by the authoritative head. |
 
 - **The card.** `branch_reviewer` (ADR-0006, amendment of the same date) is the execute slot's default for such a
   Ticket; a card that does not list `ref_review` among its outputs is refused there (`card_not_a_ref_reviewer`), and
   `branch_reviewer` on a Ticket without a ref (`no_ref_to_review`).
-- **Checks run only contained (pending the operator).** A check on a ref review runs the ref's code, which may be
-  third-party code the operator fetched. Until the operator decides whether that code is the same trust class as
-  AEW-supervised work (E168's question Q1), a check of any invocation of a ref review runs only inside a contained
-  run's sandbox and is refused otherwise (`PERMISSION_DENIED`, `ref_check_uncontained`); the built-in guardrails check
-  runs no project code and is unaffected. The review is still possible by reading.
+- **Checks run only contained.** A check on a ref review runs the ref's code, which may be third-party code the
+  operator fetched. By the operator's ruling of 2026-11-27 on E168's question Q1 ("Im happy with following weaker
+  context not allowed by default to run tests or code. Id like if we have time to add the unsafe toggle or a g3 pin or
+  typed back code for unsafe mode for things like this."), a check of any invocation of a ref review runs only inside
+  a contained run's sandbox and is refused otherwise (`PERMISSION_DENIED`, `ref_check_uncontained`); the built-in
+  guardrails check runs no project code and is unaffected. The review is still possible by reading. An operator-only
+  opt-in "unsafe mode" (through G3) is separate future work, not built here.
 - **A known limit, stated, not new.** An uncontained run (Windows, or a weaker run the policy allows) can write the
   shared `.git`, for example with `git update-ref`, as any read-only invocation can today. For a ref review that write
   is indistinguishable from the operator moving their own branch: it is reported as "the ref has moved", and never

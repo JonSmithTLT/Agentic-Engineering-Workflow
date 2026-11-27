@@ -317,8 +317,10 @@ def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
     problems: list[str] = []
     invocations = state["invocations"]
 
-    def ancestor(a: str, b: str) -> bool:
-        return _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode == 0
+    def ancestor(a: str, b: str) -> bool | None:
+        """None when git cannot say: a commit gc dropped after its ref was rewritten (review of #661, M2)."""
+        code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode
+        return {0: True, 1: False}.get(code)
 
     for wid, u in sorted(state["work"].items()):
         attempts = [x for x in [u.get("execution") or {}, *u.get("execution_history", [])] if x]
@@ -338,8 +340,8 @@ def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
                 problems.append(f"63: {wid} attempt {x.get('attempt')} is not pinned to {ref} or does not expect a "
                                 "ref review")
                 continue
-            if not (ancestor(pin["merge_base"], pin["commit"]) and ancestor(pin["merge_base"],
-                                                                              pin["authoritative_commit"])):
+            if False in (ancestor(pin["merge_base"], pin["commit"]),
+                         ancestor(pin["merge_base"], pin["authoritative_commit"])):
                 problems.append(f"63: {wid} attempt {x.get('attempt')}'s merge-base is not an ancestor of both commits")
             obs = (invocations.get(x.get("invocation") or "") or {}).get("observation") or {}
             if obs and obs.get("commit") != pin["commit"]:

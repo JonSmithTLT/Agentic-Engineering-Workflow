@@ -14,8 +14,9 @@ fingerprint equality with the current workspace), and none is silently equated w
 * ``ref_review`` (register E168; the designer's decision of 2026-11-06, (d)) is **not source-bound** either: it reviews
   the commit a named ref pointed at when its attempt was pinned, so its freshness compares the ref's current commit
   with the pinned one. CURRENT while they are the same; otherwise UNKNOWN, with how the ref ``moved`` (``forward``,
-  ``rewritten`` or ``deleted``): "the ref has moved since this review" is shown and never gates. STALE is never used
-  for it, since STALE gates elsewhere; the review stays a review of the commit it names.
+  ``rewritten``, ``deleted``, or ``pruned`` when the repository no longer holds the reviewed commit): "the ref has
+  moved since this review" is shown and never gates. STALE is never used for it, since STALE gates elsewhere; the
+  review stays a review of the commit it names.
 
 Freshness is computed, never written: records stay byte-identical history.
 """
@@ -80,7 +81,7 @@ def record_freshness(repo_root: Path, record: dict[str, Any], authoritative_comm
 
 # What a ref review's freshness shows when its ref has moved (the design's words), and how it moved.
 REF_MOVED = "the ref has moved since this review"
-FORWARD, REWRITTEN, DELETED = "forward", "rewritten", "deleted"
+FORWARD, REWRITTEN, DELETED, PRUNED = "forward", "rewritten", "deleted", "pruned"
 
 
 def _ref_freshness(repo_root: Path, record: dict[str, Any], timeout: float | None) -> dict[str, Any]:
@@ -103,6 +104,10 @@ def _ref_freshness(repo_root: Path, record: dict[str, Any], timeout: float | Non
         moved = DELETED
     elif unreadable or not pinned:
         moved = REWRITTEN
+    elif not git.has_commit(pinned, cwd=repo_root, **bound):
+        # the ref moved and git has since dropped the reviewed commit (a rewrite, then gc): the review stays the review
+        # of that commit, by its id, and nothing is left to compare with it
+        moved = PRUNED
     else:
         moved = FORWARD if git.is_ancestor_object(pinned, current, cwd=repo_root, **bound) else REWRITTEN
     return {**base, "status": UNKNOWN, "moved": moved, "detail": REF_MOVED}

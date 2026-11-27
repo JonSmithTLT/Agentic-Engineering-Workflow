@@ -2458,6 +2458,7 @@ HISTORY_READ_ALLOWED = {
         'm == commit or _git("merge-base", "--is-ancestor", commit, m, cwd=root).returncode == 0',
         'if not commit or _git("merge-base", "--is-ancestor", commit, ref, cwd=root).returncode != 0:',
         'return bool(commit and base) and _git("merge-base", "--is-ancestor", commit, base, cwd=root).returncode == 0',
+        'code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode',  # rule 63's (E168)
     )},
 }
 

@@ -1056,8 +1056,9 @@ class EvidenceCommands:
     @staticmethod
     def refuse_uncontained_ref(inv: dict[str, Any]) -> None:
         """A check of a ref review runs the ref's code, which may be third-party code the operator fetched (a fork's
-        branch), so it runs only inside a sandbox (register E168's safe default, pending the operator's answer to its
-        question Q1); refused otherwise. Reading the code needs no check."""
+        branch), so it runs only inside a sandbox (register E168; the operator's ruling of 2026-11-27 on its question
+        Q1: a weaker context is not allowed by default to run tests or code); refused otherwise. Reading the code needs
+        no check."""
         raise PermissionDenied(
             f"{inv['work_unit']} reviews a named ref, and a check would run that ref's code outside a sandbox: on "
             "a ref review a check runs only contained. Review by reading the observation instead, or run in a "

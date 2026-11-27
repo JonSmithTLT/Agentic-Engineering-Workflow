@@ -26,6 +26,11 @@ from aew.workspace import git, worktrees
 # the pack holds its stat and changed paths with the command that reads the rest in the observation. A stated choice
 # (E168 plan §3.7): a pack is read by a model, and a diff this size is already a long read.
 REF_DIFF_MAX_BYTES = 256 * 1024
+# The git environment of a ref review's observation checkouts, its executor's and its reviewers' and verifiers': objects
+# only (no replace refs, no lazy fetch: ``git.OBJECT_ENV``), and no LFS download, since a trusted LFS filter would
+# otherwise fetch the objects from wherever the reviewed commit's own LFS configuration points. LFS-tracked files are
+# then checked out as their pointer files, which is what the commit holds (ADR-0008, amendment of 2026-11-27).
+CHECKOUT_ENV = {**git.OBJECT_ENV, "GIT_LFS_SKIP_SMUDGE": "1"}
 # The diff of two pinned commits: never an external diff tool or a text conversion, never renames guessed differently
 # from one git to the next.
 DIFF_ARGS = ("diff", "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames")

@@ -81,6 +81,9 @@ def test_a_review_ref_is_resolved_to_its_full_name_at_creation_and_never_to_a_co
     tag = git("rev-parse", "feature/x", cwd=project.root)
     git("tag", "v1", tag, cwd=project.root)
     assert project.ok("work", "show", ref_ticket(project, tmp_path, "v1"))["control"]["review_ref"] == "refs/tags/v1"
+    # git's own short forms of an accepted ref name that ref (review of #661, m1)
+    assert G.full_ref_name("heads/feature/x", cwd=project.root) == "refs/heads/feature/x"
+    assert G.full_ref_name("tags/v1", cwd=project.root) == "refs/tags/v1"
     assert_control_invariants(project)
 
 
@@ -205,14 +208,13 @@ def test_a_criss_cross_history_pins_the_first_merge_base_and_counts_them(project
     wa, wb = root.parent / "wt-cc-a", root.parent / "wt-cc-b"
     git("merge", "-q", "--no-edit", b, cwd=wa)
     git("merge", "-q", "--no-edit", a, cwd=wb)
-    tip_a, tip_b = git("rev-parse", "HEAD", cwd=wa), git("rev-parse", "HEAD", cwd=wb)
+    tip_a = git("rev-parse", "HEAD", cwd=wa)
     git("update-ref", "refs/heads/main", tip_a, cwd=root)
     git("reset", "-q", "--hard", cwd=root)
     commit_on(project, "cc-b", "calc/c.py", "c = 1\n")
     pin = R.pin(root, "refs/heads/cc-b", authoritative_branch="main", authoritative_commit=tip_a)
     bases = git("merge-base", "--all", tip_a, git("rev-parse", "cc-b", cwd=root), cwd=root).split()
     assert len(bases) == 2 and pin["merge_base"] == bases[0] and pin["merge_bases"] == 2
-    assert tip_b
 
 
 def test_a_ref_with_no_merge_base_is_refused(project):
@@ -321,7 +323,9 @@ def test_a_ref_review_never_fetches(project, tmp_path, monkeypatch):
     words = {a for args, _ in calls for a in args}
     assert not words & {"fetch", "ls-remote", "pull", "remote"}
     add = [env for args, env in calls if args[:2] == ("worktree", "add")]
-    assert add and all(env == G.OBJECT_ENV for env in add)  # the observation's checkout reads objects only
+    # the observation's checkout reads objects only, and downloads no LFS content (review of #661, m2)
+    assert add and all(env == R.CHECKOUT_ENV for env in add)
+    assert R.CHECKOUT_ENV["GIT_LFS_SKIP_SMUDGE"] == "1" and G.OBJECT_ENV.items() <= R.CHECKOUT_ENV.items()
     ref_calls = [args for args, env in calls if env == G.OBJECT_ENV]
     assert any(a[:1] == ("merge-base",) for a in ref_calls) and any(a[:1] == ("for-each-ref",) for a in ref_calls)
     assert G.OBJECT_ENV["GIT_NO_LAZY_FETCH"] == "1"
@@ -507,8 +511,9 @@ def test_the_ref_review_report_format_is_what_the_engine_accepts():
 
 
 def test_a_check_on_a_ref_review_runs_only_contained(project, tmp_path, monkeypatch):
-    """The plan's safe default, pending the operator's answer to E168's Q1: a check of a ref's code never runs outside a
-    sandbox, by a run's supervisor or by the operator's own command; the built-in guardrails check runs no code."""
+    """The operator's ruling of 2026-11-27 on E168's Q1 (a weaker context is not allowed by default to run tests or
+    code): a check of a ref's code never runs outside a sandbox, by a run's supervisor or by the operator's own
+    command; the built-in guardrails check runs no code."""
     wid = ref_ticket(project, tmp_path)
     eng = engine(project)
     out = eng.work_dispatch(token=project.token, work_id=wid)
@@ -516,6 +521,10 @@ def test_a_check_on_a_ref_review_runs_only_contained(project, tmp_path, monkeypa
     weaker = {"filesystem": "workdir_separation_only"}
     with pytest.raises(PermissionDenied) as exc:
         eng.check_run(invocation_token=token, check_id="unit", label=weaker, layout=None)
+    assert exc.value.details["reason"] == "ref_check_uncontained"
+    # a layout, but a label that is not the contained filesystem: still refused (review of #661, m3)
+    with pytest.raises(PermissionDenied) as exc:
+        eng.check_run(invocation_token=token, check_id="unit", label=weaker, layout=SimpleNamespace(net_dir=None))
     assert exc.value.details["reason"] == "ref_check_uncontained"
     from aew.harness import containment
 
@@ -550,3 +559,57 @@ def test_a_branch_reviewer_run_has_no_writable_bind_on_its_observation_or_the_gi
     reviewers = [c for c in roles.builtin_cards().values() if E.REF_REVIEW in (c.meta.get("outputs") or [])]
     assert [c.id for c in reviewers] == [E.REF_REVIEW_CARD]
     assert all(L.WORKSPACE_ACCESS[c.archetype] == "read" for c in reviewers)
+
+
+def test_a_ref_review_whose_reviewed_commit_was_pruned_is_unknown_and_never_gates(project, tmp_path):
+    """Review of #661, M2: the ref is rewritten after the review is accepted, and gc drops the reviewed commit. Its
+    freshness says so (``pruned``) and the gate, the Ticket's reads and a consumer's dispatch all go on."""
+    root = project.root
+    wid = ref_ticket(project, tmp_path)
+    out = engine(project).work_dispatch(token=project.token, work_id=wid)
+    project.lead("work", "transition", wid, "--to", "RUNNING")
+    role = Role(project, out["invocation_token"], Path(out["observation"]["path"]))
+    sealed = role.submit(E.REF_REVIEW, REVIEW, "Reviewed.\n")["evidence"]
+    project.lead("evidence", "ingest", wid, "--evidence", sealed)
+    project.lead("work", "accept", wid)
+    reviewed = out["execution"]["ref_pin"]["commit"]
+    where = root.parent / "wt-feature-x"
+    git("reset", "-q", "--hard", "main", cwd=where)
+    commit_on(project, "feature/x", "calc/other.py", "other = 1\n")
+    git("worktree", "prune", cwd=root)
+    git("reflog", "expire", "--expire-unreachable=now", "--all", cwd=root)
+    git("gc", "-q", "--prune=now", cwd=root)
+    assert subprocess.run(["git", "cat-file", "-e", f"{reviewed}^{{commit}}"], cwd=root).returncode != 0
+    fresh = F.record_freshness(root, record({"name": "refs/heads/feature/x", "commit": reviewed}), None)
+    assert (fresh["status"], fresh["moved"], fresh["detail"]) == (F.UNKNOWN, F.PRUNED, F.REF_MOVED)
+    gate = project.ok("gate", "show", wid)["gates"]["execute_record"]
+    assert gate["status"] == "CURRENT" and gate["freshness"]["moved"] == F.PRUNED
+    assert project.ok("work", "show", wid)["control"]["state"] == "DONE"
+    consumer = create_unit(project, "ticket", "Act on the review", cls=1,
+                           extra=("--non-mutating", "--goal", "g", "--depends-on", f"{wid}:evidence"))
+    plan_unit(project, tmp_path, consumer, "Read the review.\n")
+    engine(project).work_dispatch(token=project.token, work_id=consumer)
+    assert_control_invariants(project)
+
+
+def test_a_reviewer_of_a_ref_review_checks_out_with_the_ref_reviews_env(project, tmp_path, monkeypatch):
+    """Review of #661, m2: a reviewer's observation of the pinned commit is checked out as its executor's was."""
+    wid = ref_ticket(project, tmp_path)
+    project.lead("work", "staff", wid, "--review", "code_reviewer")
+    out = engine(project).work_dispatch(token=project.token, work_id=wid)
+    project.lead("work", "transition", wid, "--to", "RUNNING")
+    role = Role(project, out["invocation_token"], Path(out["observation"]["path"]))
+    project.lead("evidence", "ingest", wid, "--evidence", role.submit(E.REF_REVIEW, REVIEW, "Reviewed.\n")["evidence"])
+    project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    seen: list[dict[str, str] | None] = []
+    real = worktrees.allocate_detached
+
+    def recorded(**kwargs: Any) -> dict[str, Any]:
+        seen.append(kwargs.get("env"))
+        return real(**kwargs)
+
+    monkeypatch.setattr(worktrees, "allocate_detached", recorded)
+    reviewer = engine(project).invoke_create(token=project.token, work_id=wid, role="reviewer", card=None,
+                                             scope="ticket")
+    assert seen == [R.CHECKOUT_ENV] and reviewer["observation"]["commit"] == out["execution"]["ref_pin"]["commit"]
+    assert_control_invariants(project)

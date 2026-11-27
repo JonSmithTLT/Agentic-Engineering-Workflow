@@ -422,14 +422,18 @@ def is_partial_clone(cwd: Path, *, timeout: float = OBJECT_TIMEOUT_S) -> bool:
     return False
 
 
-def lazy_fetch_possible(cwd: Path, *, timeout: float | Callable[[], float] = OBJECT_TIMEOUT_S) -> bool:
+def lazy_fetch_possible(cwd: Path, *, timeout: float | Callable[[], float | None] | None = None) -> bool:
     """Whether a read of this repository's objects could fetch a missing one lazily whatever AEW asks: a partial clone
     on a git older than 2.44 (``NO_LAZY_FETCH_FROM``), which ignores ``GIT_NO_LAZY_FETCH``. The one owner of the
     predicate: the maps refuse generation on it, and a ref review's pin refuses dispatch on it (register E168).
-    ``timeout`` bounds each git process; a callable is asked again for each, so a caller with one deadline gives each
-    process only the time left."""
-    left = timeout if callable(timeout) else (lambda: timeout)
-    return is_partial_clone(cwd, timeout=left()) and version(cwd, timeout=left()) < NO_LAZY_FETCH_FROM
+    ``timeout`` bounds each git process (``object_git``'s default without it); a callable is asked again for each, so
+    a caller with one deadline gives each process only the time left."""
+
+    def bound() -> dict[str, float]:
+        left = timeout() if callable(timeout) else timeout
+        return {} if left is None else {"timeout": left}
+
+    return is_partial_clone(cwd, **bound()) and version(cwd, **bound()) < NO_LAZY_FETCH_FROM
 
 
 class CatFileBatch:
@@ -553,6 +557,8 @@ def full_ref_name(name: str, *, cwd: Path) -> str:
     if candidates:
         raise UsageError(f"{name!r} names {len(candidates)} refs ({', '.join(candidates)}): give the full name",
                          reason="ambiguous_ref", ref=name, candidates=candidates)
+    if f"refs/{name}" in refs and f"refs/{name}".startswith(REVIEWABLE_REF_PREFIXES):
+        return f"refs/{name}"  # `heads/<b>`, `tags/<t>`, `remotes/<r>/<b>`: git's own short forms of an accepted ref
     if f"refs/{name}" in refs:
         raise UsageError(f"refs/{name} is outside the refs AEW reviews: name one in {accepted}",
                          reason="ref_namespace", ref=f"refs/{name}", accepted=list(REVIEWABLE_REF_PREFIXES))
@@ -592,6 +598,11 @@ def ref_commit(name: str, *, cwd: Path, timeout: float = OBJECT_TIMEOUT_S) -> st
                      reason="not_a_commit", ref=name, object=oid)
 
 
+def has_commit(commit: str, *, cwd: Path, timeout: float = OBJECT_TIMEOUT_S) -> bool:
+    """Whether the repository holds ``commit`` as a commit object (a rewritten ref's old commit is dropped by gc)."""
+    return object_git("cat-file", "-e", f"{commit}^{{commit}}", cwd=cwd, check=False, timeout=timeout).returncode == 0
+
+
 def merge_bases(one: str, other: str, *, cwd: Path) -> list[str]:
     """Every best common ancestor of two commits, in the order ``git merge-base --all`` prints them; empty when they
     share no history. More than one is a criss-cross history."""
@@ -627,5 +638,6 @@ def uncommitted_on(branch: str, *, cwd: Path) -> dict[str, Any] | None:
         proc = object_git("--no-optional-locks", "status", "--porcelain", "-z", "--no-renames",
                           "--untracked-files=no", cwd=Path(fields["worktree"]), check=False)
         paths = [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
-        return {"worktree": fields["worktree"], "paths": len(paths)} if paths else None
+        # in this platform's own form (git prints `C:/...` on Windows), as every other workspace path AEW records
+        return {"worktree": str(Path(fields["worktree"])), "paths": len(paths)} if paths else None
     return None

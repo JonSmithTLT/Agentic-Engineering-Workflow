@@ -596,8 +596,11 @@ def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str,
     if lab.provider is not None:
         # Every provider AEW knows an address for relays to the world's own provider (:func:`new_world`), not to that
         # address: the operator's synthetic login is one of them, and doctor's relay probe sent it to the real host,
-        # which answered HTTP 401 (register E387; the V-01 re-measure of 2026-11-26, C17). After containment.writable,
-        # which sets the containment block this adds to.
+        # which answered HTTP 401 (register E387; the V-01 re-measure of 2026-11-26, C17). Its limit: it is an upstream
+        # override (`netns.stored_key_override`), so the world's built-in providers take the override's paths. No plan
+        # login and no stored worker key is relayed in the world, and the refreshing route (and its own address) is
+        # never reached; the world's one login, an API key, is relayed as in the operator's default configuration.
+        # After containment.writable, which sets the containment block this adds to.
         fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
             network={"upstreams": dict.fromkeys(netns.UPSTREAMS, lab.provider.url)})
     if steering:

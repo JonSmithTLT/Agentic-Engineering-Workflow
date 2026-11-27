@@ -5440,7 +5440,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-27
 
-**By:** Branch `feat/e387-offline-doctor`, test-only: the offline world (`scripted_operator.new_world`) starts its own provider, a loopback listener closed with the lab, and its `containment.network.upstreams` fixture names it as the upstream of every provider AEW knows an address for, so doctor's and init's relay probes of the world's login are answered there (HTTP 200) and no offline case reaches a real host. `aew doctor` itself is unchanged. `test_the_offline_worlds_doctor_never_sends_its_login_to_a_real_provider_host` proves it; the V3 and V1 verdicts are as on `main`
+**By:** PR #635 (`1dfa6418`), test-only: the offline world (`scripted_operator.new_world`) starts its own provider, a loopback listener closed with the lab, and its `containment.network.upstreams` fixture names it as the upstream of every provider AEW knows an address for, so doctor's and init's relay probes of the world's login are answered there (HTTP 200) and no offline case reaches a real host. `aew doctor` itself is unchanged. `test_the_offline_worlds_doctor_never_sends_its_login_to_a_real_provider_host` proves it; the V3 and V1 verdicts are as on `main`
 
 *Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
 

@@ -18,6 +18,8 @@ pin can forgive a failed test.
   latest attempt but ``assurance`` succeeded or was skipped;
 - ``main``'s pins, parsed, are what they were when that run started: otherwise those reports can't match this merge's
   pins, whatever the author pins;
+- ``main`` changed nothing coverage measures (:func:`measured_paths`) since that run, whose coverage holds line numbers
+  of its own source;
 - its lane reports and coverage can still be read, and the only thing `assurance` can say of them under that head's own
   pins is about skips: so a failed test, a test that never ran or a lost shard means no shortcut.
 
@@ -36,6 +38,10 @@ line numbers, so if ``main`` changed what coverage measures since the run (:func
 lands on other statements and scores as misses or hits by the shift alone (PR #592, run 45971642964). Requiring the
 run's recorded base to be this merge's first parent would also close it, but would refuse the shortcut whenever
 ``main`` moved at all.
+What ``main`` changed outside the measured source can still fail it falsely, never pass it: a raised
+``tests/coverage-baseline.json`` that the reused run lacks the tests for, or the D2 ratchet judging the reused run's
+discovery findings against this merge's ``tests/helpers/discovery/allowed.yaml`` and ``modes.py``. ``full-ci`` gets
+past that.
 
 **What it passes over:** a run the next push cancelled, so a failure it had already shown at the nearer head goes
 unseen.
@@ -152,7 +158,8 @@ def pin_maps(rev: str) -> tuple[Any, Any]:
 
 def measured_paths(pyproject: Path = PYPROJECT) -> tuple[str, ...]:
     """The paths whose change moves what the coverage gate reads, from its owner, ``[tool.coverage.run]``: each
-    ``source`` path, each ``source_pkgs`` package under setuptools' ``where`` directories, and the config itself."""
+    ``source`` path, each ``source_pkgs`` package under setuptools' ``where`` directories, and the config itself.
+    A path that isn't there, such as a ``source`` given as a package name, would match nothing in a diff: it refuses."""
     config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     run = config["tool"]["coverage"]["run"]
     where = config.get("tool", {}).get("setuptools", {}).get("packages", {}).get("find", {}).get("where") or ["."]
@@ -161,6 +168,9 @@ def measured_paths(pyproject: Path = PYPROJECT) -> tuple[str, ...]:
     paths = [*run.get("source", []), *packages]
     if not paths:  # coverage would then measure everything it ran: no path can stand for that
         raise NoShortcut(f"{pyproject.name} names no coverage source")
+    missing = [path for path in paths if not (pyproject.parent / path).exists()]
+    if missing:
+        raise NoShortcut(f"{pyproject.name}'s coverage source {missing[0]} isn't a path in this checkout")
     return (*paths, pyproject.name)
 
 

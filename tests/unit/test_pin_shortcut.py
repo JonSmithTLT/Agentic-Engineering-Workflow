@@ -325,13 +325,15 @@ def _main_moved(tree, tmp_path, pins, **files: str) -> Path:
     return cwd
 
 
-def test_main_changing_the_measured_source_since_the_run_takes_the_normal_tier(github, tree, tmp_path, monkeypatch):
+def test_main_changing_the_measured_source_since_the_run_takes_the_normal_tier(github, tree, tmp_path, monkeypatch,
+                                                                                capsys):
     """The run's coverage holds line numbers of the source it ran on: read against main's moved source, the number
     falls by the shift alone (#592: line 90.65, branch 82.43, against a baseline of 90.98 and 83.66)."""
     github.has_run(tree["earlier"])
     cwd = _main_moved(tree, tmp_path, _pins(), measured="x = 1\n")
     monkeypatch.chdir(cwd)
     assert reused(tmp_path, _git(cwd, "rev-parse", "HEAD")) == ""
+    assert f"main changed the measured source since run {RUN}" in capsys.readouterr().out
 
 
 def test_the_measured_paths_hold_what_coverage_measures():
@@ -351,6 +353,25 @@ def test_a_coverage_config_naming_no_source_takes_the_normal_tier(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[tool.coverage.run]\nbranch = true\n", encoding="utf-8")
     with pytest.raises(pin_shortcut.NoShortcut, match="names no coverage source"):
         pin_shortcut.measured_paths(tmp_path / "pyproject.toml")
+
+
+@pytest.mark.parametrize("config", [
+    '[tool.coverage.run]\nsource = ["aew"]\n',  # a package name: coverage takes one, a diff matches nothing by it
+    '[tool.coverage.run]\nsource_pkgs = ["aew"]\n',  # no setuptools `where`, so it lands at the root
+], ids=["source-package-name", "source-pkgs-without-where"])
+def test_a_coverage_source_that_names_no_path_takes_the_normal_tier(config, tmp_path):
+    """`git diff -- aew` lists nothing when the package is at src/aew, so main's change there would pass as none."""
+    (tmp_path / "src" / "aew").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text(config, encoding="utf-8")
+    with pytest.raises(pin_shortcut.NoShortcut, match="coverage source aew isn't a path"):
+        pin_shortcut.measured_paths(tmp_path / "pyproject.toml")
+
+
+def test_a_coverage_source_package_under_its_where_is_measured(tmp_path):
+    (tmp_path / "src" / "aew").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text('[tool.coverage.run]\nsource_pkgs = ["aew"]\n'
+                                             '[tool.setuptools.packages.find]\nwhere = ["src"]\n', encoding="utf-8")
+    assert pin_shortcut.measured_paths(tmp_path / "pyproject.toml") == ("src/aew", "pyproject.toml")
 
 
 def test_main_adding_a_pin_since_the_run_takes_the_normal_tier(github, tree, tmp_path, monkeypatch):

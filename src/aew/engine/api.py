@@ -37,7 +37,7 @@ from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.history_ops import HistoryCommands
 from aew.engine.integration_ops import Integration
-from aew.engine.lead_ops import Lead
+from aew.engine.lead_ops import Lead, seat_doctor
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
@@ -529,6 +529,9 @@ class ProjectAdmin:
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
+        seat_row = seat_doctor(lead)  # register E384: a seat held by a session that is gone names it and the fix
+        if seat_row is not None:
+            add("lead-seat", *seat_row)
         try:
             configured = self.steering.policy_default() is not None
         except Exception:  # noqa: BLE001 (an unreadable policy is reported above)

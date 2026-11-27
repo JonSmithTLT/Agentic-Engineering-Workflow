@@ -52,6 +52,55 @@ PHASE_DRIVERS = {
 }
 
 
+# The reasons resume refuses before the recorded session's process can be judged: the seat records no OpenCode
+# session of this host and user, so whether it still runs is not this terminal's to say (the doctor seat row, E384).
+UNJUDGED = frozenset({"seat_not_opencode", "seat_resume_changed", "seat_other_principal"})
+
+
+def resume_refusal(lead: dict[str, Any]) -> tuple[str, str] | None:
+    """Why ``aew opencode`` cannot resume this seat, as (reason code, why), or None when it can (E330; ADR-0005's
+    resume conditions). The seat's own conditions only: the operator's terminal is the caller's, checked at resume.
+    It is the one judgement the resume and the doctor seat row (:func:`seat_doctor`) both read."""
+    start = lead.get("start") or {}
+    if lead["status"] == "vacant" or start.get("kind") not in seat.RESUMABLE or not start.get("start_id"):
+        return ("seat_not_opencode", "the seat was not taken by an OpenCode session with a recorded process identity. "
+                "If you have the current Lead credential, use `aew opencode --prompt-token` or start with "
+                "`AEW_LEAD_TOKEN` set")
+    if start["generation"] != lead["generation"]:
+        return "seat_resume_changed", "the recorded start is from another generation"
+    if (start["host"], start["user"]) != seat.principal():
+        return "seat_other_principal", "the seat belongs to another host or user"
+    if procs.same_process(start["pid"], start["start_id"]):
+        return "seat_session_live", "the recorded session is still running"
+    if lead["status"] != "active":
+        return "seat_handoff_pending", "a cooperative handoff is pending"
+    return None
+
+
+def seat_doctor(lead: dict[str, Any]) -> tuple[str, str] | None:
+    """The doctor seat row (register E384): whether the session holding the seat still runs, judged as resume judges
+    it (:func:`resume_refusal`). PASS while it runs; WARN naming the dead session and the fix once it is gone: plain
+    ``aew opencode`` resumes the seat, or, where resume is refused, the takeover. None, so no row, where nothing holds
+    the seat or the seat records no OpenCode session of this host and user whose process this terminal can judge: the
+    `lead` row reports the seat's status either way. A read: it changes nothing."""
+    refused = resume_refusal(lead)
+    if lead["status"] == "vacant" or (refused is not None and refused[0] in UNJUDGED):
+        return None
+    start = lead["start"]
+    label = f" {lead['session_label']!r}" if lead.get("session_label") else ""
+    session = f"the Lead session{label} (generation {lead['generation']}, pid {start['pid']})"
+    if refused is not None and refused[0] == "seat_session_live":
+        return "PASS", f"{session} that holds the seat is running"
+    gone = f"{session} that holds the seat is no longer running, so the seat has no live Lead"
+    if refused is None:
+        return "WARN", (f"{gone}. To recover it, run plain `aew opencode` at your own terminal: it resumes the seat, "
+                        "carrying the active invocations, so no worker is stopped. If resume is refused, the operator "
+                        f"takes the seat over there instead: `aew lead takeover --reason '{TAKEOVER_REASON}'`")
+    return "WARN", (f"{gone}, and `aew opencode` cannot resume it: {refused[1]}. To recover it, a successor accepts "
+                    "the handoff with `aew lead handoff accept`, or the operator takes the seat over at their own "
+                    f"terminal: `aew lead takeover --reason '{TAKEOVER_REASON}'`")
+
+
 class Lead:
     """Lead authority lifecycle: acquire, handoff, takeover, release, handoff records."""
 
@@ -215,22 +264,9 @@ class Lead:
         return {"ok": True, "token": token, "generation": s.state["lead"]["generation"], "revision": rev}
 
     def _check_resume(self, state: dict[str, Any]) -> None:
-        lead = state["lead"]
-        start = lead.get("start") or {}
-        if lead["status"] == "vacant" or start.get("kind") not in seat.RESUMABLE or not start.get("start_id"):
-            raise self._seat_held(state, resume=(
-                "seat_not_opencode", "the seat was not taken by an OpenCode session with a recorded process identity. "
-                "If you have the current Lead credential, use `aew opencode --prompt-token` or start with "
-                "`AEW_LEAD_TOKEN` set"))
-        if start["generation"] != lead["generation"]:
-            raise self._seat_held(state, resume=("seat_resume_changed",
-                                                  "the recorded start is from another generation"))
-        if (start["host"], start["user"]) != seat.principal():
-            raise self._seat_held(state, resume=("seat_other_principal", "the seat belongs to another host or user"))
-        if procs.same_process(start["pid"], start["start_id"]):
-            raise self._seat_held(state, resume=("seat_session_live", "the recorded session is still running"))
-        if lead["status"] != "active":
-            raise self._seat_held(state, resume=("seat_handoff_pending", "a cooperative handoff is pending"))
+        refused = resume_refusal(state["lead"])
+        if refused is not None:
+            raise self._seat_held(state, resume=refused)
 
     @staticmethod
     def _resume_invocations(state: dict[str, Any]) -> dict[str, tuple[str, str]]:

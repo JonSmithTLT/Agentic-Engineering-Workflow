@@ -42,8 +42,7 @@ def test_phases_are_exclusive(monkeypatch):
 def test_a_profiled_command_writes_one_record_without_its_arguments(tmp_path, monkeypatch):
     out = tmp_path / "profile.jsonl"
     monkeypatch.setenv(profile.ENV, str(out))
-    argv = ["-C", str(tmp_path), "checkpoint", "--next", "x", "--expect-rev", "0",
-            "--token", FORGED]  # a --token value, refused
+    argv = ["-C", str(tmp_path), "checkpoint", "--next", "x", "--token", FORGED]  # a --token value, refused
     code = cli.main(argv)
     assert code != 0  # the command is refused, and is still recorded
     [line] = out.read_text(encoding="utf-8").splitlines()

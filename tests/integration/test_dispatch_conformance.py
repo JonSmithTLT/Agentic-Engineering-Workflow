@@ -185,7 +185,7 @@ def test_a_typed_surface_dispatch_is_carried_by_lead_mcp_and_waited_on_through_i
     script.write_text(json.dumps([
         {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
         {"call": "status", "arguments": {}},
-        {"call": "cli", "arguments": {"argv": ["work", "assign", wid, "--launch", "--expect-rev", "$revision_text"]}},
+        {"call": "cli", "arguments": {"argv": ["work", "assign", wid, "--launch", ]}},
     ]), encoding="utf-8")
     res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
                   "--transcript", str(transcript), "--profile", "recovery",
@@ -245,7 +245,7 @@ def test_explain_equals_the_execution_when_refused(tmp_path):
     t2 = create_planned_ticket(p, tmp_path, title="Independent change")
     p.lead("work", "assign", t1)
     asked = explain(p, t2)
-    res = p.aew("work", "assign", t2, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", t2, env={"AEW_LEAD_TOKEN": p.token})
     assert not asked["allowed"] and asked["reason_codes"] == ["CONCURRENCY_LIMIT"]
     assert res.returncode == 5 and res.error["code"] == "CONCURRENCY_LIMIT"
     assert asked["blocking_conditions"][0]["message"] == res.error["message"]
@@ -264,7 +264,7 @@ def test_an_allow_is_never_reused_after_policy_changes(tmp_path):
     guardrails.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     p.adopt_policy()
     rev = p.rev()
-    res = p.aew("work", "assign", wid, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", wid, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and res.error["code"] == "DISPATCH_REFUSED"
     assert "PROTECTED_CONDITION_OVERLAP" in res.error["details"]["reason_codes"]
     assert p.rev() == rev  # nothing committed

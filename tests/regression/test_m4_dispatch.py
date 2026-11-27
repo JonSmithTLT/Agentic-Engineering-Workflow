@@ -32,7 +32,7 @@ def ticket(p, tmp_path, *, cls=1, scope=("calc/**", "tests/**"), extra=(), affec
 
 def refused(p, *args):
     rev = p.rev()
-    res = p.aew(*args, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*args, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5, res.stdout
     assert p.rev() == rev  # a refused dispatch commits nothing
     return res.error
@@ -157,8 +157,7 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     implement(impl, SUBTRACT_PATCH)  # passes `unit`, the policy's local check
 
     def commit_ready_refusal():
-        res = p.aew("work", "transition", wid, "--to", "COMMIT_READY", "--expect-rev", str(p.rev()),
-                    env={"AEW_LEAD_TOKEN": p.token})
+        res = p.aew(*p.lead_args("work", "transition", wid, "--to", "COMMIT_READY"), env={"AEW_LEAD_TOKEN": p.token})
         assert res.returncode != 0, res.stdout
         return res.error
 
@@ -166,8 +165,8 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     assert missing["code"] == "GATE_UNSATISFIED" and missing["details"]["unmet"] == {"acceptance_checks": "MISSING"}
     assert impl.check("acceptance")["result"] == "fail"
     assert commit_ready_refusal()["details"]["unmet"] == {"acceptance_checks": "FAILED"}
-    waiver = p.aew("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x",
-                   "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    waiver = p.aew(*p.lead_args("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x"),
+                   env={"AEW_LEAD_TOKEN": p.token})
     assert waiver.returncode != 0 and "non-waivable" in waiver.error["message"]
 
     set_policy(p, "checks", lambda c: c["checks"]["acceptance"].update(command=c["checks"]["unit"]["command"]))
@@ -184,20 +183,20 @@ def test_reclassify_needs_a_reason_a_valid_class_and_an_unfinished_unit(tmp_path
     wid = ticket(p, tmp_path)
     engine = Engine.discover(p.root)
     with pytest.raises(UsageError, match="needs the reason"):
-        engine.work_reclassify(token=p.token, expect_rev=p.rev(), work_id=wid, risk_class=2, reason="  ")
+        engine.work_reclassify(token=p.token, work_id=wid, risk_class=2, reason="  ")
     with pytest.raises(UsageError, match="0..4"):
-        engine.work_reclassify(token=p.token, expect_rev=p.rev(), work_id=wid, risk_class=5, reason="x")
+        engine.work_reclassify(token=p.token, work_id=wid, risk_class=5, reason="x")
     p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed")
     rev = p.rev()
     with pytest.raises(IllegalTransition, match="finished work is archived"):  # a cancelled Ticket is archived
-        engine.work_reclassify(token=p.token, expect_rev=rev, work_id=wid, risk_class=2, reason="x")
+        engine.work_reclassify(token=p.token, work_id=wid, risk_class=2, reason="x")
     assert p.rev() == rev
 
 
 def test_class0_assertions_are_refused_on_other_classes(tmp_path):
     p = sample_project(tmp_path)
     res = p.aew("work", "create", "ticket", "--title", "x", "--class", "1", *ALL_ASSERTIONS,
-                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 2 and res.error["code"] == "USAGE"
 
 
@@ -250,7 +249,7 @@ def test_a_transaction_that_creates_an_invocation_without_a_decision_cannot_comm
     engine = Engine.discover(p.root)
     rev = p.rev()
     with pytest.raises(DispatchUndecided, match="without a dispatch decision"):
-        with engine._k.lead_txn(p.token, rev, "test.bypass") as ctx:
+        with engine._k.lead_txn(p.token, "test.bypass") as ctx:
             engine._invocations.new_invocation(ctx, "reviewer", wid)
     assert p.rev() == rev
 
@@ -265,24 +264,24 @@ def test_a_decision_admits_only_the_invocation_it_checked(tmp_path):
     for wrapper in ("lead_broker.relay", "dispatch.launch"):
         rev = p.rev()
         with pytest.raises(UsageError, match="covered by"):
-            with engine._k.lead_txn(p.token, rev, "test.wrapper") as ctx:
+            with engine._k.lead_txn(p.token, "test.wrapper") as ctx:
                 engine._dispatch.decide_in(ctx, wrapper, blocked)
         assert p.rev() == rev
 
     wid = ticket(p, tmp_path)
     rev = p.rev()
     with pytest.raises(DispatchUndecided, match=r"\(reviewer\)"):  # an implementer's decision, a reviewer created
-        with engine._k.lead_txn(p.token, rev, "test.other_role") as ctx:
+        with engine._k.lead_txn(p.token, "test.other_role") as ctx:
             engine._dispatch.decide_in(ctx, "work.assign", wid)
             engine._invocations.new_invocation(ctx, "reviewer", wid)
     rev = p.rev()
     with pytest.raises(DispatchUndecided, match=r"\(implementer\)"):  # an assignment's decision, integration scope
-        with engine._k.lead_txn(p.token, rev, "test.other_scope") as ctx:
+        with engine._k.lead_txn(p.token, "test.other_scope") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             engine._invocations.new_invocation(ctx, "implementer", wid, scope="integration", card=card)
     rev = p.rev()
     with pytest.raises(DispatchUndecided, match="INV-0002"):  # the same decision used for a second invocation
-        with engine._k.lead_txn(p.token, rev, "test.twice") as ctx:
+        with engine._k.lead_txn(p.token, "test.twice") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
             engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
@@ -297,7 +296,7 @@ def test_a_decision_from_another_revision_admits_nothing(tmp_path):
     p.lead("checkpoint", "--next", "the revision moves")
     rev = p.rev()
     with pytest.raises(DispatchUndecided, match="not this transaction"):
-        with engine._k.lead_txn(p.token, rev, "test.stale") as ctx:
+        with engine._k.lead_txn(p.token, "test.stale") as ctx:
             ctx.dispatch_decisions.append(stale)
             engine._invocations.new_invocation(ctx, "reviewer", wid)
     assert p.rev() == rev
@@ -322,7 +321,7 @@ def test_a_decision_refuses_a_record_or_plan_edited_outside_aew(tmp_path):
     record = p.root / ".aew" / p.ok("work", "show", wid)["control"]["record"]
     edit(record, lambda m: m.update(class0_assertions=["inputs_complete", "no_consequential_boundary",
                                                        "transformation_clear"]))
-    res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", wid, env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "record" in res.error["message"], res.stderr
     assert p.aew("dispatch", "explain", wid, "--json").error["code"] == "INTEGRITY_ERROR"
 
@@ -331,7 +330,7 @@ def test_a_decision_refuses_a_record_or_plan_edited_outside_aew(tmp_path):
     assert "LINT_AFFECTED_PROTECTED" in codes(refused(p2, "work", "assign", wid2))
     plan = p2.root / ".aew" / p2.ok("work", "show", wid2)["control"]["plan"]["path"]
     edit(plan, lambda m: m.update(affected_paths=["calc/core.py"]))
-    res = p2.aew("work", "assign", wid2, "--expect-rev", str(p2.rev()), env={"AEW_LEAD_TOKEN": p2.token})
+    res = p2.aew("work", "assign", wid2, env={"AEW_LEAD_TOKEN": p2.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "accepted plan" in res.error["message"], res.stderr
     assert p2.ok("work", "show", wid2)["control"]["invocations"] == []
 
@@ -354,7 +353,7 @@ def test_an_acceptance_check_on_a_non_mutating_ticket_is_refused(tmp_path):
     """D3: it would be recorded and never run."""
     p = sample_project(tmp_path)
     res = p.aew("work", "create", "ticket", "--title", "Survey", "--class", "1", "--non-mutating", "--goal", "g",
-                "--acceptance-check", "unit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                "--acceptance-check", "unit", env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "USAGE" and "non-mutating" in res.error["message"], res.stderr
 
 
@@ -382,7 +381,7 @@ def test_a_policy_edit_during_a_dispatch_is_an_integrity_error_not_staleness(tmp
     engine = Engine.discover(p.root)
     rev = p.rev()
     with pytest.raises(IntegrityError, match="modified outside AEW"):
-        with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
+        with engine._k.lead_txn(p.token, "test.policy") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             set_policy(p, "guardrails", lambda g: g["protected_paths"].append("calc/**"))
             engine._invocations.new_invocation(ctx, "implementer", wid, card=card)
@@ -397,7 +396,7 @@ def test_an_operational_edit_pending_adoption_is_integrity_not_staleness(tmp_pat
     engine = Engine.discover(p.root)
     rev = p.rev()
     with pytest.raises(IntegrityError, match="modified outside AEW"):
-        with engine._k.lead_txn(p.token, rev, "test.policy") as ctx:
+        with engine._k.lead_txn(p.token, "test.policy") as ctx:
             card = engine._dispatch.decide_in(ctx, "work.assign", wid).facts["card"]
             set_policy(p, "gates", lambda g: g.setdefault("history_audit", {}).update(max_unverified_entries=7))
             engine._invocations.new_invocation(ctx, "implementer", wid, card=card)

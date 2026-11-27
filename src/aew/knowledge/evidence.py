@@ -175,8 +175,7 @@ def one_of(values: dict[str, str | None]) -> str:
 
 def assessor_call(work_id: str, rationale: str) -> tuple[str, dict[str, Any]]:
     """The Lead's call that dispatches an assessor of ``work_id``'s accepted plan: the command, and the arguments it
-    reads on stdin as JSON, less ``expect_rev`` (the revision of the Lead's last result, which every typed call
-    takes)."""
+    reads on stdin as JSON."""
     return (f"aew lead tool {ASSESS_TOOL} --arguments -",
             {"subject": f"{work_id}{PLAN_ITEM}", "choice": ASSESS_CHOICE, "rationale": rationale})
 

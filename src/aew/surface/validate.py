@@ -71,13 +71,18 @@ def _check_resolve(arguments: dict[str, Any]) -> None:
                "replacement: blank" if given else "replacement: required for choice replace_gate")
         raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the replace_gate choice names the gate that replaces "
                                                      "the stuck one, and only it", violations=[why])
+    choice = arguments["choice"]
+    if (choice == "continue" or choice in contract.DISPOSITION_CHOICES + contract.GATE_CHOICES) and (
+            "approval_digest" not in arguments):
+        raise AdapterInputError("INVALID_ARGUMENTS", "resolve: bind the subject shown before deciding",
+                                violations=[f"approval_digest: required for choice {choice}"])
 
 
 def _check_steering(arguments: dict[str, Any]) -> None:
     """The arguments each `steering` action needs and allows (plan v3 §2.6; frozen decision 8): a mismatch is an input
     error, never a partial request."""
     required, allowed = contract.STEERING_ARGUMENTS[arguments["action"]]
-    given = set(arguments) - {"expect_rev", "action"}
+    given = set(arguments) - {"action"}
     missing = [a for a in required if a not in arguments]
     extra = sorted(given - set(allowed))
     if missing or extra:
@@ -89,7 +94,7 @@ def _check_steering(arguments: dict[str, Any]) -> None:
 
 def _check_explain(arguments: dict[str, Any]) -> None:
     """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
-    `expect_rev` aside, and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
+    and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
     out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
     if not {"work_id", "invocation", "stage"} & set(arguments):
         raise AdapterInputError("INVALID_ARGUMENTS", "explain: name a work_id, an invocation or a stage",
@@ -112,7 +117,7 @@ def _check_explain(arguments: dict[str, Any]) -> None:
         raise AdapterInputError("INVALID_ARGUMENTS", f"explain: {arguments['stage']!r} is not a stage",
                                 violations=["stage: not a stage of the catalog"],
                                 stages=[x.name for x in contract.TOOLS.values() if x.progression])
-    given = {**(arguments.get("arguments") or {}), "expect_rev": 0}
+    given = dict(arguments.get("arguments") or {})
     if "work_id" in arguments:
         given.setdefault("work_id", arguments["work_id"])
     errors = sorted(_validator(t.name).iter_errors(given), key=lambda e: list(e.absolute_path))

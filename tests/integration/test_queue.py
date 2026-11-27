@@ -48,7 +48,7 @@ def entry(p, wid):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -145,7 +145,7 @@ def test_a_conflict_releases_the_lease_and_never_blocks_the_entries_behind_it(tm
     (p.root / "calc/core.py").write_text("def add(a, b):\n    return b + a\n", encoding="utf-8", newline="\n")
     git("add", "calc/core.py", cwd=p.root)
     git("commit", "-q", "-m", "outside: rewrite add", cwd=p.root)
-    res = p.aew("integrate", "prepare", b, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("integrate", "prepare", b, env={"AEW_LEAD_TOKEN": p.token})
     assert res.json["integration"]["status"] == "conflict"
     qid, e = entry(p, b)
     assert e["state"] == "AWAITING_DISPOSITION" and e["disposition"]["reason"] == "conflict"
@@ -186,7 +186,7 @@ def test_a_stale_candidate_keeps_its_place_and_its_lease(calc, tmp_path):
     (calc.root / "NOTES.md").write_text("an unrelated commit\n", encoding="utf-8", newline="\n")
     git("add", "NOTES.md", cwd=calc.root)
     git("commit", "-q", "-m", "unrelated", cwd=calc.root)
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.json["rebuilt"] is True
     _, after = entry(calc, wid)
     assert after["state"] == "LEASED" and after["seq"] == before["seq"] and after["rebuilds_used"] == 1
@@ -228,7 +228,7 @@ def test_a_takeover_kills_the_custodian_and_the_new_lead_reconciles(calc, tmp_pa
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        calc.token = Engine.discover(calc.root).lead_takeover(expect_rev=calc.rev(), reason="lost session",
+        calc.token = Engine.discover(calc.root).lead_takeover(reason="lost session",
                                                               session_label="operator")["token"]
     finally:
         aew.operator.authorize = original

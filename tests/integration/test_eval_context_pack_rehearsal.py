@@ -58,7 +58,7 @@ def dispatch(root, case):
     policy = {**load_yaml(policy_file.read_text(encoding="utf-8")), **POLICY, "harness": "opencode"}
     policy_file.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     project.pin_policy()
-    acquire_test_lead(project, expect_rev=project.rev())
+    acquire_test_lead(project)
     wid = project.lead("work", "create", "ticket", "--title", case.manifest["task"], "--class", "1",
                        "--scope", "exporter.py", "--goal", "JSON reports include a status field.")["id"]
     plan = root / "plan.md"

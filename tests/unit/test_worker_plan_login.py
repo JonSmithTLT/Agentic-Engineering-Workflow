@@ -240,7 +240,7 @@ def test_old_run_end_without_cause_still_loads(tmp_path):
     (tmp_path / runlog.RECORD).write_text(json.dumps(old), encoding="utf-8")
     loaded = runlog.read_record(tmp_path)
     assert loaded == old
-    assert contract.plan_login_failure(loaded.get("cause"), "openai", "INV-0001") is None
+    assert contract.plan_login_failure(loaded.get("cause"), "openai", "INV-0001", "R-INV-0001-1") is None
 
 
 @pytest.mark.parametrize("cause", contract.PLAN_LOGIN_FAILURES)
@@ -253,7 +253,7 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
     network = SimpleNamespace(decisions=lambda: {"relay": {"credential:" + cause.removeprefix("plan_login_"): 1}},
                               refused=lambda: None, retryable_pending=lambda: True)
     worker = SimpleNamespace(
-        inv_id="INV-0001", _ending=threading.Event(), _checks=SimpleNamespace(end=lambda: None),
+        inv_id="INV-0001", run=run, _ending=threading.Event(), _checks=SimpleNamespace(end=lambda: None),
         bridge=None, adapter=None,
         tree=SimpleNamespace(kill=lambda: None, network=network), weaker=None, run_dir=directory, record=record,
         _record_usage=lambda: None, _compare_effective=lambda: None, _evidence=lambda: [],
@@ -276,7 +276,7 @@ def test_resolver_cause_reaches_a_failed_end_even_without_an_auth_reason(cause, 
     stop = steering_loop.SteeringLoop.tick(loop, SimpleNamespace())
     assert stop.code == steering_loop.PLAN_LOGIN_FAILED and stop.attention
     assert contract.PLAN_LOGIN_FAILURES[cause] in stop.message
-    assert f"aew harness launch INV-0001 {contract.EXPECT_REV}" in stop.message
+    assert f"aew harness launch INV-0001 --prior-value {run}" in stop.message
     assert "aew invoke cancel INV-0001" in stop.message
     if cause.endswith("_retryable"):
         assert "Wait until the store is available" in stop.message and "auth login" not in stop.message

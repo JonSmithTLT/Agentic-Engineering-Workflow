@@ -71,7 +71,7 @@ def test_o_cmd_takes_placeholders_as_values_and_checks_every_alternative():
 def test_alternatives_between_options_split_whole_option_groups():
     """The product's own plan hint offers `--assurance none` or `--review <card>` or `--verify <card>` across spaces:
     each group is one alternative, and each must parse. A group naming an option the command lacks is caught."""
-    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> --expect-rev N"
+    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card>"
     assert not found(prose(hint), "O-CMD")
     assert found(prose(hint.replace("--verify <card>", "--verfy <card>")), "O-CMD")
     assert not found(prose("aew harness config opencode <INV>|--lead"), "O-CMD")
@@ -84,8 +84,8 @@ def test_the_hint_the_engine_writes_for_a_plan_parses():
     source = (Path(rules.__file__).resolve().parents[3] / "src" / "aew" / "engine" / "resume_ops.py").read_text(
         encoding="utf-8")
     assert "--assurance none|--review <card>|--verify <card>" in source
-    assert not found(prose("aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> "
-                           "--expect-rev N"), "O-CMD")
+    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card>"
+    assert not found(prose(hint), "O-CMD")
 
 
 def test_a_refusal_saying_what_a_command_would_put_on_stdout_asks_for_nothing():
@@ -157,7 +157,8 @@ def id_typed_options() -> list[tuple[tuple[str, ...], str]]:
 
 def test_o_ids_flags_every_id_typed_option_of_the_live_parser():
     options = id_typed_options()
-    assert any(opt == "--expect-rev" for _, opt in options) and len(options) > 40
+    assert {(("plan", "accept"), "--revision"), (("integrate", "publish"), "--candidate")} <= set(options)
+    assert all(opt != "--expect-rev" for _, opt in options)
     for path, option in options:
         s = Suggestion((*path, option, "N"), "", structured=False)
         assert rules.o_ids(s), (path, option)
@@ -213,11 +214,11 @@ def test_a_structured_field_names_a_command_that_must_parse_whole():
 
 
 def test_o_ids_reads_structured_suggestions():
-    assert found(Output(site="unit", payload={"next": "acquire Lead authority: aew lead acquire --expect-rev 0"}),
+    assert found(Output(site="unit", payload={"next": "view history: aew history log --since 12"}),
                  "O-IDS")
     assert not found(Output(site="unit", payload={"next": "acquire Lead authority: aew lead acquire"}), "O-IDS")
     # A field that is not a suggestion is shown, not suggested: an id in it is allowed.
-    assert not found(Output(site="unit", payload={"run": "R-INV-1-1", "detail": "aew lead acquire --expect-rev 0"}),
+    assert not found(Output(site="unit", payload={"run": "R-INV-1-1", "detail": "aew history log --since 12"}),
                      "O-IDS")
 
 
@@ -879,9 +880,8 @@ def test_a_synthetic_crash_item_never_replaces_the_last_report_from_the_lost_wor
 def test_o_ids_still_reads_a_line_that_does_not_parse():
     """Review of #218, G2: O-IDS's fallbacks for a suggested line the parser refuses (here, an option it lacks): an id
     option's value, and a placeholder outside a Ticket's slot."""
-    unparsed = rules.o_ids(Suggestion(("plan", "accept", "T-0001", "--revision", "3", "--expect-rev", "12",
-                                       "--bogus"), "", structured=False))
-    assert {"--expect-rev 12", "--revision 3"} <= set(unparsed)
+    unparsed = rules.o_ids(Suggestion(("plan", "accept", "T-0001", "--revision", "3", "--bogus"), "", structured=False))
+    assert "--revision 3" in unparsed
     assert rules.o_ids(Suggestion(("work", "show", "<run-id>", "--bogus"), "", structured=False)) == [
         "placeholder in an unparsed line"]
     assert rules.o_ids(Suggestion(("work", "show", "<T>", "--bogus"), "", structured=False)) == []
@@ -1084,11 +1084,16 @@ def test_the_static_texts_add_no_new_key_of_an_enforced_rule():
     listed = {k for k in allowed.load() if allowed.is_static(k)}
     verdict = allowed.decide(observed, listed, stale_scope="static")
     assert verdict.ok, "\n".join(allowed.report(verdict, details=found))
+    # With every rule enforced, plant additions and removals on the actual observed baseline. This verifies
+    # the comparison independently of the committed list's intentional O-IDS shadow findings.
     enforced = {r: modes.ENFORCE for r in modes.RULES}
-    assert allowed.decide(observed | {"O-IDS static:guide|aew x --expect-rev N"}, listed, stale_scope="static",
-                          mode_of=enforced).failing == ["O-IDS static:guide|aew x --expect-rev N"]
-    dropped = sorted(listed)[0]
-    assert allowed.decide(observed - {dropped}, listed, stale_scope="static", mode_of=enforced).failing == [dropped]
+    planted = "O-IDS static:guide|aew x"
+    assert planted not in observed
+    assert allowed.decide(observed | {planted}, observed, stale_scope="static",
+                          mode_of=enforced).failing == [planted]
+    dropped = sorted(observed)[0]
+    assert allowed.decide(observed - {dropped}, observed, stale_scope="static", mode_of=enforced).failing == [dropped]
+    assert all("--expect-rev" not in text for _, _, text in static.texts(guides()))
 
 
 def test_the_committed_allow_list_is_well_formed_and_sorted():
@@ -1333,11 +1338,11 @@ def test_a_parse_never_sees_another_calls_required_flags_off(monkeypatch):
 
     def complete():
         try:
-            outcome.append(rules.parse(["work", "staff", "T-0001"]))
+            outcome.append(rules.parse(["work", "transition", "T-0001"]))
         except rules.ParseFail as exc:
             outcome.append(exc)
 
-    mention = threading.Thread(target=rules.parse, args=(["work", "staff"],), kwargs={"complete": False},
+    mention = threading.Thread(target=rules.parse, args=(["work", "transition"],), kwargs={"complete": False},
                                name="mention")
     other = threading.Thread(target=complete, name="complete")
     mention.start()
@@ -1350,7 +1355,7 @@ def test_a_parse_never_sees_another_calls_required_flags_off(monkeypatch):
         release.set()
         mention.join(30)
         other.join(30)
-    assert len(outcome) == 1 and isinstance(outcome[0], rules.ParseFail)  # --expect-rev is required: refused
+    assert len(outcome) == 1 and isinstance(outcome[0], rules.ParseFail)  # the target state is still required
 
 
 def test_a_mention_named_with_a_trailing_option_still_parses_under_the_lock():
@@ -1362,7 +1367,7 @@ def test_a_mention_named_with_a_trailing_option_still_parses_under_the_lock():
     thread.join(30)
     assert done and not thread.is_alive()
     with pytest.raises(rules.ParseFail):
-        rules.parse(["work", "staff", "T-0001"])  # every flag back on
+        rules.parse(["work", "transition", "T-0001"])  # every flag back on
 
 
 # ---------------------------------------------------------------------------------------------- lowering a mode
@@ -2062,7 +2067,7 @@ def test_a_fields_line_parses_through_the_real_expansion(monkeypatch):
             raise AssertionError("stdin was read")
 
     monkeypatch.setattr(sys, "stdin", NoStdin())
-    command = "aew invoke cancel INV-0001 --expect-rev <revision from aew status>"
+    command = "aew invoke cancel INV-0001"
     assert found(_hint(fields_command(command, "reason", "operator asked")), "O-CMD") == []
     empty = found(_hint(fields_block(command, {})), "O-CMD")
     assert len(empty) == 1 and "--reason" in empty[0]  # what the body lacks is still missing

@@ -28,7 +28,7 @@ class PrimitiveSpec(NamedTuple):
     required_policy_inputs: tuple[str, ...]
     required_evidence: tuple[str, ...]
     side_effect_class: str  # what it changes: control_state, credential, workspace, harness_process, authoritative_ref
-    idempotency_scope: str  # what makes a repeat a no-op or a refusal: the expected revision, the run, the candidate
+    idempotency_scope: str  # what makes a repeat a no-op or a refusal: the request id, the run, the candidate
     guard_id: str | None  # the dispatch entrypoint (or, later, the queryable guard) that decides its legality
     declared: bool = True
 
@@ -37,76 +37,76 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # Dispatch: legality is the DispatchDecision of the entrypoint of the same name; the card and execution profile
     # are resolved from policy (a Lead's --card, --profile or --model is an attributable override).
     PrimitiveSpec("work.assign", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
-                  "expected_revision", "work.assign"),
+                  "active_attempt", "work.assign"),
     PrimitiveSpec("work.dispatch", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
-                  "expected_revision", "work.dispatch"),
+                  "active_attempt", "work.dispatch"),
     PrimitiveSpec("work.redispatch", JUDGMENT_BEARING, ("supersession_reason",), POLICY, (),
-                  "control_state+workspace+credential", "expected_revision", "work.redispatch"),
+                  "control_state+workspace+credential", "request_id", "work.redispatch"),
     PrimitiveSpec("invoke.create.mutating", POLICY_RESOLVED, (), POLICY, (), "control_state+credential",
-                  "expected_revision", "invoke.create.mutating"),
+                  "request_id", "invoke.create.mutating"),
     PrimitiveSpec("invoke.create.non_mutating", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
-                  "expected_revision", "invoke.create.non_mutating"),
+                  "request_id", "invoke.create.non_mutating"),
     PrimitiveSpec("invoke.create.parent", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
-                  "expected_revision", "invoke.create.parent"),
+                  "request_id", "invoke.create.parent"),
     # E160 slice 2: a plan assessor of the accepted revision; its card is the built-in assessor's unless one is named.
     PrimitiveSpec("plan.assess", POLICY_RESOLVED, (), POLICY, (), "control_state+workspace+credential",
-                  "expected_revision", "plan.assess"),
+                  "plan_revision_and_counting_assessment", "plan.assess"),
     PrimitiveSpec("harness.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
-                  "expected_revision", "harness.launch"),
+                  "prior_run", "harness.launch"),
     # Run 1 of a dispatch made with `launch` (M4-E E5a; plan v3 §1, E4, E5, N4): recorded in that dispatch's own commit
     # and covered by its decision (the registered internal entrypoint, `covered_by`), then handed with the dispatch's
     # credential to the run's supervisor. A stage records it as the step after its dispatch, in the same commit
     # (`stage_intents.StepBinding.covers`); the provenance it stamps on the run is unchanged.
     PrimitiveSpec("dispatch.launch", MECHANICAL, (), ("execution",), (), "control_state+credential+harness_process",
-                  "expected_revision", "dispatch.launch"),
+                  "dispatch_run", "dispatch.launch"),
     # The Ticket stages' own primitives (M4-E E5a: declared with the first stage that runs them, plan v3 E5). Each
     # guard is the queryable one its execute path requires (E4: `Engine.guard_query`).
     # A unit created from the Lead's proposition: its title, class, scope, criteria and dependencies are the Lead's.
     PrimitiveSpec("work.create", JUDGMENT_BEARING, ("ticket_proposition",), ("gates", "guardrails", "roles"), (),
-                  "control_state", "expected_revision", "work.create"),
+                  "control_state", "request_id", "work.create"),
     # A plan proposed, never accepted: its body and declared assurance are the Lead's.
     PrimitiveSpec("plan.propose", JUDGMENT_BEARING, ("plan_proposal",), ("gates", "roles"), (), "control_state",
-                  "expected_revision", "plan.propose"),
+                  "request_id", "plan.propose"),
     # A Lead transition: legal only by the transition table, the state hooks and the rule's named guard, all read from
     # durable state. A cancellation ends the Ticket's attempt: it revokes its invocations' credentials (`credential`);
     # its ended observations' worktrees are removed when they are archived after its commit (`workspace`; the
     # implementer's worktree is kept); and a live run's supervisor ends its harness once the run's credential is revoked
     # (`harness_process`). Each is observed (test_a_cancellations_effects_are_declared; PR #177 review, finding 1).
     PrimitiveSpec("work.transition", MECHANICAL, (), ("gates",), (),
-                  "control_state+workspace+credential+harness_process", "expected_revision", "work.transition"),
+                  "control_state+workspace+credential+harness_process", "from_state", "work.transition"),
     # A mutating Ticket's report, accepted (M4-E E5b: declared with `ticket_request_verification`, plan v3 E5). The
     # acceptance is the Lead's; its legality is the ingest's own guard, `DISPOSITION_REQUIRED` included (§2.4). It
     # completes the reporter's invocation, revoking its credential (`credential`), and a run still live under that
     # credential is ended by its supervisor (`harness_process`); the reporter shares the Ticket's workspace, so no
     # worktree is removed. Each is observed (test_declared_effects_cover_observed_effects).
     PrimitiveSpec("review.ingest", JUDGMENT_BEARING, ("accept_review_evidence",), ("gates", "guardrails", "roles"),
-                  ("review",), "control_state+credential+harness_process", "expected_revision", "review.ingest"),
+                  ("review",), "control_state+credential+harness_process", "evidence", "review.ingest"),
     # The Ticket-scope acceptance of a verification report (`verify ingest` with the Ticket's scope). Declared in E5b
     # with the same guard rule; `ticket_prepare` (E6a) is the first stage to run it.
     PrimitiveSpec("verify.ingest", JUDGMENT_BEARING, ("accept_verification",), ("gates", "checks", "guardrails"),
-                  ("verification",), "control_state+credential+harness_process", "expected_revision", "verify.ingest"),
-    # The Lead's disposition of a finding, claim or anomaly (M4-E E5b; plan v3 §2.4): one transaction under the
-    # caller's expected revision, through `resolve` or `aew work dispose`. Always a judgment; it never resolves a
+                  ("verification",), "control_state+credential+harness_process", "evidence", "verify.ingest"),
+    # The Lead's disposition of a finding, claim or anomaly (M4-E E5b; plan v3 §2.4): one transaction bound to the
+    # shown subject, through `resolve` or `aew work dispose`. Always a judgment; it never resolves a
     # required finding and never moves a unit.
     PrimitiveSpec("work.dispose", JUDGMENT_BEARING, ("disposition",), ("gates",), (), "control_state",
-                  "expected_revision", None),
+                  "approval_digest", None),
     # A parent's mandatory gate that can never be satisfied, replaced on the record (ITEMS 55: operator, option (b);
-    # designer, addendum 4): through `resolve`'s `replace_gate`, one transaction under the caller's expected revision.
+    # designer, addendum 4): through `resolve`'s `replace_gate`, one transaction bound to the shown gate.
     # Its guard is the queryable one: the predicate on the new gate, and the operator's five conditions.
     PrimitiveSpec("work.gate_replace", JUDGMENT_BEARING, ("gate_replacement",), ("gates", "checks", "roles"), (),
-                  "control_state", "expected_revision", "work.gate_replace"),
+                  "control_state", "approval_digest", "work.gate_replace"),
     # One exact test path added to one Ticket's scope, on the record (register E126; the designer's decisions of
-    # 2026-11-03, §2): through `resolve`'s `add_scope` or `add_scope_signed`, one transaction under the caller's
-    # expected revision. Its guard is the queryable one: the Ticket's admission, the path rules, the stops for a
+    # 2026-11-03, §2): through `resolve`'s `add_scope` or `add_scope_signed`, one transaction bound to the named
+    # Ticket and path. Its guard is the queryable one: the Ticket's admission, the path rules, the stops for a
     # sign-off and dispatch's assurance predicates on the widened scope.
     PrimitiveSpec("work.scope_add", JUDGMENT_BEARING, ("scope_correction",), ("gates", "guardrails"), (),
-                  "control_state", "expected_revision", "work.scope_add"),
+                  "control_state", "exact_path", "work.scope_add"),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease. The
     # grant mints the custodian's custody credential (M4-E E6a: `credential`), whose worker the granting process then
     # starts (an engine process, never a harness).
     PrimitiveSpec("integrate.prepare", MECHANICAL, (), ("gates", "guardrails"), ("current_gates",),
-                  "control_state+workspace+credential", "expected_revision", "integrate.prepare"),
+                  "control_state+workspace+credential", "candidate_and_lease", "integrate.prepare"),
     # Checks-mode validation (M4-D5): the mode and the exact check set are resolved from recorded policy, so the
     # command is policy-resolved; its substeps (pin, execute contained, fingerprint, write evidence) are mechanical.
     PrimitiveSpec("integrate.validate", POLICY_RESOLVED, (), ("gates", "checks", "guardrails", "execution"),
@@ -116,7 +116,7 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # live under it is ended by its supervisor, `harness_process`), and on a VALIDATED entry it is granted the fresh
     # lease it runs under, minting its custodian's credential. Its guard is its own query (`verify.ingest.integration`).
     PrimitiveSpec("verify.ingest.integration", JUDGMENT_BEARING, ("accept_verification",), ("gates",),
-                  ("integration_verification",), "control_state+credential+harness_process", "expected_revision",
+                  ("integration_verification",), "control_state+credential+harness_process", "evidence_and_lease",
                   "verify.ingest.integration"),
     # The publication decision (M4-E E6a: completed with `integration_publish`), whose owner is `aew.owners`'. Its step
     # is the intent commit (`integrate.publishing`, with a VALIDATED entry's fresh lease); the CAS, the sync and DONE
@@ -129,24 +129,24 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     PrimitiveSpec("integrate.reconcile", MECHANICAL, (), (), (), "authoritative_ref+control_state", "candidate", None),
     # The Lead's queue commands (M4-D4): scheduling, never eligibility; each is the Lead's disposition of an entry.
     PrimitiveSpec("integrate.defer", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state+workspace",
-                  "expected_revision", None),
+                  "prior_queue_state", None),
     PrimitiveSpec("integrate.requeue", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state",
-                  "expected_revision", None),
+                  "prior_queue_state", None),
     PrimitiveSpec("integrate.reorder", JUDGMENT_BEARING, ("queue_disposition",), (), (), "control_state",
-                  "expected_revision", None),
+                  "queue_position", None),
     # The Lead's checkpoint (F15.1: the typed surface's one normal-profile mutation): a handoff note and next action,
-    # one transaction under the caller's expected revision.
-    PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "expected_revision", None),
+    # in one transaction.
+    PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "append", None),
     # The Lead's own steering (M4-E E2): a lowering or a request, one transaction; it never raises authority.
-    PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "expected_revision", None),
+    PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "prior_override_or_append", None),
     # A Lead coordination message (F9-A plan v4 D-17): recorded on its thread under the control lock, committing
-    # nothing; the switch it needs is execution policy's `coordination.messaging`. Its `expect_rev` is checked like
-    # every stage's, but a repeat is recognized by its `idempotency_id` (D-8): recording moves no revision.
+    # nothing; the switch it needs is execution policy's `coordination.messaging`. A repeat is recognized by its
+    # `idempotency_id` (D-8): recording moves no revision.
     PrimitiveSpec("message.send", MECHANICAL, (), ("execution",), (), "coordination_record", "idempotency_id", None),
     # The current Lead's resolution of an unfinished stage (M4-E E3c; typed surface §3.4 rule 8): continue (rebind it
     # to this generation, then run its remaining steps, each its own primitive) or abandon. Always a Lead judgment.
     PrimitiveSpec("stage.resolve", JUDGMENT_BEARING, ("stage_resolution",), (), (), "control_state",
-                  "expected_revision", None),
+                  "intent_and_step_cursor", None),
 )}
 
 

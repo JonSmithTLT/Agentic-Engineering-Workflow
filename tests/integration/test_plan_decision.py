@@ -63,8 +63,7 @@ def test_a_proposed_plan_is_the_operators_plan_decision_with_its_command_and_the
     assert d["owner"] == OPERATOR and d["availability"] == "AVAILABLE" and d["default"] == "NONE"
     assert d["subject"] == wid and d["evidence"] == [entry["path"]] and d["tool"] is None
     assert d["ask_operator"] == OD.command(OD.PLAN, wid, 1)
-    assert d["cli_fallback"] == ["plan", "accept", wid, "--revision", "1", "--expect-rev", str(project.rev()),
-                                 "--approval-digest", entry["sha256"]]
+    assert d["cli_fallback"] == ["plan", "accept", wid, "--revision", "1", "--approval-digest", entry["sha256"]]
 
 
 def test_the_lead_sessions_run_of_the_offered_command_waits_for_the_named_confirmation_then_accepts_the_plan(
@@ -87,6 +86,8 @@ def test_the_lead_sessions_run_of_the_offered_command_waits_for_the_named_confir
     assert _accepted(project, wid) is None and _plans(project, wid) == [d]
 
     confirm(project.root, "plan", wid, revision=1)  # the endpoint's record of `d["ask_operator"]`, challenge answered
+    Engine.discover(project.root).checkpoint(token=project.token, note="Unrelated Lead update")
+    assert _plans(project, wid) == [d]
     assert session()["result"]["accepted"] == 1 and _accepted(project, wid) == 1
     assert _plans(project, wid) == []
     assert_control_invariants(project)
@@ -137,11 +138,11 @@ def test_only_a_revision_plan_accept_would_take_now_is_offered(project, tmp_path
     project.lead("plan", "accept", wid, "--revision", "1")
     two = _propose(project, tmp_path, wid, "1. Second.\n", "--reason", "narrower")
     three = _propose(project, tmp_path, wid, "1. Third.\n", "--reason", "wider")
-    assert [d["ask_operator"] for d in _plans(project, wid)] == [OD.command(OD.PLAN, wid, n) for n in (two, three)]
+    decisions = _plans(project, wid)
+    assert [d["ask_operator"] for d in decisions] == [OD.command(OD.PLAN, wid, n) for n in (two, three)]
     project.lead("plan", "accept", wid, "--revision", str(two))
     assert _plans(project, wid) == []
-    res = project.aew("plan", "accept", wid, "--revision", str(three), "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew(*decisions[-1]["cli_fallback"], env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode != 0 and res.error["code"] == "ILLEGAL_TRANSITION", res.stderr
 
 
@@ -166,8 +167,8 @@ def test_a_revision_proposed_while_the_ticket_is_past_ready_is_offered_only_once
     two = _propose(project, tmp_path, wid, "1. Second.\n", "--reason", "the plan missed a step")
     assert load_control(project.root)["work"][wid]["state"] == "ASSIGNED"
     assert _plans(project, wid) == []
-    res = project.aew("plan", "accept", wid, "--revision", str(two), "--expect-rev", str(project.rev()),
-                      env={"AEW_LEAD_TOKEN": project.token})
+    accept = Engine.discover(project.root).status(wid)["plan_accept_argv"][two]
+    res = project.aew(*accept, env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode != 0 and res.error["code"] == "ILLEGAL_TRANSITION", res.stderr
 
     project.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", "the plan missed a step")

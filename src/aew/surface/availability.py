@@ -43,6 +43,19 @@ def _same_unit(**fixed: Any) -> StepArgs:
     return lambda a: {"work_id": a.get("work_id"), **fixed}
 
 
+def _transition(to: str) -> StepArgs:
+    def args(a: dict[str, Any]) -> dict[str, Any]:
+        return {"work_id": a.get("work_id"), "to": to,
+                **({"prior_value": a["prior_value"]} if "prior_value" in a else {})}
+
+    return args
+
+
+def _publish(a: dict[str, Any]) -> dict[str, Any]:
+    return {"work_id": a.get("work_id"),
+            **({"candidate": a["prepared_candidate"]} if "prepared_candidate" in a else {})}
+
+
 def _create(a: dict[str, Any]) -> dict[str, Any]:
     """``ticket_draft``'s call as ``work.create``'s request (the CLI's names)."""
     return {"kind": "ticket", "title": a.get("title"), "risk_class": a.get("risk_class"),
@@ -171,13 +184,16 @@ def _publish_applies(*cases: str, verifier: bool = False) -> Callable[[Any, dict
 # integration verification and the rebuilt candidate's verifier (plan v3 §2.3, B2.5 and T3).
 STAGES: dict[str, tuple[StepArgs, ...]] = {
     "ticket_draft": (_create, _propose),
-    "ticket_start": (_same_unit(launch=True), _same_unit(), _same_unit(to="RUNNING")),
-    "ticket_request_review": (_same_unit(to="REVIEW_PENDING"), _same_unit(role="reviewer"), _same_unit()),
-    "ticket_request_verification": (_review_ingest, _same_unit(to="VERIFY_PENDING"), _same_unit(role="verifier"),
-                                    _same_unit()),
-    "ticket_prepare": (_verification_ingest, _same_unit(to="COMMIT_READY"), _same_unit(),
+    "ticket_start": (_same_unit(launch=True), _same_unit(), _transition("RUNNING")),
+    "ticket_request_review": (_transition("REVIEW_PENDING"), _same_unit(role="reviewer"), _same_unit()),
+    "ticket_request_verification": (_review_ingest,
+                                    _transition("VERIFY_PENDING"),
+                                    _same_unit(role="verifier"), _same_unit()),
+    "ticket_prepare": (_verification_ingest,
+                       _transition("COMMIT_READY"),
+                       _same_unit(),
                        _same_unit(role="verifier", scope="integration"), _same_unit()),
-    "integration_publish": (_integration_ingest, _same_unit(), _same_unit(role="verifier", scope="integration"),
+    "integration_publish": (_integration_ingest, _publish, _same_unit(role="verifier", scope="integration"),
                             _same_unit()),
 }
 # Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step. A
@@ -232,28 +248,6 @@ def stage_cards(engine: Any, stage: str, arguments: dict[str, Any], *,
     _n, slot = CARDS[stage]
     found = engine.stage_cards(arguments.get("work_id"), slot, state=state)
     return {"cards": list(found["cards"]) or [None], "unresolved": list(found["unresolved"])}
-
-
-def way_on(stage: str, arguments: dict[str, Any], unit: dict[str, Any], *, committed: bool) -> dict[str, Any] | None:
-    """The call that takes a Ticket on after ``stage`` stopped stale (E133's review, M2), as what a refusal may name:
-    the tool and what to say about it. None where no call does: only a state a stage starts from, or a stop that
-    committed nothing, or a prepared candidate's relaunch by `integration_publish`, is known to go on."""
-    argument = REPORT_ARGUMENT.get(stage)
-    state, integration = unit.get("state"), unit.get("integration") or {}
-    if not committed:
-        named = argument is not None and arguments.get(argument) is not None
-        return {"tool": stage, "say": f"Nothing of this call was committed. Call {stage} again on the current revision"
-                                      + (f", naming `{argument}` again" if named else "")}
-    if stage == "ticket_prepare" and state == "COMMIT_READY" and integration.get("status") == "prepared":
-        return {"tool": "integration_publish",
-                "say": f"The steps committed stand, and the candidate is prepared. Call integration_publish with "
-                       f"{integration.get('candidate')} as `prepared_candidate` on the current revision, which "
-                       "launches its verifier"}
-    has_candidate = state == "COMMIT_READY" and integration.get("status") in HAS_CANDIDATE
-    if state not in STARTS_AT.get(stage, {}) or has_candidate:
-        return None
-    return {"tool": stage, "say": f"The steps committed stand. Call {stage} again on the current revision, without "
-                                  f"`{argument}`, and it goes on from where this one stopped"}
 
 
 # ---------------------------------------------------------------------------------------------- produced inputs
@@ -420,6 +414,10 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
             steps.append({**entry, **_per_card(engine, stage, arguments, current, scratch, primitive, work_id, args)})
             done[n] = (primitive, args)
             continue
+        if primitive == "work.transition":
+            produced_state = next((value for name, _, value in inputs if name == contract.STATE), None)
+            if produced_state is not None:
+                args["prior_value"] = produced_state
         answer = engine.guard_query(primitive, work_id, args, state=scratch)
         steps.append({**entry, **{k: answer[k] for k in ("availability", "reason_codes", "blocking_conditions")},
                       **{k: answer[k] for k in ("not_queryable", "unanswered", "disposition",

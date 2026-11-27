@@ -44,7 +44,7 @@ def show(p, wid):
 
 
 def err(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -272,7 +272,8 @@ def _attempt(engine: Engine, p: Any, wid: str, to: str) -> tuple[str, str | None
     answer = engine.guard_query("work.transition", wid, {"to": to, "reason": "r"})
     rev = engine.store.read()["revision"]
     try:
-        engine.work_transition(token=p.token, expect_rev=rev, work_id=wid, to=to, reason="r")
+        engine.work_transition(token=p.token, work_id=wid, to=to, reason="r",
+                               prior_value=engine.prior_value("work_transition", wid))
     except AEWError as exc:
         assert answer["availability"] == BLOCKED, (to, answer, exc.message)
         [blocker] = answer["blocking_conditions"]
@@ -360,8 +361,8 @@ def test_a_return_with_no_guard_to_recheck_is_refused_and_names_one_that_has(tmp
         code, why, details, _ = _attempt(engine, p, wid, "REVIEW_PENDING")
         assert (code, why) == ("GATE_UNSATISFIED", reason) and details is not None, (code, why, details)
         assert {"option": "return_to", "to": "RUNNING"} in details["instead"]
-        engine.work_transition(token=p.token, expect_rev=engine.store.read()["revision"], work_id=wid, to="RUNNING",
-                               reason="the named return")
+        engine.work_transition(token=p.token, work_id=wid, to="RUNNING",
+                               reason="the named return", prior_value="ESCALATED")
         assert show(p, wid)["state"] == "RUNNING"
         monkeypatch.undo()
     assert_control_invariants(p)
@@ -381,10 +382,11 @@ def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the
     engine = Engine.discover(p.root)
     monkeypatch.delitem(engine._units.guards._queries, ("findings_recorded", MUTATING))
 
-    def attempt(op: Any) -> AEWError | None:
+    def attempt(op: Any, hub: str) -> AEWError | None:
         rev = engine.store.read()["revision"]
         try:
-            op(token=p.token, expect_rev=rev, work_id=wid, to="RUNNING", reason="the operator answered")
+            observed = {"prior_value": hub} if op == engine.work_transition else {}
+            op(token=p.token, work_id=wid, to="RUNNING", reason="the operator answered", **observed)
         except AEWError as exc:
             assert engine.store.read()["revision"] == rev
             return exc
@@ -394,12 +396,12 @@ def test_a_direct_edge_guard_with_no_query_form_still_decides_the_return_and_the
     for op, hub in ((engine.work_transition, "ESCALATED"), (engine.work_reconcile, "INTERRUPTED")):
         seed(p, lambda s, h=hub: s["work"][wid].update(state=h, findings=[], **{
             "escalated_from" if h == "ESCALATED" else "interrupted_from": "REVIEW_FAILED"}))
-        exc = attempt(op)
+        exc = attempt(op, hub)
         assert exc is not None and exc.code == "GATE_UNSATISFIED", (hub, exc)
         assert "requires recorded review findings" in exc.message, (hub, exc.message)
         # Planted control: with an open required finding, the guard admits the same move.
         seed(p, lambda s: s["work"][wid].update(findings=[{**REQUIRED_FINDING[0], "status": "open"}]))
-        assert attempt(op) is None and show(p, wid)["state"] == "RUNNING", hub
+        assert attempt(op, hub) is None and show(p, wid)["state"] == "RUNNING", hub
     assert_control_invariants(p)
 
 

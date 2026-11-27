@@ -16,12 +16,12 @@ from typing import Any
 DISPATCH_READS = frozenset({"work_id", "role", "card", "scope"})
 GUARD_READS: dict[str, frozenset[str]] = {
     "work.assign": DISPATCH_READS, "invoke.create.mutating": DISPATCH_READS, "dispatch.launch": frozenset(),
-    "work.transition": frozenset({"work_id", "to", "reason"}),
+    "work.transition": frozenset({"work_id", "to", "reason", "prior_value"}),
     "review.ingest": frozenset({"work_id", "evidence"}),
     "verify.ingest": frozenset({"work_id", "evidence"}),
     "verify.ingest.integration": frozenset({"work_id", "evidence"}),
     "integrate.prepare": frozenset({"work_id"}),
-    "integrate.publish": frozenset({"work_id"}),
+    "integrate.publish": frozenset({"work_id", "candidate"}),
     "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
                               "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
                               "external_refs", "body", "card", "promoted_from", "acceptance_checks",

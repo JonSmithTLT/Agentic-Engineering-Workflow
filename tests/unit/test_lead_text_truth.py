@@ -116,7 +116,8 @@ def command_problems(text: str) -> list[str]:
     return problems
 
 
-F1 = f"- A shell mutation still needs `{K.EXPECT_REV}` (from `status` or the previous command)."
+# Preserve the planted mistake independently of the retired product option (E329).
+F1 = "- A shell mutation still needs `--expect-rev <revision from aew status>` (from `status` or the previous command)."
 
 
 @pytest.mark.parametrize(("switches", "push", "contained", "with_guide"), VARIANTS, ids=IDS)
@@ -154,8 +155,7 @@ def test_the_seats_refused_commands_are_the_brokers_own_list():
 LEFT_TO_THE_GUIDE = {"the Lead never implements": "You never implement",
                      "it reads with its read, glob and grep tools": "read, glob and grep tools",
                      "free text goes through --fields or --file": "Put free text in `--fields -` or `--file -`",
-                     "a shell command that takes --expect-rev": "a command that takes `--expect-rev`",
-                     "a tool returns the next revision": "returns the revision for your next `expect_rev`",
+                     "where a scoped mutation gets its binding": "use the prior value or approval digest shown",
                      "the approval channels": "the operator endpoint's challenge, and OpenCode's permission prompt",
                      "a run ending is not progress": "A run ending is not progress"}
 # Pointers at the guide's text, which the Lead's own lines never make: they carry the guide's core, and a pointer is

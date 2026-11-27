@@ -29,7 +29,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.harness.contract import EXPECT_REV, fields_block
+from aew.harness.contract import fields_block
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
 from aew.util import glob_any, parse_frontmatter, sha256_file, sha256_text, utc_now
@@ -219,10 +219,15 @@ class WorkUnits:
 
         def check() -> None:
             unit = self.unit(state, work_id)
+            if "prior_value" in args:
+                approval.prior_state("work.transition", work_id, args["prior_value"], unit["state"],
+                                     root=self.k.aew_root, state=state)
             if unit["kind"] != "ticket":
                 raise IllegalTransition(f"Story/Epic state is derived from child work (WC §8); the Lead closes one "
-                                        f"with `aew work close {work_id} --reason <reason> {EXPECT_REV}` and cancels "
-                                        f"one with `aew work cancel {work_id} --reason <reason> {EXPECT_REV}`")
+                                        f"with `aew work close {work_id} --reason <reason> "
+                                        "--approval-digest <shown digest>` "
+                                        f"and cancels one with `aew work cancel {work_id} --reason <reason> "
+                                        "--approval-digest <shown digest>`")
             rule = transitions.check(unit["state"], str(to), "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{unit['state']} -> {to} requires --reason")
@@ -453,9 +458,10 @@ class WorkUnits:
         """No executor starts under an accepted plan whose ancestor plans changed since (ADR-0007, fail closed)."""
         problem = self.plan_binding_problem(state, work_id)
         if problem:
+            shown = approval.digest(self.ancestor_plan_snapshot(state, work_id))
             raise GateUnsatisfied(f"{work_id}'s accepted plan is stale under its ancestors' current plans; "
-                                  f"`aew plan reconfirm {work_id} --reason <reason> {EXPECT_REV}` or a new plan "
-                                  "revision first",
+                                  f"`aew plan reconfirm {work_id} --reason <reason> --approval-digest {shown}` "
+                                  "or a new plan revision first",
                                   binding=problem)
 
     def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
@@ -483,7 +489,6 @@ class WorkCommands:
         self,
         *,
         token: str,
-        expect_rev: int,
         kind: str,
         title: str,
         risk_class: int,
@@ -518,7 +523,7 @@ class WorkCommands:
         if request_id is None:
             self._check_create_arguments(args)  # preserve the no-ID path's pre-transaction validation
         request = ControlRequest.prepare(request_id, **args)
-        with self.k.lead_txn(token, expect_rev, "work.create", request=request) as ctx:
+        with self.k.lead_txn(token, "work.create", request=request) as ctx:
             if request is not None and ctx.replayed is not None:
                 return ctx.replayed
             # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
@@ -570,7 +575,7 @@ class WorkCommands:
                 raise ValidationFailed(
                     f"--mandatory-gate {found.message}. {GR.HOW_TO_STATE[0].upper()}{GR.HOW_TO_STATE[1:]}, for "
                     "example:\n\n" + fields_block(f"aew work create {a['kind']} --class <0-4> --mandatory-gate "
-                                                   f"check:<check id> {EXPECT_REV}", {"title": "<title>"}),
+                                                   f"check:<check id>", {"title": "<title>"}),
                     gate=gate, candidates=list(found.candidates))
 
     @staticmethod
@@ -685,7 +690,7 @@ class WorkCommands:
             return []
         return [g for g in scope_paths if not any(glob_any(f, [g]) for f in files)]
 
-    def work_reclassify(self, *, token: str, expect_rev: int, work_id: str, risk_class: int,
+    def work_reclassify(self, *, token: str, work_id: str, risk_class: int,
                         reason: str) -> dict[str, Any]:
         """Raise a unit's risk class (WC §7.4: classification may increase whenever evidence exposes more risk),
         as a recorded decision. Never below an inherited minimum class; lowering a class is not offered here. The
@@ -694,7 +699,7 @@ class WorkCommands:
             raise UsageError("a reclassification needs the reason the class goes up")
         if not 0 <= risk_class <= 4:
             raise UsageError("risk class must be 0..4")
-        with self.k.lead_txn(token, expect_rev, "work.reclassify", reason=reason) as ctx:
+        with self.k.lead_txn(token, "work.reclassify", reason=reason) as ctx:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if unit["state"] in transitions.TERMINAL:
@@ -725,7 +730,7 @@ class WorkCommands:
         return {"ok": True, "work_id": work_id, **change, "decision": decision,
                 "revision": ctx.session.committed_revision}
 
-    def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str,
+    def plan_propose(self, *, token: str, work_id: str, body: str,
                      reason: str | None = None, affected_paths: list[str] | None = None,
                      review: list[str] | None = None, verify: list[str] | None = None,
                      no_assurance: bool = False, request_id: str | None = None) -> dict[str, Any]:
@@ -734,7 +739,7 @@ class WorkCommands:
         args: dict[str, Any] = {"body": body, "reason": reason, "affected_paths": affected_paths, "review": review,
                                 "verify": verify, "no_assurance": no_assurance}
         request = ControlRequest.prepare(request_id, work_id=work_id, **args)
-        with self.k.lead_txn(token, expect_rev, "plan.propose", reason=reason, request=request) as ctx:
+        with self.k.lead_txn(token, "plan.propose", reason=reason, request=request) as ctx:
             if request is not None and ctx.replayed is not None:
                 return ctx.replayed
             require(self.propose_query(ctx.state, work_id, args))  # the guard (M4-E E4), then the write
@@ -772,9 +777,9 @@ class WorkCommands:
 
         return checked(check)
 
-    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int,
+    def plan_accept(self, *, token: str, work_id: str, revision: int,
                     binding: str | None = None) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:
+        with self.k.lead_txn(token, "plan.accept") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if unit["state"] not in plan_accept_states(unit):
                 raise IllegalTransition(
@@ -792,10 +797,9 @@ class WorkCommands:
                 against = f"plan v{entry['supersedes']}" if entry.get("supersedes") else "no accepted plan"
                 raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
                                         "accepted now; propose a new revision to change it")
-            if binding is not None:
-                approval.compare("plan.accept", entry["path"], binding,
-                                 sha256_file(self.k.aew_root / entry["path"]))
-                approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
+            approval.compare("plan.accept", entry["path"], binding,
+                             sha256_file(self.k.aew_root / entry["path"]), work_id=work_id)
+            approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
             # The operator's decision (the ruling of 2026-11-26): a Lead session's acceptance needs their confirmation
             # of exactly this plan, given at the operator endpoint, and uses it up.
             confirmed = OD.consume(self.k, ctx, OD.PLAN, work_id, entry["sha256"], revision=revision)
@@ -828,16 +832,11 @@ class WorkCommands:
         return {"ok": True, "work_id": work_id, "accepted": revision, "decision": decision,
                 "revision": ctx.session.committed_revision}
 
-    def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
+    def work_transition(self, *, token: str, work_id: str, to: str,
                         reason: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "work.transition", reason=reason) as ctx:
-            if prior_value is not None:
-                unit = self.units.view(ctx.state, work_id)
-                approval.prior("work.transition", work_id, "state", prior_value, unit["state"],
-                               root=self.k.aew_root, state=ctx.state,
-                               event=lambda e: e["kind"] == "work.state" and e["id"] == work_id)
-            # The guard's query, then the rule's guard (its own query first, then its effects): M4-E E4.
-            args: dict[str, Any] = {"to": to, "reason": reason}
+        with self.k.lead_txn(token, "work.transition", reason=reason) as ctx:
+            # The guard's query checks the scoped prior and the rule; the rule's effects follow (M4-E E4).
+            args: dict[str, Any] = {"to": to, "reason": reason, "prior_value": prior_value}
             require(self.units.transition_rule_query(ctx.state, work_id, args))
             unit = ctx.state["work"][work_id]
             frm = unit["state"]
@@ -861,10 +860,10 @@ class WorkCommands:
         return {"ok": True, "work_id": work_id, "from": frm, "to": to, "decision": decision,
                 "revision": ctx.session.committed_revision, **ctx.result_advisories()}
 
-    def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
+    def work_reconcile(self, *, token: str, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
         """INTERRUPTED -> an earlier-or-equal phase, after the Lead inspected workspace and artifacts."""
-        with self.k.lead_txn(token, expect_rev, "work.reconcile", reason=reason) as ctx:
+        with self.k.lead_txn(token, "work.reconcile", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             frm = unit["state"]
             rule = transitions.check(frm, to, "reconcile")

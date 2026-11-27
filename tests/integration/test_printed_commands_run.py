@@ -23,7 +23,6 @@ from aew import operator
 from aew.cli import credentials
 from aew.cli import main as cli
 from aew.errors import UsageError
-from aew.harness import contract as K
 
 REASON = "following the printed advice"
 
@@ -31,8 +30,8 @@ REASON = "following the printed advice"
 def printed_argv(p: Project, command: str, fenced: bool) -> tuple[list[str], str | None]:
     """Fill a printed command with the current revision and a reason, and extract any heredoc body."""
     head, body = P.split(command, fenced)
-    revision = p.ok("status", "--json")["revision"]
-    filled = head.replace(K.REVISION, str(revision)).replace("<reason>", shlex.quote(REASON))
+    p.ok("status", "--json")["revision"]
+    filled = head.replace("<reason>", shlex.quote(REASON))
     assert "<" not in filled, f"a placeholder this test cannot fill: {filled}"
     argv = shlex.split(filled)
     assert argv[0] == "aew"
@@ -130,7 +129,7 @@ def test_integrate_a_deferred_entry_is_requeued_and_prepared_as_printed(tmp_path
     p = sample_project(tmp_path)
     wid, _impl = to_commit_ready(p, tmp_path)
     p.lead("integrate", "defer", wid, "--reason", "waiting for the release branch")
-    refused = p.aew("integrate", "prepare", wid, "--expect-rev", str(p.rev()), env=lead_env(p))
+    refused = p.aew("integrate", "prepare", wid, env=lead_env(p))
     assert refused.returncode != 0 and refused.error["code"] == "ILLEGAL_TRANSITION", refused.stdout
     res = run_printed(p, *printed(refused.error["message"], "integrate requeue"), env=lead_env(p))
     assert res.returncode == 0, res.stderr or res.stdout

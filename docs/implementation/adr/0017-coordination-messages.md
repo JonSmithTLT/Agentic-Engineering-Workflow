@@ -472,3 +472,9 @@ proof of every emitted hint. MS7 live-provider evidence remains pending. The qua
   proven by disabled-state identity tests in each slice.
 
 The [MS5b amendment](#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b) updates the default and finality.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends D1 and D2 (CMG-02). Lead and worker messaging validate authority and thread admission under the control lock. A message records the observed control revision without advancing it. A duplicate remains scoped to the sender and thread. Repair, durability, seals, recipient checks and message finality are unchanged.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

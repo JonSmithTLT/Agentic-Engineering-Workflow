@@ -200,15 +200,18 @@ class Fixture:
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "initial")
         self.ok("init", "--project-id", "calc", "--fetch-tool", "none")
-        self.token = self.ok("--print-credential", "lead", "acquire", "--expect-rev", "0",
-                             "--session-label", "lead-a")["token"]
-        self.wid = self.lead("work", "create", "ticket", "--title", "Add subtract()", "--class", "1",
-                             "--goal", "calc.core.subtract(5, 3) == 2", "--contract", "changes stay within calc/",
-                             "--scope", "calc/**", "--scope", "tests/**")["id"]
+        self.token = self.ok("--print-credential", "lead", "acquire", "--session-label", "lead-a")["token"]
+        self.wid = self.ok("work", "create", "ticket", "--title", "Add subtract()", "--class", "1",
+                           "--goal", "calc.core.subtract(5, 3) == 2", "--contract", "changes stay within calc/",
+                           "--scope", "calc/**", "--scope", "tests/**")["id"]
         plan = base / "plan.md"
         plan.write_text("1. Add subtract(a, b) to calc/core.py.\n2. Add a focused test.\n", encoding="utf-8")
-        self.lead("plan", "propose", "--assurance", "none", self.wid, "--file", str(plan), "--affected", "calc/core.py")
-        self.lead("plan", "accept", self.wid, "--revision", "1")
+        proposal = self.ok("plan", "propose", "--assurance", "none", self.wid, "--file", str(plan),
+                           "--affected", "calc/core.py")
+        revision = proposal["revision_number"]
+        plans = self.ok("status", self.wid, "--json")["work_unit"]["plans"]
+        shown = next(record for record in plans if record["revision"] == revision)
+        self.ok("plan", "accept", self.wid, "--revision", str(revision), "--approval-digest", shown["sha256"])
 
     def git(self, *args: str) -> None:
         subprocess.run(["git", *args], cwd=self.repo, env=self.env, check=True, capture_output=True,
@@ -225,10 +228,6 @@ class Fixture:
 
     def ok(self, *args: str) -> Any:
         return json.loads(self.run(*args))
-
-    def lead(self, *args: str) -> Any:
-        revision = self.ok("lead", "show")["revision"]
-        return self.ok(*args, "--expect-rev", str(revision))
 
 
 def guide_line(command: str, guide: str) -> int:

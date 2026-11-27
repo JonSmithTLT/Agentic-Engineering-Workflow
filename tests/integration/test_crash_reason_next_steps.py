@@ -28,10 +28,11 @@ def fake_lab(tmp_path):
     lab.cleanup()
 
 
-def printed_reason(inv: str, wid: str) -> str:
+def printed_reason(inv: str, wid: str, run: str) -> str:
     """The reason the supervisor gives a run of ``inv`` that exits on a content filter."""
     supervisor = Supervisor.__new__(Supervisor)
     supervisor.inv_id = inv
+    supervisor.run = run
     supervisor.record = {"contract": {"expected_kinds": []}, "work_unit": wid}
     supervisor._evidence = lambda **_kwargs: []  # type: ignore[method-assign]
     ended: list[str] = []
@@ -41,10 +42,8 @@ def printed_reason(inv: str, wid: str) -> str:
 
 
 def run_printed(lab: HarnessLab, command: str, stdin: str = "", *, model: str | None = None):
-    """Run a printed ``aew ...`` command as a Lead: the revision placeholder is the project's current revision, and the
-    Lead credential is in the environment, the way the operator gives it (CS-4 addendum 12: ``--token`` takes no
-    value)."""
-    argv = shlex.split(command.replace("<revision from aew status>", str(lab.project.rev())))[1:]
+    """Run the printed command with the Lead's credential in its environment."""
+    argv = shlex.split(command)[1:]
     if model:
         argv = [model if a == "PROVIDER/MODEL" else a for a in argv]
     return lab.project.aew(*argv, env=lab.lead_env(lab.env), input=stdin or None)
@@ -59,9 +58,9 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
     assert lab.wait(run)["status"] == "crashed"
     pin = lab.ok("invoke", "show", inv)["execution_profile"]
 
-    reason = printed_reason(inv, wid)
-    (relaunch,) = INLINE.findall(FENCE.sub("", reason))
-    cancel, create, _redispatch = (block.splitlines() for block in FENCE.findall(reason))
+    reason = printed_reason(inv, wid, run)
+    relaunch, create = INLINE.findall(FENCE.sub("", reason))
+    cancel, _redispatch = (block.splitlines() for block in FENCE.findall(reason))
 
     # "Relaunch it": accepted, and the pin stays (ADR-0010).
     res = run_printed(lab, relaunch)
@@ -71,7 +70,7 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
 
     # "dispatch a new invocation on another model" while this one is active is refused, for the reason the cancel
     # command above it answers: the old invocation is still active.
-    early = run_printed(lab, create[0], model="fakeprov/other-model")
+    early = run_printed(lab, create, model="fakeprov/other-model")
     assert early.returncode != 0 and "still active" in (early.error or {}).get("message", early.stderr)
 
     # "cancel it": the heredoc body is the reason.
@@ -80,7 +79,7 @@ def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, t
     assert lab.ok("invoke", "show", inv)["status"] == "cancelled"
 
     # "dispatch a new invocation on another model": pinned to it by the Lead.
-    res = run_printed(lab, create[0], model="fakeprov/other-model")
+    res = run_printed(lab, create, model="fakeprov/other-model")
     assert res.returncode == 0, res.stderr or res.stdout
     new_pin = lab.ok("invoke", "show", res.json["invocation"])["execution_profile"]
     assert new_pin["model"] == "other-model" and new_pin["selected_by"] == "lead"

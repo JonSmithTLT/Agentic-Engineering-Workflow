@@ -1057,3 +1057,9 @@ For F31/Q12 queue-side behavior:
 > A drain deadline is a failure/stop condition. Hitting it stops the draining work, cancels the integration custodian, marks the integration attempt for reconciliation, and raises operator attention. It does not merely pause and notify.
 
 A separate orphan/attention deadline may notify without cancellation. The two concepts must use distinct names and typed reasons.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends HAA-20. Reattachment still gets the canonical generation delta or an explicit full rehydration. A subsequent mutation checks current Lead authority and its own prior item value or approval subject. An old Lead generation cannot gain authority by observing the new state.
+
+[Adopted control-binding amendment](scoped-control-bindings-amendment-2026-11-25.md).

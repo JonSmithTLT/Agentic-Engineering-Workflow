@@ -57,8 +57,11 @@ def _propose(p, tmp_path: Path, wid: str, text: str) -> int:
 
 def _session_cli(p, argv: list[str], channel: str = "lead_broker") -> dict[str, Any]:
     """One command as a Lead session's broker runs it: relayed, with the held credential, on its channel."""
-    return lead_broker.run_cli(Engine.discover(p.root), p.token, [*argv, "--expect-rev", str(p.rev())],
-                               str(p.root), "", channel=channel)
+    return lead_broker.run_cli(Engine.discover(p.root), p.token, argv, str(p.root), "", channel=channel)
+
+
+def _plan_argv(p, wid: str, revision: int = 1) -> list[str]:
+    return p.ok("status", wid, "--json")["plan_accept_argv"][str(revision)]
 
 
 def _accepted(p, wid: str) -> int | None:
@@ -76,8 +79,9 @@ def test_a_lead_sessions_plan_accept_is_refused_without_the_operators_confirmati
     through the endpoint's challenge with the code from its console, lets exactly that acceptance through, once."""
     ep, console = endpoint
     wid = _proposed(project, tmp_path)
+    argv = _plan_argv(project, wid)
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
-        _session_cli(project, ["plan", "accept", wid, "--revision", "1"], channel)
+        _session_cli(project, argv, channel)
     _refusal(refused, OD.REQUIRED)
     assert refused.value.details["ask_operator"] == f"aew operator confirm plan {wid} --revision 1"
     assert "operator's decision" in refused.value.message and "call this again" in refused.value.message
@@ -95,12 +99,10 @@ def test_a_lead_sessions_plan_accept_is_refused_without_the_operators_confirmati
     assert out["decision"] == "plan" and out["subject"]["sha256"] == sha and out["guarantee"] == "dev"
     shown = "".join(console.lines)
     assert sha in shown and "plan v1" in shown and console.code() not in "".join(prompts)
-    # It is held beside control state and moves no revision: the Lead's call at the revision it read is not stale.
+    # It is held beside control state and moves no revision. The Lead retries its same bound request.
     assert [c["id"] for c in OD.standing(aew)] == [out["confirmation"]] and project.rev() == asked_at
 
-    done = lead_broker.run_cli(Engine.discover(project.root), project.token,
-                               ["plan", "accept", wid, "--revision", "1", "--expect-rev", str(asked_at)],
-                               str(project.root), "", channel=channel)["result"]
+    done = _session_cli(project, argv, channel)["result"]
     assert done["accepted"] == 1 and _accepted(project, wid) == 1
     state = load_control(project.root)
     assert not OD.standing(aew) and out["confirmation"] in state["last_transition"]["summary"]
@@ -112,13 +114,14 @@ def test_a_confirmation_counts_once_and_only_for_the_plan_it_was_shown(project, 
     confirmation up."""
     wid = _proposed(project, tmp_path)
     second = _propose(project, tmp_path, wid, "1. Add subtract and a test.\n")
+    argv = _plan_argv(project, wid, second)
     confirm(project.root, "plan", wid, revision=1)
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
-        _session_cli(project, ["plan", "accept", wid, "--revision", str(second)])
+        _session_cli(project, argv)
     _refusal(refused, OD.STALE)
     assert refused.value.details["ask_operator"] == f"aew operator confirm plan {wid} --revision {second}"
     confirm(project.root, "plan", wid, revision=second)  # replaces the confirmation of revision 1
-    assert _session_cli(project, ["plan", "accept", wid, "--revision", str(second)])["result"]["accepted"] == second
+    assert _session_cli(project, argv)["result"]["accepted"] == second
     assert not OD.standing(project.root / ".aew")
 
 
@@ -137,16 +140,18 @@ def test_a_flag_or_argument_from_the_lead_never_counts_as_the_confirmation(proje
     """No argument carries a confirmation: the plan's own digest flag still refuses, the typed surface takes no such
     argument, and only the principal the endpoint constructs can commit one."""
     wid = _proposed(project, tmp_path)
-    sha = load_control(project.root)["work"][wid]["plans"][0]["sha256"]
-    for extra in ([], ["--approval-digest", sha]):
-        with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
-            _session_cli(project, ["plan", "accept", wid, "--revision", "1", *extra])
-        _refusal(refused, OD.REQUIRED)
+    argv = _plan_argv(project, wid)
+    with pytest.raises(errors.ChangedSinceRead):
+        _session_cli(project, ["plan", "accept", wid, "--revision", "1"])
+    with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+        _session_cli(project, argv)
+    _refusal(refused, OD.REQUIRED)
     with pytest.raises(AdapterInputError):
-        check_call("integration_publish", {"expect_rev": 1, "work_id": wid, "operator_confirmed": True}, "normal")
+        check_call("integration_publish", {"work_id": wid, "prepared_candidate": "a" * 40,
+                                          "operator_confirmed": True}, "normal")
     for flag in (["--confirmed"], ["--operator-confirmed"], ["--by", "operator"]):
         with pytest.raises(errors.UsageError):
-            _session_cli(project, ["plan", "accept", wid, "--revision", "1", *flag])
+            _session_cli(project, [*argv, *flag])
 
     class Lookalike:  # what a caller that is not the endpoint could build
         uid, method, endpoint_pid, endpoint_started_at, guarantee = 0, "peer_credentials", 1, "x", "dev"
@@ -169,9 +174,10 @@ def test_the_operators_own_plan_accept_at_their_terminal_needs_no_confirmation(p
     wid = _proposed(project, tmp_path)
     assert project.lead("plan", "accept", wid, "--revision", "1")["accepted"] == 1
     other = _proposed(project, tmp_path, "1. Something else.\n")
+    argv = _plan_argv(project, other)
     with dispatch.channel(dispatch.DIRECT):
-        Engine.discover(project.root).plan_accept(token=project.token, expect_rev=project.rev(), work_id=other,
-                                                  revision=1)
+        Engine.discover(project.root).plan_accept(token=project.token, work_id=other, revision=1,
+                                                  binding=argv[argv.index("--approval-digest") + 1])
     assert _accepted(project, other) == 1 and not OD.standing(project.root / ".aew")
     third = _proposed(project, tmp_path, "1. A third thing.\n")
     confirm(project.root, "plan", third)  # confirmed, and then accepted by the operator themselves
@@ -196,7 +202,7 @@ def _lead_publish(p, wid: str, candidate: str) -> dict[str, Any]:
     """The typed `integration_publish`, as a Lead session's MCP transport carries it."""
     with dispatch.channel("lead_mcp"):
         return R.run_tool(Engine.discover(p.root), SurfaceContext.outside_session(), "integration_publish",
-                          {"work_id": wid, "prepared_candidate": candidate, "expect_rev": p.rev()}, token=p.token)
+                          {"work_id": wid, "prepared_candidate": candidate}, token=p.token)
 
 
 def test_a_lead_sessions_publish_needs_the_operators_confirmation_and_the_operators_own_does_not(tmp_path):
@@ -210,7 +216,7 @@ def test_a_lead_sessions_publish_needs_the_operators_confirmation_and_the_operat
     assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["reason"] == OD.REQUIRED, error
     assert error["details"]["ask_operator"] == f"aew operator confirm publish {first}"
     with pytest.raises(errors.OperatorAuthorizationRequired):
-        _session_cli(project, ["integrate", "publish", first])
+        _session_cli(project, ["integrate", "publish", first, "--candidate", integ["candidate"]])
     assert load_control(project.root)["work"][first]["state"] == "COMMIT_READY"
     assert project.lead("integrate", "publish", first)["state"] == "DONE"  # the operator's own: no confirmation
 
@@ -256,7 +262,7 @@ def test_a_used_confirmation_leaves_its_provenance_on_the_decision_it_authorised
     before = project.rev()
     again = confirm(project.root, "plan", wid)
     assert again["confirmation"] == given["confirmation"]  # the same id, for another decision
-    done = _session_cli(project, ["plan", "accept", wid, "--revision", "1"])["result"]
+    done = _session_cli(project, _plan_argv(project, wid))["result"]
     [used] = _used(project, before)
     sha = load_control(project.root)["work"][wid]["plans"][0]["sha256"]
     assert used["revision"] == done["revision"] and used["decision"] == "plan" and used["work"] == wid

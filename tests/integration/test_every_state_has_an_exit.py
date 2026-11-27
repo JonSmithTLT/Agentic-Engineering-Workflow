@@ -45,7 +45,7 @@ CTX = SurfaceContext.outside_session()
 
 
 def call(p: Project, name: str, **arguments: Any) -> dict[str, Any]:
-    return run.run_tool(Engine.discover(p.root), CTX, name, {"expect_rev": p.rev(), **arguments}, token=p.token)
+    return run.run_tool(Engine.discover(p.root), CTX, name, {**arguments}, token=p.token)
 
 
 # Where a Ticket has no offered exit: why, and what its hint says today, for whoever closes it.
@@ -382,15 +382,11 @@ def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tm
     assert dispatches["VERIFY_PENDING, no report and no live run"] == {
         "work_id": seen["VERIFY_PENDING, no report and no live run"]["subject"], "role": "verifier", "scope": "ticket"}
     assert dispatches["COMMIT_READY, prepared with no report"]["scope"] == "integration"
-    # One owner: a move's command is the one the engine's hint for the Ticket names, at this projection's revision.
+    # One owner: a move's complete command is the one the engine's hint for the Ticket names.
     for label, found in seen.items():
         for a in found["actions"]:
             if a["kind"] == contract.PRIMITIVE:
-                words = list(a["cli_fallback"])
-                if "--prior-value" in words:  # the binding to the state or run it was offered on, which no hint prints
-                    del words[words.index("--prior-value"):words.index("--prior-value") + 2]
-                rev = words.index("--expect-rev")
-                printed = "aew " + " ".join([*words[:rev], K.EXPECT_REV, *words[rev + 2:]])
+                printed = "aew " + " ".join(a["cli_fallback"])
                 assert any(f"`{printed}`" in hint for hint in found["hints"]), (label, printed, found["hints"])
     # A return or a regression carries the Lead's reason: judgment-bearing, so never a stage runner's to take.
     for found in seen.values():
@@ -427,14 +423,15 @@ def test_the_check_fails_on_a_new_dead_end_a_closed_one_a_missing_state_and_a_lo
 
     def offering(argv: list[str]) -> dict[str, Any]:
         return {"READY": {**open_exit, "actions": [{"action": "work.transition", "cli_fallback": argv}]}}
-    assert lands(offering(["work", "transition", "T-0001", "--to", "RUNNING", "--expect-rev", "3"])) == []
-    [incomplete] = lands(offering(["work", "transition", "T-0001", "--expect-rev", "3"]))
-    assert incomplete.startswith("READY: work.transition offers `aew work transition T-0001 --expect-rev 3`, which "
-                                 "does not run as offered")
-    [unfilled] = lands(offering(["work", "transition", "T-0001", "--to", "<somewhere>", "--expect-rev", "3"]))
+    binding = ["--prior-value", "ASSIGNED"]
+    assert lands(offering(["work", "transition", "T-0001", "--to", "RUNNING", *binding])) == []
+    [incomplete] = lands(offering(["work", "transition", "T-0001", *binding]))
+    assert incomplete.startswith("READY: work.transition offers `aew work transition T-0001 --prior-value ASSIGNED`, "
+                                 "which does not run as offered")
+    [unfilled] = lands(offering(["work", "transition", "T-0001", "--to", "<somewhere>", *binding]))
     assert "a placeholder that is not in PLACEHOLDERS" in unfilled
-    assert lands(offering(["lead", "release", "--expect-rev", "3"])) == [
-        "READY: work.transition offers `aew lead release --expect-rev 3`, which no Lead session reaches"]
+    assert lands(offering(["lead", "release"])) == [
+        "READY: work.transition offers `aew lead release`, which no Lead session reaches"]
     decided = {"READY": {**open_exit, "actions": [], "decisions_required": [
-        {"decision": "PUBLISH", "cli_fallback": ["integrate", "publish", "--expect-rev", "3"]}]}}
+        {"decision": "PUBLISH", "cli_fallback": ["integrate", "publish"]}]}}
     assert [x.split(":")[1].strip().split(" ")[0] for x in lands(decided)] == ["PUBLISH"], "a decision's command too"

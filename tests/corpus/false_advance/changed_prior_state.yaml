@@ -1,0 +1,11 @@
+case: changed_prior_state
+slice: E329
+description: a review requested for a Ticket observed as RUNNING refuses when that Ticket is not RUNNING
+seed: ready
+stage: ticket_request_review
+arguments: {work_id: $work_id, prior_value: RUNNING}
+expect:
+  availability: BLOCKED
+  boundary: refused
+  steps: []
+  unit_state: READY

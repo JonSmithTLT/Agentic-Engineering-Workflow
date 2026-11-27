@@ -4721,7 +4721,8 @@ systems:
   finish_line: 'Every class B and C binding required and a B or C operation without its binding refused; the project-wide
     compare dropped at every site; `expect_rev` removed outright, with no release of grace (the operator, 2026-11-25:
     "Yup. ill have it removed outright"); open stage intents migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
-    staling a Lead mutation, tested for every class A operation and exercised in a real run.'
+    staling a Lead mutation, checked at every class A admission boundary and through four direct writers, and exercised
+    in a real run.'
   remaining:
   - slice: 'The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated,
       and the amendments'
@@ -4739,7 +4740,7 @@ systems:
   evidence:
   - 'src/aew/engine/primitives.py CONTROL_OP_SPECS: a revision class and binding for each checked control operation'
   - 'src/aew/errors.py ChangedSinceRead: code CHANGED_SINCE_READ, the class B and C refusal'
-  - 'src/aew/harness/contract.py EXPECT_REV: still printed in next steps (src/aew/engine/base.py, src/aew/harness/lead_broker.py)'
-  - 'docs/implementation/adr/0005-authority-credentials-operator.md: every control mutation still requires --expect-rev;
-    its E330 amendment'
+  - 'src/aew/engine/approval.py and src/aew/engine/stage_intents.py: required scoped bindings and refusal before an intent opens'
+  - 'tests/integration/test_scoped_binding_cutover.py: class A admission, direct writers and historical stage migration'
+  - 'docs/implementation/adr/0005-authority-credentials-operator.md: the E329 scoped-binding and E330 seat-resume amendments'
   - 'docs/implementation/future-work.yaml (rows E326, E327, E328, E330): closed; E329 open'

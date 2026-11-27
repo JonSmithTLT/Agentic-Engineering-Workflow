@@ -42,7 +42,6 @@ from aew.errors import (
     IntegrityError,
     LockTimeout,
     NotFound,
-    StaleRevision,
     Unavailable,
     UsageError,
     ValidationFailed,
@@ -484,12 +483,12 @@ class HistoryCommands:
 
     # ------------------------------------------------------------------ loading as reference (invariant 14)
 
-    def history_load(self, *, token: str, expect_rev: int, record_id: str, into: str, reason: str) -> dict[str, Any]:
+    def history_load(self, *, token: str, record_id: str, into: str, reason: str) -> dict[str, Any]:
         """Attach an exact historical record to a hot unit as reference context: later packs for the unit carry it
         as a labelled ``history:<id>@<sha>`` source with its trust classification, never as current evidence."""
         if not (reason and reason.strip()):
             raise UsageError("loading a historical record needs a reason")
-        with self.k.lead_txn(token, expect_rev, "history.load", reason=reason) as ctx:
+        with self.k.lead_txn(token, "history.load", reason=reason) as ctx:
             state = ctx.state
             self._require_v2(state)
             unit = self.units.unit(state, into)  # hot only: finished work does not change
@@ -523,7 +522,7 @@ class HistoryCommands:
         return {"count": v["count"], "h": v["h"]} if v else None
 
     def history_audit(self, *, full: bool = False, token: str | None = None,
-                      expect_rev: int | None = None) -> dict[str, Any]:
+                      ) -> dict[str, Any]:
         """Verify the history: from the last verified root (incremental) or from the beginning (``full``) through the
         current root. Without ``token`` it only reports (advisory: CI runs it this way). With the Lead's credential
         it records the audit and, if the history verified, advances the verified root to the one it commits."""
@@ -533,12 +532,6 @@ class HistoryCommands:
             tail = self.cold.tail_bytes()
             if token is not None:
                 require_lead(s.state, token, archived=self.k.archived_credential)
-                if expect_rev is None:
-                    raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
-                                        current=s.revision)
-                if expect_rev != s.revision:
-                    raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
-                                        expected=expect_rev, current=s.revision)
         self._require_v2(state)
         start = None if full else self._verified_point(state["cold"])
         target = dict(state["cold"]["root"])
@@ -562,16 +555,13 @@ class HistoryCommands:
                 raise IntegrityError(f"history audit found {len(problems)} problem(s)", audit=result)
             return {"recorded": False, **result}
         for _ in range(AUDIT_ATTEMPTS):
-            revision = self.k.store.current()["revision"]
             try:
-                with self.k.lead_txn(token, revision, "history.audit") as ctx:
+                with self.k.lead_txn(token, "history.audit") as ctx:
                     root = ctx.state["cold"]["root"]
                     if root != target and not problems:
                         raise _RootMoved(dict(root), self.cold.tail_bytes())  # 3. it moved: continue
                     audit_id = self._record_audit(ctx, full=full, start=result["from"], target=target,
                                                   checked=checked, problems=problems, damaged=damaged)
-            except StaleRevision:
-                continue  # a commit landed between reading the revision and taking the lock
             except _RootMoved as moved:
                 moved_root, moved_tail = moved.args
                 more = self.cold.verify(moved_root, {"count": target["count"], "h": target["head_h"]},

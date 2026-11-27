@@ -583,7 +583,7 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
     try:
         for rel, new in edits.items():
             atomic_write(root / rel, new)
-        engine.manifest_adopt(token=token, expect_rev=engine.store.current()["revision"], authorization=authorization,
+        engine.manifest_adopt(token=token, authorization=authorization,
                               reason=f"switch offer: {offer.switch} {opening.held} -> {opening.to}", only=sorted(edits),
                               binding=binding)
     except Exception as exc:  # noqa: BLE001 (rules 3 and 5: whatever failed, nothing stays, and the start goes on)

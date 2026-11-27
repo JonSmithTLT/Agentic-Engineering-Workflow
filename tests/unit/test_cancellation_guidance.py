@@ -29,25 +29,23 @@ def test_active_implementer_refusal_has_complete_cancel_command() -> None:
     assert blocker is not None
     assert blocker.message == (
         "INV-0032 is still active; cancel it with:\n\n```sh\n"
-        "aew invoke cancel INV-0032 "
-        "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+        "aew invoke cancel INV-0032 --fields - <<'EOF'\n"
         "reason: 'why this active invocation must end'\n"
         "EOF\n```"
     )
-    assert "--expect-rev <revision from aew status>" in blocker.message
+    assert "--expect-rev" not in blocker.message
     assert "--fields -" in blocker.message
     assert "reason:" in blocker.message
 
 
-def test_invoke_cancel_parser_keeps_required_reason_and_revision() -> None:
+def test_invoke_cancel_parser_keeps_required_reason() -> None:
     # ``--fields`` is expanded by the client before argparse; the resulting reason
     # still reaches the command's required --reason option.
     args = build_parser().parse_args(
-        ["invoke", "cancel", "INV-0032", "--expect-rev", "7", "--reason", "stop"]
+        ["invoke", "cancel", "INV-0032", "--reason", "stop"]
     )
 
     assert args.invocation == "INV-0032"
-    assert args.expect_rev == 7
     assert args.reason == "stop"
 
 
@@ -55,11 +53,10 @@ def test_advertised_yaml_expands_to_invoke_cancel_parser(monkeypatch) -> None:
     monkeypatch.setattr("sys.stdin", StringIO("reason: why\n"))
     parser = build_parser()
     argv = fields.expand(
-        ["invoke", "cancel", "INV-0032", "--expect-rev", "7", "--fields", "-"], parser
+        ["invoke", "cancel", "INV-0032", "--fields", "-"], parser
     )
     args = parser.parse_args(argv)
     assert args.invocation == "INV-0032"
-    assert args.expect_rev == 7
     assert args.reason == "why"
 
 
@@ -72,20 +69,19 @@ def test_ticket_cancel_refusal_has_complete_transition_command() -> None:
     class Kernel:
         @staticmethod
         @contextmanager
-        def lead_txn(token, expect_rev, operation, reason):
+        def lead_txn(token, operation, reason):
             yield type("Context", (), {"state": {"work": {"T-0007": {"kind": "ticket", "state": "RUNNING"}}}})()
 
     hierarchy = object.__new__(Hierarchy)
     hierarchy.k = Kernel()
     hierarchy.units = Units()
     with pytest.raises(IllegalTransition) as raised:
-        hierarchy.work_cancel(token="lead", expect_rev=7, work_id="T-0007", reason="stop")
+        hierarchy.work_cancel(token="lead", work_id="T-0007", reason="stop")
 
     message = str(raised.value)
     assert message == (
         "cancel a Ticket with:\n\n```sh\n"
-        "aew work transition T-0007 --to CANCELLED "
-        "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+        "aew work transition T-0007 --to CANCELLED --prior-value RUNNING --fields - <<'EOF'\n"
         "reason: 'why this Ticket must end'\n"
         "EOF\n```"
     )
@@ -95,13 +91,13 @@ def test_advertised_yaml_expands_to_work_transition_parser(monkeypatch) -> None:
     monkeypatch.setattr("sys.stdin", StringIO("reason: why\n"))
     parser = build_parser()
     argv = fields.expand(
-        ["work", "transition", "T-0007", "--to", "CANCELLED", "--expect-rev", "7", "--fields", "-"],
+        ["work", "transition", "T-0007", "--to", "CANCELLED", "--prior-value", "RUNNING", "--fields", "-"],
         parser,
     )
     args = parser.parse_args(argv)
     assert args.work_id == "T-0007"
     assert args.to == "CANCELLED"
-    assert args.expect_rev == 7
+    assert args.prior_value == "RUNNING"
     assert args.reason == "why"
 
 

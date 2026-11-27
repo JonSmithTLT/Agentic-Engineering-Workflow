@@ -129,6 +129,17 @@ def test_an_approval_consumed_raises_the_mode_and_its_record_names_the_consent(s
     assert steered.fake.consumed[0]["operation_ref"].startswith("aew:steering-raise:")
 
 
+def test_a_record_the_endpoint_cannot_write_stops_nothing_and_its_console_says_the_view_will_not_show_it(
+        steered, endpoint, monkeypatch, tmp_path):
+    """A-44 BOY-05.a: the endpoint's G3 path keeps the approval's record as the command does, and says so as the
+    command does when it cannot (#660 review, m2); the raise goes ahead."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(g3client, "RECORDS_OVERRIDE", blocker / "requests")
+    assert _raise(steered)["mode"] == MODE
+    assert any("record cannot be written" in line and "will not show this wait" in line for line in endpoint.lines)
+
+
 def test_a_background_endpoint_with_no_terminal_raises_on_an_approval(steered):
     """No code is needed, so having nowhere to show one stops nothing, and the outcome line goes to its log."""
     lines: list[str] = []

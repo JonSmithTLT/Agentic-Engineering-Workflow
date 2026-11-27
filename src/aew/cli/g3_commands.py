@@ -75,8 +75,7 @@ def _request(a: argparse.Namespace) -> Any:
     writer = R.Writer(pending, project=R.project_label(_cwd(a)))
     outcome = None
     if writer.failed:
-        sys.stderr.write(f"aew g3: this approval's record cannot be written in {writer.directory} ({writer.failed}): "
-                         "the dashboard and `aew status` will not show this wait; the confirmer still lists it\n")
+        sys.stderr.write(f"aew g3: {R.unwritten(writer)}\n")
 
     def say(text: str) -> None:
         sys.stderr.write(f"aew g3: {text}\n")
@@ -86,9 +85,7 @@ def _request(a: argparse.Namespace) -> Any:
         try:
             record = C.await_decision(pending, on_read=writer.read, say=say, keep_reading=True)
         except OperatorAuthorizationRequired as exc:
-            outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found",
-                       "unanswered_until_expiry": "unanswered"}.get(
-                str((exc.details or {}).get("reason")))
+            outcome = R.outcome_of(exc)
             raise
         outcome = "approved_not_submitted"
         receipt = C.submit(C.approved_set(proved, record), a.o01, token)

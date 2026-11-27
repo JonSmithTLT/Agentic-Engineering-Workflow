@@ -85,6 +85,7 @@ COVERAGE = ("Approvals that AEW started on this host, from any project. AEW appr
 HELD = "The action stays held until you decide."
 NOT_ESTABLISHED = "G3 is not established here: approving admits nothing yet."
 CLAIM = "started by the {role} (the client's own claim)"
+UNLISTABLE = "The approval records on this host cannot be read, so whether any approval waits is unknown"
 UNREADABLE = "An approval record on this host cannot be read, so its state is unknown (?)"
 DECIDED = {"approved_submitted": "Approved and submitted.", "approved_not_submitted": "Approved, not submitted.",
            "declined": "Declined.", "expired": "Expired."}
@@ -274,16 +275,17 @@ def approval_state(record: dict[str, Any], now: datetime, *, alive: bool) -> tup
 
 @dataclass(frozen=True)
 class Source:
-    """A source's own outcome and read time (BOY-04): ``available``, or ``unsupported`` with why; and its line, which
-    states what it covers. A source is never a count."""
+    """A source's own outcome (BOY-04): ``available``, ``unavailable`` when it could not be read, or ``unsupported``
+    with why; and its line, which states what it covers. A source is never a count. Its read time is the reading
+    consumer's own (``aew status`` prints the same text for the same state: #660 review, B1 item 6); the /waiting read
+    carries it on the wire (register E102)."""
 
     name: str
     outcome: str
-    read_at: str
     line: str
 
     def as_dict(self) -> dict[str, str]:
-        return {"name": self.name, "outcome": self.outcome, "read_at": self.read_at, "line": self.line}
+        return {"name": self.name, "outcome": self.outcome, "line": self.line}
 
 
 def approval_items(now: datetime, *, platform: str | None = None, sock: str | None = None,
@@ -297,12 +299,15 @@ def approval_items(now: datetime, *, platform: str | None = None, sock: str | No
     from aew import g3client
     from aew import g3records as R
 
-    read_at = _iso(now)
     if (platform or sys.platform) == "win32" or not Path(sock or g3client.REQUEST_SOCK).exists():
-        return [], Source("g3_approvals", "unsupported", read_at, NOT_ON_HOST)
+        return [], Source("g3_approvals", "unsupported", NOT_ON_HOST)
     out = []
     window = timedelta(seconds=R.window_s())
-    for found in R.read_all(directory):
+    try:
+        records = R.read_all(directory)
+    except OSError as exc:  # the directory itself cannot be listed: the source failed, never "nothing waiting"
+        return [], Source("g3_approvals", "unavailable", f"{UNLISTABLE} ({type(exc).__name__})")
+    for found in records:
         rec = found.record
         if rec is None:
             out.append(item("g3_approval.unknown", opaque("AT-g3-record-", found.name), key=f"g3-record:{found.name}",
@@ -321,7 +326,7 @@ def approval_items(now: datetime, *, platform: str | None = None, sock: str | No
             i["summary"] = f"{i['summary']} {NOT_ESTABLISHED}"
     waiting = any(i["tier"] == BLOCKED_ON_YOU for i in out)
     out.sort(key=lambda i: i["since"] or "")
-    return out, Source("g3_approvals", "available", read_at, COVERAGE if waiting else NOTHING_WAITING)
+    return out, Source("g3_approvals", "available", COVERAGE if waiting else NOTHING_WAITING)
 
 
 _CODES = {"g3_approval.waiting": "G3_APPROVAL_WAITING", "g3_approval.unknown": "G3_APPROVAL_UNKNOWN",
@@ -414,5 +419,5 @@ def render(view: dict[str, Any], now: datetime | None = None) -> list[str]:
             lines.append(f"    {i['summary']}")
         if i["where"]:
             lines.append(f"    {WHERE[i['where']]}")
-    lines += [f"  {s['name']}: {s['outcome']}, read {s['read_at']}: {s['line']}" for s in view["sources"]]
+    lines += [f"  {s['name']}: {s['outcome']}: {s['line']}" for s in view["sources"]]
     return lines

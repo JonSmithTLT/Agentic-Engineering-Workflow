@@ -17,7 +17,7 @@ import pytest
 
 from aew import g3client as C
 from aew import g3records as R
-from aew.errors import OperatorAuthorizationRequired
+from aew.errors import OperatorAuthorizationRequired, Unavailable
 from aew.harness import weaker_register
 from aew.stg02 import wire as W
 
@@ -214,3 +214,65 @@ def test_only_the_client_writes_or_prunes_the_directory() -> None:
         if _calls_to(tree, "Writer") or _calls_to(tree, "prune"):
             writers.append(path.relative_to(SRC).as_posix())
     assert writers == ["cli/g3_commands.py", "harness/g3_adapter.py"]
+
+
+def test_without_reading_through_no_answer_or_a_503_ends_the_wait_at_once_and_is_recorded(monkeypatch) -> None:
+    """The designer's ruling 1 on G3-C, through the real wait: the operator endpoint's path (``keep_reading`` off)
+    holds at the first silence, and the record still sees it (#660 review, m1)."""
+    mono = [0.0]
+    monkeypatch.setattr(C, "_g3", _Service(["PENDING", 503], mono))
+    reads: list[str] = []
+    said: list[str] = []
+    with pytest.raises(Unavailable) as exc:
+        C.await_decision(pending(), now=lambda: T0, clock=lambda: mono[0], sleep=lambda s: None,
+                         on_read=reads.append, say=said.append)
+    assert exc.value.details["reason"] == "g3_unavailable" and reads == ["PENDING", "NO_ANSWER"] and said == []
+
+
+def test_the_command_reads_through_silence_to_the_expiry_says_so_once_and_records_the_way_it_ended(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """`aew g3 request` against a service that accepts the set and then never answers: it says once that G3 is not
+    answering and until when, ends `unanswered_until_expiry` with its way on, submits nothing, and its record's
+    outcome is `unanswered`, which the view shows as unknown whether decided (#660 review, m1)."""
+    import copy
+
+    from aew.cli.main import main
+    from aew.engine import attention
+    from aew.engine.custody_ops import LEAD_SESSION_VARS
+    from aew.errors import Unavailable as U
+    from tests.helpers import g3 as G
+
+    for var in LEAD_SESSION_VARS:
+        monkeypatch.delenv(var, raising=False)
+    expires = datetime.now(UTC) + timedelta(seconds=1)
+
+    def g3(sock_path: Any, method: str, path: str, body: Any = None, *, timeout: float = 0) -> Any:
+        if path.endswith("/" + C.PROBE_REF):
+            return 404, None
+        if method == "POST":
+            return 201, {"approval_ref": "g3:approval:silent", "state": "PENDING", "expires_at": W.utc(expires),
+                         "rendering": [{"template_id": "g3:action:SET_STEERING_MODE", "values": {},
+                                        "source": {"kind": "TEMPLATE"}}]}
+        raise U("no answer", reason="g3_unreachable")
+
+    submitted: list[Any] = []
+    monkeypatch.setattr(C, "_g3", g3)
+    monkeypatch.setattr(C, "submit", lambda *a: submitted.append(a))
+    monkeypatch.setattr(C, "POLL_S", 0.05)
+    monkeypatch.setattr(C, "GRACE_S", 0)
+    cset = copy.deepcopy(G.base_set())
+    cset["consent_set_ref"] = None
+    for i in cset["intents"]:
+        i["origin_proof_ref"] = None
+    (tmp_path / "set.json").write_text(json.dumps(cset), encoding="utf-8")
+    (tmp_path / "token").write_text("token-planted-g3records\n", encoding="utf-8")
+    code = main(["g3", "request", str(tmp_path / "set.json"), "--o01", "http://127.0.0.1:4261", "--token-file",
+                 str(tmp_path / "token"), "--json"])
+    err = capsys.readouterr().err
+    error = json.loads(err[err.index("{"):])["error"]
+    assert code == OperatorAuthorizationRequired.exit_code and error["details"]["reason"] == "unanswered_until_expiry"
+    assert "Request it again once the service answers" in error["message"] and submitted == []
+    assert err.count("is not answering") == 1 and "Ctrl+C stops it" in err
+    [found] = R.read_all()
+    assert found.record["outcome"] == "unanswered" and found.record["state"] == "NO_ANSWER"
+    assert attention.approval_state(found.record, datetime.now(UTC), alive=False)[1] == attention.EXPIRED_UNKNOWN

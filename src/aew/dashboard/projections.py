@@ -263,13 +263,15 @@ class Projector:
     """Every projection of one snapshot. Nothing here writes."""
 
     def __init__(self, snapshot: Snapshot, *, route: str | None = None, maps: MapsReader | None = None,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic,
+                 wall: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.s = snapshot
         self.route = route  # the contract route being answered: it decides the envelope's version
         self.maps = maps  # the server's maps reader and its caches (the maps routes; register F20.8)
         # What the history search's deadline is read from and judged by, down to the engine's substrate: the real
         # monotonic clock unless a test drives it (only the server passes it on).
         self.clock = clock
+        self.wall = wall  # the wall clock the approvals' states are judged on (A-44 BOY-05.b): a test may drive it
         self.state = snapshot.state
         self.engine = snapshot.engine
         self.archive = snapshot.engine.archive
@@ -510,7 +512,7 @@ class Projector:
                         contradictions=self._contradictions() if contradictions is None else contradictions,
                         observe=lambda run: self._observe(run)[0],
                         notifier=notify.summary(self.s.aew_root) if host else None, host=host,
-                        established=established)
+                        established=established, now=self.wall())
         if host and contradictions is None:
             self._view = found
         return found

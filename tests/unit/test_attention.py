@@ -144,7 +144,9 @@ def test_unsupported_unreadable_and_empty_each_show_as_themselves_and_never_as_z
     items, _ = view(tmp_path / "r", at(10))
     unknown = [i for i in items if i["source"] == "g3_approval.unknown"]
     assert len(unknown) == 2 and all(i["state"] == "?" and i["tier"] == AT.ATTENTION for i in unknown)
-    assert source.read_at == R._iso(at(10))
+    (tmp_path / "file").write_text("not a directory", encoding="utf-8")
+    items, source = view(tmp_path / "file", at(10))  # a directory that cannot be listed: the source failed (m3)
+    assert items == [] and source.outcome == "unavailable" and source.line.startswith(AT.UNLISTABLE)
 
 
 def test_a_record_leaves_the_view_at_its_expiry_plus_g3_06s_window(tmp_path: Path) -> None:
@@ -222,4 +224,4 @@ def test_status_renders_each_item_with_its_tier_time_left_and_where_and_each_sou
     assert lines[0] == "Waiting on you (1 counted; FYI items are not)"
     assert lines[1] == "  [blocked-on-you] G3 approval: SET_STEERING_MODE, since 2026-11-27T12:00:00Z, 4m50s left"
     assert lines[3] == "    " + AT.WHERE["aew_approvals"]
-    assert lines[-1].startswith("  g3_approvals: available, read 2026-11-27T12:00:10Z: Approvals that AEW started")
+    assert lines[-1] == "  g3_approvals: available: " + AT.COVERAGE  # no clock time: one state, one text (#660, B1-6)

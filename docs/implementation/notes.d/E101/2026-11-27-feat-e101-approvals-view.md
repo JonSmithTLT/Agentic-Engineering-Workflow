@@ -1,6 +1,7 @@
 **A-44 slice S1 is built** (`feat/e101-approvals-view`). The G3 client keeps a per-host record of each approval it
 starts (`aew.g3records`, in `$XDG_STATE_HOME/aew/g3/requests/`, directory 0700, files 0600, each write atomic and each
-write pruning what has passed its expiry plus G3-06's window). Both G3 clients write it: `aew g3 request`, and the
+write pruning what has passed its expiry plus G3-06's window). A contained launch refuses an operator's writable
+root that would expose that directory, as it does for AEW's host state. Both G3 clients write it: `aew g3 request`, and the
 operator endpoint's G3 path (G3-C's C3), which came after A-44 named the command alone. `aew g3 request` now keeps
 reading through no answer and a 503 until the approval's expiry, saying so once; the endpoint's G3 path keeps holding
 on either, as the designer's ruling 1 on G3-C says. One attention module (`aew.engine.attention`) gives every item its
@@ -13,5 +14,7 @@ or approves, and the dashboard never connects to G3: it only checks that `reques
 **What remains.** Three choices for the review to confirm, each the builder's reading of the slice. The overview shows
 an approval's expiry time, not its time left, so its validator does not change every second (`aew status` shows the
 time left). The FYI approval states show as contract kind `anomaly`, severity `info`, since 0.1.3's known kinds have
-no FYI one. The existing alert events name no answer home from BOY-06's set. The /waiting read, the agent lane and
-the `operator_endpoint` home stay with E102.
+no FYI one. The existing alert events name no answer home from BOY-06's set. `aew status` relayed to the Lead shows the
+operator's G3 approvals on this host from every project (ref, G3's action names, project label); SYS-21 names the
+Lead as a reader, and the designer may confirm it. The /waiting read, with each source's read time, the agent lane
+and the `operator_endpoint` home stay with E102.

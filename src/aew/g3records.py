@@ -1,7 +1,8 @@
 """The G3 client's per-host approval records (A-44 BOY-05.a, BOY-05.c, BOY-05.e; register E101).
 
-One JSON file per approval that ``aew g3 request`` starts, in :func:`aew.g3client.approval_records_dir`, outside every
-project's store and outside every contained launch's writable binds. Only the client that started an approval writes
+One JSON file per approval that a G3 client starts (``aew g3 request``, and the operator endpoint's G3 path), in
+:func:`aew.g3client.approval_records_dir`, outside every project's store. A contained launch's layout refuses an
+operator's writable root that is, contains or lies under it (``containment.layout._guarded``). Only the client that started an approval writes
 its record (:class:`Writer`): at the start, after each of its reads of G3, and at its exit; and each of its writes
 prunes every record whose display window has passed (:func:`prune`). Every other reader (the attention module, so the
 dashboard and ``aew status``) only reads (:func:`read_all`). The record grants nothing: it is a display source, and
@@ -40,6 +41,16 @@ ACTION_PREFIX = "g3:action:"
 # as the client's own claim (BOY-01)
 STARTER_ROLE = "operator"
 OUTSIDE = None  # the project label of an approval started outside any project
+# How a client's wait ended, by the reason of the refusal that ended it (aew.g3client.await_decision): the one map
+# both G3 clients use (#660 review, n1). A refusal for any other reason records no outcome.
+OUTCOME_OF_REASON = {"declined": "declined", "expired": "expired", "approval_lost": "not_found",
+                     "unanswered_until_expiry": "unanswered"}
+
+
+def outcome_of(exc: Exception) -> str | None:
+    """The outcome a refusal of the wait records, from :data:`OUTCOME_OF_REASON`."""
+    reason = (getattr(exc, "details", None) or {}).get("reason")
+    return OUTCOME_OF_REASON.get(reason) if isinstance(reason, str) else None
 
 
 def window_s() -> int:
@@ -99,7 +110,8 @@ def _name(ref: str) -> str:
 def prune(directory: Path, now: datetime) -> list[str]:
     """Remove every record whose expiry plus :func:`window_s` has passed, and every one that cannot be read and is
     older than that window by its modification time: the client's own housekeeping, at each of its writes
-    (BOY-05.c). Returns the names removed."""
+    (BOY-05.c). Returns the names removed. Only a client's write prunes, so on a host where no client runs again a
+    record that cannot be read stays, and its reader keeps showing it as unknown (#660 review, n3)."""
     gone = []
     if not directory.is_dir():
         return gone
@@ -176,6 +188,12 @@ class Writer:
         self._write()
 
 
+def unwritten(writer: Writer) -> str:
+    """What a client says when its record cannot be written: the one wording both G3 clients use."""
+    return (f"this approval's record cannot be written in {writer.directory} ({writer.failed}): the dashboard and "
+            "`aew status` will not show this wait; the confirmer still lists it")
+
+
 @dataclass(frozen=True)
 class Found:
     """One file of the directory as a reader found it: its record, or None when it cannot be read as one."""
@@ -195,13 +213,16 @@ def valid(data: Any) -> bool:
 
 
 def read_all(directory: Path | None = None) -> list[Found]:
-    """Every record in the directory, read only: never created, changed or pruned here."""
+    """Every record in the directory, read only: never created, changed or pruned here. A directory that is absent
+    holds none; one that exists and cannot be listed raises ``OSError``, so its reader says the source failed
+    (BOY-04)."""
     directory = directory or C.approval_records_dir()
     out = []
-    try:
-        paths = sorted(directory.glob("*" + SUFFIX)) if directory.is_dir() else []
-    except OSError:
-        return [Found(directory.name, None)]
+    if not directory.exists():
+        return out
+    if not directory.is_dir():
+        raise NotADirectoryError(str(directory))
+    paths = sorted(directory.glob("*" + SUFFIX))
     for path in paths:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

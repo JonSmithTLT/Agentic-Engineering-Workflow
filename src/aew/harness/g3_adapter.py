@@ -168,13 +168,14 @@ def outcomes(bad_request: str = HELD_AGAIN) -> Iterator[None]:
 
 
 def approve(cset: dict[str, Any], on_pending: Callable[[dict[str, Any]], None],
-            wait: Callable[[float], None] = time.sleep, *,
-            project: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+            wait: Callable[[float], None] = time.sleep, *, project: str | None = None,
+            say: Callable[[str], None] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ask for the approval and wait for the operator: the approved set and its consent record. ``on_pending`` tells the
     requester the approval is on the confirmer, and ``wait`` passes the time between looks at the service, so the
     endpoint can end the wait when the requester has gone. As every G3 client AEW ships, it keeps the approval's
     per-host record (A-44 BOY-05.a), labelled with ``project``: here "submitted" is the approved set handed back to
-    the endpoint, its owner, for the consume."""
+    the endpoint, its owner, for the consume. A record that cannot be written stops nothing, and ``say`` (the
+    endpoint's console) is told the view will not show this wait, as the command says on its stderr."""
     from aew import g3records
 
     with outcomes():
@@ -185,13 +186,14 @@ def approve(cset: dict[str, Any], on_pending: Callable[[dict[str, Any]], None],
         g3client.expires_at(pending)
         writer = g3records.Writer(pending, project=project)
         outcome = None
+        if writer.failed and say is not None:
+            say(g3records.unwritten(writer))
         try:
             on_pending(pending)
             try:
                 record = g3client.await_decision(pending, sleep=wait, on_read=writer.read)
             except errors.OperatorAuthorizationRequired as exc:
-                outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found"}.get(
-                    str((exc.details or {}).get("reason")))
+                outcome = g3records.outcome_of(exc)
                 raise
             outcome = "approved_not_submitted"
             approved = g3client.approved_set(proved, record)

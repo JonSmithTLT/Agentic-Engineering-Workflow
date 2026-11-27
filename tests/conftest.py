@@ -440,8 +440,11 @@ def g3_records_session_dir(tmp_path_factory) -> Iterator[Path]:
 
 @pytest.fixture(autouse=True)
 def g3_records(g3_records_session_dir, request):
-    """No test reads or writes this host's own G3 approval records: in process each test has a directory of its own.
-    (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
+    """No test reads or writes this host's own G3 approval records in process: each test has a directory of its own.
+    (Not through ``monkeypatch``, for the reason ``capability_register`` gives.) Its limit (#660 review, m5): a child
+    `aew` still resolves the host's directory, so a child `aew status` on a host with G3 installed reads, and prints,
+    that host's records; no test's child writes one, since only `aew g3 request` and the operator endpoint's G3 path
+    do, and the session's sentinel above checks it."""
     import re
 
     from aew import g3client

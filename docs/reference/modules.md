@@ -1600,6 +1600,7 @@ None.
 - `aew.capability.status`
 - `aew.capability.store`
 - `aew.errors`
+- `aew.g3client`
 - `aew.harness.containment.client_cert`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.login`

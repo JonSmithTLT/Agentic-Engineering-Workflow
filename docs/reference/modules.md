@@ -1435,6 +1435,7 @@ None.
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.harness.registry`
+- `aew.harness.runlog`
 - `aew.knowledge.evidence`
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`

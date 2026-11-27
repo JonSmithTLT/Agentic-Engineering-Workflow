@@ -759,7 +759,9 @@ def test_continue_over_any_other_ended_run_stops_as_it_did_before(project, tmp_p
     lab, wid, sid, run = ended_with_evidence(p, tmp_path, monkeypatch, steps)
     try:
         if how == "unsealed":
-            [path] = [e["_path"] for e in E.scan(p.root / ".aew", wid)[0] if e["kind"] == "implementation_report"]
+            # The run's check, not its report: the report alone still reads, so only the store's seal rule (any
+            # integrity problem: `find_evidence`'s) stops the continue taking it.
+            [path] = [e["_path"] for e in E.scan(p.root / ".aew", wid)[0] if e["kind"] == "check_result"]
             record = p.root / ".aew" / path
             record.write_text(record.read_text(encoding="utf-8") + "\nedited after sealing\n", encoding="utf-8")
             assert E.scan(p.root / ".aew", wid)[1]  # the store refuses it

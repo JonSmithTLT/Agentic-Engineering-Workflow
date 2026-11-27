@@ -90,6 +90,7 @@ CALL_PRIMITIVES: dict[str, tuple[str, int]] = {
     f"{UTIL}.create_exclusive": ("create_exclusive", 0),
     f"{UTIL}.write_temp": ("write_temp", 0),
     f"{UTIL}.replace_with_retry": ("replace_with_retry", 1),
+    f"{UTIL}.unlink_with_retry": ("unlink_with_retry", 0),
     "os.replace": ("os.replace", 1), "os.rename": ("os.rename", 1), "os.link": ("os.link", 1),
     "os.symlink": ("os.symlink", 1), "os.remove": ("os.remove", 0), "os.unlink": ("os.unlink", 0),
     "os.rmdir": ("os.rmdir", 0), "os.mkdir": ("os.mkdir", 0), "os.makedirs": ("os.makedirs", 0),

@@ -161,11 +161,12 @@ def normalize(value: Any) -> dict[str, Any]:
 
 def network_facts(value: Any) -> dict[str, str | None]:
     """The recorded network facts of a run's ``containment`` label of any age: its ``mode``, its ``provider_relay``,
-    and the ``relay_family`` check of a configured relay (register E143). Read through :func:`normalize`, so every
-    reader, ``harness status`` and the site's E148 route alike, gives the same answer for the same record: a label
-    before CS-3b has no relay, and a missing label (before M4-B) is the uncontained run's, with this platform's
-    :func:`network`. A value outside its closed vocabulary (no producer writes one) is None, never passed on (#649's
-    review, F2)."""
+    and the ``relay_family`` check of a configured relay (register E143). Read through :func:`normalize`, the reading
+    ``harness status`` uses, so the site's E148 route and ``harness status`` agree on every label a producer writes,
+    of any age: a label before CS-3b has no relay, and a missing label (before M4-B) is the uncontained run's, with
+    this platform's :func:`network`. The one difference: ``harness status`` shows the label as stored, so a value
+    outside its closed vocabulary (no producer writes one) shows raw there and is None here, never passed on (#649's
+    review, F2; #656's review, m1)."""
     from aew.harness.base import RELAY_FAMILY_SHOWN  # base imports this package
 
     net = normalize(value).get("network")

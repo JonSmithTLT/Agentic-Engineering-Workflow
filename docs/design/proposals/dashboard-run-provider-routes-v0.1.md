@@ -15,14 +15,17 @@ an empty list. The route's envelope uses the version that adopts it.
 
 The backend returns the same first 250 recorded runs as the invocation detail.
 It reads each run's recorded containment label through the label's owner,
-`aew.harness.containment.network_facts`, the reading `harness status` uses, so
-the route and `harness status` give the same answer for every record. A label
+`aew.harness.containment.network_facts`, which reads through
+`containment.normalize`, the reading `harness status` uses, so the route and
+`harness status` agree on every label a producer writes, of any age. A label
 of any age is read as `containment.normalize` reads it: a label written before
 CS-3b, whose network is a mode string, has that mode and `provider_relay:
 none`; a run with no label, or one written before M4-B, is the uncontained
 run's, with `provider_relay: none` and this platform's network mode (`shared`
 on Linux, `not_provided` elsewhere). A null value means the field holds a value
 outside its closed vocabulary, which no producer writes; it is never passed on.
+That is the one difference from `harness status`, which shows the label as
+stored, so such a value shows there as recorded.
 `provider_relay: none` records that the launch reported no relay. It cannot
 establish provider connectivity. `relay_family` describes the recorded
 relay-family check for a configured relay.

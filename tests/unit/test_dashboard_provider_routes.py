@@ -11,6 +11,9 @@ from aew.dashboard import projections as P
 from aew.dashboard.contract import Contract
 from aew.errors import NotFound
 from aew.harness import containment
+from aew.harness.base import RELAY_FAMILY_SHOWN
+from aew.harness.containment.netns import NETWORK_MODES
+from aew.harness.containment.relay import PROVIDER_RELAY_STATES
 
 ROOT = Path(__file__).resolve().parents[2]
 INVOCATION = "INV-0001"
@@ -75,6 +78,12 @@ def test_the_provider_route_projection_matches_the_proposed_data_schema():
     contract = Contract(ROOT / "docs/design/dashboard-api-v1-provisional.yaml")
     contract.schemas.update(addition)
     assert contract.violations("RunProviderRoutes", data) == []
+    # The hand-off's enums are its owners' vocabularies, plus null (#656's review, m2: derive, don't restate)
+    fields = addition["RunProviderRoutes"]["properties"]["runs"]["items"]["properties"]
+    owners = {"network_mode": {*NETWORK_MODES, containment.NOT_PROVIDED}, "provider_relay": set(PROVIDER_RELAY_STATES),
+              "relay_family": set(RELAY_FAMILY_SHOWN)}
+    for name, owned in owners.items():
+        assert set(fields[name]["enum"]) == {*owned, None}, name
 
 
 def test_empty_and_unknown_invocations():

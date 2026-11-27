@@ -1,4 +1,4 @@
-**The evidence scanner's verified archive is kept in the Actions cache (2026-11-27).** `main`'s push run
+**The evidence scanner's verified archive is kept in the Actions cache (2026-11-27, PR #659).** `main`'s push run
 46048405164 (head `92dfe68`) went red with every test passed: in job 140676088838, `regression 2/3 (ubuntu-latest)`,
 all three bounded attempts to download gitleaks 8.28.0 from its release host were refused with HTTP 403 within 6 s,
 the lane had no scanner, and `tools/ci/stage_evidence.py --reports-only` rightly withheld its unscanned report, so

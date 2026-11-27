@@ -1773,7 +1773,7 @@ entries:
   cause: >-
     The test moved time.time and time.monotonic a year ahead on the shared time module, for every thread. The
     worker's session-deadline thread wakes at least once a minute and read the moved time.monotonic, so it took the
-    deadline as passed and ended the worker (exit 70) 1.4 s into the test, 20 minutes before the real deadline; the
+    deadline as passed and ended the worker (exit 70) 1.4 s into the test, about 24 minutes before the real deadline; the
     controller reported a crash.
   owner: CI timing fixes
   row: E75

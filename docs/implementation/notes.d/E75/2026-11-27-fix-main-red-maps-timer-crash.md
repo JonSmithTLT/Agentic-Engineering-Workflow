@@ -2,7 +2,7 @@
 push run 45997128944, `integration 14/14 (windows-latest)` (job 140518111471): gw2 "crashed" 1.4 s into
 `test_maps_v01_profile.py::test_no_map_freshness_turns_current_on_a_timer`. The bundle (the watchdog artifact,
 `autopsy/session-4088-0cc85d80/worker-gw2-deadline.txt` and the test's autopsy `reason.txt`, "the session deadline
-passed") shows the worker's own session-deadline exit, about 20 minutes before the real deadline. The test patched
+passed") shows the worker's own session-deadline exit, about 24 minutes before the real deadline. The test patched
 `time.time` and `time.monotonic` on the shared `time` module to a year ahead, for every thread; the deadline thread
 (`session_deadline.Worker._watch`) wakes at least once a minute, read the moved `time.monotonic()` and called
 `os._exit(70)`. The test's stack in the autopsy is at line 221, inside the patch. The window is the test's second

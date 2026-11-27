@@ -17,7 +17,7 @@ reads for them. No check by binding is done (see that module's docstring).
 the shared clocks: the session deadline's thread (``session_deadline.Worker``) wakes at least once a minute and exits
 the worker when ``time.monotonic()`` is past its deadline. On ``main``'s push run 45997128944 (Windows, integration
 14/14) ``test_no_map_freshness_turns_current_on_a_timer`` moved ``time.monotonic`` a year ahead for every thread, that
-thread woke inside the patch, and gw2 exited 1.4 s into the test, 20 minutes before the real deadline.
+thread woke inside the patch, and gw2 exited 1.4 s into the test, about 24 minutes before the real deadline.
 
 This module imports nothing from AEW: helper children may load it.
 """
@@ -56,9 +56,11 @@ def patch_sleep(monkeypatch: pytest.MonkeyPatch, module: ModuleType) -> list[flo
 def patch_clock(monkeypatch: pytest.MonkeyPatch, name: str, reading: Callable[[], float]) -> None:
     """Replace the shared ``time`` module's clock ``name`` with ``reading``, for the calling thread only.
 
-    Every other thread reads the real clock, so the worker's session deadline, the hang watchdog and a thread an
-    earlier test left running are not moved with the test's clock. Call it from the test's own thread, as
-    :func:`patch_sleep`. A module that bound the clock at import (``from time import monotonic``) is not reached.
+    Every other thread reads the real clock, so the worker's session deadline and a thread an earlier test left
+    running are not moved with the test's clock. The hang watchdog's timer is not moved either, but on Linux its
+    alarm handler runs on the patching thread, so the "fired after" time it reports can read the moved clock. Call it
+    from the test's own thread, as :func:`patch_sleep`. A module that bound the clock at import
+    (``from time import monotonic``) is not reached.
     """
     real = getattr(time, name)
     owner = threading.get_ident()

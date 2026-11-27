@@ -129,7 +129,12 @@ to a real Python sample, with a real test. **The project's unit check is a real 
 `__pycache__`. The sample declares its pytest caches in `policy/checks.yaml` and has no Git ignore entry for them.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
-installed tool: its variables are not the operator's.
+installed tool: its variables are not the operator's. It has its own provider, a listener on loopback, which a setup
+fixture names as the relay upstream of every provider AEW knows an address for, so a relay probe of the world's
+synthetic login (doctor's and init's `provider-relay` rows) is answered there and never by a real provider host
+(register E387). Its limit: it is an upstream override, so the world's built-in providers take the override's paths.
+No plan login and no stored worker key is relayed in the world, and the refreshing route is not reached; the world's
+one login, an API key, is relayed as in the operator's default configuration.
 
 ## 3. The scenarios
 

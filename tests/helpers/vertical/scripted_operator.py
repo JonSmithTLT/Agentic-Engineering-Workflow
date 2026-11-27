@@ -47,11 +47,12 @@ import autopsy
 import bounds
 from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_repo, run_aew
 from fake_harness import SCRIPTS_ENV, HarnessLab
-from fake_opencode import TUI_SCRIPT, write_launcher
+from fake_opencode import TUI_SCRIPT, ProviderUpstream, write_launcher
 
 from aew import hoststate
 from aew.capability import consent
 from aew.harness import runlog
+from aew.harness.containment import netns
 from aew.util import dump_yaml
 from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
 from vertical import oracle, workers
@@ -511,7 +512,13 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
         # own and no other test's: the session's shared base would carry its "no" into every later test. Only where
         # AEW places its tools: elsewhere nothing is offered as needed, and the host's base stays the session's.
         env[hoststate.base_variable()] = str(host_data or tmp / "host-data")
-    return HarnessLab(Project(repo), tmp, env)
+    lab = HarnessLab(Project(repo), tmp, env)
+    # The world's provider (register E387): a listener on loopback that answers the relay's models request, so a probe
+    # of the world's login (doctor's and init's `provider-relay` rows) never reaches a real provider host. Closed with
+    # the lab; :func:`world_fixtures` names it as every known provider's upstream.
+    lab.provider = ProviderUpstream()
+    lab.closers.append(lab.provider.close)
+    return lab
 
 
 def settle_tool_offers(lab: HarnessLab, ledger: Ledger) -> list[str]:
@@ -590,6 +597,16 @@ def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str,
         writable.append(str(children))
     fixtures: dict[str, Fixture] = {"harness: fake": lambda doc: doc.update(harness="fake"),
                                     "containment.writable": lambda doc: doc.update(containment={"writable": writable})}
+    if lab.provider is not None:
+        # Every provider AEW knows an address for relays to the world's own provider (:func:`new_world`), not to that
+        # address: the operator's synthetic login is one of them, and doctor's relay probe sent it to the real host,
+        # which answered HTTP 401 (register E387; the V-01 re-measure of 2026-11-26, C17). Its limit: it is an upstream
+        # override (`netns.stored_key_override`), so the world's built-in providers take the override's paths. No plan
+        # login and no stored worker key is relayed in the world, and the refreshing route (and its own address) is
+        # never reached; the world's one login, an API key, is relayed as in the operator's default configuration.
+        # After containment.writable, which sets the containment block this adds to.
+        fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
+            network={"upstreams": dict.fromkeys(netns.UPSTREAMS, lab.provider.url)})
     if steering:
         fixtures["steering.mode"] = lambda doc: doc.update(steering={"mode": steering})
     return fixtures
@@ -628,7 +645,6 @@ def world_around_init(ledger: Ledger, fixtures: Mapping[str, Fixture],
     setup is. None of it is a parser option, an environment variable or anything else an installed ``aew`` can
     reach."""
     from aew.engine.api import Engine
-    from aew.harness.containment import netns
 
     real = Engine.initialize
 

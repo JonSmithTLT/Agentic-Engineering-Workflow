@@ -358,6 +358,7 @@ None.
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.maps.query`
+- `aew.maps.reads`
 - `aew.maps.service`
 - `aew.util`
 
@@ -1735,7 +1736,7 @@ None.
 - `aew.harness.wake_queue`
 - `aew.harness.weaker_register`
 - `aew.lead_credential`
-- `aew.maps.query`
+- `aew.maps.reads`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`

@@ -10,6 +10,7 @@ import yaml
 from aew.dashboard import projections as P
 from aew.dashboard.contract import Contract
 from aew.errors import NotFound
+from aew.harness import containment
 
 ROOT = Path(__file__).resolve().parents[2]
 INVOCATION = "INV-0001"
@@ -61,8 +62,11 @@ def test_the_provider_route_projection_matches_the_proposed_data_schema():
             {"id": "R-INV-0001-2", "network_mode": "proxy_only", "provider_relay": "configured",
              "relay_family": "unverified"},
             {"id": "R-INV-0001-3", "network_mode": "isolated", "provider_relay": "none", "relay_family": None},
-            {"id": "R-INV-0001-4", "network_mode": "shared", "provider_relay": None, "relay_family": None},
-            {"id": "R-INV-0001-5", "network_mode": None, "provider_relay": None, "relay_family": None},
+            # Read as `harness status` reads them (#649's review, F2): a label before CS-3b had no relay, and a run
+            # with no label is the uncontained run's, on this platform's network
+            {"id": "R-INV-0001-4", "network_mode": "shared", "provider_relay": "none", "relay_family": None},
+            {"id": "R-INV-0001-5", "network_mode": containment.network(), "provider_relay": "none",
+             "relay_family": None},
             {"id": "R-INV-0001-6", "network_mode": None, "provider_relay": None, "relay_family": None},
         ],
     }

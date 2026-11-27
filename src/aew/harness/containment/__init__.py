@@ -42,10 +42,11 @@ from aew.harness.containment.layout import (
     retire_private_git,
     tree_masks_line,
 )
-from aew.harness.containment.netns import NOT_PROVIDED
+from aew.harness.containment.netns import NETWORK_MODES, NOT_PROVIDED
+from aew.harness.containment.relay import PROVIDER_RELAY_STATES, RELAY_CONFIGURED, RELAY_NONE
 
 __all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
-           "label", "normalize", "weaker",
+           "label", "normalize", "network_facts", "weaker",
            "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "ALLOW_WEAKER_REMEDY", "NO_CONTAINMENT_REMEDY",
            "UNSUPPORTED_PLATFORM",
            "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
@@ -96,7 +97,7 @@ def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str,
     else:
         ownership = "job_object" if sys.platform == "win32" else "process_group"
     net_label: dict[str, Any] = {"mode": layout.network if contained and layout is not None else network(),
-                                 "provider_relay": "none"}  # a run whose network started a relay says so in ``net``
+                                 "provider_relay": RELAY_NONE}  # a run whose network started a relay says so in ``net``
     net_label.update(net or {})
     out: dict[str, Any] = {"filesystem": CONTAINED if contained else WORKDIR_ONLY,
                            "process_ownership": ownership, "network": net_label, "mechanism": mechanism}
@@ -152,10 +153,29 @@ def normalize(value: Any) -> dict[str, Any]:
     a string."""
     if isinstance(value, dict) and value.get("filesystem"):
         if isinstance(value.get("network"), str):
-            return {**value, "network": {"mode": value["network"], "provider_relay": "none"}}
+            return {**value, "network": {"mode": value["network"], "provider_relay": RELAY_NONE}}
         return value
     return {"filesystem": WORKDIR_ONLY, "process_ownership": "job_object" if sys.platform == "win32"
-            else "process_group", "network": {"mode": network(), "provider_relay": "none"}, "mechanism": None}
+            else "process_group", "network": {"mode": network(), "provider_relay": RELAY_NONE}, "mechanism": None}
+
+
+def network_facts(value: Any) -> dict[str, str | None]:
+    """The recorded network facts of a run's ``containment`` label of any age: its ``mode``, its ``provider_relay``,
+    and the ``relay_family`` check of a configured relay (register E143). Read through :func:`normalize`, so every
+    reader, ``harness status`` and the site's E148 route alike, gives the same answer for the same record: a label
+    before CS-3b has no relay, and a missing label (before M4-B) is the uncontained run's, with this platform's
+    :func:`network`. A value outside its closed vocabulary (no producer writes one) is None, never passed on (#649's
+    review, F2)."""
+    from aew.harness.base import RELAY_FAMILY_SHOWN  # base imports this package
+
+    net = normalize(value).get("network")
+    net = net if isinstance(net, Mapping) else {}
+    mode, relay, family = net.get("mode"), net.get("provider_relay"), net.get("relay_family")
+    known = (*NETWORK_MODES, NOT_PROVIDED)
+    return {"mode": mode if isinstance(mode, str) and mode in known else None,
+            "provider_relay": relay if isinstance(relay, str) and relay in PROVIDER_RELAY_STATES else None,
+            "relay_family": family if relay == RELAY_CONFIGURED and isinstance(family, str)
+            and family in RELAY_FAMILY_SHOWN else None}
 
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,

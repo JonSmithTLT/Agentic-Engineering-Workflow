@@ -5,6 +5,7 @@ the dashboard stopped. Nothing reaches G3: only ``request.sock``'s path is check
 
 from __future__ import annotations
 
+import functools
 import json
 import socket
 from datetime import UTC, datetime, timedelta
@@ -21,6 +22,7 @@ from aew.dashboard.etag import stamp
 from aew.dashboard.projections import OVERVIEW_ATTENTION, Projector
 from aew.dashboard.reader import StateReader
 from aew.dashboard.reasons import REASONS, codes_in
+from aew.engine import attention as AT
 from aew.engine.api import Engine
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,10 +31,13 @@ CONTRACT = CT.Contract(ROOT / CT.CONTRACT_REL)
 
 @pytest.fixture
 def g3_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """This host as one with G3: a ``request.sock`` path that exists (a plain file: nothing may connect to it)."""
+    """This host as one with G3, on every platform: a ``request.sock`` path that exists (a plain file: nothing may
+    connect to it), and the approvals source read as on Linux, G3's one platform (Windows' own answer, "G3 is not on
+    this host", is tests/unit/test_attention.py's)."""
     sock = tmp_path / "request.sock"
     sock.touch()
     monkeypatch.setattr(C, "REQUEST_SOCK", str(sock))
+    monkeypatch.setattr(AT, "approval_items", functools.partial(AT.approval_items, platform="linux"))
     return sock
 
 

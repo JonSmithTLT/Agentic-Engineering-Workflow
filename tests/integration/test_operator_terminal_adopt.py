@@ -48,7 +48,7 @@ def typed_code(prompt: str) -> str:
 @pytest.fixture
 def clear(monkeypatch):
     """The register of weaker contexts is clear on this host, and no Lead credential is in the operator's shell."""
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: None)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: None)
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
 
 
@@ -103,7 +103,7 @@ def test_the_operator_adopts_a_settings_edit_with_no_lead_credential_and_the_lea
 
 def test_a_weaker_context_on_this_host_asks_the_typed_back_code_naming_the_weaker_run(project, monkeypatch, capsys):
     p = project
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: (WEAKER, "end it"))
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: (WEAKER, "end it"))
     edit_gates(p, "# reviewed")
     before = control_bytes(p)
     plain = Terminal(monkeypatch, "yes")
@@ -358,7 +358,7 @@ def test_the_operators_transaction_admits_only_the_operators_confirmation_and_it
 def test_a_refused_confirmation_says_nothing_changed_and_how_to_try_again(project, monkeypatch, weaker, answer, says):
     """Point 6: both forms' refusals say what happened, that nothing changed, and what to do."""
     p = project
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: weaker)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: weaker)
     edit_gates(p, "# edited")
     before = control_bytes(p)
     Terminal(monkeypatch, answer)
@@ -375,7 +375,7 @@ def test_the_plain_prompt_warns_about_the_answer_and_the_code_prompt_about_the_c
     edit_gates(p, "# edited")
     for weaker, shown, absent in ((None, operator.PLAIN_WARNING, operator.RELAY_WARNING),
                                   ((WEAKER, "end it"), operator.RELAY_WARNING, operator.PLAIN_WARNING)):
-        monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, w=weaker: w)
+        monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True, w=weaker: w)
         terminal = Terminal(monkeypatch, "no")
         with pytest.raises(PermissionDenied):
             operator_adopt.adopt(Engine.discover(p.root), reason="r")

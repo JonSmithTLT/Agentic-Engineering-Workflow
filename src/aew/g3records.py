@@ -81,12 +81,12 @@ def project_label(start: Path) -> str | None:
     A label only: it grants no scope (BOY-05.a)."""
     from aew.engine.base import Kernel
     from aew.errors import AEWError
-    from aew.knowledge.manifest import MANIFEST
+    from aew.knowledge.manifest import AEW_DIR, MANIFEST
     from aew.util import read_yaml
 
     try:
-        _, aew_root = Kernel.locate(start)
-        return str(read_yaml(aew_root / MANIFEST)["project"]["id"])
+        repo_root, _ = Kernel.locate(start)
+        return str(read_yaml(repo_root / AEW_DIR / MANIFEST)["project"]["id"])
     except (AEWError, OSError, KeyError, TypeError, ValueError):
         return OUTSIDE
 

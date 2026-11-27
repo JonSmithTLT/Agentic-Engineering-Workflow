@@ -68,8 +68,10 @@ def delivery_records(run: str | None, *, messages: bool = False) -> set[str]:
         set(MESSAGE_DELIVERY_RECORDS) if messages else set())
 
 
-# The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
-CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+')
+# The fields read from the clock when the command runs: a run's heartbeat age (`harness status`), and the read time of
+# each host source in `aew status`'s "Waiting on you" block (A-44 BOY-04).
+CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+'
+                   r'|(?:(?<=, read )|(?<="read_at": "))[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z')
 
 
 @pytest.fixture

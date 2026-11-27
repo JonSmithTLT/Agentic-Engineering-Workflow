@@ -191,7 +191,7 @@ def approve(cset: dict[str, Any], on_pending: Callable[[dict[str, Any]], None],
                 record = g3client.await_decision(pending, sleep=wait, on_read=writer.read)
             except errors.OperatorAuthorizationRequired as exc:
                 outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found"}.get(
-                    (exc.details or {}).get("reason"))
+                    str((exc.details or {}).get("reason")))
                 raise
             outcome = "approved_not_submitted"
             approved = g3client.approved_set(proved, record)

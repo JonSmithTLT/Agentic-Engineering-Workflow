@@ -423,7 +423,7 @@ def judged(steered, monkeypatch):
     """The real standing, on the project's real policy: only the host's conditions, 1 and 3, are stood in."""
     monkeypatch.setattr(g3standing, "standing", REAL_STANDING)
     monkeypatch.setattr(g3standing, "installed", lambda platform=None: None)
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: None)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: None)
     return steered
 
 

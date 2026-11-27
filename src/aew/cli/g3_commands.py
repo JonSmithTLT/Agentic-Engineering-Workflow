@@ -87,7 +87,8 @@ def _request(a: argparse.Namespace) -> Any:
             record = C.await_decision(pending, on_read=writer.read, say=say, keep_reading=True)
         except OperatorAuthorizationRequired as exc:
             outcome = {"declined": "declined", "expired": "expired", "approval_lost": "not_found",
-                       "unanswered_until_expiry": "unanswered"}.get((exc.details or {}).get("reason"))
+                       "unanswered_until_expiry": "unanswered"}.get(
+                str((exc.details or {}).get("reason")))
             raise
         outcome = "approved_not_submitted"
         receipt = C.submit(C.approved_set(proved, record), a.o01, token)

@@ -97,6 +97,12 @@ UNKNOWN = "Its state is unknown (?): G3 last answered at {at}."
 _OPAQUE = re.compile(r"[^A-Za-z0-9._-]")
 
 
+def reason(code: str, message: str) -> dict[str, str]:
+    """One reason on an item: a dashboard reason code (``aew.dashboard.reasons``, which checks it is registered) and
+    its message. A display reason, never a refusal code."""
+    return {"code": code, "message": message}
+
+
 def opaque(prefix: str, value: str) -> str:
     """An item id the dashboard contract's ``OpaqueId`` admits."""
     return prefix + _OPAQUE.sub(".", value)
@@ -151,7 +157,7 @@ def blockers(unit: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         parts = [str(b.get("kind", "blocked"))]
         parts += [f"{k}={v}" for k, v in sorted(b.items()) if k != "kind" and isinstance(v, (str, int))]
-        out.append({"code": "BLOCKED_BY", "message": " ".join(parts)})
+        out.append(reason("BLOCKED_BY", " ".join(parts)))
     return out[:250]
 
 
@@ -167,7 +173,7 @@ def engine_items(state: dict[str, Any], *, project: dict[str, Any], contradictio
         source = WORK_STATES.get(st)
         if source is None or (st == "BLOCKED" and not unit.get("blocked_by")):
             continue
-        reasons = [{"code": "STATE_REASON", "message": str(unit["state_reason"])}] if unit.get("state_reason") else []
+        reasons = [reason("STATE_REASON", str(unit["state_reason"]))] if unit.get("state_reason") else []
         since = updated_at(unit)
         out.append(item(source, f"AT-{wid}", key=f"AT-{wid}|{TABLE[source].kind}|{since}",
                         subject={"id": wid, "kind": "work", "title": str(unit.get("title") or wid)},
@@ -177,7 +183,7 @@ def engine_items(state: dict[str, Any], *, project: dict[str, Any], contradictio
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
         out.append(item("contradiction", f"AT-contradiction-{n}", key=f"AT-contradiction-{n}|anomaly|{digest}",
                         subject=project, title="Contradiction", summary=text,
-                        reasons=[{"code": "CONTRADICTION", "message": text}], record="control state"))
+                        reasons=[reason("CONTRADICTION", text)], record="control state"))
     codes = {K.LOST: "RUN_LOST", K.CRASHED: "RUN_CRASHED", K.UNREADABLE: "RUN_UNREADABLE"}
     for inv_id, inv in sorted(state["invocations"].items()):
         for run in inv.get("runs") or []:
@@ -189,7 +195,7 @@ def engine_items(state: dict[str, Any], *, project: dict[str, Any], contradictio
                             subject={"id": inv_id, "kind": "invocation", "title": None},
                             title=f"run {run['run']} {observed}",
                             summary=f"{inv['role']} run for {inv['work_unit']} is {observed}",
-                            reasons=[{"code": codes[observed], "message": f"run {run['run']} of {inv_id}"}],
+                            reasons=[reason(codes[observed], f"run {run['run']} of {inv_id}")],
                             since=since, record=f"run status: {run['run']}"))
     return out
 
@@ -212,7 +218,7 @@ def notifier_items(summary: dict[str, Any] | None, *, project: dict[str, Any]) -
     since = str(last["at"]) if last.get("at") else None
     return [item("notifier.failed", "AT-notifier", key=f"AT-notifier|anomaly|{since}", subject=project,
                  title="Operator notification failed", summary=text,
-                 reasons=[{"code": "NOTIFY_DELIVERY_FAILED", "message": text}], since=since,
+                 reasons=[reason("NOTIFY_DELIVERY_FAILED", text)], since=since,
                  record="host record: the notifier's summary")]
 
 
@@ -302,7 +308,7 @@ def approval_items(now: datetime, *, platform: str | None = None, sock: str | No
             out.append(item("g3_approval.unknown", opaque("AT-g3-record-", found.name), key=f"g3-record:{found.name}",
                             subject={"id": opaque("g3-record-", found.name), "kind": "approval", "title": None},
                             title="Approval record unreadable (?)", summary=UNREADABLE,
-                            reasons=[{"code": "G3_APPROVAL_UNKNOWN", "message": UNREADABLE}],
+                            reasons=[reason("G3_APPROVAL_UNKNOWN", UNREADABLE)],
                             where="aew_approvals", record=f"host record: g3/requests/{found.name}", state="?"))
             continue
         expiry = R.parse_time(rec["expires_at"])
@@ -342,7 +348,7 @@ def _approval(rec: dict[str, Any], name: str, source: str, words: str) -> dict[s
     return item(source, opaque("AT-g3-", ref), key=ref,
                 subject={"id": opaque("g3-", ref), "kind": "approval", "title": project},
                 title=f"G3 approval{marker}: {names}", summary=summary,
-                reasons=[{"code": _CODES[source], "message": words}], since=rec["started_at"],
+                reasons=[reason(_CODES[source], words)], since=rec["started_at"],
                 who=CLAIM.format(role=rec["starter_role"]), where=_WHERE.get(source),
                 record=f"host record: g3/requests/{name}", state="?" if marker else words,
                 expires_at=rec["expires_at"])

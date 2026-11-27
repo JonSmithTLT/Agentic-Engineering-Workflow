@@ -8,6 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from aew.engine import hierarchy as H
 from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
 from aew.harness.contract import invocation_of_run
@@ -109,7 +110,8 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
             if not decisions:
                 raise IntegrityError(f"promotion of {wid} has no decision at revision {receipt['revision']}")
             ref = decisions[0]
-        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref}
+        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref,
+                         "carried_obligations": list(unit.get(H.CARRIED) or [])}
     if op == "plan.propose":
         plan = next(p for p in unit["plans"] if str(p["revision"]) == ref)
         return common | {"work_id": wid, "revision_number": plan["revision"], "path": plan["path"]}

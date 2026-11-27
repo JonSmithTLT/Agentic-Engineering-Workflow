@@ -83,11 +83,39 @@ def remedy(owner: str, gate: str) -> str:
             "tool shows each replacement's approval digest and the live invocations it would make stale")
 
 
+def own_gates(state: dict[str, Any], owner: str) -> list[str]:
+    """``owner``'s own mandatory gates, the only ones this route edits."""
+    return list((state["work"][owner].get("policy") or {}).get("mandatory_gates") or [])
+
+
+def carried_from(state: dict[str, Any], owner: str, gate: str) -> list[str]:
+    """The origins of ``gate`` where ``owner`` holds it only because a promotion carried it there (register E87)."""
+    if gate in own_gates(state, owner):
+        return []
+    return sorted({origin for origin, policy in H.imposed(state, owner)
+                   if gate in (policy.get("mandatory_gates") or [])})
+
+
 def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) -> bool:
-    """Condition 2, as the open item and the replacement both judge it (addendum 5): ``owner``'s gate binds unit types
-    under it, and none of them can satisfy it."""
+    """Condition 2, as the open item and the replacement both judge it (addendum 5): ``owner``'s own gate binds unit
+    types under it, and none of them can satisfy it. A gate a promotion carried onto ``owner`` is not its own: the
+    record it came from is another unit's, so changing it is the operator's decision (register E87)."""
     kind = state["work"][owner]["kind"]
-    return bool(G.stranded_by(gate, kind, catalogue)) and not G.satisfiable_by(gate, kind, catalogue)
+    return (gate in own_gates(state, owner) and bool(G.stranded_by(gate, kind, catalogue))
+            and not G.satisfiable_by(gate, kind, catalogue))
+
+
+CARRIED_GATE = "carried_gate"  # the replacement's refusal of a carried gate (details["reason"]; #658's review, m2)
+
+
+def carried_decision(state: dict[str, Any], owner: str, gate: str) -> str:
+    """Why a carried gate is not this route's, and what settles it: it is ``owner``'s only by a promotion (register
+    E87), which never carries a gate already stuck, so it became stuck when the catalogue changed. The operator
+    restores what satisfied it; a gate written in prose has no such remedy (ADR-0007, amendment of 2026-11-27)."""
+    return (f"{owner} holds `{gate}` because a promotion carried it from {', '.join(carried_from(state, owner, gate))} "
+            "(carried_obligations), so changing it is the operator's decision: this route replaces only a parent's "
+            "own gate. The operator restores what satisfied it (the check, defined and configured in "
+            "policy/checks.yaml and adopted, or the role card)")
 
 
 def _listed(types: tuple[str, ...]) -> str:
@@ -107,13 +135,17 @@ def route(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) 
     F1; addendum 5)."""
     if replaceable(state, owner, gate, catalogue):
         return remedy(owner, gate)
+    if carried_from(state, owner, gate):
+        return carried_decision(state, owner, gate)
     return operators_decision(owner, gate, state["work"][owner]["kind"], catalogue)
 
 
 def owners(state: dict[str, Any], work_id: str, gate: str) -> list[str]:
-    """The ancestors of ``work_id`` that set ``gate`` as a mandatory gate, nearest first."""
-    return [a for a in H.ancestors(state, work_id)
-            if gate in ((state["work"][a].get("policy") or {}).get("mandatory_gates") or [])]
+    """The ancestors of ``work_id`` that hold ``gate`` as a mandatory gate, nearest first: their own, or carried onto
+    one by a promotion (register E87)."""
+    found = [holder for holder, _, policy in H.ancestor_obligations(state, work_id)
+             if gate in (policy.get("mandatory_gates") or [])]
+    return list(dict.fromkeys(found))
 
 
 def stuck(state: dict[str, Any], work_id: str, catalogue: G.Catalogue) -> list[dict[str, Any]]:
@@ -313,7 +345,11 @@ class GateRepair:
             unit = self.units.unit(state, owner)
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{owner} is {unit['state']}; a finished unit keeps its gates")
-            gates = list((unit.get("policy") or {}).get("mandatory_gates") or [])
+            gates = own_gates(state, owner)
+            if carried_from(state, owner, gate):
+                raise OperatorAuthorizationRequired(carried_decision(state, owner, gate), reason=CARRIED_GATE,
+                                                    work_id=owner, gate=gate,
+                                                    carried_from=carried_from(state, owner, gate))
             if gate not in gates:
                 set_by = owners(state, owner, gate)
                 raise NotFound(f"`{gate}` is not a mandatory gate of {owner}"

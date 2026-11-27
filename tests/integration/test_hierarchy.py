@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+import pytest
 from aewflow import (
     Role,
     close_parent,
@@ -19,10 +20,14 @@ from aewflow import (
     sample_project,
     submit_record,
 )
-from invariants import assert_control_invariants, load_control
+from invariants import assert_control_invariants, control_violations, load_control
 
+from aew.engine import approval, gate_ops, hierarchy_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine.api import Engine
+from aew.engine.store import Transition
+from aew.errors import ObligationsDropped
 from aew.knowledge.manifest import DEFAULT_GATES
 from aew.policy import validation as V
 from aew.util import load_yaml
@@ -363,13 +368,14 @@ def test_a_move_that_would_lower_obligations_is_refused_before_any_replan_is_ask
     assert_control_invariants(p)
 
 
-def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
-    """EW-U05.g holds for a promotion too: a unit promoted out of a parent with its own floor or non-waivable gate
-    keeps every obligation, checked over the moved subtree through the owners as for a move, or the promotion is
-    refused, naming the promotion, what each unit would lose and what to do instead, and nothing is created. Every
-    option of every refusal is taken with the values it names: it admits a move or the promotion, lowering nothing,
-    or, for reclassify_first where a gate would be lost too, leads to a refusal for the gate alone whose option admits.
-    Class 1 Tickets are validated by checks here, so only a parent makes a mutating one's a verifier."""
+def test_a_promotion_carries_what_it_leaves_behind_and_lowers_nothing(tmp_path):
+    """EW-U05.g for a promotion (register E87): what every ancestor a promotion leaves behind imposed is carried onto
+    the unit it creates (``carried_obligations``), so each unit of the promoted subtree keeps exactly what it
+    inherited, its validation binding included, where E84 refused the promotion. Each entry names its origin, the
+    ancestor left behind that held it and the promotion. A chain of promotions keeps the origin; the carrier binds its
+    later children too; a move out of it is refused as any move that lowers obligations is; and a promotion that
+    leaves no obligation behind writes no carry. Class 0 and 1 Tickets are validated by checks here, so only an
+    ancestor makes a mutating one's a verifier."""
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"]["validation"] = {"by_class": {"0": "checks", "1": "checks"}, "default": "verifier"}
     p = sample_project(tmp_path, gates=gates)
@@ -383,92 +389,146 @@ def test_a_promotion_never_lowers_the_obligations_of_the_work_it_moves(tmp_path)
     look = create_unit(p, "ticket", "Survey card use", parent=gated, extra=("--non-mutating",))
     posting = create_unit(p, "ticket", "Post the entry", parent=floored)
     settle = create_unit(p, "ticket", "Settle the batch", parent=verified)
+    gates_policy = load_yaml((p.root / ".aew/policy/gates.yaml").read_text(encoding="utf-8"))
+
+    def exact(wid):
+        """``inherited`` over ``wid``'s subtree, with each mutating Ticket's validation binding."""
+        state, out = load_control(p.root), inherited(p, wid)
+        for w, entry in out.items():
+            if state["work"][w]["kind"] == "ticket" and state["work"][w]["mutating"]:
+                entry["binding"] = V.obligation(state, w, gates_policy)["binding"]
+        return out
 
     def promote(wid, to="story"):
-        return p.lead("work", "promote", wid, "--to", to, "--title", f"{wid}, wider", "--reason", "scope grew")[
-            "promoted_to"]
+        """``wid`` promoted, every unit of its subtree inheriting exactly what it did: ``(new unit, carried)``."""
+        before = exact(wid)
+        res = p.lead("work", "promote", wid, "--to", to, "--title", f"{wid}, wider", "--reason", "scope grew")
+        assert exact(wid) == before
+        new = res["promoted_to"]
+        assert parent_of(p, wid) == new and show(p, new).get("carried_obligations", []) == res["carried_obligations"]
+        return new, res["carried_obligations"], res["decision"]
 
-    def refused(wid, parent, losses, to="story"):
-        """The refusal over ``wid``'s subtree, each unit's losses exactly as named, and nothing created: ``(dropped,
-        options by name)``. The options are a promotion's: create the parent with them and move the unit there;
-        reclassify only for a class or a verifier."""
-        home = load_control(p.root)["work"][parent].get("parent")
-        out = refused_changing_nothing(p, "work", "promote", wid, "--to", to, "--title", "Wider", "--reason",
-                                       "three components")
-        assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "move_lowers_obligations"
-        assert out["message"].startswith("a promotion that would lower") and "this promotion would lower" in out[
-            "message"]
-        assert {w: set(d) for w, d in out["details"]["dropped"].items()} == losses
-        instead = {o["option"]: o for o in out["details"]["instead"]}
-        ranked = any({"effective_class", "integration_verifier"} & lost for lost in losses.values())
-        assert list(instead) == ["create_the_parent_then_move", *(["reclassify_first"] if ranked else [])]
-        assert f"work create {to}" in instead["create_the_parent_then_move"]["how"]
-        assert (f"--parent {home}" in instead["create_the_parent_then_move"]["how"]) == bool(home)
-        return out["details"]["dropped"], instead
+    def entry(origin, via, decision, cls, gates_, rationale):
+        return {"from": origin, "via": via, "decision": decision, "min_descendant_class": cls,
+                "mandatory_gates": gates_, "rationale": rationale}
 
-    def take_create_then_move(wid, named, kind="story"):
-        """The promotion's create remedy: the parent created with the floor and gates named, under the same home, and
-        a move; nothing in the moved subtree is lowered."""
-        made = made_with(p, kind, named, parent=parent_of(p, parent_of(p, wid)))
-        before = inherited(p, wid)
-        p.lead("work", "move", wid, "--parent", made, "--reason", "its own parent, with what it inherited")
-        assert parent_of(p, wid) == made and lowered(before, inherited(p, wid)) == []
-
-    def every_remedy(wid, parent, losses, to="story"):
-        """Each option the refusal names, taken. create_the_parent_then_move admits the move, and the way back admits
-        too (the obligations are equal). reclassify_first then raises each unit's own class as named, and the
-        promotion is admitted, lowering nothing, or refused for the gates alone, whose option admits. Returns the
-        options."""
-        dropped, named = refused(wid, parent, losses, to)
-        before = inherited(p, wid)
-        take_create_then_move(wid, named["create_the_parent_then_move"], kind=to)
-        p.lead("work", "move", wid, "--parent", parent, "--reason", "back, to take the next remedy")
-        for unit, cls in named["reclassify_first"]["classes"].items():
-            p.lead("work", "reclassify", unit, "--class", str(cls), "--reason", "meet it before the promotion")
-        rest = {w: {"non_waivable_gates"} for w, d in dropped.items() if "non_waivable_gates" in d}
-        assert ("does not keep a gate" in named["reclassify_first"]["how"]) == bool(rest)
-        if rest:
-            _, again = refused(wid, parent, rest, to)
-            take_create_then_move(wid, again["create_the_parent_then_move"], kind=to)
-        else:
-            promoted = promote(wid, to)
-            assert parent_of(p, promoted) == parent_of(p, parent) and parent_of(p, wid) == promoted
-            assert lowered(before, inherited(p, promoted)) == []
-        return named
-
-    # A mutating Ticket out of a Story with a floor and a gate: the created parent keeps both; reclassify_first meets
-    # the class and the verifier, and the promotion is then refused for the gate alone, which the created parent keeps.
-    named = every_remedy(change, gated, {change: {"effective_class", "non_waivable_gates", "integration_verifier"}})
-    assert named["reclassify_first"]["classes"] == {change: 2}
-    create = named["create_the_parent_then_move"]
-    assert (create["floor"], create["gates"]) == (2, ["review_security"])
-    # A non-mutating Ticket out of the same Story.
-    every_remedy(look, gated, {look: {"effective_class", "non_waivable_gates"}})
-    # A floor-only Story: the Ticket meets the floor with its own class first; the promotion then lowers nothing.
-    every_remedy(posting, floored, {posting: {"effective_class", "integration_verifier"}})
-    # A verifier that the Story's post_integration_verifier gate requires, with no floor: the created parent names the
-    # gate and no floor, and the Ticket's own class goes to 2, the lowest above its own a verifier validates.
-    named = every_remedy(settle, verified, {settle: {"non_waivable_gates", "integration_verifier"}})
-    assert named["reclassify_first"]["classes"] == {settle: 2}
-    create = named["create_the_parent_then_move"]
-    assert (create["floor"], create["gates"]) == (None, ["post_integration_verifier"])
-    # A real subtree: a Story with its Tickets promoted to an Epic out of an Epic with a floor and a gate. Every unit of
-    # the subtree is named, and the Epic created with them admits the Story.
+    # A mutating Ticket out of a Story with a floor and a gate, which E84 refused: both go with it, and its
+    # integration is still validated by a verifier.
+    assert {k: v for k, v in exact(change)[change].items() if k != "binding"} == {
+        "class": 2, "gates": {"review_security"}, "verifier": True}
+    story, carried, d = promote(change)
+    assert parent_of(p, story) == epic and carried == [entry(gated, gated, d, 2, ["review_security"], "money moves")]
+    # A non-mutating Ticket out of the same Story; a floor-only Story; a verifier gate with no floor.
+    _, carried, d = promote(look)
+    assert carried == [entry(gated, gated, d, 2, ["review_security"], "money moves")]
+    _, carried, d = promote(posting)
+    assert carried == [entry(floored, floored, d, 2, [], "money moves")]
+    assert exact(settle)[settle]["verifier"]
+    _, carried, d = promote(settle)
+    assert carried == [entry(verified, verified, d, None, ["post_integration_verifier"], None)]
+    # A real subtree: a Story with its Tickets promoted to an Epic out of an Epic with a floor and a gate.
     guarded = create_unit(p, "epic", "Guarded", extra=(*floor, *gate))
     sessions = create_unit(p, "story", "Sessions", parent=guarded)
-    rotate = create_unit(p, "ticket", "Rotate the key", parent=sessions)
-    survey = create_unit(p, "ticket", "Survey use", parent=sessions, extra=("--non-mutating",))
-    named = every_remedy(sessions, guarded, {sessions: {"effective_class", "non_waivable_gates"},
-                                             survey: {"effective_class", "non_waivable_gates"},
-                                             rotate: {"effective_class", "non_waivable_gates", "integration_verifier"}},
-                         to="epic")
-    assert named["reclassify_first"]["classes"] == {w: 2 for w in (sessions, rotate, survey)}
-    # A promotion that skips no ancestor's obligations is admitted as before, and lowers nothing.
+    create_unit(p, "ticket", "Rotate the key", parent=sessions)
+    create_unit(p, "ticket", "Survey use", parent=sessions, extra=("--non-mutating",))
+    top, carried, d = promote(sessions, to="epic")
+    assert parent_of(p, top) is None and carried == [entry(guarded, guarded, d, 2, ["review_security"], "money moves")]
+    # A chain: the Ticket promoted again, out of the Story that carries for it, keeps the origin.
+    _, carried, d = promote(change, to="epic")
+    assert carried == [entry(gated, story, d, 2, ["review_security"], "money moves")]
+    # The carrier binds what is created under it later, as its own policy would.
+    later = create_unit(p, "ticket", "Refund the card", parent=story)
+    assert inherited(p, later)[later] == {"class": 2, "gates": {"review_security"}, "verifier": True}
+    # Leaving the carrier is a move: refused as E84 refuses any move that lowers obligations, its create remedy naming
+    # what the carrier carries.
+    out = refused_changing_nothing(p, "work", "move", later, "--parent", epic, "--reason", "reorganize")
+    assert out["code"] == "OBLIGATIONS_DROPPED" and set(out["details"]["dropped"]) == {later}
+    create = {o["option"]: o for o in out["details"]["instead"]}["create_the_parent_with_them"]
+    assert (create["floor"], create["gates"]) == (2, ["review_security"])
+    # A promotion that leaves no obligation behind carries nothing and writes no key.
     plain = create_investigation(p, tmp_path, parent=epic, title="Plain look")
-    before = inherited(p, plain)
-    story = promote(plain)
-    assert parent_of(p, story) == epic and lowered(before, inherited(p, story)) == []
+    new, carried, _ = promote(plain)
+    assert carried == [] and "carried_obligations" not in show(p, new)
     assert_control_invariants(p)
+
+
+def test_every_reader_of_an_inherited_obligation_reads_the_carried_ones(tmp_path):
+    """Every reader of an ancestor's floor or mandatory gates goes through ``hierarchy.ancestor_obligations``, so a
+    carried obligation binds as its origin's did (register E87): the effective class and obligations, the validation
+    obligation (named by its origin), ``work reclassify``'s floor, and the gate's owners (its holder, the carrier)."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=(
+        "--min-descendant-class", "3", "--rationale", "money moves", "--mandatory-gate", "post_integration_verifier"))
+    change = create_unit(p, "ticket", "Charge the card", parent=gated)
+    gates_policy = load_yaml((p.root / ".aew/policy/gates.yaml").read_text(encoding="utf-8"))
+
+    def read():
+        state = load_control(p.root)
+        ob, val = G.effective_obligations(state, change, {"risk_paths": {str(c): [] for c in range(5)}}), \
+            V.obligation(state, change, gates_policy)
+        return {"class": G.effective_class(state, change), "floor": ob["floor"], "non_waivable": ob["non_waivable"],
+                "sources": ob["sources"], "validation": {k: val[k] for k in ("mode", "sources", "floor", "binding")}}
+
+    before = read()
+    assert before["class"] == 3 and before["validation"]["mode"] == V.VERIFIER
+    assert gate_ops.owners(load_control(p.root), change, "post_integration_verifier") == [gated]
+    story = p.lead("work", "promote", change, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
+        "promoted_to"]
+    assert read() == before
+    assert gate_ops.owners(load_control(p.root), change, "post_integration_verifier") == [story]
+    out = err(p, "work", "reclassify", change, "--class", "2", "--reason", "more risk than planned")
+    assert out["code"] == "USAGE" and out["details"]["floor"] == 3
+    assert_control_invariants(p)
+
+
+def test_a_promotion_whose_carry_is_incomplete_is_refused_changing_nothing(tmp_path, monkeypatch):
+    """The monotonic check stays as the backstop over the carry (register E87): were a promotion's carry ever
+    incomplete, the promotion is refused as E84 refused it, with a promotion's remedies, and nothing is created."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=(
+        "--min-descendant-class", "2", "--rationale", "money moves", "--mandatory-gate", "review_security"))
+    change = create_unit(p, "ticket", "Charge the card", parent=gated)
+    monkeypatch.setattr(hierarchy_ops, "carry", lambda *_: [])
+    state = load_control(p.root)
+    prior = approval.promotion_value(state["work"][change])
+    with pytest.raises(ObligationsDropped) as refused:
+        Engine.discover(p.root).work_promote(token=p.token, work_id=change, to="story", title="Wider",
+                                             reason="scope grew", prior_value=prior)
+    assert load_control(p.root) == state
+    details = refused.value.details
+    assert refused.value.message.startswith("a promotion that would lower")
+    assert details["reason"] == "move_lowers_obligations" and set(details["dropped"]) == {change}
+    assert [o["option"] for o in details["instead"]] == ["create_the_parent_then_move", "reclassify_first"]
+
+
+def test_invariant_64_catches_effective_obligations_missing_a_carry_and_a_carry_no_promotion_wrote(tmp_path,
+                                                                                                 monkeypatch):
+    """Invariant 64 (register E87) can fail: its independent walk disagrees with ``gates.effective_obligations`` once
+    the accessor ignores what a carrier carries, and it refuses a carried entry on a Ticket, or one citing a decision
+    that is not the carrier's promotion. (The other readers are proven by
+    ``test_every_reader_of_an_inherited_obligation_reads_the_carried_ones``.)"""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    gated = create_unit(p, "story", "Payments", parent=epic, extra=("--mandatory-gate", "review_security"))
+    change = create_unit(p, "ticket", "Charge the card", parent=gated)
+    res = p.lead("work", "promote", change, "--to", "story", "--title", "Wider", "--reason", "scope grew")
+    story = res["promoted_to"]
+    assert control_violations(p.root) == []
+    with monkeypatch.context() as patch:
+        patch.setattr(H, "imposed", lambda state, holder: [(holder, state["work"][holder]["policy"])]
+                      if state["work"][holder].get("policy") else [])
+        assert any(v.startswith(f"64: {change} inherits floor None and gates []") for v in control_violations(p.root))
+    other = create_unit(p, "ticket", "Elsewhere", parent=epic)
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:
+        s.state["work"][other]["carried_obligations"] = [dict(res["carried_obligations"][0])]
+        s.state["work"][story]["carried_obligations"][0]["decision"] = "D-0099"  # never issued
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="carries no promotion wrote"))
+    found = control_violations(p.root)
+    assert f"64: {other} carries obligations but is not a Story or Epic a promotion created, or carries none" in found
+    assert f"64: {story}'s carried entry from {gated} cites D-0099, not the promotion of {change}" in found
 
 
 def test_dependency_edits_and_story_level_edges(tmp_path):

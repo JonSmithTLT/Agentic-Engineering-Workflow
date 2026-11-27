@@ -299,6 +299,58 @@ def control_violations(root: Path) -> list[str]:
     problems += disposition_violations(root, hot, state)
     # 62. Register E126: the scope corrections.
     problems += scope_correction_violations(root, hot, state)
+    # 64. Register E87: obligations a promotion carried (63 is the StageIntent continue's, above).
+    problems += carried_obligation_violations(root, state)
+    return problems
+
+
+def carried_obligation_violations(root: Path, full: dict[str, Any]) -> list[str]:
+    """64. ``carried_obligations`` is held only by a Story or Epic a promotion created, written by that promotion: each
+    entry carries a floor or a gate, names known units as its origin and the ancestor it was taken from, and its
+    decision is the promotion of the carrier's ``promoted_from``. And an independent walk over every live unit's
+    ancestors, their own policies and what they carry, gives the floor and non-waivable gates
+    ``gates.effective_obligations`` reads (register E87), so that reader, or the accessor under it, missing a carried
+    obligation fails here; the other readers are proven by their own test. A carry is registered
+    (``obligation_carry``), so an engine that cannot read one refuses the file."""
+    from aew.engine import gates as G
+    from aew.knowledge.records import read_record
+
+    problems: list[str] = []
+    work = full["work"]
+    for wid, unit in sorted(work.items()):
+        carried = unit.get("carried_obligations")
+        if carried is None:
+            continue
+        if "obligation_carry" not in full:
+            problems.append(f"64: {wid} carries obligations but the project registers no carry (obligation_carry)")
+        if unit["kind"] == "ticket" or not unit.get("promoted_from") or not carried:
+            problems.append(f"64: {wid} carries obligations but is not a Story or Epic a promotion created, or "
+                            "carries none")
+        for entry in carried:
+            if entry["min_descendant_class"] is None and not entry["mandatory_gates"]:
+                problems.append(f"64: {wid} carries an entry from {entry['from']} with no floor and no gate")
+            if entry["from"] not in work or entry["via"] not in work:
+                problems.append(f"64: {wid} carries from {entry['from']} via {entry['via']}, not both known units")
+            path = Path(root) / ".aew" / "decisions" / f"{entry['decision']}.md"
+            meta = read_record(path, "decision").meta if path.is_file() else {}
+            if meta.get("type") != "promotion" or meta.get("work_unit") != unit.get("promoted_from"):
+                problems.append(f"64: {wid}'s carried entry from {entry['from']} cites {entry['decision']}, not the "
+                                f"promotion of {unit.get('promoted_from')}")
+    no_paths: dict[str, Any] = {"risk_paths": {str(c): [] for c in range(5)}}
+    archived = set(full.get("_archived") or [])
+    for wid in sorted(set(work) - archived):
+        floor, gates = None, set()
+        anc = work[wid].get("parent")
+        while anc:
+            for policy in [work[anc].get("policy") or {}, *(work[anc].get("carried_obligations") or [])]:
+                if policy.get("min_descendant_class") is not None:
+                    floor = max(floor or 0, policy["min_descendant_class"])
+                gates.update(policy.get("mandatory_gates") or [])
+            anc = work[anc].get("parent")
+        found = G.effective_obligations(full, wid, no_paths)
+        if (found["floor"], set(found["non_waivable"])) != (floor, gates):
+            problems.append(f"64: {wid} inherits floor {found['floor']} and gates {sorted(found['non_waivable'])}; "
+                            f"its ancestors and what they carry impose floor {floor} and gates {sorted(gates)}")
     return problems
 
 

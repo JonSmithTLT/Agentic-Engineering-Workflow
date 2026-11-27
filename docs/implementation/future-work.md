@@ -1242,18 +1242,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E86/`, oldest first (`python tools/register.py show E86`).*
 
-### E87
-
-**Work:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3, 3.12 and 3.12a, which cover a Story or Epic move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names
-
-**Source:** The designer's follow-on after E84, from the operator's decision on S12-4's first flags batch (design workspace `fb1fabe`, "a link the Lead needs"); FLAG-12 keeps `carried_obligations` for it under `EW-U05.g` (the second batch, design workspace `ca01a32`)
-
-**When:** **Internal alpha**, beside the trace's flag work (S12-6): FLAG-12 clears when it is built
-
-**Notes:** Filed by the Lead after #274 merged. The plan's design is its starting point, not its authority: F4 is an Unscheduled row again (restored from HOLD-08 by the hold match, 2026-11-06)
-
-*Later notes: `notes.d/E87/`, oldest first (`python tools/register.py show E87`).*
-
 ### E89
 
 **Work:** Re-point `spec_set` at the published contracts once D-A's first publication lands (FLAG-09). Retiring it instead would need a schema change, since `control.schema.json` requires it, and a read-as for old state
@@ -4721,6 +4709,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of its direct edge, as ADR-0003's amendment of 2026-10-25 states. The class by any route is E96, and E85's named outcome closes only when E96 lands (designer, 2026-10-25)
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
+
+### E87
+
+**Was:** A promotion carries a dropped parent's obligations onto the promoted unit (`carried_obligations`) instead of being refused, as F4's plan v8 designs it (sections 3.3, 3.12 and 3.12a, which cover a Story or Epic move too). Since E84 (#274), such a promotion is refused, with the remedies its refusal names
+
+**Closed:** 2026-11-27
+
+**By:** A promotion copies what the ancestors it leaves behind impose (floor, rationale, mandatory gates) onto the unit it creates as `carried_obligations`, which binds that unit's descendants as its own policy does; every reader of an inherited floor or gate reads it through `hierarchy.ancestor_obligations`, and E84's check stays as the backstop (ADR-0007's amendment of 2026-11-27; invariant 64). A Story or Epic move still refuses; carrying edges, scope, guardrails and holds stays F4's (its note of 2026-11-27)
+
+*Later notes: `notes.d/E87/`, oldest first (`python tools/register.py show E87`).*
 
 ### E88
 

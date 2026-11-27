@@ -717,6 +717,7 @@ None.
 ### `aew.engine.base`
 
 - `aew.engine.authority`
+- `aew.engine.hierarchy`
 - `aew.engine.request_ids`
 - `aew.engine.seams`
 - `aew.engine.store`
@@ -991,6 +992,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`
+- `aew.engine.gate_ops`
 - `aew.engine.gates`
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`
@@ -1222,6 +1224,7 @@ None.
 
 ### `aew.engine.request_ids`
 
+- `aew.engine.hierarchy`
 - `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
@@ -2385,6 +2388,7 @@ None.
 
 ### `aew.policy.validation`
 
+- `aew.engine.hierarchy`
 - `aew.errors`
 - `aew.policy.checks`
 

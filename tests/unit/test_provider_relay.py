@@ -2311,9 +2311,11 @@ def test_a_successful_streamed_answer_is_relayed_byte_for_byte_as_before():
     ([], "identity"),  # none at all would accept any coding
     (["identity"], "identity"),
     (["gzip, deflate, br, zstd"], "gzip, deflate"),
-    (["br;q=1.0, gzip;q=0.8, *;q=0.1"], "gzip;q=0.8, deflate;q=0.1, identity;q=0.1, x-gzip;q=0.1"),
+    (["br;q=1.0, gzip;q=0.8, *;q=0.1"], "gzip;q=0.8, deflate;q=0.1, identity;q=0.1"),
     (["identity;q=0, *"], "identity;q=0, deflate, gzip, x-gzip"),  # what * accepted among them, still accepted
-    (["gzip, *;q=0"], "gzip, deflate;q=0, identity;q=0, x-gzip;q=0"),
+    (["gzip, *;q=0"], "gzip, deflate;q=0, identity;q=0"),
+    (["gzip;q=0, *"], "gzip;q=0, deflate, identity"),  # x-gzip is gzip: a * never offers the one refused
+    (["x-gzip;q=0, *"], "x-gzip;q=0, deflate, identity"),
     (["*, *;q=0.5"], "deflate, gzip, identity, x-gzip"),  # the first * names them all
     (["deflate;q=0.5, x-gzip, GZIP;q=0.9"], "deflate;q=0.5, x-gzip, GZIP;q=0.9"),  # the client's order and weights
     (["br", "gzip, zstd"], "gzip"),  # two lines read as one list

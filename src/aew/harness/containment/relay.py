@@ -281,6 +281,9 @@ class Proxy:
             self.auth = "Basic " + base64.b64encode(raw.encode()).decode()
 
 
+_CODING_ALIAS = {"x-gzip": "gzip"}
+
+
 def _accept_encoding(values: Collection[str]) -> str:
     """The ``Accept-Encoding`` the relay sends upstream for the client's ``values`` (its ``Accept-Encoding`` lines):
     only the codings the relay reads (:data:`READABLE_CODINGS`), each with its weight and in the order the client gave
@@ -289,7 +292,10 @@ def _accept_encoding(values: Collection[str]) -> str:
     among them is still accepted. With none of them left, or no such line (which would accept any coding), it is
     ``identity``."""
     elements = [element.strip() for value in values for element in value.split(",") if element.strip()]
-    named = {element.split(";", 1)[0].strip().lower() for element in elements}
+    # x-gzip is gzip's alias (RFC 9110 §8.4.1.3): naming either names both, so a ``*`` never offers one the client
+    # weighed under the other's name (#657's quick check, m1).
+    named = {_CODING_ALIAS.get(name, name) for name in
+             (element.split(";", 1)[0].strip().lower() for element in elements)}
     kept: list[str] = []
     for element in elements:
         coding, semicolon, weight = element.partition(";")
@@ -297,8 +303,9 @@ def _accept_encoding(values: Collection[str]) -> str:
         if coding in READABLE_CODINGS:
             kept.append(element)
         elif coding == "*":
-            kept += [other + semicolon + weight for other in sorted(READABLE_CODINGS - named)]
-            named |= READABLE_CODINGS
+            kept += [other + semicolon + weight for other in sorted(READABLE_CODINGS)
+                     if _CODING_ALIAS.get(other, other) not in named]
+            named |= {_CODING_ALIAS.get(other, other) for other in READABLE_CODINGS}
     return ", ".join(kept) or "identity"
 
 

@@ -982,6 +982,7 @@ def test_a_lane_restores_the_pinned_scanner_from_the_cache_before_installing_and
     save = next(i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/cache/save"))
     assert index["scanner-cache"] < index["scanner-restore"] < index["tools"] < save
     assert restore["uses"].startswith("actions/cache/restore@")
+    assert restore["env"] == {"SEGMENT_DOWNLOAD_TIMEOUT_MINS": "1"}  # a stalled restore is a miss in 1 min, not 10
     for step in (restore, steps[save]):
         assert step["with"] == {"path": "${{ steps.scanner-cache.outputs.path }}",
                                 "key": "${{ steps.scanner-cache.outputs.key }}"}

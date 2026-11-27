@@ -576,7 +576,7 @@ def test_a_scanner_download_that_times_out_once_is_retried_and_still_checksum_ve
     with pytest.raises(ValueError, match="checksum mismatch"):
         installer.install_scanner(tampered)
     assert not (tampered / binary).exists() and len(calls) == 2
-    assert not list(installer.scanner_cache()[0].iterdir())  # nor is it kept for the next job
+    assert not list(installer.scanner_cache()[0].glob("*"))  # nor is it kept for the next job
 
 
 def test_a_scanner_download_that_fails_every_bounded_attempt_still_reports_the_scanner_unavailable(tmp_path,
@@ -600,7 +600,7 @@ def test_a_cached_scanner_archive_is_installed_only_when_it_matches_the_pinned_d
     """Run 46048405164: a lane's three downloads were all refused (HTTP 403), so it withheld a passing report. The
     verified archive is kept in the Actions cache: a job with it downloads nothing, and one whose cached bytes do not
     match the pin discards them and downloads, so the cache never supplies a scanner the pin does not name."""
-    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path, [None, None])
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path, [None, None, None])
     first = tmp_path / "first"
     first.mkdir()
     installer.install_scanner(first)  # a cold job downloads once and keeps what it verified
@@ -621,6 +621,16 @@ def test_a_cached_scanner_archive_is_installed_only_when_it_matches_the_pinned_d
     installer.install_scanner(redownloaded)  # the mismatching bytes are discarded, never extracted
     assert (redownloaded / binary).read_bytes() == b"scanner" and len(calls) == 2
     assert installer.hashlib.sha256((cache / archive).read_bytes()).hexdigest() == digest
+    # The cache is best effort: one that cannot be written (here its directory is a file) still installs the bytes
+    # that were downloaded and verified.
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path / "blocked"))
+    (tmp_path / "blocked").mkdir()
+    (tmp_path / "blocked" / installer.SCANNER_CACHE).write_bytes(b"not a directory")
+    unwritable = tmp_path / "unwritable"
+    unwritable.mkdir()
+    installer.install_scanner(unwritable)
+    assert (unwritable / binary).read_bytes() == b"scanner" and len(calls) == 3
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     # A tampered cache with a refused download installs nothing, and the lane withholds its report as before.
     (cache / archive).write_bytes(b"tampered")
     refused = tmp_path / "refused"

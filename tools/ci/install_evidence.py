@@ -70,23 +70,30 @@ def scanner_cache() -> tuple[Path, str]:
 
 
 def scanner_archive(archive: str, digest: str) -> bytes:
-    """The pinned archive's bytes, verified: from the cache when they match the digest, else downloaded."""
-    cache = scanner_cache()[0]
-    cache.mkdir(parents=True, exist_ok=True)
-    cached = cache / archive
-    if cached.is_file():
-        data = cached.read_bytes()
-        if hashlib.sha256(data).hexdigest() == digest:
-            return data
-        print("evidence scanner cache does not match the pinned digest; downloading", flush=True)
-        cached.unlink()
+    """The pinned archive's bytes, verified: from the cache when they match the digest, else downloaded. The cache is
+    best effort: a cache that cannot be read or written costs a download or the next job's hit, never the install of
+    bytes that were verified (review of #659)."""
+    cached = scanner_cache()[0] / archive
+    try:
+        if cached.is_file():
+            data = cached.read_bytes()
+            if hashlib.sha256(data).hexdigest() == digest:
+                return data
+            print("evidence scanner cache does not match the pinned digest; downloading", flush=True)
+            cached.unlink()
+    except OSError as exc:
+        print(f"::warning::evidence scanner cache unreadable ({exc}); downloading", flush=True)
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary) / archive
         download_scanner(archive, path)
         data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != digest:
         raise ValueError("evidence scanner checksum mismatch")
-    cached.write_bytes(data)
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(data)
+    except OSError as exc:
+        print(f"::warning::evidence scanner not kept in the cache ({exc}); installing it anyway", flush=True)
     return data
 
 

@@ -39,6 +39,11 @@ runs:
       id: scanner-restore
       if: always() && steps.scanner-cache.outcome == 'success'
       continue-on-error: true
+      # actions/cache waits up to 10 minutes on a stalled segment by default, and this time comes out of the job's
+      # test deadline like the download's bound (install_evidence.py); a timed-out restore is a miss, so the installer
+      # downloads instead (review of #659).
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
       uses: actions/cache/restore@v6
       with:
         path: ${{ steps.scanner-cache.outputs.path }}

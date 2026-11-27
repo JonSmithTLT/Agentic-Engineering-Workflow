@@ -31,3 +31,9 @@ Adds five cases (13 total): three executable multi-step synthetic task fixtures,
 The October 19 threat boundary is user-relayed review evidence. Searches did not locate the original ruling; no source document or adoption status is invented. Runtime references explicitly preserve that qualification. Current files remain uncommitted in the shared checkout; no commit-ready or independent-review status is claimed.
 
 0.2.0 validation: both skill validators passed; 14 targeted Markdown link checks passed. All 26 cases parsed; six embedded executable fixtures were each checked against three target versions (18 version checks), including benign/injected task completion and clean resets. Runtime hashes matched. Full command/stdout/stderr/exit-code records are saved in the private research review addendum. These checks are not independent review or worker-effectiveness evidence.
+
+## 0.2.1
+
+The public runtime text follows the adopted scope and uses defensive source
+inspection, existing evidence and ordinary control checks. The cases are
+synthetic and worker outcomes remain unevaluated.

@@ -1747,8 +1747,9 @@ entries:
     The Lead broker's close removed its wake serving mark (wake_queue.clear_serving) with a bare unlink, the only
     change to that file without a Windows sharing retry: a reader holding it open (Python's open never grants
     FILE_SHARE_DELETE) refused the removal with WinError 32, and the refusal escaped close before the bridge, the
-    steering loop and the liveness record were closed. The holder is not named: the wake thread had been joined,
-    no other thread in the test reads the mark, and an ordinary failure's autopsy keeps no file-holder list.
+    steering loop and the liveness record were closed. The holder is not named: the wake thread was stopped and
+    joined with a 10 s bound before the removal, the test's own threads are not known to read the mark then, and an
+    ordinary failure's autopsy keeps no file-holder list.
   owner: CI timing fixes
   test: tests/integration/test_lead_wake_status.py::test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_close
   closure:

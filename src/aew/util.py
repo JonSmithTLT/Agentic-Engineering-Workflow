@@ -31,6 +31,13 @@ def escape_display_controls(text: str) -> str:
                   lambda match: f"\\u{ord(match[0]):04x}", text)
 
 
+def code_fence(content: str) -> str:
+    """A Markdown code fence for ``content``: longer than any run of backticks in it, so no line of it can close the
+    fence; three backticks when it holds no run of three. The one owner of the rule, for every block of generated or
+    recorded text a pack fences (``knowledge.context``, ``maps.slices``)."""
+    return "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
+
+
 def decode_text(raw: bytes, *, source: str) -> str:
     """Text given to AEW is UTF-8. A byte-order mark is honoured and removed: UTF-8's, which Windows PowerShell 5.1
     writes for ``-Encoding utf8``, and UTF-16's, which it writes for ``>`` and ``Out-File``. Anything else that is
@@ -356,6 +363,7 @@ def write_temp(directory: Path, data: bytes, prefix: str) -> Path:
 
 
 SHARING_WAIT_S = 5.0  # how long a replace or a removal waits out a Windows sharing refusal before it raises
+SHARING_PAUSE_S = 0.05  # the pause between two attempts within that wait
 
 
 def replace_with_retry(src: Path, dst: Path) -> None:
@@ -369,7 +377,7 @@ def replace_with_retry(src: Path, dst: Path) -> None:
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:
                 raise
-            time.sleep(0.05)
+            time.sleep(SHARING_PAUSE_S)
 
 
 def unlink_with_retry(path: Path) -> None:
@@ -385,7 +393,7 @@ def unlink_with_retry(path: Path) -> None:
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:
                 raise
-            time.sleep(0.05)
+            time.sleep(SHARING_PAUSE_S)
 
 
 def atomic_write(path: Path, data: bytes | str) -> None:

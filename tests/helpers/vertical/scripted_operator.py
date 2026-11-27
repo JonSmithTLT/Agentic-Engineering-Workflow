@@ -47,11 +47,12 @@ import autopsy
 import bounds
 from conftest import IS_WINDOWS, CLIResult, Project, clean_env, git, make_git_repo, run_aew
 from fake_harness import SCRIPTS_ENV, HarnessLab
-from fake_opencode import TUI_SCRIPT, write_launcher
+from fake_opencode import TUI_SCRIPT, ProviderUpstream, write_launcher
 
 from aew import hoststate
 from aew.capability import consent
 from aew.harness import runlog
+from aew.harness.containment import netns
 from aew.util import dump_yaml
 from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
 from vertical import oracle, workers
@@ -123,6 +124,7 @@ class Session:
     err: Path
     pidfile: Path
     tty: int | None = None  # the master of the pseudo-terminal the session runs on (Linux), while it is open
+    lead_session: str = ""  # the open's id the scripted Lead stamps on its events (Operator.new_session)
 
     def ended(self) -> bool:
         return self.proc.poll() is not None
@@ -293,7 +295,7 @@ class Operator:
             proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
                                              stdout=o, stderr=e, resume_prompt=resume_prompt)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
-        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
+        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master, lead_session=lead_spec["session"])
         self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
@@ -439,6 +441,8 @@ class Operator:
             if not session.ended():
                 self.say("exit", "/exit")
         else:
+            # How many of its calls the session had recorded before the kill: only a later one was in flight (E386)
+            calls_before = recorded_calls(self.lab, session.lead_session)
             # The session dies from outside, as when its terminal is closed: Windows, the session's process (its job
             # object then ends the TUI); POSIX, its whole process group (the hangup a closed terminal sends).
             if IS_WINDOWS:
@@ -448,6 +452,7 @@ class Operator:
 
                 os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
+            self.ledger.session_killed(session.lead_session, calls_before=calls_before)
         try:
             code = session.proc.wait(EXIT_S)
         except subprocess.TimeoutExpired:
@@ -507,7 +512,13 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
         # own and no other test's: the session's shared base would carry its "no" into every later test. Only where
         # AEW places its tools: elsewhere nothing is offered as needed, and the host's base stays the session's.
         env[hoststate.base_variable()] = str(host_data or tmp / "host-data")
-    return HarnessLab(Project(repo), tmp, env)
+    lab = HarnessLab(Project(repo), tmp, env)
+    # The world's provider (register E387): a listener on loopback that answers the relay's models request, so a probe
+    # of the world's login (doctor's and init's `provider-relay` rows) never reaches a real provider host. Closed with
+    # the lab; :func:`world_fixtures` names it as every known provider's upstream.
+    lab.provider = ProviderUpstream()
+    lab.closers.append(lab.provider.close)
+    return lab
 
 
 def settle_tool_offers(lab: HarnessLab, ledger: Ledger) -> list[str]:
@@ -586,6 +597,16 @@ def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str,
         writable.append(str(children))
     fixtures: dict[str, Fixture] = {"harness: fake": lambda doc: doc.update(harness="fake"),
                                     "containment.writable": lambda doc: doc.update(containment={"writable": writable})}
+    if lab.provider is not None:
+        # Every provider AEW knows an address for relays to the world's own provider (:func:`new_world`), not to that
+        # address: the operator's synthetic login is one of them, and doctor's relay probe sent it to the real host,
+        # which answered HTTP 401 (register E387; the V-01 re-measure of 2026-11-26, C17). Its limit: it is an upstream
+        # override (`netns.stored_key_override`), so the world's built-in providers take the override's paths. No plan
+        # login and no stored worker key is relayed in the world, and the refreshing route (and its own address) is
+        # never reached; the world's one login, an API key, is relayed as in the operator's default configuration.
+        # After containment.writable, which sets the containment block this adds to.
+        fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
+            network={"upstreams": dict.fromkeys(netns.UPSTREAMS, lab.provider.url)})
     if steering:
         fixtures["steering.mode"] = lambda doc: doc.update(steering={"mode": steering})
     return fixtures
@@ -624,7 +645,6 @@ def world_around_init(ledger: Ledger, fixtures: Mapping[str, Fixture],
     setup is. None of it is a parser option, an environment variable or anything else an installed ``aew`` can
     reach."""
     from aew.engine.api import Engine
-    from aew.harness.containment import netns
 
     real = Engine.initialize
 
@@ -651,6 +671,17 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def recorded_calls(lab: HarnessLab, session: str) -> int:
+    """How many ``call`` events the Lead session ``session`` has recorded so far, read while it may be writing: only
+    complete lines count, since a last line not yet ended by its newline is a call not yet recorded (review of #636)."""
+    path = lab.tmp / "sync" / "lead-events.jsonl"
+    if not path.exists():
+        return 0
+    lines = path.read_text(encoding="utf-8").split("\n")[:-1]  # the part after the last newline is not yet a line
+    events = [json.loads(line) for line in lines if line.strip()]
+    return sum(1 for e in events if e.get("kind") == "call" and e.get("session") == session)
 
 
 # Whether `lead_label` reads the Lead's label from the product; `enforce` is refused until it does

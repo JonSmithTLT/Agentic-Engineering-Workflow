@@ -6,3 +6,7 @@ would make 20. The ceiling now lives in `lead-context-pool.yaml` as `tool_ceilin
 those words and the date, and `tests/unit/test_lead_context_pool.py` reads it from there; it was a literal 16 in the
 test. The 40,000 B byte cap and its operator reserve are unchanged. TLS-21 and CMG-23 in the requirements ledger now
 name the record instead of "the 16-tool ceiling"; the operator and the designer will revisit the figure.
+
+**What remains** for E158. The ceiling now has room for the consult (16 tools with messaging on today), so its
+offered-tool slot is no longer a count decision; it still needs its separate Q-BUDGET proof and its bytes, and the
+operator's and the designer's revisit of the figure is open. The rest of this row is as its earlier notes say.

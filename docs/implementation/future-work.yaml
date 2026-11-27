@@ -5418,7 +5418,8 @@ sections:
     Source: 'The review of #597 (E335), its m2: the vertical''s steering-on counters. In V1 steering-on, with RESOLVE_STAGE
       the Lead''s, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew
       stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it'
-    When: '**Unscheduled**; the operator places it'
+    When: '**V-01**, the strict track of the burn-down (C5), placed by the operator, 2026-11-27: "Yes do 1-3 and start builders
+      on C5 and C3"'
     Notes: 'Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision
       names them (`tests/helpers/vertical/lead.py`, `judged`)'
 

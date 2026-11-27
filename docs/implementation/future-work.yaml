@@ -151,7 +151,7 @@ sections:
     | 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
     | 40 | E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3 (E131, closed by #422), MS4+MS6, MS5, then MS5b with default-on |
     | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
-    | 42 | E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25) |
+    | 42 | closed: E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25), closed by #596 and the vertical re-measure at `8c85f377` |
     | 43 | closed: E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25), closed by #594 |
     | 44 | E367 | The Lead's system text and tool list rewritten, with a truth test, after the guide's core plus pointers |
     | 45 | E368 | Worker packs as a core plus pointers, after E367 |
@@ -4968,23 +4968,6 @@ sections:
     When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the register PR for A-58
 
-  - '#': E329
-    Work: 'The revision check''s PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without
-      its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`,
-      takeover, handoff accept and `Session.commit`''s re-check; `expect_rev` is removed outright (the operator, 2026-11-25);
-      open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification''s
-      WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded
-      recovery and the guides) land in the same PR. Tests cover the admission boundary for every A entry and exercise four
-      direct writers through their own handlers. The vertical''s `revision_args` and `stale_retries` are 0. The revision
-      stays as the commit order, the log key, the history cursor, the dashboard''s cursors and ETag, and a stamp on records'
-    Source: 'The designer''s decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`),
-      parts 2, 4 and 5; the operator''s yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"'
-    When: '**Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking
-      place and expect rev doesnt really save us from anything"). The last of the revision check''s chain: E326, E327, E328
-      and E330, which it follows, are closed'
-    Notes: 'Filed by the register PR of 2026-11-10. What the operator accepted with it: an A operation that is legal but
-      rests on an old reading of unrelated state can commit; the generation still stops a stale Lead'
-
   - '#': E331
     Work: 'Settings adopted at the operator''s terminal, with no Lead token: `aew manifest adopt`, E164''s `aew policy model
       allow` and `aew policy route`, and `aew authority accept` and `reject`, each through adopt or the authority operation
@@ -6659,6 +6642,18 @@ sections:
       with `CHANGED_SINCE_READ` as the one changed-since-read refusal (the class-C one folded into it), a two-writer test
       per operation generated from `CONTROL_OP_SPECS`, and Lead and loop callers prefilled. `expect_rev` is unchanged; E329
       makes the bindings required'
+
+  - '#': E329
+    Was: 'The revision check''s PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without
+      its binding is refused; the project-wide compare is dropped at every site; `expect_rev` is removed outright (the operator,
+      2026-11-25); open stage intents are migrated; the amendments the ruling lists land in the same PR; and the vertical''s
+      `revision_args` and `stale_retries` are 0'
+    Closed: '2026-11-27'
+    By: '#596 (`2db9b762`): every class B and C binding required, the project-wide compare dropped, `expect_rev` removed
+      from the public Python, CLI and tool arguments, open stage intents migrated by `aew migrate`, and the amendments landed
+      (`notes.d/E329/`). The vertical re-measure on `main` at `8c85f377` (V-01 burn-down, C4) showed `revision_args` and
+      `stale_retries` at 0 in all 8 cases the alpha reads, where `revision_args` was 7, 9, 4 and 99 at `f848983e`; each
+      case ran once'
 
   - '#': E330
     Was: 'Seat resume: `aew opencode` resumes a held seat with a new seat operation, distinct from takeover. It applies

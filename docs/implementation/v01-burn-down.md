@@ -3,8 +3,9 @@
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
 and each question below is the operator's or the designer's. The operator answered Q1, Q5, Q7 and Q10 on 2026-11-26.
-The alpha scripted gate passed at the re-measure of 2026-11-27 (`f848983e`); the strict gate still fails 4 of the 8
-cases the alpha reads, and its other ten were not re-run (below, "The order"). It changes no threshold: those are
+The alpha scripted gate passed at the re-measure of 2026-11-27 (`f848983e`), and again at the re-measure after #596
+(`8c85f377`), which showed C4 done; the strict gate still fails 4 of the 8 cases the alpha reads, and its other ten
+were not re-run (below, "The order"). It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -49,14 +50,14 @@ still fail on after it. The state is `open`, `in flight` (a builder or a pull re
 | **C1** Decision owners | Decisions carry no `owner` (`src/aew/surface/projection.py:246-299`, `_ticket_actions`; `:444-499`, `_decisions`), so the scripted Lead asks every one (`tests/helpers/vertical/lead.py:350-354`, `:392-393`): the review and verification acceptances reach the operator in every case that compares decisions | product | `E335` | No strict case; it clears the alpha's V1 line | Everything else; `reconcile` stays the operator's (E350); `resolve_stage` becomes the Lead's, whose `resolve` is still refused (C5) | M, 1 PR | none | done (#597) |
 | **C2** Plan approval is not a decision | The projection had no plan decision: the proposed plan showed only as blocker `PLAN_NOT_ACCEPTED` with a hint, so the Lead's fallback asked and accepted from its shell (`gap_plan`, `tests/helpers/vertical/lead.py:779-789`). E351 (done, #628) offers it as the operator's `PLAN` decision (Q8, answered), whose `cli_fallback` the Lead still runs from its shell (`decide` and `without_tool`, `lead.py:544-581`) | design, then product | `E163` (E351 done, #628) | None: E351 alone still runs its `cli_fallback` from the shell; with a typed accept (E163, or the surface map's A1a-2) the shell call goes | The other clusters | 2 PRs | E335 (done); Q8 (answered) | open |
 | **C3** An empty project offers no action | `_control_part` returns the project's part before any action (`projection.py:122`); `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so the built `ticket_draft` (`src/aew/surface/availability.py:173`) is never offered and the Lead guesses it | design | `E373` | None | The other clusters | M, 1 PR | Q4 | open |
-| **C4** `expect_rev` on every call | The revision check was project-wide: every typed tool required `expect_rev` and the projection supplied it; the driver's hint filler appended it to every hinted command, and the Lead's retries stripped it. #596 removed all three: each control operation now binds only what it relies on (classes A, B and C). What is left is the re-measure | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | in flight (#596 merged; E329 stays open until a vertical re-measure shows `revision_args` and `stale_retries` at 0) |
-| **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` (`projection.py`) lists every unfinished stage intent, the steering loop's running one included (E374, after Q9). Its `resolve` arguments no longer lack `choice` and `rationale`: E388 is done (#630), the decision names both as judgment inputs and the typed call with them filled in succeeds. Still breaking: in V2-forced, that continue of the stage whose killed run ended with evidence is refused `HARNESS_LAUNCH_FAILED` at its launch (E400) | product, design | `E374`, `E400`; E388 done (#630) | None | The other clusters | M, 1 to 2 PRs | E335 (done); Q9 | open |
+| **C4** `expect_rev` on every call | The revision check was project-wide: every typed tool required `expect_rev` and the projection supplied it; the driver's hint filler appended it to every hinted command, and the Lead's retries stripped it. #596 removed all three: each control operation now binds only what it relies on (classes A, B and C). The re-measure at `8c85f377` (below, "The order") showed `revision_args` and `stale_retries` at 0 in all 8 cases it ran | product | `E329` | None | The other clusters | L, 1 PR plus a driver change | none | done (#596, merged as `2db9b762`; the re-measure at `8c85f377`) |
+| **C5** RESOLVE_STAGE for the loop's own stage | `_stage_decisions` (`projection.py`) lists every unfinished stage intent, the steering loop's running one included (E374, after Q9). Its `resolve` arguments no longer lack `choice` and `rationale`: E388 is done (#630), the decision names both as judgment inputs and the typed call with them filled in succeeds. Still breaking: in V2-forced, that continue of the stage whose killed run ended with evidence is refused `HARNESS_LAUNCH_FAILED` at its launch (E400); at the re-measure of `8c85f377` it is V2-forced's one refusal left, the `resolve` refused for want of a choice and a rationale gone | product, design | `E374`, `E400`; E388 done (#630) | None | The other clusters | M, 1 to 2 PRs | E335 (done); Q9 | open |
 | **C6** Steering-on mechanical calls | The scripted Lead ignores a wait marked `woken` (`projection.py:558`) and calls it (`lead.py:355-364`), with no wake channel from the fake TUI (`lead.py:167-191`); and `loop_acts` takes a self-clearing BLOCKED stop as a decline (`lead.py:379-382`; the loop keeps BLOCKED out of `LEAD_ONLY`, `src/aew/harness/steering_loop.py:162`) | oracle | `E375` | None | The other clusters; with the loop now running the review stage itself, C5's refused `resolve` of the loop's stage also shows at REVIEW_PENDING | S, 1 PR | Q1 and Q10, both answered: `vertical-uat.md` §2 and §3 amended in E375's pull request | done (#627) |
 | **C7** The reopen blocks at the tool-consent screen | Only the reopen runs on a controlling terminal (`tests/helpers/vertical/scripted_operator.py:91-97`), so `aew opencode` asks the consent screen before the seat (`src/aew/harness/opencode/lead.py:436`; `src/aew/capability/consent.py:401-405`) and waits out `src/aew/operator.py:28`'s timeout; the scripted operator answers only the resume code (`scripted_operator.py:316-321`). The counted takeover follows and interrupts the implementer | oracle | `E376` | No strict case; it clears the alpha's V2-forced line | The resume code counts under `pin_reentries` on Linux (`scripted_operator.py:320`; `Ledger.console_challenge`), reopen stays a G3 fallback (C12) | S, test-only | E335 for the alpha; Q5, answered: the consent screen is a setup fixture, recorded and never counted | done (#603) |
 | **C8** Not told where things stand in words | The scripted Lead reads only `structuredContent` (`lead.py:254`), and `_words` looks for fields `resume` does not carry (`lead.py:710-715`); the readable text is the MCP `content[0].text` (`src/aew/surface/mcp.py:240-247`). Unverified: whether the rendered resume names the Ticket | oracle, probably | `E377` | None | As C7 | Part of C7's PR | C7 | done (#603) |
 | **C9** A semantic conflict has no decision | At COMMIT_READY with the queue entry AWAITING_DISPOSITION, `_ticket_actions` emits no decision (`projection.py:246-299`); the only guidance is a requeue hint (`src/aew/engine/resume_ops.py:471-476`); after it `ticket_prepare` is offered and refused, and the Lead's gap key carries the revision (`lead.py:510-525`), so it loops | design, product, oracle | `E378` | None | Counters and fallbacks of the other clusters | M, 1 to 2 PRs | E335; Q2 | open |
 | **C10** A compatible rebuild asks again | PUBLISH binds the validated candidate (`projection.py:270-289`); the rebuilt, re-verified candidate raises a new PUBLISH, asked again | design | `E379` | V1 compatible-move (its verdict filters counters and fallbacks) | Nothing in that case | M, 1 PR | Q3; W09's approval binding | open |
-| **C11** After the evidence-mismatch refusal, nothing is offered | The gate's refusal for a check that changes a tracked file is BLOCKED with no decision (`projection.py:334-372`); until #596, the driver also appended `--expect-rev` to a hinted read command, and that refusal counted | design, oracle | `E380` | None | Counters and fallbacks of the other clusters | M, 1 PR plus a driver line | E335; Q6 | open |
+| **C11** After the evidence-mismatch refusal, nothing is offered | The gate's refusal for a check that changes a tracked file is BLOCKED with no decision (`projection.py:334-372`); until #596, the driver also appended `--expect-rev` to a hinted read command, and that refusal counted. At the re-measure of `8c85f377` that refusal is gone (evidence-mismatch's `refusals` 0, `gate show` read once); the case still ends at RUNNING | design, oracle | `E380` | None | Counters and fallbacks of the other clusters | M, 1 PR (the driver line went with #596) | E335; Q6 | open |
 | **C12** V01-01's wire steps are not on the O-01 wire | The oracle derives them not built: the vendored O-01 registry lacks the actions or holds them registry-only, and the carrier admits one origin (`tests/helpers/vertical/oracle.py:196-210`). `path_problems` fails any operator fallback (`tests/acceptance/test_vertical_path.py:217-226`), so no strict V1, V2 or V4 case passes before it | design (the wire track) | `E381`, `E382`, `E383`, `E390`, `E391`, `E392`, `E393`, `E181`, `STG-14` | None, but every strict V1, V2 and V4 green needs it | Nothing it leaves; the alpha excuses it | Many PRs | Q7, answered: after the personal alpha, aligned with STG-14 | open |
 | **C13** The credential route a scenario measures | V2's same-shell extra keeps the credential route by design; V4 changes its setting through acquire, export, a hand-edited policy and a separate adopt: there is no `aew policy route` (only `aew settings show`) | scenario; product for V4 | `E164`, `E331` | None | The other clusters | 2 PRs | E327 (merged) for E331 | open |
 | **C14** Readiness has no seat row | Neither `src/aew/doctor.py:150-162` nor `Engine.doctor_checks` (`src/aew/engine/api.py:411`) reads the seat, so doctor names neither the dead session nor the fix; `V3_HELD` cites G3-C, which merged (`test_vertical_path.py:753`) | product | `E384` | None: the case still takes the G3 open fallback (C12) | C12's open step | S, 1 PR | E330 (merged) | open |
@@ -91,8 +92,8 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | counter | `cli_tool_calls` | none | not breached |
 | counter | `shell_aew_calls` | C2, C5, C7, C9, C11 | the plan accept, the stage continue, the reconcile and new attempt, the requeue, the gate reads |
 | counter | `ambiguous_next_action` | none | not breached |
-| counter | `revision_args` | C4 | every case with a Lead |
-| counter | `stale_retries` | C4 | not breached; E329 names it as a test |
+| counter | `revision_args` | C4 | every case with a Lead; 0 in all 8 at `8c85f377` (C4 done) |
+| counter | `stale_retries` | C4 | not breached; E329 names it as a test; 0 in all 8 at `8c85f377` |
 | counter | `refusals` | C5, C7, C9, C11, C16 | `resolve`, the stale hint, `ticket_prepare`, the driver's read, the forced kill |
 | counter | `mechanical_calls` | C6 | each steering-on case |
 | hard limit | `semantic_conflict` | none | held |
@@ -173,6 +174,29 @@ G3 #213. Each failure of the 8, as the measure's report reads it, and the cluste
 | V1 semantic-conflict | fail | `help_calls` 47; `shell_aew_calls` 47 (46 of them `aew integrate requeue`); `refusals` 47 (`ticket_prepare` in a loop, and one `integration_publish`); `revision_args` 99; `guessed_commands` 1; the open, plan and publish fallbacks; no result | C9 (E378), the loop; C2; C3; C4; C12 |
 | V3 check-changes-snapshot, model-id-provider-prefix, model-not-listed, provider-env-unset | pass | - | - |
 
+**The re-measure after #596** (2026-11-27, `main` at `8c85f377`, the merge of #633): the same 8 cases, each once,
+sequential in one process on Linux with steering off (`pytest -p no:xdist --lane vertical`, then
+`python -m vertical.report`). All actors were scripted and offline. It is recorded beside the `f848983e` measurement,
+which stays as it was taken.
+- **`revision_args` and `stale_retries` are 0 in all 8 cases,** where `revision_args` was 7, 9, 4 and 99 in the four
+  failing cases above. That is E329's proof: C4 is done.
+- **Alpha scripted gate: PASS,** with the same three excused G3 fallbacks (open, plan, publish) and the receipt NOT
+  RECORDED.
+- **Strict: 4 of 8** (the four V3 cases), as at `f848983e`.
+- **Each case ran once,** so this does not show stability.
+
+What changed in each failing case since `f848983e`; the V3 cases are unchanged:
+
+| Case | Strict | Changed since `f848983e` | Unchanged | Clusters |
+|---|---|---|---|---|
+| V1 steering-off | fail | `revision_args` 7 to 0 | `guessed_commands` 1 (`ticket_draft`); `shell_aew_calls` 1 (the plan accept); the open, plan and publish fallbacks; a result reached | C3; C2; C12 |
+| V2-forced-mid-stage | fail | `revision_args` 9 to 0; `help_calls` 2 to 1; `shell_aew_calls` 3 to 2 (`stage continue` gone; the plan accept and `work transition --to RUNNING` left); `refusals` 2 to 1: the `resolve` refused for want of a choice and a rationale is gone (E388, #630), and so is the `stage continue` refusal; the one left is the stage's continue refused `HARNESS_LAUNCH_FAILED` at its launch, E400's shape | `pin_reentries` 1 (the seat resume); `guessed_commands` 1; the open, plan, reopen and publish fallbacks; a result reached. No `BROKER_UNREACHABLE` refusal: C16 not observed | `pin_reentries` by Q5 (C12, E382); C5 (E374, E400); C3; C2; C12 |
+| V1 evidence-mismatch | fail | `revision_args` 4 to 0; `shell_aew_calls` 3 to 2 (`gate show` once, not twice); `refusals` 1 to 0: the driver's `gate show --expect-rev` refusal is gone | `help_calls` 1; `guessed_commands` 1; the open and plan fallbacks; it ends at RUNNING with `ticket_request_review` BLOCKED, and no result | C11 (E380); C3; C2; C12 |
+| V1 semantic-conflict | fail | `revision_args` 99 to 0 | `help_calls` 47; `shell_aew_calls` 47 (46 `aew integrate requeue`); `refusals` 47 (46 `ticket_prepare`, 1 `integration_publish`); `guessed_commands` 1; the open, plan and publish fallbacks; no result | C9 (E378), the loop; C2; C3; C12 |
+
+Nothing new appeared. The plan accept still carries `--revision 1`, the plan's own revision and not `expect_rev`, so
+`revision_args` does not count it.
+
 With the alpha passed, the wire track (C12) now follows, by the operator's answer to Q7 above ("this seems after alpha
 when we align the wires").
 
@@ -180,7 +204,8 @@ when we align the wires").
 1. **C10** (E379), after Q3: turns V1 compatible-move green.
 2. **C2** (E351, done; then E163 or A1a-2).
 3. **C3** (E373), after Q4.
-4. **C4** (E329): #596 merged on 2026-11-27, with its driver change; a vertical re-measure is owed before E329 closes.
+4. **C4** (E329, done: #596 merged on 2026-11-27 as `2db9b762`, with its driver change; the re-measure at `8c85f377`
+   showed `revision_args` and `stale_retries` at 0 in all 8 cases it ran).
 5. **C5** (E374, after Q9; E388, the `resolve` decisions' arguments, filed by #597, done by #630; E400, the continue refused at its launch in V2-forced, filed by #630).
 6. **C9** and **C11** (E378, E380), after Q2 and Q6.
 7. **C6** (E375, done: #627), an oracle fix with its `vertical-uat.md` §2 and §3 amendments (Q1 and Q10 answered):

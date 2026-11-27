@@ -287,17 +287,46 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     assert_control_invariants(p)
 
 
-def test_a_stuck_gate_a_promotion_carried_names_its_holder_and_is_the_operators_decision(tmp_path):
-    """Register E87: a promotion carries a stuck gate with the rest of what it leaves behind. Its item names the unit
-    that now holds it, and this route, which edits only a parent's own gate, is refused for it as the operator's
-    decision, naming where it came from, changing nothing."""
+def test_a_promotion_never_carries_a_stuck_gate_and_names_the_item_to_settle_first(tmp_path):
+    """Register E87, #658's review m1: a carry writes mandatory gates, so it meets ``work create``'s rule. A promotion
+    that would carry a gate no route could then replace is refused, changing nothing, naming the item on the ancestor
+    that holds it and that item's route. Following the route, the promotion carries the replacement."""
     p = sample_project(tmp_path)
     epic = create_unit(p, "epic", "Initiative")
     story = create_unit(p, "story", "Objective", parent=epic)
     child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
     seed(p, story, [PROSE])
+    promote = ("work", "promote", child, "--to", "story", "--title", "Wider", "--reason", "scope grew")
+    before = p.rev()
+    out = err(p, *promote)
+    assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "carried_gate_unsatisfiable", out
+    [stuck] = out["details"]["stuck"]
+    item = gate_ops.item_id(story, PROSE)
+    assert (stuck["gate"], stuck["from"], stuck["via"], stuck["item"]) == (PROSE, story, story, item)
+    assert "choice `replace_gate`" in stuck["route"] and f"settle `{item}` first" in out["message"]
+    assert p.rev() == before and "obligation_carry" not in load_control(p.root)
+    no_command_findings(out["message"])
+    assert resolve(p, item, "check:unit")["ok"]
+    carrier = p.lead(*promote)["promoted_to"]
+    assert [e["mandatory_gates"] for e in load_control(p.root)["work"][carrier]["carried_obligations"]] == [
+        ["check:unit"]]
+    assert_control_invariants(p)
+
+
+def test_a_carried_gate_that_became_stuck_names_its_holder_and_the_operators_remedy(tmp_path):
+    """A carried gate can still become stuck when the catalogue changes after the carry (planted here). Its item names
+    the unit that holds it; this route, which edits only a parent's own gate, is refused for it as the operator's
+    decision with its reason code and origin, naming what the operator restores, changing nothing."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective", parent=epic, extra=("--mandatory-gate", "check:unit"))
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
     carrier = p.lead("work", "promote", child, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
         "promoted_to"]
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:
+        s.state["work"][carrier]["carried_obligations"][0]["mandatory_gates"] = [PROSE]
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="the catalogue changed after the carry"))
     item = gate_ops.item_id(carrier, PROSE)
     found = doctor(p)
     assert found["status"] == "FAIL" and f"{carrier} sets mandatory gate `{PROSE}` (stuck: {child})" in found["detail"]
@@ -306,7 +335,8 @@ def test_a_stuck_gate_a_promotion_carried_names_its_holder_and_is_the_operators_
     assert (preview["stuck_units"], preview["replaceable"]) == ([child], False)
     before = p.rev()
     error = refusal(resolve(p, item, "check:unit"))
-    assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["carried_from"] == [story], error
+    assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["reason"] == "carried_gate", error
+    assert error["details"]["carried_from"] == [story] and "The operator restores" in error["message"]
     assert p.rev() == before
     assert_control_invariants(p)
 

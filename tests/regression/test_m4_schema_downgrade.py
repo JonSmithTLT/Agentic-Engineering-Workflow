@@ -55,3 +55,28 @@ def test_the_baseline_engine_refuses_a_control_file_with_an_unfinished_stage(tmp
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
     errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(baseline_control(state, baseline)))
     assert any("Additional properties are not allowed" in e and "'stage_intents'" in e for e in errors), errors
+
+
+def test_an_engine_before_e87_refuses_a_control_file_holding_a_carry(tmp_path):
+    """Register E87 (#658's review, M1): a carried obligation binds the promoted work, and an engine that cannot read
+    one would read only each ancestor's ``policy``, lowering that work. The unit's key is invisible to an older
+    engine's unit schema, so the carry is registered at the top level (``obligation_carry``), which the closed top
+    level of the engine before E87 (``main`` at 92dfe68, vendored) refuses. Planted control: the same project before
+    the promotion validates under it."""
+    from aew.engine.base import V2_ONLY_KEYS
+    from aew.schemas import _registry
+
+    p = sample_project(tmp_path)
+    epic = p.lead("work", "create", "epic", "--title", "Initiative", "--class", "1")["id"]
+    story = p.lead("work", "create", "story", "--title", "Payments", "--class", "1", "--parent", epic,
+                   "--min-descendant-class", "3", "--rationale", "money moves")["id"]
+    ticket = p.lead("work", "create", "ticket", "--title", "Charge", "--class", "1", "--parent", story)["id"]
+    vendored = ROOT / "tests/fixtures/baseline/control.schema.92dfe68.json"
+    # Its references resolve to today's schemas, which E87 leaves unchanged.
+    before_e87 = Draft202012Validator(json.loads(vendored.read_text(encoding="utf-8")), registry=_registry())
+    assert list(before_e87.iter_errors(load_control(p.root))) == []
+    p.lead("work", "promote", ticket, "--to", "story", "--title", "Wider", "--reason", "scope grew")
+    state = load_control(p.root)
+    assert "obligation_carry" in state and "obligation_carry" in V2_ONLY_KEYS
+    errors = sorted(e.message for e in before_e87.iter_errors(state))
+    assert errors == ["Additional properties are not allowed ('obligation_carry' was unexpected)"], errors

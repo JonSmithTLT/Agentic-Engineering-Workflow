@@ -105,11 +105,17 @@ def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catal
             and not G.satisfiable_by(gate, kind, catalogue))
 
 
+CARRIED_GATE = "carried_gate"  # the replacement's refusal of a carried gate (details["reason"]; #658's review, m2)
+
+
 def carried_decision(state: dict[str, Any], owner: str, gate: str) -> str:
-    """Why a carried gate is not this route's: it is ``owner``'s only by a promotion (register E87)."""
+    """Why a carried gate is not this route's, and what settles it: it is ``owner``'s only by a promotion (register
+    E87), which never carries a gate already stuck, so it became stuck when the catalogue changed. The operator
+    restores what satisfied it; a gate written in prose has no such remedy (ADR-0007, amendment of 2026-11-27)."""
     return (f"{owner} holds `{gate}` because a promotion carried it from {', '.join(carried_from(state, owner, gate))} "
             "(carried_obligations), so changing it is the operator's decision: this route replaces only a parent's "
-            "own gate")
+            "own gate. The operator restores what satisfied it (the check, defined and configured in "
+            "policy/checks.yaml and adopted, or the role card)")
 
 
 def _listed(types: tuple[str, ...]) -> str:
@@ -341,7 +347,8 @@ class GateRepair:
                 raise IllegalTransition(f"{owner} is {unit['state']}; a finished unit keeps its gates")
             gates = own_gates(state, owner)
             if carried_from(state, owner, gate):
-                raise OperatorAuthorizationRequired(carried_decision(state, owner, gate), work_id=owner, gate=gate,
+                raise OperatorAuthorizationRequired(carried_decision(state, owner, gate), reason=CARRIED_GATE,
+                                                    work_id=owner, gate=gate,
                                                     carried_from=carried_from(state, owner, gate))
             if gate not in gates:
                 set_by = owners(state, owner, gate)

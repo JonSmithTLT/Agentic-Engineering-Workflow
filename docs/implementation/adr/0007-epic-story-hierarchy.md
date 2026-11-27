@@ -134,7 +134,19 @@ A Story's or Epic's `state` is recomputed inside every Lead commit (`hierarchy.r
   unchanged by a promotion that carries it.
 - The 2026-10-25 check stays, run after the carry over the moved subtree, as the backstop: were a carry ever
   incomplete, the promotion is refused `OBLIGATIONS_DROPPED` as before, changing nothing, with a promotion's remedies.
+- Downgrade (#658's review, M1): the first promotion that carries also registers it at the top level of control
+  state, `obligation_carry: {since_rev, decision}`, retained and v2-only. An engine before E87 would read a file
+  holding a carry and see only each ancestor's `policy`, lowering the carried work; its closed top level refuses the
+  registration, so it does not open the file at all (`tests/regression/test_m4_schema_downgrade.py`).
+- A carry writes mandatory gates, so it meets `work create`'s rule (`gates.unsatisfiable_inherited`, ITEMS 55): a
+  promotion that would carry a gate some unit type under the new unit could never satisfy is refused
+  (`OBLIGATIONS_DROPPED`, reason `carried_gate_unsatisfiable`), changing nothing, naming the item to settle on the
+  ancestor that holds it and that item's route (#658's review, m1).
 - A carried gate is not its holder's own, so the gate repair route (ITEMS 55), which replaces a parent's own gate,
-  does not apply to it: a stuck carried gate's item names its holder and says changing it is the operator's decision.
+  does not apply to it. A carried gate can still become stuck when the catalogue changes after the carry: its item
+  names its holder, and the route refuses it as the operator's decision (`OPERATOR_AUTHORIZATION_REQUIRED`, reason
+  `carried_gate`), naming the remedy, restoring what satisfied it (the check or the card). That is the limit: no
+  command edits a carry, so a carried gate whose evaluator the operator does not restore stays stuck. (A gate already
+  stuck, a prose gate included, never reaches a carry: the promotion refuses it, above.)
 - Carrying dependency edges, scope envelopes, guardrails and impact holds, and a Story or Epic move that carries, stay
   F4's (plan v8 §3.12, §3.12a). A promotion still refuses a change of the inherited dependencies of started work.

@@ -92,6 +92,10 @@ def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
 
 
 CARRIED = "carried_obligations"  # a promoted unit's control-state key (register E87)
+# The top-level registration written with the first carry and retained: an engine before E87 would open a control file
+# holding a carry and read only ``policy``, lowering the carried work, so its closed top level must refuse the file
+# (the downgrade rule of the M4 schema tests; #658's review, M1).
+CARRY_KEY = "obligation_carry"
 
 
 def imposed(state: dict[str, Any], holder: str) -> list[tuple[str, dict[str, Any]]]:

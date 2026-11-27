@@ -503,10 +503,12 @@ def test_a_promotion_whose_carry_is_incomplete_is_refused_changing_nothing(tmp_p
     assert [o["option"] for o in details["instead"]] == ["create_the_parent_then_move", "reclassify_first"]
 
 
-def test_invariant_64_catches_a_reader_that_misses_a_carry_and_a_carry_no_promotion_wrote(tmp_path, monkeypatch):
-    """Invariant 64 (register E87) can fail: its independent walk disagrees with a reader that ignores what a carrier
-    carries, and it refuses a carried entry on a Ticket, or one citing a decision that is not the carrier's
-    promotion."""
+def test_invariant_64_catches_effective_obligations_missing_a_carry_and_a_carry_no_promotion_wrote(tmp_path,
+                                                                                                 monkeypatch):
+    """Invariant 64 (register E87) can fail: its independent walk disagrees with ``gates.effective_obligations`` once
+    the accessor ignores what a carrier carries, and it refuses a carried entry on a Ticket, or one citing a decision
+    that is not the carrier's promotion. (The other readers are proven by
+    ``test_every_reader_of_an_inherited_obligation_reads_the_carried_ones``.)"""
     p = sample_project(tmp_path)
     epic = create_unit(p, "epic", "Initiative")
     gated = create_unit(p, "story", "Payments", parent=epic, extra=("--mandatory-gate", "review_security"))

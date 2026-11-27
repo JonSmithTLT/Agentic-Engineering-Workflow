@@ -718,6 +718,7 @@ None.
 ### `aew.engine.base`
 
 - `aew.engine.authority`
+- `aew.engine.hierarchy`
 - `aew.engine.request_ids`
 - `aew.engine.seams`
 - `aew.engine.store`
@@ -992,6 +993,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.dependencies`
 - `aew.engine.dispatch`
+- `aew.engine.gate_ops`
 - `aew.engine.gates`
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`

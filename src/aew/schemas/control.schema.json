@@ -654,6 +654,16 @@
       "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
+    "obligation_carry": {
+      "description": "Register E87: the project holds obligations a promotion carried (`carried_obligations` on a unit). Registered by the first promotion that carries, and retained, so that an engine that cannot read a carry refuses the file instead of opening it and lowering the carried work (the downgrade rule; #658's review, M1).",
+      "type": "object",
+      "required": ["since_rev", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "since_rev": {"type": "integer", "minimum": 1},
+        "decision": {"type": "string", "pattern": "^D-[0-9]+$"}
+      }
+    },
     "coordination_store": {
       "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Registered once, at init, at adoption of enabled messaging, or at migration of a v1 project with enabled messaging. Threads may exist after the switch is turned off, so the registration is retained.",
       "type": "object",
@@ -719,7 +729,8 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}, {"required": ["control_requests"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]},
+            {"required": ["obligation_carry"]}
           ]
         }
       }

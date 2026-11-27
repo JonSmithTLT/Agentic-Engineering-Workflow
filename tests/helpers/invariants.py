@@ -309,7 +309,9 @@ def carried_obligation_violations(root: Path, full: dict[str, Any]) -> list[str]
     entry carries a floor or a gate, names known units as its origin and the ancestor it was taken from, and its
     decision is the promotion of the carrier's ``promoted_from``. And an independent walk over every live unit's
     ancestors, their own policies and what they carry, gives the floor and non-waivable gates
-    ``gates.effective_obligations`` reads (register E87): a reader that missed a carried obligation fails here."""
+    ``gates.effective_obligations`` reads (register E87), so that reader, or the accessor under it, missing a carried
+    obligation fails here; the other readers are proven by their own test. A carry is registered
+    (``obligation_carry``), so an engine that cannot read one refuses the file."""
     from aew.engine import gates as G
     from aew.knowledge.records import read_record
 
@@ -319,6 +321,8 @@ def carried_obligation_violations(root: Path, full: dict[str, Any]) -> list[str]
         carried = unit.get("carried_obligations")
         if carried is None:
             continue
+        if "obligation_carry" not in full:
+            problems.append(f"64: {wid} carries obligations but the project registers no carry (obligation_carry)")
         if unit["kind"] == "ticket" or not unit.get("promoted_from") or not carried:
             problems.append(f"64: {wid} carries obligations but is not a Story or Epic a promotion created, or "
                             "carries none")

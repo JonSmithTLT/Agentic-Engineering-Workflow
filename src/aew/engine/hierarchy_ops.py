@@ -16,6 +16,7 @@ from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import approval, transitions
+from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 MOVE_LOWERS_OBLIGATIONS = "move_lowers_obligations"  # ObligationsDropped's reason code (details["reason"])
+CARRIED_GATE_UNSATISFIABLE = "carried_gate_unsatisfiable"  # ObligationsDropped's: a carry would hold a stuck gate
 # The states the machine never leaves: no rule starts there. Nothing else revives a unit in one (a parent's DONE and
 # CANCELLED are its recorded closeout and cancellation, and there is no reopen; the archive takes only these states and
 # has no way back). They are the only units a move may leave out of its comparison.
@@ -743,6 +745,26 @@ class Hierarchy:
                 + ". Instead: " + "; or ".join(o["how"] for o in instead),
                 reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=instead)
 
+    def _refuse_carrying_a_stuck_gate(self, state: dict[str, Any], work_id: str, kind: str,
+                                      carried: list[dict[str, Any]]) -> None:
+        """A carry is a writer of mandatory gates, so it meets ``work create``'s rule
+        (``gates.unsatisfiable_inherited``, ITEMS 55): a gate some unit type under the new ``kind`` could never satisfy
+        is not carried, or it would sit where no route replaces it. The promotion is refused, naming the item to settle
+        on the ancestor that holds the gate first, with that item's route (#658's review, m1)."""
+        catalogue = self.roles.gate_catalogue()
+        stuck = [(entry, gate, found) for entry in carried for gate in entry["mandatory_gates"]
+                 if (found := G.unsatisfiable_inherited(gate, kind, catalogue)) is not None]
+        if stuck:
+            items = [{"gate": gate, "from": entry["from"], "via": entry["via"],
+                      "item": GR.item_id(entry["via"], gate), "why": found.why,
+                      "route": GR.route(state, entry["via"], gate, catalogue)} for entry, gate, found in stuck]
+            raise ObligationsDropped(
+                f"this promotion of {work_id} would carry a gate that can never be satisfied under the new {kind}, "
+                "where no route could replace it: " + "; ".join(
+                    f"`{i['gate']}` from {i['via']} ({i['why']})" for i in items)
+                + ". Instead: settle " + "; and ".join(f"`{i['item']}` first: {i['route']}" for i in items)
+                + ", then retry the promotion", reason=CARRIED_GATE_UNSATISFIABLE, stuck=items)
+
     def work_move(self, *, token: str, work_id: str, parent: str | None,
                   reason: str, prior_value: str | None = None) -> dict[str, Any]:
         if not (reason and reason.strip()):
@@ -801,7 +823,9 @@ class Hierarchy:
             # What the ancestors left behind imposed goes with the work, onto the unit it now sits under (E87).
             carried = carry(state, work_id, new_parent, decision)
             if carried:
+                self._refuse_carrying_a_stuck_gate(state, work_id, to, carried)
                 state["work"][new_id][H.CARRIED] = carried
+                state.setdefault(H.CARRY_KEY, {"since_rev": ctx.session.revision + 1, "decision": decision})
             # A promoted Ticket's attempt ends with its replan, so its own inherited edges may change in the move.
             if unit["kind"] == "ticket" and unit["state"] != "REPLAN_REQUIRED":
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")

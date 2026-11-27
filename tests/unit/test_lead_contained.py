@@ -1110,8 +1110,8 @@ def test_the_leads_git_reads_that_write_a_file_or_run_a_program_ask_and_the_plai
 
 def test_the_leads_git_reads_ask_for_a_comparison_outside_the_working_tree_and_for_a_read_naming_an_env_file():
     """The designer, 2026-11-06: the Lead's auto-allowed git reads also ask for comparisons outside the working tree
-    and for reads naming `.env` files. Other spellings and shell globs aren't matched; a containment-level mask is the
-    follow-on. The text says so, and `.env.example` stays readable. Nothing here runs git."""
+    and for reads naming `.env` files. Other spellings and shell globs aren't matched: containment hides the project's
+    `.env` files, and the contained Lead's text says so; `.env.example` stays readable. Nothing here runs git."""
     rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
     for command in ("git diff --no-index a b", "git diff --no-index -- a b", "git diff /dev/null b",
                     "git diff --stat /dev/null b", "git diff .env", "git diff HEAD -- .env.local", "git log -p -- .env",
@@ -1119,7 +1119,9 @@ def test_the_leads_git_reads_ask_for_a_comparison_outside_the_working_tree_and_f
         assert effect(rules, "shell", command) == "ask", command
     for command in ("git diff", "git log -5", "git show HEAD", "git diff HEAD -- src/aew", "git log --oneline -3"):
         assert effect(rules, "shell", command) == "allow", command
-    assert "`.env` files aren't readable (`.env.example` is)" in projection.LEAD_SYSTEM
+    assert "your read tool refuses them (`.env.example` is readable)" in " ".join(projection.LEAD_SYSTEM.split())
+    assert "Containment hides the project's `.env` files" in projection.lead_contained_text({})
+    assert "Containment hides" not in projection.LEAD_SYSTEM  # an uncontained Lead has no masks, so no such claim
     assert "a `.env` file named among them" in " ".join(projection.LEAD_SYSTEM.split())
 
 

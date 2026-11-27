@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import select
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from typing import Any
 
 import pytest
 from host_env import GUARDED
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
@@ -429,6 +431,166 @@ def test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it(lead_l
     assert [reason for _, reason in cli] == ["lead_masked"] * 3, cli
     assert all(code in ("EROFS", "EACCES") for code, _ in cli), cli
     assert key.read_text() == "SYNTHETIC-KEY\n" and not (keys / "new").exists()  # nothing changed on the host
+
+
+def test_containment_hides_the_projects_env_files_from_every_read_in_the_leads_sandbox(lead_lab):
+    """Containment hides the project's `.env` files, as the Lead's system text states, at any depth: inside, a read by
+    name, a search of the tree and a read from another program all find each empty, and a write fails; `.env.example`
+    reads as it is, nested too. The host's files are unchanged. Synthetic values only."""
+    lab = lead_lab
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    for name in (".env", ".env.local", "apps/web/.env"):
+        (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    for name in (".env.example", "apps/web/.env.example"):
+        (lab.repo / name).write_text("SYNTHETIC-DOC=\n")
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    nested = lab.repo / "apps" / "web" / ".env"
+    done = lab.sh(layout, f"cat .env .env.local apps/web/.env; grep -rh SYNTHETIC . 2>/dev/null; "
+                          f"{sys.executable} -I -c \"print(open({str(nested)!r}).read())\"; "
+                          f"echo x > .env; echo rc=$?; echo y > apps/web/.env; echo rc=$?; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout and "rc=0" not in done.stdout, done.stdout
+    assert done.stdout.count("SYNTHETIC-DOC=") == 2, done.stdout  # the search ran, and both documentation copies stay
+    assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+# A nested repository, a submodule and names that begin or end with a space: each `.env` there is the project's too
+HARD_ENV = ("nested/.env", "nested/deep/.env.local", "sm/.env", " .env", ".env.local ")
+
+
+def plant_hard_env_files(repo: Path, outside: Path) -> None:
+    """Synthetic `.env` files where a scan by git alone would not look: in a repository nested in the project, in a
+    submodule's checkout, and under names with a leading or trailing space."""
+    (repo / "nested" / "deep").mkdir(parents=True)
+    assert git("init", "-q", cwd=repo / "nested").returncode == 0
+    source = outside / "sm-source"
+    source.mkdir(parents=True)
+    assert git("init", "-q", cwd=source).returncode == 0
+    (source / "m.txt").write_text("m\n")
+    git("add", "m.txt", cwd=source)
+    assert git("commit", "-q", "-m", "m", cwd=source).returncode == 0
+    added = git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "sm", cwd=repo)
+    assert added.returncode == 0, added.stderr
+    for name in HARD_ENV:
+        (repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+
+
+def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_in_the_leads_sandbox(
+        lead_lab):
+    """Containment hides the project's `.env` files at any depth, wherever git would not list them: in a nested
+    repository, in a submodule's checkout, and under a name with a leading or trailing space. Inside the Lead's sandbox
+    a read by name, a search of the tree and another program's read find each empty. Synthetic values only."""
+    lab = lead_lab
+    plant_hard_env_files(lab.repo, lab.root)
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    names = " ".join(shlex.quote(n) for n in HARD_ENV)
+    first = lab.repo / HARD_ENV[0]
+    done = lab.sh(layout, f"cat {names}; grep -rh SYNTHETIC . 2>/dev/null; "
+                          f"{sys.executable} -I -c \"print(open({str(first)!r}).read())\"; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    assert (lab.repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+def no_namespace(monkeypatch) -> None:
+    """The `.env` scan as on a host where no user namespace can read a directory: its fallback, masking it whole."""
+    monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, "no user namespace in this test"))
+
+
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
+def test_a_directory_the_leads_env_scan_cannot_read_is_empty_in_its_sandbox_however_its_mode_is_set(
+        lead_lab, monkeypatch, scan):
+    """The scan fails closed: a directory it cannot list as the launching account (searchable but not readable, 0311),
+    and one holding an entry whose type it cannot read, are read through a user namespace of the account, so a `.env`
+    file in either is masked on its own, or where that cannot run they are masked whole; either way the file cannot be
+    read by name from the Lead's sandbox, even after its mode is changed back. The layout is built as an unprivileged
+    account lists (``listing_as_unprivileged``), as these tests may run as root. Synthetic values only."""
+    lab = lead_lab
+    if scan == "fallback":
+        no_namespace(monkeypatch)
+    for d in ("locked", "odd"):
+        (lab.repo / d).mkdir()
+        (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "odd" / "entry").write_text("x\n")
+    try:
+        (lab.repo / "locked").chmod(0o311)
+        with listing_as_unprivileged(monkeypatch, unreadable=(str(lab.repo / "odd" / "entry"),)):
+            layout = lab.layout(env={"HOME": str(lab.home)})
+        done = lab.sh(layout, "cat locked/.env odd/.env; chmod 700 locked; echo rc=$?; cat locked/.env; "
+                              "grep -rh SYNTHETIC . 2>/dev/null; echo end")
+    finally:
+        (lab.repo / "locked").chmod(0o700)
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    # masked whole, the directory is read-only too; read through the namespace, only its `.env` file is masked
+    assert ("rc=0" in done.stdout) == (scan == "namespace"), done.stdout
+    where = layout.env_read_through if scan == "namespace" else layout.env_dirs
+    assert {str((lab.repo / d).resolve()) for d in ("locked", "odd")} <= set(where), (scan, layout.env_dirs)
+    assert (lab.repo / "locked" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
+def test_a_lead_that_makes_a_directory_unreadable_finds_it_empty_from_the_next_launch(lead_lab, monkeypatch, scan):
+    """A Lead that takes a directory's permissions away in one session cannot read a `.env` file there in the next by
+    giving them back or moving the directory: the next launch's scan cannot list the directory, or can list it but not
+    check what it holds, so it reads it through a user namespace of the account and masks the file on its own, or,
+    where that cannot run, masks the directory whole, and the launch still starts. Each mode the Lead could set is
+    tried, the readable but unsearchable ones (400, 600, 444) among them. Synthetic values only."""
+    lab = lead_lab
+    if scan == "fallback":
+        no_namespace(monkeypatch)
+    sec = lab.repo / "sec"
+    sec.mkdir()
+    (sec / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    try:
+        for mode in ("000", "300", "100", "400", "600", "444"):
+            first = lab.sh(lab.layout(env={"HOME": str(lab.home)}), f"chmod {mode} sec; echo rc=$?")
+            assert "rc=0" in first.stdout, first.stdout + first.stderr
+            with listing_as_unprivileged(monkeypatch):
+                layout = lab.layout(env={"HOME": str(lab.home)})
+            assert str(sec.resolve()) in (layout.env_read_through if scan == "namespace" else layout.env_dirs), mode
+            done = lab.sh(layout, "chmod 700 sec; cat sec/.env; grep -rh SYNTHETIC sec 2>/dev/null; "
+                                  "mv sec sec2 && cat sec2/.env && mv sec2 sec; echo end")
+            assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+            assert "SYNTHETIC-ENV-VALUE" not in done.stdout, (mode, done.stdout)
+            sec.chmod(0o700)
+    finally:
+        sec.chmod(0o700)
+
+
+def test_a_lead_that_moves_a_directory_under_a_git_directory_finds_its_env_file_empty_from_the_next_launch(lead_lab):
+    """The scan leaves no directory out by its name: a Lead that moves a directory holding a `.env` file under a
+    directory named `.git` in one session, or gives it that name, reads the file as empty in the next, there and
+    wherever it moves the directory back to. Only the project's own `.aew` and `.git` are left out, and nothing can be
+    moved under either: each is a read-only mount of its own in the Lead's tree. Synthetic values only."""
+    lab = lead_lab
+    for d in ("apps/web", "apps/api", "apps/cli"):
+        (lab.repo / d).mkdir(parents=True)
+        (lab.repo / d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    first = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
+                   "mkdir -p stash/.git && mv apps/web stash/.git/web; echo rc=$?; mv apps/api apps/.git; echo rc=$?; "
+                   "mv apps/.git .aew/api 2>/dev/null; mv apps/cli .git/cli 2>/dev/null || echo refused; "
+                   "cat stash/.git/web/.env apps/.git/.env apps/cli/.env; echo end")
+    assert first.stdout.split() == ["rc=0", "rc=0", "refused", "end"], first.stdout + first.stderr
+    assert (lab.repo / "stash" / ".git" / "web" / ".env").is_file() and (lab.repo / "apps" / ".git" / ".env").is_file()
+    done = lab.sh(lab.layout(env={"HOME": str(lab.home)}),
+                  "cat stash/.git/web/.env apps/.git/.env; grep -rh SYNTHETIC . 2>/dev/null; "
+                  "mv stash/.git/web web && cat web/.env; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
+def test_a_lead_on_a_branch_named_like_a_env_file_has_a_working_git_in_its_sandbox(lead_lab):
+    """The project's own git directory is left out of the `.env` scan (a read-only mount of its own in every layout),
+    so a checked-out branch whose name matches a `.env` file's keeps its ref: inside the Lead's sandbox git reads the
+    branch, its commit and a clean status."""
+    lab = lead_lab
+    assert git("checkout", "-q", "-b", "rel.env", cwd=lab.repo).returncode == 0
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    assert not [p for p in layout.env_masks if L._within(p, str((lab.repo / ".git").resolve()))]
+    done = lab.sh(layout, "git rev-parse --abbrev-ref HEAD && git log -1 --format=%s && git status --porcelain "
+                          "--untracked-files=no && echo end")
+    assert done.stdout.split() == ["rel.env", "base", "end"], done.stdout + done.stderr
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

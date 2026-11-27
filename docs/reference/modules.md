@@ -1570,6 +1570,7 @@ None.
 - `aew.capability.store`
 - `aew.errors`
 - `aew.harness.containment.client_cert`
+- `aew.harness.opencode.adapter`
 - `aew.harness.opencode.login`
 - `aew.hoststate`
 - `aew.workspace.git`
@@ -1877,6 +1878,7 @@ None.
 
 ### `aew.harness.opencode.projection`
 
+- `aew.harness.containment.layout`
 - `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.wake_queue`

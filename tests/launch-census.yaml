@@ -83,6 +83,16 @@ starts:
   call: bwrap_argv
   classes: [not_agent_context]
   reason: counts the layout's own arguments before any bubblewrap starts (addendum 9); nothing starts
+- site: src/aew/harness/containment/layout.py::_walk_in_namespace
+  call: run
+  classes: [not_agent_context]
+  reason: AEW's own .env walk, from AEW's own package path, in a user namespace of the account with the host read-only,
+    for the directories the account cannot read; it reads names and modes only, and nothing an agent wrote runs
+- site: src/aew/harness/containment/layout.py::for_check
+  call: bwrap_argv
+  classes: [not_agent_context]
+  reason: counts a check sandbox's arguments, after its .env masks are scanned again, before the check starts; nothing
+    starts
 - site: src/aew/harness/containment/probe.py::_self_test
   call: bwrap_argv
   classes: [contained]

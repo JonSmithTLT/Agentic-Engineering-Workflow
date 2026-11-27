@@ -1763,6 +1763,36 @@ entries:
   - run: 45941273545
     job: 140316044983
     at: '2026-11-27T04:58:56Z'
+- id: shared-clock-session-deadline
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: wall clock
+  cause: >-
+    The test moved time.time and time.monotonic a year ahead on the shared time module, for every thread. The
+    worker's session-deadline thread wakes at least once a minute and read the moved time.monotonic, so it took the
+    deadline as passed and ended the worker (exit 70) 1.4 s into the test, about 24 minutes before the real deadline; the
+    controller reported a crash.
+  owner: CI timing fixes
+  row: E75
+  test: tests/integration/test_maps_v01_profile.py::test_no_map_freshness_turns_current_on_a_timer
+  evidence:
+  - run: 45997128944
+    job: 140518111471
+    at: '2026-11-27T13:43:22Z'
+    note: >-
+      integration 14/14 (windows-latest), main's push run at 136635cf. The bundle's worker-gw2-deadline.txt
+      (autopsy session-4088-0cc85d80) and the test's autopsy reason ("the session deadline passed") name the
+      worker's own deadline exit; its stacks put the test at line 221, inside the patch.
+  closure:
+    pr: 655
+    cause: >-
+      sleep_patch.patch_clock moves a clock for the patching thread only, as patch_sleep does for sleep, and the
+      test moves its clock with it.
+    test: tests/unit/test_sleep_patches.py::test_a_clock_a_test_moves_a_year_ahead_is_never_the_clock_another_thread_reads
+    proof: fault injection
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

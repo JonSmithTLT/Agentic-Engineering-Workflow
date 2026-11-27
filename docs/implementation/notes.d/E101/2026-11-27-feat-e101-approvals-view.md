@@ -16,7 +16,9 @@ reason now names the dashboard half of the typed-surface projection, which E18 t
 or approves, and the dashboard never connects to G3: it only checks that `request.sock`'s path exists.
 
 **What remains.** Three choices for the review to confirm, each the builder's reading of the slice. The overview shows
-an approval's expiry time, not its time left, so its validator does not change every second (`aew status` shows the
-time left). The FYI approval states show as contract kind `anomaly`, severity `info`, since 0.1.3's known kinds have
-no FYI one. The existing alert events name no answer home from BOY-06's set. The /waiting read, with each source's read time, the agent lane
-and the `operator_endpoint` home stay with E102.
+an approval's expiry time, not its time left, so its validator does not change every second (`aew status` shows the time
+left). The FYI approval states show as contract kind `anomaly`, severity `info`, since 0.1.3's known kinds have no FYI
+one. The existing alert events name no answer home from BOY-06's set. The /waiting read, with each source's read time,
+the agent lane and the `operator_endpoint` home stay with E102. `aew status` prints no read time, so the same state
+gives the same output to the Lead's relayed read; BOY-04 asks each source for its read time, and putting it in E102's
+/waiting read rather than in `aew status` is for the designer to confirm (#660's quick check, QC-m1, tracked here).

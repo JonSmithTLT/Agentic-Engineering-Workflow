@@ -222,7 +222,9 @@ def read_all(directory: Path | None = None) -> list[Found]:
         return out
     if not directory.is_dir():
         raise NotADirectoryError(str(directory))
-    paths = sorted(directory.glob("*" + SUFFIX))
+    # os.listdir raises when the directory cannot be listed; Path.glob would swallow that and read as empty (#660's
+    # quick check, QC-m2).
+    paths = sorted(directory / name for name in os.listdir(directory) if name.endswith(SUFFIX))
     for path in paths:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

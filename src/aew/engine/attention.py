@@ -420,7 +420,9 @@ def for_engine(engine: Any, *, contradictions: list[str], now: datetime | None =
 
 def render(view: dict[str, Any], now: datetime | None = None) -> list[str]:
     """``aew status``'s block: each item with its tier and its source's own time, an approval's time left, and where
-    to answer; then each host source's outcome, read time and coverage."""
+    to answer; then each host source's outcome and coverage. It prints no read time, so the same state gives the same
+    output to the Lead's relayed read; each source's read time is the /waiting read's (E102; #660's quick check,
+    QC-m1)."""
     from aew import g3records as R
 
     now = now or datetime.now(UTC)

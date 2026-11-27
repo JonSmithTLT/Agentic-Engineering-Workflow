@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -146,6 +147,23 @@ def test_unsupported_unreadable_and_empty_each_show_as_themselves_and_never_as_z
     assert len(unknown) == 2 and all(i["state"] == "?" and i["tier"] == AT.ATTENTION for i in unknown)
     (tmp_path / "file").write_text("not a directory", encoding="utf-8")
     items, source = view(tmp_path / "file", at(10))  # a directory that cannot be listed: the source failed (m3)
+    assert items == [] and source.outcome == "unavailable" and source.line.startswith(AT.UNLISTABLE)
+
+
+def test_a_records_directory_that_exists_but_cannot_be_listed_is_a_failed_source_not_nothing_waiting(
+        tmp_path: Path, monkeypatch) -> None:
+    """A listing refused by the host (here simulated, as root may list anything) reads as the source failing, never
+    as nothing waiting (#660's quick check, QC-m2)."""
+    (tmp_path / "locked").mkdir()
+    real = os.listdir
+
+    def listdir(path):
+        if Path(path) == tmp_path / "locked":
+            raise PermissionError(13, "denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(os, "listdir", listdir)
+    items, source = view(tmp_path / "locked", at(10))
     assert items == [] and source.outcome == "unavailable" and source.line.startswith(AT.UNLISTABLE)
 
 

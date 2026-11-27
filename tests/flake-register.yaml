@@ -1736,6 +1736,32 @@ entries:
       serial 1/1 (windows-latest) on PR 597 at 72461d35, which changes no dashboard code. The node is the 61st of
       the lane's collection order, worked out from the progress line; the bundle (autopsy session-2044-b089d1f6) was
       not read when this was recorded.
+- id: wake-serving-close-sharing
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: closed
+  class: file sharing
+  cause: >-
+    The Lead broker's close removed its wake serving mark (wake_queue.clear_serving) with a bare unlink, the only
+    change to that file without a Windows sharing retry: a reader holding it open (Python's open never grants
+    FILE_SHARE_DELETE) refused the removal with WinError 32, and the refusal escaped close before the bridge, the
+    steering loop and the liveness record were closed. The holder is not named: the wake thread had been joined,
+    no other thread in the test reads the mark, and an ordinary failure's autopsy keeps no file-holder list.
+  owner: CI timing fixes
+  test: tests/integration/test_lead_wake_status.py::test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_close
+  closure:
+    pr: 637
+    cause: >-
+      The mark's removal waits out a sharing refusal as a replace does (util.unlink_with_retry), and a refusal that
+      outlasts the wait is reported without stopping the close.
+    test: tests/integration/test_lead_wake_status.py::test_a_broker_close_clears_its_mark_while_a_reader_holds_it
+    proof: fault injection
+  evidence:
+  - run: 45941273545
+    job: 140316044983
+    at: '2026-11-27T04:58:56Z'
 census:
 - test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
   platform: windows

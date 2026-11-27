@@ -355,13 +355,32 @@ def write_temp(directory: Path, data: bytes, prefix: str) -> Path:
     return Path(tmp)
 
 
+SHARING_WAIT_S = 5.0  # how long a replace or a removal waits out a Windows sharing refusal before it raises
+
+
 def replace_with_retry(src: Path, dst: Path) -> None:
     # Windows refuses to replace a file another process holds open (editors,
     # indexers, antivirus). Retry briefly instead of failing the transition.
-    deadline = time.monotonic() + 5.0
+    deadline = time.monotonic() + SHARING_WAIT_S
     while True:
         try:
             os.replace(src, dst)
+            return
+        except PermissionError:
+            if not IS_WINDOWS or time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
+
+
+def unlink_with_retry(path: Path) -> None:
+    """Remove ``path`` if present, waiting out a Windows sharing refusal as :func:`replace_with_retry` does: Python's
+    ``open`` never grants ``FILE_SHARE_DELETE``, so any reader that has the file open (a lock-free reader in this or
+    another process, an indexer, antivirus) makes a removal fail with WinError 32 for as long as it holds it. The last
+    refusal is raised."""
+    deadline = time.monotonic() + SHARING_WAIT_S
+    while True:
+        try:
+            path.unlink(missing_ok=True)
             return
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:

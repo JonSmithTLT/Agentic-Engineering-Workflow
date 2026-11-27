@@ -18,7 +18,8 @@ import tokenize
 from collections import Counter
 from collections.abc import Iterable
 
-DIRECT_NAMES = frozenset({"atomic_write", "create_exclusive", "write_temp", "replace_with_retry", "write_file"})
+DIRECT_NAMES = frozenset({"atomic_write", "create_exclusive", "write_temp", "replace_with_retry", "unlink_with_retry",
+                          "write_file"})
 OS_NAMES = frozenset({"replace", "rename", "link", "symlink", "remove", "unlink", "rmdir", "mkdir", "makedirs",
                       "truncate"})
 SHUTIL_NAMES = frozenset({"copy", "copy2", "copyfile", "copytree", "move", "rmtree"})

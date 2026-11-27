@@ -58,7 +58,7 @@ from typing import Any, NamedTuple, Protocol
 from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog
-from aew.util import atomic_write
+from aew.util import atomic_write, unlink_with_retry
 
 WAKES_REL = "local/lead-wakes.json"
 SERVING_REL = "local/lead-wakes.serving"  # the generation whose broker posts wakes (the Lead's fallback reads it)
@@ -152,8 +152,8 @@ def clear_serving(aew_root: Path, generation: int) -> None:
         marked = serving(aew_root)
     except PermissionError:
         return  # an unreadable mark could belong to a newer broker
-    if marked == generation:
-        (Path(aew_root) / SERVING_REL).unlink(missing_ok=True)
+    if marked == generation:  # a reader holding the mark refuses a removal on Windows: wait it out, as a replace does
+        unlink_with_retry(Path(aew_root) / SERVING_REL)
 
 
 def serving(aew_root: Path) -> int | None:

@@ -139,6 +139,6 @@ a Ticket only; every other non-mutating Ticket is unchanged.
   shared `.git`, for example with `git update-ref`, as any read-only invocation can today. For a ref review that write
   is indistinguishable from the operator moving their own branch: it is reported as "the ref has moved", and never
   accepted as the review's subject, since the pin is a sha. Containment is the control.
-- **Invariants** 63 to 65 (`tests/helpers/invariants.py`); 10, 11, 13 and 14 read the pinned kind and the commit
+- **Invariants** 65 to 67 (`tests/helpers/invariants.py`); 10, 11, 13 and 14 read the pinned kind and the commit
   dependencies and inputs were judged at.
 - Evidence: `tests/unit/test_ref_review.py`, `tests/integration/test_ref_review_flow.py`.

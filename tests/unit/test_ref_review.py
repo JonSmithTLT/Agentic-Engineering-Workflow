@@ -613,3 +613,18 @@ def test_a_reviewer_of_a_ref_review_checks_out_with_the_ref_reviews_env(project,
                                              scope="ticket")
     assert seen == [R.CHECKOUT_ENV] and reviewer["observation"]["commit"] == out["execution"]["ref_pin"]["commit"]
     assert_control_invariants(project)
+
+
+@pytest.mark.parametrize("merge_base", ["tree", "unknown"])
+def test_rule_65_flags_a_pin_whose_merge_base_is_not_a_commit(project, tmp_path, merge_base):
+    """#661's quick check, m5: the ancestry check passes an unreadable pair only for a reviewed commit gc dropped;
+    a merge-base that is a tree, or an id the repository does not hold, is a violation."""
+    from invariants import load_control, ref_review_violations, with_cold
+
+    wid = ref_ticket(project, tmp_path)
+    engine(project).work_dispatch(token=project.token, work_id=wid)
+    state, _ = with_cold(project.root, load_control(project.root))
+    pin = state["work"][wid]["execution"]["ref_pin"]
+    assert ref_review_violations(project.root, state) == []
+    pin["merge_base"] = git("rev-parse", "main^{tree}", cwd=project.root) if merge_base == "tree" else "1" * 40
+    assert any("merge-base is not an ancestor" in v for v in ref_review_violations(project.root, state))

@@ -16,6 +16,7 @@ from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import approval, transitions
+from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 MOVE_LOWERS_OBLIGATIONS = "move_lowers_obligations"  # ObligationsDropped's reason code (details["reason"])
+CARRIED_GATE_UNSATISFIABLE = "carried_gate_unsatisfiable"  # ObligationsDropped's: a carry would hold a stuck gate
 # The states the machine never leaves: no rule starts there. Nothing else revives a unit in one (a parent's DONE and
 # CANCELLED are its recorded closeout and cancellation, and there is no reopen; the archive takes only these states and
 # has no way back). They are the only units a move may leave out of its comparison.
@@ -127,7 +129,8 @@ def instead_of_lowering(state: dict[str, Any], operation: str, work_id: str, new
     existing one, or one created with what the old parent chain required (``old_chain``, the moved unit's
     ``gates.effective_obligations`` before the move: its floor and non-waivable gates). A promotion chooses its own new
     parent, so that parent is created with what the units would lose (a floor only where a class would be lost) and the
-    unit moved under it instead (carrying them onto the promoted parent is a follow-on). Where a class or a verifier
+    unit moved under it instead (a promotion carries them, so it meets this only if its carry were incomplete:
+    ``Hierarchy._refuse_lowered_obligations``). Where a class or a verifier
     would be lost, each unit's own class raised first meets that part (``reclassify_to``; a unit no class meets is left
     out), never a gate."""
     post = gates_policy.get("post_integration") or {}
@@ -164,6 +167,22 @@ def instead_of_lowering(state: dict[str, Any], operation: str, work_id: str, new
                         by_class.items(), reverse=True)) + f" first (work reclassify), then retry the {operation}"
                            + (f"; that does not keep {' or '.join(kept_not)}" if kept_not else "")})
     return out
+
+
+def carry(state: dict[str, Any], work_id: str, new_parent: str | None, decision: str) -> list[dict[str, Any]]:
+    """What a promotion of ``work_id`` carries onto the unit it creates under ``new_parent`` (register E87; F4 plan v8
+    §3.12, its floor and gate part): every obligation an ancestor it leaves behind imposes on it (an ancestor of
+    ``work_id`` below ``new_parent``), its own or one a promotion carried onto it, so the new unit binds its
+    descendants with exactly what they inherited before. Each entry names its origin (``from``), the ancestor left
+    behind that held it (``via``) and this promotion (``decision``). The values are copied: the records stay
+    immutable. Empty when nothing left behind imposes an obligation."""
+    chain = H.ancestors(state, work_id)
+    left = chain[:chain.index(new_parent)] if new_parent is not None else chain
+    return [{"from": origin, "via": via, "decision": decision,
+             "min_descendant_class": policy.get("min_descendant_class"),
+             "mandatory_gates": list(policy.get("mandatory_gates") or []), "rationale": policy.get("rationale")}
+            for via in left for origin, policy in H.imposed(state, via)
+            if policy.get("min_descendant_class") is not None or policy.get("mandatory_gates")]
 
 
 def _describe_lost(lost: dict[str, Any]) -> str:
@@ -712,9 +731,10 @@ class Hierarchy:
         """A reorganization preserves the proof obligations of the work it moves (EW-U05.g): no unit still to be
         proven ends with a lower effective class, fewer inherited non-waivable gates, or its integration validated by
         checks where a verifier validated it. A move or promotion that would lower any of them is refused, naming what
-        each unit would lose and what to do instead. Refused rather than carried: a unit's own policy binds only its
-        descendants (ADR-0007), so a move could not give the moved unit itself what its old ancestors required without
-        a second source of obligations."""
+        each unit would lose and what to do instead. A move is refused rather than carried: a unit's own policy binds
+        only its descendants (ADR-0007), so a move could not give the moved unit itself what its old ancestors required
+        without a second source of obligations. A promotion carries them onto the unit it creates (``carry``; register
+        E87), so for a promotion this is the backstop over the carry: it is met only if the carry were incomplete."""
         dropped = lowered_obligations(before, inherited_obligations(state, list(before), gates_policy))
         if dropped:
             instead = instead_of_lowering(state, operation, work_id, new_parent, dropped, old_chain, gates_policy)
@@ -724,6 +744,26 @@ class Hierarchy:
                 + "; ".join(f"{w}: {_describe_lost(lost)}" for w, lost in sorted(dropped.items()))
                 + ". Instead: " + "; or ".join(o["how"] for o in instead),
                 reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=instead)
+
+    def _refuse_carrying_a_stuck_gate(self, state: dict[str, Any], work_id: str, kind: str,
+                                      carried: list[dict[str, Any]]) -> None:
+        """A carry is a writer of mandatory gates, so it meets ``work create``'s rule
+        (``gates.unsatisfiable_inherited``, ITEMS 55): a gate some unit type under the new ``kind`` could never satisfy
+        is not carried, or it would sit where no route replaces it. The promotion is refused, naming the item to settle
+        on the ancestor that holds the gate first, with that item's route (#658's review, m1)."""
+        catalogue = self.roles.gate_catalogue()
+        stuck = [(entry, gate, found) for entry in carried for gate in entry["mandatory_gates"]
+                 if (found := G.unsatisfiable_inherited(gate, kind, catalogue)) is not None]
+        if stuck:
+            items = [{"gate": gate, "from": entry["from"], "via": entry["via"],
+                      "item": GR.item_id(entry["via"], gate), "why": found.why,
+                      "route": GR.route(state, entry["via"], gate, catalogue)} for entry, gate, found in stuck]
+            raise ObligationsDropped(
+                f"this promotion of {work_id} would carry a gate that can never be satisfied under the new {kind}, "
+                "where no route could replace it: " + "; ".join(
+                    f"`{i['gate']}` from {i['via']} ({i['why']})" for i in items)
+                + ". Instead: settle " + "; and ".join(f"`{i['item']}` first: {i['route']}" for i in items)
+                + ", then retry the promotion", reason=CARRIED_GATE_UNSATISFIABLE, stuck=items)
 
     def work_move(self, *, token: str, work_id: str, parent: str | None,
                   reason: str, prior_value: str | None = None) -> dict[str, Any]:
@@ -780,6 +820,12 @@ class Hierarchy:
             decision = self.k.new_decision(ctx, "promotion", f"{work_id} promoted to a {to}: {title}",
                                          work_unit=work_id, reason=reason)
             new_id = self._create_promoted(ctx, to, title, cls, new_parent, work_id)
+            # What the ancestors left behind imposed goes with the work, onto the unit it now sits under (E87).
+            carried = carry(state, work_id, new_parent, decision)
+            if carried:
+                self._refuse_carrying_a_stuck_gate(state, work_id, to, carried)
+                state["work"][new_id][H.CARRIED] = carried
+                state.setdefault(H.CARRY_KEY, {"since_rev": ctx.session.revision + 1, "decision": decision})
             # A promoted Ticket's attempt ends with its replan, so its own inherited edges may change in the move.
             if unit["kind"] == "ticket" and unit["state"] != "REPLAN_REQUIRED":
                 transitions.check(unit["state"], "REPLAN_REQUIRED", "transition")
@@ -791,7 +837,7 @@ class Hierarchy:
             if request is not None:
                 ctx.request_ref = (new_id, decision)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,
-                "revision": ctx.session.committed_revision}
+                "carried_obligations": carried, "revision": ctx.session.committed_revision}
 
     def _create_promoted(self, ctx: Any, kind: str, title: str, risk_class: int, parent: str | None,
                          promoted_from: str) -> str:

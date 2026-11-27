@@ -12,6 +12,7 @@ from typing import Any
 
 from aew import process_kind
 from aew.engine.authority import CUSTODY_PUBLISH, OPERATOR_OPS, require_custodian, require_lead
+from aew.engine.hierarchy import CARRY_KEY
 from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
 from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
@@ -42,7 +43,8 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS)
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS,
+                CARRY_KEY)
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized

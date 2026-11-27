@@ -299,53 +299,62 @@ def control_violations(root: Path) -> list[str]:
     problems += disposition_violations(root, hot, state)
     # 62. Register E126: the scope corrections.
     problems += scope_correction_violations(root, hot, state)
-    # 63-65. Register E168: ref reviews, their pins and who observes what.
+    # 64. Register E87: obligations a promotion carried (63 is the StageIntent continue's, above).
+    problems += carried_obligation_violations(root, state)
+    # 65-67. Register E168: ref reviews, their pins and who observes what.
     problems += ref_review_violations(root, state)
     return problems
 
 
 def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
-    """63. A unit that names a ref (``review_ref``) is a non-mutating Ticket; every attempt of it (current and in
+    """65. A unit that names a ref (``review_ref``) is a non-mutating Ticket; every attempt of it (current and in
         ``execution_history``) that started has a ``ref_pin`` whose ``name`` is the unit's ref, whose ``merge_base`` is
         an ancestor of both its ``commit`` and its ``authoritative_commit`` (checked with git), whose executor's
         observation is at ``commit``, and whose ``expected_kind`` is ``ref_review``. No unit without one has a pin or
         expects a ref review.
-    64. Every ``ref_review`` record was produced by its unit's attempt executor (an investigator, at scope
+    66. Every ``ref_review`` record was produced by its unit's attempt executor (an investigator, at scope
         ``observation``), its ``reviewed_ref`` equals that attempt's pin less what it noticed of uncommitted work, and
         its ``evaluated_snapshot.base_revision`` is the pin's ``commit``.
-    65. Every reviewer or verifier of a ``ref_review`` record observes the pin's ``commit``."""
+    67. Every reviewer or verifier of a ``ref_review`` record observes the pin's ``commit``."""
     problems: list[str] = []
     invocations = state["invocations"]
 
+    def held(commit: str) -> bool:
+        return _git("cat-file", "-e", f"{commit}^{{commit}}", cwd=root).returncode == 0
+
     def ancestor(a: str, b: str) -> bool | None:
-        """None when git cannot say: a commit gc dropped after its ref was rewritten (review of #661, M2)."""
+        """None only when git cannot say because gc dropped the descendant after its ref was rewritten (review of #661,
+        M2) while the merge-base is a commit the repository holds; any other unreadable pair is a violation (#661's
+        quick check, m5)."""
         code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode
-        return {0: True, 1: False}.get(code)
+        if code in (0, 1):
+            return code == 0
+        return None if held(a) and not held(b) else False
 
     for wid, u in sorted(state["work"].items()):
         attempts = [x for x in [u.get("execution") or {}, *u.get("execution_history", [])] if x]
         ref = u.get("review_ref")
         if not ref:
             if any(x.get("ref_pin") or x.get("expected_kind") == E.REF_REVIEW for x in attempts):
-                problems.append(f"63: {wid} names no ref, yet an attempt of it is pinned to one or expects a ref "
+                problems.append(f"65: {wid} names no ref, yet an attempt of it is pinned to one or expects a ref "
                                 "review")
             continue
         if u["kind"] != "ticket" or u.get("mutating"):
-            problems.append(f"63: {wid} names a ref to review and is not a non-mutating Ticket")
+            problems.append(f"65: {wid} names a ref to review and is not a non-mutating Ticket")
         by_attempt = {}
         for x in attempts:
             pin = x.get("ref_pin")
             by_attempt[x.get("attempt")] = pin
             if not pin or pin.get("name") != ref or x.get("expected_kind") != E.REF_REVIEW:
-                problems.append(f"63: {wid} attempt {x.get('attempt')} is not pinned to {ref} or does not expect a "
+                problems.append(f"65: {wid} attempt {x.get('attempt')} is not pinned to {ref} or does not expect a "
                                 "ref review")
                 continue
             if False in (ancestor(pin["merge_base"], pin["commit"]),
                          ancestor(pin["merge_base"], pin["authoritative_commit"])):
-                problems.append(f"63: {wid} attempt {x.get('attempt')}'s merge-base is not an ancestor of both commits")
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s merge-base is not an ancestor of both commits")
             obs = (invocations.get(x.get("invocation") or "") or {}).get("observation") or {}
             if obs and obs.get("commit") != pin["commit"]:
-                problems.append(f"63: {wid} attempt {x.get('attempt')}'s executor observes {obs.get('commit')}, not "
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s executor observes {obs.get('commit')}, not "
                                 f"the pinned {pin['commit']}")
         records = _evidence(root, wid)
         for ev in records.values():
@@ -355,17 +364,67 @@ def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
             pin = by_attempt.get(ev.get("attempt")) or {}
             if inv.get("role") != "investigator" or inv.get("scope") != "observation" or \
                     inv.get("attempt") != ev.get("attempt"):
-                problems.append(f"64: {ev['id']} was not produced by its attempt's executor")
+                problems.append(f"66: {ev['id']} was not produced by its attempt's executor")
             if ev.get("reviewed_ref") != {k: v for k, v in pin.items() if k != "uncommitted"}:
-                problems.append(f"64: {ev['id']} reviewed {ev.get('reviewed_ref')}, not its attempt's pin")
+                problems.append(f"66: {ev['id']} reviewed {ev.get('reviewed_ref')}, not its attempt's pin")
             if ev["evaluated_snapshot"].get("base_revision") != pin.get("commit"):
-                problems.append(f"64: {ev['id']} was evaluated at another commit than its attempt's pin")
+                problems.append(f"66: {ev['id']} was evaluated at another commit than its attempt's pin")
         for ev in records.values():
             subject = records.get((ev.get("subject") or {}).get("id") or "")
             if ev["kind"] in {"review", "verification"} and subject and subject["kind"] == E.REF_REVIEW:
                 obs = (invocations.get(ev["producer"]["invocation"], {}).get("observation") or {})
                 if obs.get("commit") != subject["reviewed_ref"]["commit"]:
-                    problems.append(f"65: {ev['id']} observed {obs.get('commit')}, not the reviewed commit")
+                    problems.append(f"67: {ev['id']} observed {obs.get('commit')}, not the reviewed commit")
+    return problems
+
+
+def carried_obligation_violations(root: Path, full: dict[str, Any]) -> list[str]:
+    """64. ``carried_obligations`` is held only by a Story or Epic a promotion created, written by that promotion: each
+    entry carries a floor or a gate, names known units as its origin and the ancestor it was taken from, and its
+    decision is the promotion of the carrier's ``promoted_from``. And an independent walk over every live unit's
+    ancestors, their own policies and what they carry, gives the floor and non-waivable gates
+    ``gates.effective_obligations`` reads (register E87), so that reader, or the accessor under it, missing a carried
+    obligation fails here; the other readers are proven by their own test. A carry is registered
+    (``obligation_carry``), so an engine that cannot read one refuses the file."""
+    from aew.engine import gates as G
+    from aew.knowledge.records import read_record
+
+    problems: list[str] = []
+    work = full["work"]
+    for wid, unit in sorted(work.items()):
+        carried = unit.get("carried_obligations")
+        if carried is None:
+            continue
+        if "obligation_carry" not in full:
+            problems.append(f"64: {wid} carries obligations but the project registers no carry (obligation_carry)")
+        if unit["kind"] == "ticket" or not unit.get("promoted_from") or not carried:
+            problems.append(f"64: {wid} carries obligations but is not a Story or Epic a promotion created, or "
+                            "carries none")
+        for entry in carried:
+            if entry["min_descendant_class"] is None and not entry["mandatory_gates"]:
+                problems.append(f"64: {wid} carries an entry from {entry['from']} with no floor and no gate")
+            if entry["from"] not in work or entry["via"] not in work:
+                problems.append(f"64: {wid} carries from {entry['from']} via {entry['via']}, not both known units")
+            path = Path(root) / ".aew" / "decisions" / f"{entry['decision']}.md"
+            meta = read_record(path, "decision").meta if path.is_file() else {}
+            if meta.get("type") != "promotion" or meta.get("work_unit") != unit.get("promoted_from"):
+                problems.append(f"64: {wid}'s carried entry from {entry['from']} cites {entry['decision']}, not the "
+                                f"promotion of {unit.get('promoted_from')}")
+    no_paths: dict[str, Any] = {"risk_paths": {str(c): [] for c in range(5)}}
+    archived = set(full.get("_archived") or [])
+    for wid in sorted(set(work) - archived):
+        floor, gates = None, set()
+        anc = work[wid].get("parent")
+        while anc:
+            for policy in [work[anc].get("policy") or {}, *(work[anc].get("carried_obligations") or [])]:
+                if policy.get("min_descendant_class") is not None:
+                    floor = max(floor or 0, policy["min_descendant_class"])
+                gates.update(policy.get("mandatory_gates") or [])
+            anc = work[anc].get("parent")
+        found = G.effective_obligations(full, wid, no_paths)
+        if (found["floor"], set(found["non_waivable"])) != (floor, gates):
+            problems.append(f"64: {wid} inherits floor {found['floor']} and gates {sorted(found['non_waivable'])}; "
+                            f"its ancestors and what they carry impose floor {floor} and gates {sorted(gates)}")
     return problems
 
 

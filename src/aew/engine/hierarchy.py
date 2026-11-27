@@ -91,6 +91,30 @@ def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
     return out
 
 
+CARRIED = "carried_obligations"  # a promoted unit's control-state key (register E87)
+# The top-level registration written with the first carry and retained: an engine before E87 would open a control file
+# holding a carry and read only ``policy``, lowering the carried work, so its closed top level must refuse the file
+# (the downgrade rule of the M4 schema tests; #658's review, M1).
+CARRY_KEY = "obligation_carry"
+
+
+def imposed(state: dict[str, Any], holder: str) -> list[tuple[str, dict[str, Any]]]:
+    """What ``holder`` imposes on its descendants, each with the unit whose policy set it: its own ``policy``, then
+    what a promotion carried onto it from the ancestors it left behind (``carried_obligations``; register E87,
+    ADR-0007's amendment of 2026-11-27). Both bind its descendants only, and both hold ``min_descendant_class`` and
+    ``mandatory_gates``."""
+    unit = state["work"][holder]
+    own = [(holder, unit["policy"])] if unit.get("policy") else []
+    return own + [(entry["from"], entry) for entry in unit.get(CARRIED) or []]
+
+
+def ancestor_obligations(state: dict[str, Any], work_id: str) -> list[tuple[str, str, dict[str, Any]]]:
+    """Every obligation ``work_id``'s ancestors impose on it, nearest first, as ``(holder, origin, policy)``: the one
+    walk every reader of an inherited floor or mandatory gate uses, so a carried obligation reads like its origin's
+    own (F4 plan v8 §3.12a, the accessor's floor and gate part)."""
+    return [(anc, origin, policy) for anc in ancestors(state, work_id) for origin, policy in imposed(state, anc)]
+
+
 def depth(state: dict[str, Any], work_id: str) -> int:
     return len(ancestors(state, work_id))
 

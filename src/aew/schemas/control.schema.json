@@ -654,6 +654,16 @@
       "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
+    "obligation_carry": {
+      "description": "Register E87: the project holds obligations a promotion carried (`carried_obligations` on a unit). Registered by the first promotion that carries, and retained, so that an engine that cannot read a carry refuses the file instead of opening it and lowering the carried work (the downgrade rule; #658's review, M1).",
+      "type": "object",
+      "required": ["since_rev", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "since_rev": {"type": "integer", "minimum": 1},
+        "decision": {"type": "string", "pattern": "^D-[0-9]+$"}
+      }
+    },
     "coordination_store": {
       "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Registered once, at init, at adoption of enabled messaging, or at migration of a v1 project with enabled messaging. Threads may exist after the switch is turned off, so the registration is retained.",
       "type": "object",
@@ -719,7 +729,8 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}, {"required": ["control_requests"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]},
+            {"required": ["obligation_carry"]}
           ]
         }
       }
@@ -915,6 +926,23 @@
               "path": {"type": "string", "pattern": "^work/[^/]+/stage-intents/SI-[0-9]{4,}\\.yaml$"},
               "sha256": {"$ref": "#/$defs/sha256"},
               "closed_rev": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "carried_obligations": {
+          "description": "Register E87: what a promotion carried onto the Story or Epic it created from the ancestors it left behind, which binds that unit's descendants exactly as its own policy does (aew.engine.hierarchy.imposed). Written by the promotion only; each entry names its origin (`from`), the ancestor left behind that held it (`via`) and the promotion decision.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "via", "decision", "min_descendant_class", "mandatory_gates"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"type": "string"},
+              "via": {"type": "string"},
+              "decision": {"type": "string"},
+              "min_descendant_class": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+              "mandatory_gates": {"type": "array", "items": {"type": "string"}},
+              "rationale": {"type": ["string", "null"]}
             }
           }
         },

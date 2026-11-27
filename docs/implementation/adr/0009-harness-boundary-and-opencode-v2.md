@@ -2279,8 +2279,13 @@ system text that said the same: the guarantee is containment's, and the `read` d
   2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
   `.env` is also a virtual environment's usual name. A `.env`-named link to a file is masked by its target, which hides
   it at both paths, where that target is in the project, or is itself named like a `.env` file, or is a plain file in
-  the operator's home directory, and is not what a run needs: never the interpreter, AEW's package, the git metadata,
-  the store, one of the run's own directories, or a file in a system tree (`/etc`, `/usr`, `/proc`, `/sys`, `/dev`).
+  the operator's home directory, and is not one of the files a run is known to need: never the interpreter, AEW's
+  package, the harness binary the run starts (at its real path, from `binary_command`), the git metadata, the store,
+  one of the run's own directories, or a file in a system tree (`/etc`, `/usr`, `/proc`, `/sys`, `/dev`). That set is
+  all that is kept (the quick check of #592 at 99082b59, m1): another plain file in the home directory that a run uses,
+  such as the git configuration or a toolchain installed under the home directory, reads as empty inside contained runs
+  while a `.env`-named link points at it; that hides, and shows nothing, and the operator's own tools outside the
+  sandbox are not affected.
   A masked target outside the project is named on the Lead's launch line with its link (`env_outside`). Any other link
   so named masks nothing and is named on the launch line with why (`env_links`): one to a file elsewhere under
   another name, which reads the same by its own path, one into `.aew` or the project's own `.git`, and one whose
@@ -2354,6 +2359,9 @@ system text that said the same: the guarantee is containment's, and the `read` d
     namespace cannot read the directory: there, a Lead that takes away the permissions of a directory a run needs
     stops the project's contained launches, its own next one and the workers' included, until the operator gives them
     back. That hides, and shows nothing;
+  - a `.env`-named link to a plain file in the home directory masks it in contained runs unless it is in the set a
+    run is known to need (above), so a home file a run uses outside that set reads as empty there while the link
+    stands (the operator's ruling of 2026-11-27, "Yes agree with your recommendations on 592");
   - a `.env` file in the project's own git directory is not masked: that is git's.
 
   Anything else is named in `containment.hide`.

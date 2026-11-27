@@ -1545,6 +1545,7 @@ None.
 - `aew.capability.store`
 - `aew.errors`
 - `aew.harness.containment.client_cert`
+- `aew.harness.opencode.adapter`
 - `aew.harness.opencode.login`
 - `aew.hoststate`
 - `aew.workspace.git`

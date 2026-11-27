@@ -2170,6 +2170,73 @@ def test_a_env_named_link_to_a_plain_file_in_the_home_directory_masks_it_and_nam
                                        if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
 
 
+def test_a_env_link_never_masks_the_harness_binary_the_run_starts(tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+    """The harness binary a run starts is one of what it needs (the quick check of #592 at 99082b59, m1): a
+    `.env`-named link to it, installed under the home directory and reached through a link as an installer leaves it,
+    masks nothing and is named with why, so every contained launch still starts it. Another plain file there is still
+    masked."""
+    from aew.harness.opencode import adapter
+
+    base = tmp_path / "w"
+    real_bin = base / ".opencode" / "versions" / "1" / "opencode"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\n")
+    real_bin.chmod(0o755)
+    (base / ".opencode" / "bin").mkdir()
+    (base / ".opencode" / "bin" / "opencode").symlink_to(real_bin)
+    monkeypatch.setenv(adapter.BIN_ENV, str(base / ".opencode" / "bin" / "opencode"))
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "tool.env").symlink_to(base / ".opencode" / "bin" / "opencode")
+    (repo / "app.env").symlink_to(creds)
+    layout = run_layout(base, "implementer", home=str(base))
+    real = os.path.realpath(repo)
+    assert os.path.realpath(real_bin) not in layout.env_masks and os.path.realpath(creds) in layout.env_masks
+    assert [p for p, _ in layout.env_links] == [os.path.join(real, "tool.env")]
+    assert os.path.realpath(real_bin) in layout.env_needs
+    assert os.path.realpath(real_bin) not in set(C.for_check(layout).env_masks)
+
+
+def test_each_check_sandbox_rescans_with_the_home_rule_so_a_env_link_to_a_home_file_stays_masked(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """A check's sandbox scans the project again with the run's home directory and its own directories
+    (``for_check``; the quick check of #592 at 99082b59, m2): a `.env`-named link to a plain file in the home
+    directory masks that file in the check's sandbox as in the run's, and one to the run's own file still does not."""
+    base = tmp_path / "w"
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    note = base / "run" / "scratch" / "note.txt"
+    note.parent.mkdir(parents=True)
+    note.write_text("x\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "app.env").symlink_to(creds)
+    (repo / "note.env").symlink_to(note)
+    layout = run_layout(base, "implementer", home=str(base))
+    check = C.for_check(layout)
+    assert os.path.realpath(creds) in check.env_masks and os.path.realpath(note) not in check.env_masks
+    argv = C.bwrap_argv(check, ["check"])
+    assert os.path.realpath(creds) in {argv[i + 2] for i, a in enumerate(argv[:-2])
+                                       if a == "--ro-bind" and argv[i + 1] == check.mask_file}
+
+
+@pytest.mark.skipif(not os.path.isfile("/etc/passwd"), reason="needs a plain file in a system tree")
+def test_a_env_link_to_a_file_in_a_system_tree_is_never_masked_even_where_the_home_directory_holds_it(tmp_path):
+    """A `.env`-named link's target in a system tree (:data:`SYSTEM_TREES`) is never masked, even where the home
+    directory given holds that tree (the quick check of #592 at 99082b59, m2): it masks nothing
+    and is named with why."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sys.env").symlink_to("/etc/passwd")
+    scan = L.project_env_masks(repo, (), home="/etc", needs=())
+    assert os.path.realpath("/etc/passwd") not in scan.files
+    assert [p for p, _ in scan.links] == [os.path.join(os.path.realpath(repo), "sys.env")]
+
+
 def test_a_project_whose_top_cannot_be_searched_is_refused_naming_the_entry_and_the_fix(tmp_path, monkeypatch):
     """A refusal says what was refused, why, and what to do (the quick check of #592, m1): a project that can be
     listed but not searched is refused naming the entry at its top that could not be checked, and the permission to

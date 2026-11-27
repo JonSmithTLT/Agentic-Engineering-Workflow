@@ -69,7 +69,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from aew import hoststate
-from aew.errors import ContainmentUnavailable
+from aew.errors import AEWError, ContainmentUnavailable
 from aew.harness.containment import client_cert
 
 # What each archetype may do to the workspace (or observation) it was dispatched for. Exhaustive by design: an
@@ -232,7 +232,7 @@ class Layout:
     project: str | None = None               # the project whose .env scan each sandbox of this layout repeats
     env_keep: tuple[str, ...] = ()           # what a run needs: a `.env` link's target there is never masked
     env_home: str | None = None              # the operator's home: a link's target there may be masked (EnvRules)
-    env_needs: tuple[str, ...] = ()          # the run's own directories: a link's target there never is
+    env_needs: tuple[str, ...] = ()          # the run's own directories and harness binary: a target there never is
     env_outside: tuple[tuple[str, str], ...] = ()  # (link, target): a target outside the project, masked, named
     env_read_through: tuple[str, ...] = ()   # directories this account cannot read, read through a user namespace
     env_fallback: str | None = None          # why the scan could not read ``env_dirs`` through one, where it could not
@@ -751,7 +751,7 @@ class EnvRules(NamedTuple):
     """Where a `.env`-named link's target is masked (:func:`_env_link`). ``keep``: what a run needs (the interpreter,
     AEW's package, the git metadata), never masked, and the project's own ``.git`` is left out of the walk where it is
     here. ``home``: the operator's home directory, where a target outside the project under another name is masked.
-    ``needs``: the run's own directories, where such a target never is."""
+    ``needs``: the run's own directories and the harness binary it starts, where such a target never is."""
 
     keep: tuple[str, ...] = ()
     home: str | None = None
@@ -904,7 +904,8 @@ def project_env_masks(project: str | os.PathLike[str], keep: tuple[str, ...] = (
 
     A `.env`-named link to a file is masked by its target, which the mask hides at both paths, where that target is in
     the project, or is itself named like a `.env` file, or is a plain file in the operator's ``home`` that is not one
-    of the run's own directories (``needs``) nor in a system tree (:data:`SYSTEM_TREES`); never where it is in ``keep``
+    of the run's own directories nor the harness binary it starts (``needs``) nor in a system tree
+    (:data:`SYSTEM_TREES`); never where it is in ``keep``
     (what a run needs: the interpreter, AEW's package, the git metadata), or in the project's own ``.aew`` or ``.git``.
     A target outside the project that is masked is named (``outside``). Any other such link masks nothing and is named
     with why (``links``), as its target reads the same by its own path, and so is one whose target cannot be followed
@@ -1824,6 +1825,17 @@ def _tool_fields(run: Path, tools: tuple[Any, ...] | None, hide_host: tuple[str,
         t.where == bind.OWN_NAME for t in plan) else None, "tool_binds": tuple(binds)}
 
 
+def _harness_binary() -> tuple[str, ...]:
+    """The harness binary a run starts, at its real path, from its owner (``opencode.adapter.binary_command``), so a
+    `.env` link's target is never that binary; none where there is none, as the launch then refuses on its own."""
+    from aew.harness.opencode.adapter import binary_command
+
+    try:
+        return (_real(binary_command()[-1]),)
+    except (AEWError, OSError):
+        return ()
+
+
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
@@ -1905,8 +1917,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     # file each, no directory emptied and refilled (the review of #592).
     # A `.env` link's target is never masked where it is what a run needs (the operator's ruling of 2026-11-27).
     env_keep = tuple(dict.fromkeys((*readonly, *interpreter_binds(), _real(_aew_package()))))
-    # the run's own directories: a `.env` link's target in the home directory is never masked there
-    own: list[str] = [*env_keep, str(ws), *writable, _real(run), *((_real(runs),) if runs else ())]
+    # the run's own directories, and the harness binary it starts: a `.env` link's target in the home directory is
+    # never masked there (the quick check of #592 at 99082b59, m1)
+    own: list[str] = [*env_keep, str(ws), *writable, _real(run), *((_real(runs),) if runs else ()), *_harness_binary()]
     env_needs = tuple(dict.fromkeys(own))
     scan = project_env_masks(project, env_keep, home=_real(home), needs=env_needs)
     covered = (*plan.dirs, *plan.left_out)

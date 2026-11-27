@@ -14,7 +14,14 @@ from pathlib import Path
 HELPERS = Path(__file__).resolve().parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
-from aewflow import create_investigation, create_unit, dispatch, sample_project, submit_record  # noqa: E402
+from aewflow import (  # noqa: E402
+    create_investigation,
+    create_unit,
+    dispatch,
+    plan_unit,
+    sample_project,
+    submit_record,
+)
 from invariants import assert_control_invariants, load_control, write_control_v1  # noqa: E402
 
 DOCUMENT = '# What calc.core provides\n\nIt defines `add(a, b)`.\n\n\tA tab, a "quote" and a \\ backslash stay.\n'
@@ -298,3 +305,297 @@ def test_the_read_takes_no_credential_and_changes_nothing(tmp_path):
     res = p.aew("record", "body", rec, env={"AEW_LEAD_TOKEN": ""})
     assert res.returncode == 0 and res.stdout == DOCUMENT and p.rev() == before
     assert p.aew("record", "body", rec, "--expect-rev", str(before)).returncode == 2  # no such option
+
+
+# ------------------------------------------------------------------ a plan revision and a decision (the operator's
+# ruling of 2026-11-27: "any record" includes them)
+
+PLAN_V1 = "Read calc/core.py and its tests; record facts and open questions.\n"  # what create_investigation plans
+PLAN_V2 = "1. Read calc/core.py.\n\n\t2. Read its \"tests\" too.\n"
+
+
+def plan_of(p, wid: str, revision: int) -> dict:
+    return p.ok("record", "body", wid, "--plan", str(revision), "--json")
+
+
+def test_record_body_prints_a_named_plan_revision_as_written_and_says_if_it_is_the_accepted_one(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    proposal = tmp_path / "plan-v2.md"
+    proposal.write_text(PLAN_V2, encoding="utf-8", newline="\n")
+    p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(proposal), "--reason", "read the tests too")
+    assert p.aew("record", "body", wid, "--plan", "2").stdout == PLAN_V2  # as written: no JSON around it
+    assert p.aew("record", "body", wid, "--plan", "1").stdout == PLAN_V1
+    first, second = plan_of(p, wid, 1), plan_of(p, wid, 2)
+    assert first == {"id": wid, "kind": "plan", "work_unit": wid, "archived": False, "plan_revision": 1,
+                     "status": "accepted", "accepted": True, "supersedes": None, "body": PLAN_V1}
+    assert {k: second[k] for k in ("plan_revision", "status", "accepted", "supersedes", "body")} == {
+        "plan_revision": 2, "status": "proposed", "accepted": False, "supersedes": 1, "body": PLAN_V2}
+    p.lead("plan", "accept", wid, "--revision", "2")
+    assert (plan_of(p, wid, 1)["status"], plan_of(p, wid, 1)["accepted"]) == ("superseded", False)
+    assert (plan_of(p, wid, 2)["status"], plan_of(p, wid, 2)["accepted"]) == ("accepted", True)
+    assert refusal(p, wid)["details"]["reason"] == "no_body"  # without --plan, the unit's own record, as before
+    assert_control_invariants(p)
+
+
+def test_an_archived_units_plan_revision_is_printed_from_its_bundle(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    role, _ = dispatch(p, wid)
+    rec = submit_record(role, "discovery_record")["evidence"]
+    p.lead("evidence", "ingest", wid, "--evidence", rec)
+    p.lead("work", "accept", wid)
+    assert wid not in load_control(p.root)["work"]  # archived: the bundle holds its plans
+    found = plan_of(p, wid, 1)
+    assert (found["archived"], found["accepted"], found["body"]) == (True, True, PLAN_V1)
+    plan = p.root / ".aew" / "work" / wid / "plan-v1.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "A step nobody planned.\n", encoding="utf-8", newline="\n")
+    error = refusal_of(p, wid, "--plan", "1")
+    assert (error["code"], error["details"]["reason"]) == ("INTEGRITY_ERROR", "not_pinned")
+    assert NEXT_STEP in error["message"] and "nobody planned" not in error["message"]
+
+
+def test_a_plan_revision_that_does_not_match_its_pinned_hash_is_refused(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    plan = p.root / ".aew" / "work" / wid / "plan-v1.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "Also delete the tests.\n", encoding="utf-8", newline="\n")
+    for mode in ((), ("--json",)):
+        res = p.aew("record", "body", wid, "--plan", "1", *mode)
+        assert res.returncode != 0 and res.stdout == "" and "delete the tests" not in res.stderr
+    error = refusal_of(p, wid, "--plan", "1")
+    assert (error["code"], error["details"]["reason"]) == ("INTEGRITY_ERROR", "not_pinned")
+    assert error["details"]["path"] == f"work/{wid}/plan-v1.md" and error["details"]["held_by"] == [wid]
+    assert NEXT_STEP in error["message"] and "not the content its unit recorded" in error["message"]
+    plan.unlink()
+    error = refusal_of(p, wid, "--plan", "1")
+    assert (error["code"], error["details"]["reason"]) == ("INTEGRITY_ERROR", "unreadable")
+
+
+def test_an_unknown_plan_revision_is_refused_with_the_revisions_there_are(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    plan_unit(p, tmp_path, wid, "A second plan.\n", reason="replanned")
+    for unknown in ("3", "0", "-1"):
+        error = refusal_of(p, wid, "--plan", unknown)
+        assert (error["code"], error["details"]) == ("NOT_FOUND", {"reason": "unknown_revision", "revisions": [1, 2]})
+        assert "its revisions are 1, 2" in error["message"] and f"aew work show {wid}" in error["message"]
+    bare = create_unit(p, "ticket", "Never planned", extra=("--scope", "calc/**"))
+    error = refusal_of(p, bare, "--plan", "1")
+    assert error["details"]["reason"] == "unknown_revision" and "no plan was ever proposed" in error["message"]
+    for not_a_unit in ("T-9999", "INV-0001", "D-0001", "../../state/control"):
+        error = refusal_of(p, not_a_unit, "--plan", "1")
+        assert (error["code"], error["details"]["reason"]) == ("NOT_FOUND", "unknown_record"), not_a_unit
+        assert "--plan reads a plan revision of a work unit" in error["message"]
+    assert p.aew("record", "body", wid, "--plan", "two").returncode == 2  # a number, as `plan accept --revision`
+
+
+def depend(p, tmp_path) -> tuple[str, str]:
+    """A dependency change: a decision with a body (what was added and removed). Its unit and its decision id."""
+    first = create_unit(p, "ticket", "First", extra=("--scope", "calc/**"))
+    second = create_unit(p, "ticket", "Second", extra=("--scope", "calc/**"))
+    return second, p.lead("work", "depend", second, "--add", first, "--reason", "first goes first")["decision"]
+
+
+def test_record_body_prints_a_decision_record_as_written(tmp_path):
+    p = sample_project(tmp_path)
+    wid, decision = depend(p, tmp_path)
+    first = load_control(p.root)["work"][wid]["depends_on"][0]["id"]
+    text = f"added: ['{first}']\nremoved: []\n"
+    assert body_of(p, decision) == text
+    assert p.ok("record", "body", decision, "--json") == {
+        "id": decision, "kind": "decision", "work_unit": wid, "archived": False, "decision_type": "dependency_change",
+        "summary": f"{wid} dependencies changed", "body": text}
+    assert_control_invariants(p)
+
+
+def test_record_body_prints_a_decision_without_a_body_as_its_recorded_fields(tmp_path):
+    """Most decisions hold what was decided in their fields alone, and the Lead has no dashboard: such a decision
+    answers with its record as written, under the same pin."""
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    path = next(d for d in sorted((p.root / ".aew" / "decisions").glob("D-*.md"))
+                if "plan_acceptance" in d.read_text(encoding="utf-8") and wid in d.read_text(encoding="utf-8"))
+    decision, recorded = path.stem, path.read_text(encoding="utf-8")
+    assert recorded.startswith("---\n") and recorded.endswith("---\n")  # fields only: no body after them
+    assert body_of(p, decision) == recorded  # its fields in the file's own order and format
+    found = p.ok("record", "body", decision, "--json")
+    assert {k: found[k] for k in ("id", "kind", "work_unit", "archived", "decision_type", "record")} == {
+        "id": decision, "kind": "decision", "work_unit": wid, "archived": False, "decision_type": "plan_acceptance",
+        "record": recorded}
+    assert found["fields"]["id"] == decision and found["fields"]["summary"] == found["summary"]
+    assert "body" not in found
+    # And it is held to its pin like any other: changed, it is refused.
+    path.write_text(recorded.replace("plan_acceptance", "operator_override"), encoding="utf-8", newline="\n")
+    assert damaged(p, decision, "not_pinned")["details"]["path"] == f"decisions/{decision}.md"
+
+
+def test_a_decision_that_is_not_what_its_transition_recorded_is_refused(tmp_path):
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    path = p.root / ".aew" / "decisions" / f"{decision}.md"
+    recorded = path.read_bytes()
+    path.write_bytes(recorded.replace(b"dependency_change", b"operator_override") + b"Approved by the operator.\n")
+    for mode in ((), ("--json",)):
+        res = p.aew("record", "body", decision, *mode)
+        assert res.returncode != 0 and res.stdout == "" and "Approved by" not in res.stderr
+    error = damaged(p, decision, "not_pinned")
+    assert error["details"]["path"] == f"decisions/{decision}.md"
+    assert "not the content its transition recorded" in error["message"]
+    path.write_bytes(recorded)
+    assert p.ok("record", "body", decision, "--json")["decision_type"] == "dependency_change"  # restored, it reads
+    # A decision AEW never recorded, planted with a well-formed record: no transition wrote it, so it is refused.
+    planted = path.with_name("D-0999.md")
+    planted.write_bytes(recorded.replace(decision.encode(), b"D-0999"))
+    error = damaged(p, "D-0999", "not_pinned")
+    assert "not one the transition log records writing" in error["message"]
+
+
+def test_an_unknown_decision_is_refused_and_says_where_decision_ids_come_from(tmp_path):
+    p = sample_project(tmp_path)
+    for unknown in ("D-9999", "D-", "D-1x"):
+        error = refusal(p, unknown)
+        assert (error["code"], error["details"]["reason"]) == ("NOT_FOUND", "unknown_record"), unknown
+        assert "aew history log --since 0 --kind decision.recorded" in error["message"]
+
+
+def test_a_decision_recorded_while_the_clock_ran_fast_still_reads_after_the_clock_is_corrected(tmp_path,
+                                                                                                    monkeypatch):
+    """Recorded while the host clock was days fast (a resumed VM, say), then the clock was corrected: every later
+    commit is dated before the decision. The walk must still reach the transition that wrote it, not refuse a genuine
+    decision as changed (the review of #650, F1)."""
+    from aew.engine import base, store
+    from aew.engine.api import Engine
+
+    p = sample_project(tmp_path)
+    first = create_unit(p, "ticket", "First", extra=("--scope", "calc/**"))
+    second = create_unit(p, "ticket", "Second", extra=("--scope", "calc/**"))
+    fast = "2099-01-01T00:00:00Z"
+    with monkeypatch.context() as m:  # the decision and the commit that wrote it, both on the fast clock
+        m.setattr(base, "utc_now", lambda: fast)
+        m.setattr(store, "utc_now", lambda: fast)
+        decision = Engine.discover(p.root).work_depend(token=p.token, work_id=second, add=[first],
+                                                       reason="recorded on a fast clock")["decision"]
+    assert f"at: '{fast}'" in (p.root / ".aew" / "decisions" / f"{decision}.md").read_text(encoding="utf-8")
+    for title in ("Later", "Later still"):  # the corrected clock: these commits are dated before the decision
+        create_unit(p, "ticket", title, extra=("--scope", "calc/**"))
+    assert body_of(p, decision) == f"added: ['{first}']\nremoved: []\n"
+
+
+def test_a_decision_recorded_before_the_transition_log_began_is_refused_without_a_claim_of_damage(tmp_path):
+    """A project an engine older than the transition log (ADR-0012) started holds decisions no transition pins. Such
+    a decision is not printed, since nothing can check it, but it is not reported as changed outside AEW either (the
+    review of #650, F2). Planted here as a control state without the log's marker, as such an engine left it."""
+    from aew.engine.store import serialize_control
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    state = load_control(p.root)
+    state.pop("outbox")
+    (p.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    error = refusal(p, decision)
+    assert (error["code"], error["details"]) == ("INTEGRITY_ERROR",
+                                                  {"reason": "before_log", "path": f"decisions/{decision}.md"})
+    assert "before the transition log began" in error["message"] and "this project has no transition log" in \
+        error["message"]
+    assert "changed outside AEW" not in error["message"] and NEXT_STEP not in error["message"]
+
+
+def test_a_planted_decision_above_the_counter_with_an_early_time_is_refused_as_not_pinned(tmp_path):
+    """A planted record cannot pass for one recorded before the log began by claiming an early time: its id was never
+    issued, so it is damage (the quick check of #650, G1)."""
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    recorded = (p.root / ".aew" / "decisions" / f"{decision}.md").read_text(encoding="utf-8")
+    at = next(line for line in recorded.splitlines() if line.startswith("at: "))
+    planted = recorded.replace(decision, "D-0999").replace(at, "at: '2001-01-01T00:00:00Z'")
+    (p.root / ".aew" / "decisions" / "D-0999.md").write_text(planted, encoding="utf-8", newline="\n")
+    error = damaged(p, "D-0999", "not_pinned")
+    assert "before the transition log began" not in error["message"]
+
+
+def test_a_deleted_decision_is_refused_as_damage_not_as_an_unknown_id(tmp_path):
+    """Its number was issued (it is within the decision counter), so a missing file is a record destroyed, not one
+    that never existed (the review of #650, F3)."""
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    path = p.root / ".aew" / "decisions" / f"{decision}.md"
+    recorded = path.read_bytes()
+    path.unlink()
+    error = damaged(p, decision, "unreadable")
+    assert error["details"]["path"] == f"decisions/{decision}.md"
+    issued = load_control(p.root)["counters"]["decision"]
+    assert refusal(p, f"D-{issued + 1:04d}")["details"]["reason"] == "unknown_record"  # beyond it: never issued
+    path.write_bytes(recorded)  # restored: D-0001 exists again, and the malformed forms of its number must not reach it
+    assert decision == "D-0001" and body_of(p, decision)
+    for malformed in ("D-1", "D-0", "D-0000"):  # not an id AEW issues, whatever its number (the quick check, G2)
+        assert refusal(p, malformed)["details"]["reason"] == "unknown_record", malformed
+
+
+def test_a_damaged_transition_log_refuses_a_decision_read_with_a_reason(tmp_path):
+    """The log is the decision's pin. A link of its chain changed between the head and the decision refuses the read
+    as damage, typed like every other refusal of this read (the review of #650, F4)."""
+    from aew.util import dump_yaml, load_yaml
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    after = p.rev() + 1
+    create_unit(p, "ticket", "Later", extra=("--scope", "calc/**"))
+    log = p.root / ".aew" / "state" / "log" / f"{after:06d}.yaml"
+    record = load_yaml(log.read_text(encoding="utf-8"))
+    record["summary"] = "a summary nobody committed"
+    log.write_text(dump_yaml(record), encoding="utf-8", newline="\n")
+    error = damaged(p, decision, "log_damaged")
+    assert "chain is broken" in error["message"]
+
+
+def test_a_decision_read_never_resolves_the_events_of_the_transitions_it_passes(tmp_path, monkeypatch):
+    """The pin is in each record's writes; its events are not needed, so an overflow sidecar the read never uses
+    cannot refuse it (the review of #650, F5). In process, with the event resolution made to fail."""
+    from aew.engine import outbox
+    from aew.engine.api import Engine
+    from aew.errors import IntegrityError
+
+    p = sample_project(tmp_path)
+    _, decision = depend(p, tmp_path)
+    create_unit(p, "ticket", "Later", extra=("--scope", "calc/**"))
+
+    def unavailable(self, record):
+        raise IntegrityError("an overflow sidecar is missing", revision=record["revision"])
+
+    monkeypatch.setattr(outbox.LogView, "events", unavailable)
+    assert Engine.discover(p.root).record_body(decision)["decision_type"] == "dependency_change"
+
+
+def test_the_new_forms_run_in_a_contained_lead_session_as_the_read_did(tmp_path):
+    """`record body` takes no credential, so a Lead session runs it in its own shell (lead_broker.CONTAINED_LOCAL):
+    the broker relays nothing for it, and its new forms take no flag the broker would see."""
+    from aew.harness import lead_broker
+
+    p = sample_project(tmp_path)
+    wid, decision = depend(p, tmp_path)
+    plan_unit(p, tmp_path, wid, PLAN_V2)
+    assert frozenset({"record", "body"}) in lead_broker.CONTAINED_LOCAL
+    session = {name: "127.0.0.1:9" if name == lead_broker.ENV_ENDPOINT else "00" * 32
+               for name in lead_broker.ENV_NAMES}  # an endpoint nothing listens on: a relay would fail
+    before = p.rev()
+    for args, expected in (((wid, "--plan", "1"), PLAN_V2), ((decision,), None)):
+        res = p.aew("record", "body", *args, env={**session, "AEW_LEAD_TOKEN": ""})
+        assert res.returncode == 0, res.stderr
+        assert expected is None or res.stdout == expected
+    assert p.rev() == before
+
+
+def test_a_plan_revisions_terminal_controls_are_shown_and_never_reach_the_terminal(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path)
+    plan_unit(p, tmp_path, wid, "step one\x1b[2J\x1b]0;title\x07 \u202eexe\n", reason="hostile")
+    shown = p.aew("record", "body", wid, "--plan", "2").stdout
+    assert shown == "step one\\u001b[2J\\u001b]0;title\\u0007 \\u202eexe\n"
+    assert plan_of(p, wid, 2)["body"] == "step one\x1b[2J\x1b]0;title\x07 \u202eexe\n"
+
+
+def refusal_of(p, *args: str) -> dict:
+    res = p.aew("record", "body", *args)
+    assert res.returncode != 0 and res.stdout == "", (res.returncode, res.stdout)
+    return res.error

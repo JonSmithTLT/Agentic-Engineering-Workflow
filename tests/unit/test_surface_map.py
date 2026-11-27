@@ -1450,6 +1450,10 @@ def build_sample(base: Path) -> Sample:
                   str(base / "objective.md")],
                  ["plan", "propose", "T-0001", "--file", str(base / "plan.md"), "--assurance", "none"],
                  ["plan", "accept", "T-0001", "--revision", "1"],
+                 # A decision with a body, for `record body D-0003` (E170's second slice): a dependency change records
+                 # what it added. Made before the assignment, while T-0001 is READY.
+                 ["work", "create", "ticket", "--title", "probe's second", "--class", "2", "--scope", "src/**"],
+                 ["work", "depend", "T-0002", "--add", "T-0001", "--reason", "the probe's decision with a body"],
                  ["work", "assign", "T-0001"]):
         if argv[:2] == ["plan", "accept"]:
             [plan] = engine.status("T-0001")["work_unit"]["plans"]
@@ -1457,6 +1461,10 @@ def build_sample(base: Path) -> Sample:
         code, out, err = run_cli(root, ["--print-credential", *argv],
                                  env={"AEW_LEAD_TOKEN": token})
         assert code == 0, (argv, err)
+        if argv[:2] == ["work", "depend"]:
+            assert json.loads(out)["decision"] == "D-0003", "the probe of `record body` names D-0003"
+        if argv[:2] == ["plan", "accept"]:  # and D-0002, a decision without a body: its fields are printed
+            assert json.loads(out)["decision"] == "D-0002", "the probe of `record body` names D-0002"
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"
     engine = Engine.discover(root)

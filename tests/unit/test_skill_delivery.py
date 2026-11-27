@@ -767,8 +767,8 @@ def test_the_lead_is_told_to_staff_by_language_or_surface_from_the_cards_and_the
         meta = roles.builtin_cards()[card].meta
         assert f"`{card}` when {meta['use_when'][0]}, so its run loads `{meta['skills'][0]}`" in text
     # The default is named in its own clause, with its one skill and what it is offered, never as a pick.
-    assert ("Otherwise the default, `engineer`, whose run loads `general-implementation` and may load `python-development` or "
-            "`c-development` when its task matches.") in text
+    assert ("Otherwise the default, `engineer`, whose run loads `general-implementation` and may load "
+            "`python-development` or `c-development` when its task matches.") in text
     assert "`engineer` when " not in text and "engineer" not in guide.staffed_cards()
     monkeypatch.setattr(skills, "shipped", lambda: frozenset({"python-development"}))
     fewer = guide.staffing_text()
@@ -831,7 +831,8 @@ def test_the_default_cards_clause_says_only_what_it_has(monkeypatch):
         monkeypatch.setattr(roles, "builtin_cards", lambda: changed)
         return guide.staffing_text()
 
-    assert "Otherwise the default, `engineer`, whose run loads `general-implementation`." in with_default(optional_skills=[])
+    own_skill_only = with_default(optional_skills=[])
+    assert "Otherwise the default, `engineer`, whose run loads `general-implementation`." in own_skill_only
     assert ("Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its "
             "task matches.") in with_default(skills=[])
     assert "Otherwise the default" not in with_default(skills=[], optional_skills=[])

@@ -1786,7 +1786,6 @@ systems:
   - modules:aew.engine.assurance_ops
   - cli-commands:dispatch explain
   - cli-commands:plan lint
-  - tools:explain
   touches:
   - src/aew/engine/dispatch.py
   - src/aew/engine/assurance.py
@@ -1800,7 +1799,7 @@ systems:
     wired:
     - cli:dispatch explain
     - cli:plan lint
-    - tool:explain
+    - tool:work_show
     on_by_default: true
     used_in_default_flow: 'yes'
   finish_line: 'M4-A''s part is done (the guards are on and run on every mutating dispatch). The rest: the Workflow Contract
@@ -1831,7 +1830,7 @@ systems:
   - src/aew/engine/api.py:463,516-517 (Assurance built; every owner's dispatch guards registered)
   - src/aew/engine/api.py:782-800 (plan lint)
   - src/aew/cli/work_commands.py:305 (dispatch explain), :353 (plan lint), :327-339 (--assurance none, --review, --verify)
-  - src/aew/surface/contract.py:195 (explain tool); src/aew/surface/run.py:102,194; src/aew/surface/projection.py:315 (dispatch_explain)
+  - src/aew/surface/contract.py (work_show with explain true), src/aew/surface/run.py (_explain), src/aew/surface/projection.py (dispatch_explain)
   - 'grep: ''ASSURED'' appears in src only at src/aew/engine/dispatch.py:17'
   - docs/implementation/implementation-status.md:391-393 (Partly implemented (M4-A); gating dispatch on ASSURED needs a
     Workflow Contract amendment)
@@ -3787,14 +3786,17 @@ systems:
   - designer-decisions-2026-11-06-lead-small-changes-and-reports-v2.md
   register:
   - E157
-  as_built: []
+  as_built:
+  - tools:report_write
+  - cli-commands:report show
+  - modules:aew.engine.reports
+  - schemas:report
   touches:
   - src/aew/surface/contract.py
   - src/aew/surface/run.py
   - src/aew/engine/resume_ops.py
   - src/aew/engine/guide.py
   - src/aew/cli/commands.py
-  - src/aew/dashboard/**
   - docs/implementation/surface-map.yaml
   touches_new:
   - src/aew/engine/reports.py
@@ -3803,39 +3805,29 @@ systems:
   depends_on:
   - SYS-06
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired:
+    - tool:report_write
+    - cli:report show
+    on_by_default: true
     used_in_default_flow: 'no'
-  finish_line: A `report_write` tool on the Lead's MCP server, carried out by AEW as `checkpoint` is, writing a report record
-    kind held outside evidence (refused by every evidence, plan and gate resolver, kept out of worker packs and derived
-    knowledge, each pinned by a test), with a size bound per report and a count bound per session stated in the code, listed
-    by id and title only in `resume` and the Lead's projection, its body shown on an explicit read with control sequences
-    escaped (terminal) and no raw HTML or remote fetches (site), labelled a Lead-authored, unreviewed report and not evidence;
-    the Lead's text says when to write one; exercised in a real Lead run.
-  remaining:
-  - slice: 'report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the
-      size and count bounds, the show command and the site view, the label, and the Lead''s text (small-changes design §4;
-      first in the alpha list, §7 item 5)'
-    row: E157
-    estimate: 1 PR (estimate; the designer's reading, small-changes design §6)
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-    pointer on item 4)'
+  finish_line: In a real Lead session, ask the Lead to use `report_write` for a short explanation. Follow the returned
+    `aew report show <id>` command, check the body and provenance label, then confirm that `resume` lists the id and title.
+  remaining: []
+  decision: 'decided: ship the backend and reusable plain-text read in E157. The dashboard route, C0 approval, UI and
+    browser verification belong to the separate frontend build (operator, 2026-11-26).'
   recommendation: finish
   who: Lead
-  reason: Adopted 2026-11-06 (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md item 4) and placed in the
-    alpha after the first-use list (item 8); first in the designer's alpha order (consult design, Placement); the register
-    row is the Lead's to file (the designer's reading, workspace record, 'How it is applied').
+  reason: The typed operation records an immutable report in one transaction under the existing Lead credential. Reports
+    have their own bounded store and explicit reads. The Lead receives the id and title in its summaries. The operator
+    retains the live Lead and CLI sign-off.
   evidence:
   - designer-decisions-2026-11-06-lead-small-changes-and-reports-v2.md §4 (the design), §6 (cost), §7 item 5 (order)
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 4 and 8 (adoption and placement)
-  - 'src/aew/surface/contract.py:218-225: `checkpoint` is the one normal-profile mutation, a single engine transaction;
-    no `report_write` tool exists (no match for report_write anywhere in the tree at c11a61ea)'
-  - 'src/aew/surface/contract.py:153-154: NOTE_MAX = 8000, the handoff-text bound whose reasons the report''s size bound
-    is to follow'
-  - 'src/aew/harness/opencode/projection.py:217: the Lead''s rules deny `edit`, which report_write leaves unchanged'
+  - src/aew/engine/reports.py (bounded store, provenance and snapshot-scoped plain-text accessor)
+  - tests/unit/test_report_write.py (bounds, record identity, resolver and pack isolation, explicit read)
+  - tests/integration/test_lead_mcp.py (the broker session writes a report and the returned CLI command reads it)
 - id: SYS-41
   name: Lead consult (spawn a non-mutating agent for the Lead's own question)
   purpose: Let the Lead spawn a read-only agent (investigator, researcher, planner, later branch_reviewer) for its own question

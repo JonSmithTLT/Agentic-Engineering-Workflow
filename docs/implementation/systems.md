@@ -6,7 +6,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-47, SYS-48
+**awaiting_signoff (built, awaiting your sign-off):** 9 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-40, SYS-47, SYS-48
 
 **partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-45, SYS-51, SYS-53
 
@@ -16,9 +16,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 17 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
+**designed_only:** 16 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-33, SYS-34, SYS-35, SYS-36, SYS-41, SYS-42, SYS-46, SYS-49, SYS-50, SYS-52
 
-**Waiting on your sign-off:** 8 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-47, SYS-48
+**Waiting on your sign-off:** 9 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-40, SYS-47, SYS-48
 
 **Limit's count / wip_limit:** 10 / 12 — SYS-02, SYS-04, SYS-05, SYS-06, SYS-07, SYS-22, SYS-43, SYS-45, SYS-51, SYS-53
 
@@ -28,7 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 20 — SYS-02, SYS-05, SYS-09, SYS-22, SYS-40, SYS-42, SYS-43, SYS-45, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47, SYS-48
+**Members:** 20 — SYS-02, SYS-05, SYS-09, SYS-22, SYS-42, SYS-43, SYS-45, SYS-13, SYS-53, SYS-04, SYS-07, SYS-08, SYS-19, SYS-30, SYS-32, SYS-39, SYS-40, SYS-46, SYS-47, SYS-48
 
 ### SYS-02 — Agent containment (the Linux core; its follow-ons are SYS-49's)
 
@@ -79,18 +79,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 2 — E136: what its four batches left: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`'s one foundational skill, once the source-research skill is written (E396) (E136); the Lead's skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the per-mode rules, a copy in a folder of each start's own, the Lead's text and the exposed skills in its record. Left: the operator's live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a colliding id, the listing's and a loaded body's cost, and which skills were loaded) and a real Lead run; the Lead's record does not count loads, since its server ends with its TUI, so the live test counts them (E161) — **Next:** E136: what its four batches left: the two security skills on `security_reviewer` (the designer's fit, designer-decisions-2026-11-04-skills-by-fit.md section 4, judged in the pull request that builds it) once the operator has updated their drafts; and `researcher`'s one foundational skill, once the source-research skill is written (E396) — E136 — 1 or 2 batched PRs after the operator's answers (estimate)
 
 **Wired:** pack
-
-### SYS-40 — Lead reports (report_write)
-
-**Board state:** designed_only
-
-**Who:** Lead
-
-**Now:** 27
-
-**Own slices left:** 1 — report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) (E157) — **Next:** report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the size and count bounds, the show command and the site view, the label, and the Lead's text (small-changes design §4; first in the alpha list, §7 item 5) — E157 — 1 PR (estimate; the designer's reading, small-changes design §6)
-
-**Wired:** none
 
 ### SYS-42 — Lead small change (operator-approved, light review at class 1)
 
@@ -243,6 +231,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
 **Wired:** cli:integrate prepare, cli:integrate publish, cli:integrate validate, cli:integrate reconcile, cli:integrate defer, cli:integrate reorder, cli:integrate requeue, cli:integrate custody, cli:integrate breaker status, cli:integrate breaker reset, tool:integration_publish, tool:ticket_prepare
+
+### SYS-40 — Lead reports (report_write)
+
+**Board state:** awaiting_signoff
+
+**Who:** Lead
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** tool:report_write, cli:report show
 
 ### SYS-46 — The V-01 command wire after I-6 (I-7's O-01 0.9, and the I-1 to I-5 commands in O-01 0.7 and 0.8)
 

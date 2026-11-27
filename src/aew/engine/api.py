@@ -43,6 +43,7 @@ from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
+from aew.engine.reports import Reports
 from aew.engine.resume_ops import Resume, WorkerNeeded
 from aew.engine.role_ops import Roles
 from aew.engine.scope_ops import ScopeCorrections
@@ -609,6 +610,7 @@ class Engine:
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._usage = UsageReads(k, archive=archive)  # the ledger's read surfaces (F25 R9)
+        self._reports = Reports(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds,
                                        coordination=coordination)
@@ -826,6 +828,13 @@ class Engine:
     def checkpoint(self, *, token: str, note: str = "", next_action: str | None = None) -> dict[str,
                    Any]:
         return self._resume.checkpoint(token=token, note=note, next_action=next_action)
+
+    def report_write(self, *, token: str, title: str, body: str,
+                     session_id: str | None = None) -> dict[str, Any]:
+        return self._reports.write(token=token, title=title, body=body, session_id=session_id)
+
+    def report_show(self, report_id: str) -> dict[str, str]:
+        return self._reports.show(report_id)
 
     def classify_parent_verification(self, *, token: str, work_id: str, classification: str,
                                      reason: str, binding: str | None = None) -> dict[str, Any]:

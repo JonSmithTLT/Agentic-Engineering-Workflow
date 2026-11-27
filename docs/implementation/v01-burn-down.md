@@ -86,7 +86,7 @@ breach still has an entry; "none" says no cluster owns a breach of it today.
 | counter | `manifest_adopts` | C13 | V4 |
 | counter | `pin_reentries` | C7 | not breached; since C7 (#603) the resume code counts on Linux until REATTACH_LEAD lands (Q5's answer keeps it counted) |
 | counter | `windows_console_challenges` | none | not breached on Linux; Windows is outside the enforced gate |
-| counter | `help_calls` | C5, C7, C9, C11 | the gap ladder's `explain` |
+| counter | `help_calls` | C5, C7, C9, C11 | the gap ladder's `work_show` with `explain: true` |
 | counter | `guessed_commands` | C3 | `ticket_draft` on an empty project |
 | counter | `cli_tool_calls` | none | not breached |
 | counter | `shell_aew_calls` | C2, C5, C7, C9, C11 | the plan accept, the stage continue, the reconcile and new attempt, the requeue, the gate reads |

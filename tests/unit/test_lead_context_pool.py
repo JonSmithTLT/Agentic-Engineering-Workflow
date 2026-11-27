@@ -77,7 +77,7 @@ def approved_ceiling(record: dict) -> int:
     baseline = read_baseline(record)
     allocations = record["allocations"]
     # These names are operator-approved. A new name needs an operator decision recorded with the allocation.
-    assert set(allocations) == {"E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry",
+    assert set(allocations) == {"E157", "E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry",
                                 "operator_reserve"}
     for name, entry in allocations.items():
         assert type(entry["bytes"]) is int, name

@@ -25,6 +25,12 @@ IS_WINDOWS = sys.platform == "win32"
 _BYTE_ORDER_MARKS = ((codecs.BOM_UTF8, "utf-8"), (codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be"))
 
 
+def escape_display_controls(text: str) -> str:
+    """Escape terminal and bidi controls while preserving tabs and line feeds."""
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]",
+                  lambda match: f"\\u{ord(match[0]):04x}", text)
+
+
 def decode_text(raw: bytes, *, source: str) -> str:
     """Text given to AEW is UTF-8. A byte-order mark is honoured and removed: UTF-8's, which Windows PowerShell 5.1
     writes for ``-Encoding utf8``, and UTF-16's, which it writes for ``>`` and ``Out-File``. Anything else that is

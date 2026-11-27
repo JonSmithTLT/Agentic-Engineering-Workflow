@@ -626,7 +626,8 @@ class Lead:
         self.seen[rung] = step + 1
         if step == 0:
             self.event("gap", gap="decision_refused", decision=d["decision"])
-            self.call("explain", {"work_id": self.subject}, why=f"decision {d['decision']} still required")
+            self.call("work_show", {"explain": True, "work_id": self.subject},
+                      why=f"decision {d['decision']} still required")
             return True
         cli = list(d.get("cli_fallback") or [])
         if step == 1 and d["decision"] == "RESOLVE_STAGE":
@@ -683,7 +684,7 @@ class Lead:
             return self.gap_plan(proposed[-1], proj)
         if self.seen[key] == 1:
             self.event("gap", gap="no_available_action", why="no decision and no AVAILABLE action")
-            self.call("explain", {"work_id": self.subject}, why="no AVAILABLE action")
+            self.call("work_show", {"explain": True, "work_id": self.subject}, why="no AVAILABLE action")
             return True
         hinted = self.hinted_command(proj)
         if hinted is not None and self.seen[key] == 2:

@@ -55,11 +55,11 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
 WHEN = {
     "status": "the state and your next actions, or one unit's control record",
     "resume": "first, after any restart",
-    "work_show": "one unit in full",
-    "explain": "why a dispatch or a stage's step is blocked now, before you retry it",
+    "work_show": "one unit in full, or `explain: true` to see dispatch or stage blockers",
     "harness_status": "a run's record; for a lost run, the way to relaunch it",
     "harness_wait": "wait on runs; never poll",
     "checkpoint": "before a pause or a handoff",
+    "report_write": "write from what you've read; consult for unread code or checks",
     "steering": "lower your steering mode, or ask the operator to raise it or confirm an action",
     "message_send": "steer a running worker",
 }

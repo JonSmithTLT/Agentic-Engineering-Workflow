@@ -110,7 +110,6 @@ LIFECYCLE_COMMANDS = (("work",), ("plan",), ("invoke",), ("review",), ("verify",
                       ("harness", "launch"), ("checkpoint",), ("stage",))
 # Lead tools: reading the projection is the policy's own first step, never a guess.
 PROJECTION_READS = frozenset({"status", "resume"})
-HELP_TOOLS = frozenset({"explain"})
 WAIT_TOOLS = frozenset({"harness_wait"})
 
 
@@ -399,7 +398,7 @@ class Ledger:
                 self.count("help_calls", evidence, actor="lead", step=step)
         elif tool == "cli":
             self.count("cli_tool_calls", evidence, actor="lead", step=step, note=e.get("why", ""))
-        elif tool in HELP_TOOLS:
+        elif tool == "explain" or (tool == "work_show" and (args or {}).get("explain") is True):
             self.count("help_calls", evidence, actor="lead", step=step, note=e.get("why", ""))
         elif tool not in PROJECTION_READS and not e.get("offered"):
             self.count("guessed_commands", evidence, actor="lead", step=step, note=e.get("why", ""))

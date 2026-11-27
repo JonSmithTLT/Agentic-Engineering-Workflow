@@ -73,7 +73,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools():
     # The exact list per slice (M4-E plan v3 §2.6): E2 adds `steering`, E3c `resolve`, E5a `ticket_draft` and
     # `ticket_start`, E5b the two request stages (and `resolve`'s dispositions), E6a `ticket_prepare` and
     # `integration_publish` (with its `verification_evidence`).
-    assert names == ["status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint",
+    assert names == ["status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
                      "steering", "resolve", "ticket_draft", "ticket_start", "ticket_request_review",
                      "ticket_request_verification", "ticket_prepare", "integration_publish"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
@@ -81,6 +81,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools():
     by_name = {t["name"]: t for t in normal["tools"]}
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
     assert not by_name["checkpoint"]["annotations"]["readOnlyHint"]
+    assert not by_name["report_write"]["annotations"]["readOnlyHint"]
     assert not by_name["steering"]["annotations"]["readOnlyHint"]
     assert not by_name["resolve"]["annotations"]["readOnlyHint"]
     assert mcp.advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN

@@ -1037,13 +1037,11 @@ def test_legality_modules_never_import_coordination():
     importers = {p.relative_to(src).as_posix() for p in (src / "aew").rglob("*.py")
                  if any(map(_is_coordination, _imports(p))) and "aew/coordination/" not in p.as_posix()}
     # MS2: store/archival use leaf paths/keys (D-16). MS3/MS4: typed and worker CLI schemas use leaf bounds/kinds only.
-    # E170: `aew record body` shows an agent's text on a terminal under the one escaping rule (render.escaped), and
-    # imports nothing else of coordination.
     assert importers == {"aew/engine/api.py", "aew/engine/coordination_ops.py", "aew/engine/store.py",
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
-                         "aew/harness/told_messages.py", "aew/cli/history_commands.py"}
-    assert {m for m in _imports(src / "aew/cli/history_commands.py") if _is_coordination(m)} == {
-        "aew.coordination.render", "aew.coordination.render.escaped"}
+                         "aew/harness/told_messages.py"}
+    # E170 and E157 both use the display escaping shared with coordination.
+    assert "aew.util.escape_display_controls" in _imports(src / "aew/cli/history_commands.py")
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
         "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
     assert not any(map(_is_coordination, _imports(src / "aew/harness/worker_messages.py")))

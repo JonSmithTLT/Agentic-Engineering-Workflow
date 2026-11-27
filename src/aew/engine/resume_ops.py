@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import SPEC_SET
-from aew.engine import approval, gate_ops
+from aew.engine import approval, gate_ops, reports
 from aew.engine import coverage as CV
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
@@ -698,13 +698,13 @@ class Resume:
                 guidance = (f"This session's Lead broker does not hold Lead authority ({session.get('detail')}). "
                             f"{guidance}")
         catalog = self.roles.role_catalog()
-        reports = [row | {"work_unit": wid} for wid in state["work"]
-                   for row in self.coordination.report_view(state, wid, active_only=True)]
+        report_finality = [row | {"work_unit": wid} for wid in state["work"]
+                           for row in self.coordination.report_view(state, wid, active_only=True)]
         try:
             lost = self.coordination.message_lost(state, resume=True)
         except IntegrityError as exc:
             lost = {"messages": [], "problem": exc.message}
-        waits = [f"{row['work_unit']} report {row['id']}: {row['next']}" for row in reports if row.get("next")]
+        waits = [f"{row['work_unit']} report {row['id']}: {row['next']}" for row in report_finality if row.get("next")]
         return {
             "order": RESUME_ORDER,
             "spec_set": SPEC_SET,
@@ -716,6 +716,7 @@ class Resume:
             "work": work,
             **({"finished": finished} if (finished := finished_summary(state)) else {}),
             "latest_handoff": handoff,
+            **({"reports": summaries} if (summaries := reports.summaries(state)) else {}),
             "open_review_findings": findings,
             "verification_failures": failures,
             "accepted_authority": self.k.manifest["authority"]["accepted"],
@@ -730,7 +731,7 @@ class Resume:
             "tree": self.hierarchy.work_tree()["lines"],
             "lead_note": state.get("next_action"),
             "next_actions": waits + self.next_actions(state),
-            **({"report_finality": reports} if reports else {}),
+            **({"report_finality": report_finality} if report_finality else {}),
             **({"lost_lead_messages": lost} if len(lost) > 1 or lost["messages"] else {}),
             "contradictions": self.views.contradictions(state) + [f"evidence: {p}" for u in state["work"]
                                                             for p in E.scan(self.k.aew_root, u)[1]],
@@ -767,6 +768,9 @@ class Resume:
         if r["verification_failures"]:
             lines += ["", "## Verification failures / blockers", *(f"- {f['work_unit']}: {f['state']}"
                                                                    for f in r["verification_failures"])]
+        if listed := r.get("reports"):
+            lines += ["", f"## Recent Lead reports — {listed['label']}",
+                      *(f"- {entry['id']}: {entry['title']}" for entry in listed["items"])]
         if r.get("harness_runs"):
             lines += ["", "## Harness runs (local telemetry; a run decides nothing)",
                       *(f"- {h['run']} ({h['invocation']}, {h['role']}, {h['work_unit']}): {h['status']}"

@@ -218,7 +218,7 @@ def test_a_review_that_fails_stops_the_request_after_its_ingest(lab_project, tmp
     evidence = review(p, wid, disposition="changes_required",
                       findings=[{"id": "F1", "severity": "major", "summary": "wrong result", "required": True}])
     engine = Engine.discover(p.root)
-    explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_request_verification",
+    explained = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_request_verification",
                                                     "arguments": {"work_id": wid, "review_evidence": evidence}})
     assert explained["result"]["availability"] == "BLOCKED"
     revision = p.rev()
@@ -442,7 +442,7 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
     answer = engine.guard_query("review.ingest", wid, {"evidence": evidence})
     assert answer["availability"] == "BLOCKED" and answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
     assert answer["blocking_conditions"][0]["details"]["items"][0]["id"] == f"{evidence}#F1"
-    explained = R.run_tool(engine, CTX, "explain", {"stage": "ticket_request_verification",
+    explained = R.run_tool(engine, CTX, "work_show", {"explain": True, "stage": "ticket_request_verification",
                                                     "arguments": {"work_id": wid, "review_evidence": evidence}})
     assert explained["result"]["availability"] == "BLOCKED"
     out = R.run_tool(engine, CTX, "ticket_request_verification",

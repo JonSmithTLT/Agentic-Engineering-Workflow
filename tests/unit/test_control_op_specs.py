@@ -141,7 +141,7 @@ def _static_entries():
 def test_control_op_specs_match_static_entry_sites():
     entries = _static_entries()
     assert entries == P.CONTROL_OP_SPECS.keys()
-    assert len(entries) == 68
+    assert len(entries) == 69
 
 
 def test_the_request_index_accepts_exactly_the_create_ops_that_declare_request_ids():
@@ -182,8 +182,13 @@ def test_planted_control_entries_are_found_in_new_modules(tmp_path, module, body
 def test_control_op_specs_keep_the_scoped_primitive_declarations():
     # E329 changes idempotency scopes to the binding each primitive uses. Keep all fields pinned in the snapshot.
     declared = {name: P.spec_for(name) for name in P.SPECS}
-    digest = hashlib.sha256(json.dumps(declared, sort_keys=True).encode()).hexdigest()
+    # E157 adds one primitive, appended like the checkpoint. The pre-existing primitives must still match the snapshot.
+    previous = {name: spec for name, spec in declared.items() if name != "report.write"}
+    digest = hashlib.sha256(json.dumps(previous, sort_keys=True).encode()).hexdigest()
     assert digest == "0801cc392ce0606707867dede8debc09f61e4ab20e338523a03985288726cdb7"
+    assert declared["report.write"] == P.PrimitiveSpec(
+        "report.write", P.MECHANICAL, (), (), (), "control_state", "append", None,
+    )
     assert declared == P.SPECS
     for name in (P.CONTROL_OP_SPECS.keys() - declared.keys()) | {"unknown.write"}:
         assert P.spec_for(name) == P.PrimitiveSpec(
@@ -218,6 +223,7 @@ TRANSACTION_HANDLERS = {
         "work_acknowledge_input work_dispatch work_redispatch evidence_ingest work_accept "
         "invoke_evidence_unit ingest_evidence_unit_report plan_adopt plan_assess plan_reconfirm"
     ),
+    ("reports", "Reports"): "write",
     ("resume_ops", "Resume"): "checkpoint",
     ("role_ops", "Roles"): "work_staff",
     ("stage_intents", "StageIntents"): "open stop close abandon continue_",

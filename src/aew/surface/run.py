@@ -100,6 +100,8 @@ def _resume(c: Call) -> Any:
 
 
 def _work_show(c: Call) -> Any:
+    if c.a.get("explain"):
+        return _explain(c)
     c.subject = c.a["work_id"]
     return c.engine.work_show(c.a["work_id"])
 
@@ -179,6 +181,13 @@ def _checkpoint(c: Call) -> Any:
     return out
 
 
+def _report_write(c: Call) -> Any:
+    out = c.engine.report_write(token=c.token(), title=c.a["title"], body=c.a["body"],
+                                session_id=(c.ctx.lead_session or {}).get("session_id"))
+    c.committed("report.write", out, f"{out['label']} {out['id']}", [out["id"]])
+    return {**out, "next_action": out["show"]}
+
+
 def _steering(c: Call) -> Any:
     """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a raise request. A request grants
     nothing; only the operator raises, at the operator endpoint. The tool offers no confirmation request (register
@@ -210,9 +219,9 @@ def _message_send(c: Call) -> Any:
 
 
 RUNNERS: dict[str, Runner] = {
-    "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
+    "status": _status, "resume": _resume, "work_show": _work_show,
     "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
-    "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
+    "report_write": _report_write, "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
     "message_send": _message_send,
 }
 
@@ -370,6 +379,8 @@ def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
     if name not in FULL or not isinstance(payload, dict) or "project" not in payload:
         return payload
     out = dict(payload)
+    if name == "resume" and "reports" in projection:
+        out.pop("reports", None)  # the projection already carries the recent titles
     if "next_actions" in out and out["next_actions"] == projection.get("hints"):
         del out["next_actions"]
         if isinstance(out.get("order"), list):  # a resume's list of its parts names only the parts it holds (m2)

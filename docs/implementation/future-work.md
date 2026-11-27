@@ -58,7 +58,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 24 | E136 | Serving the other eleven skills, batched, after E142 (unfrozen by the operator, 2026-11-11) |
 | 25 | closed: E137 | A publish that stops stale after its first commit, and the stranded stages like it, closed by #437 |
 | 26 | closed: E156 | Refuse a launch with no provider key, close the Lead's OpenCode provider, and Lead permission tightening, closed by #340 |
-| 27 | E157 | `report_write`: the Lead writes a report itself, kept apart from evidence |
+| 27 | closed: E157 | `report_write`, its separate store and explicit CLI read. The dashboard goes to the frontend build |
 | 28 | E158 | The consult: the Lead spawns a read-only card on a question in one call, in two PRs |
 | 29 | E164, E165 | The models the Lead may pin: the operator's allow command, and `--model` held to profiles plus the allow-list, always bounded |
 | 30 | E159, E166 | The Lead change, with the light review, requested gates and `review_triggers` levels, and first configuration proposing those levels and keyed profiles |
@@ -1664,7 +1664,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E144
 
-**Work:** `explain` with a `work_id`, entrypoint `harness.launch` and no `invocation` answers `-32603` from a `KeyError` at `engine/harness_ops.py:110`. It should be an input error
+**Work:** The explanation route (`work_show` with `explain: true`) answers `-32603` from a `KeyError` at `engine/harness_ops.py:110` when called with a `work_id`, entrypoint `harness.launch` and no `invocation`. It should be an input error
 
 **Source:** Found in the review of #328
 
@@ -1781,18 +1781,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E155/`, oldest first (`python tools/register.py show E155`).*
-
-### E157
-
-**Work:** `report_write`: the Lead writes a report (an explanation, a plan, an answer) through a typed tool on AEW's own MCP server, with no gate and no write access added. Reports are their own record kind, outside evidence: AEW assigns the id and path, every evidence, plan and gate resolver refuses one, and they stay out of worker packs, derived knowledge and the Lead's later context (`resume` lists an id and title; the body comes on an explicit read, framed as data). Size and count bounds are stated in the code. The terminal escapes control sequences, and the site renders no raw HTML and fetches nothing remote. Every view labels it Lead-authored, unreviewed and not evidence, and a plan in it is a proposal, never a Ticket's plan
-
-**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 4; the designer's decision of 2026-11-06, the Lead makes small changes and writes documents itself (v2), §4
-
-**When:** **Now.** Item 27 of the Now list, first in the alpha after the first-use list. A new system, so it starts only under the limit on half-built work, N = 12 (§1)
-
-**Notes:** Filed by the Lead. One PR. A document the operator wants in the repository is a Lead change (E159), not a report
-
-*Later notes: `notes.d/E157/`, oldest first (`python tools/register.py show E157`).*
 
 ### E158
 
@@ -2492,7 +2480,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E231
 
-**Work:** The Lead's tool budget, decided before E158's brief: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. `lead-context-pool.yaml` records the approved pool for the contained Lead. TLS-21's offered-tool ceiling stays separate. If E158 needs a name, `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field
+**Work:** The Lead's tool budget, decided before E158's brief: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. `lead-context-pool.yaml` records the approved pool for the contained Lead. TLS-21's offered-tool ceiling stays separate. For E157, `explain` folds into `work_show` (operator, 2026-11-26). E158 needs its own slot decision. E174, E177 and E173 look first at `resolve` choices or a `status` field
 
 **Source:** The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
 
@@ -5067,6 +5055,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #340 (`e945b3ca`), with ADR-0009's amendment of 2026-11-06. Owed after it: the VM live check, on a keyed, paid model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`'s two "free model" texts were reworded in the change that closed this row
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
+
+### E157
+
+**Was:** The Lead writes bounded reports through `report_write`. AEW assigns the id and path, keeps reports apart from evidence, plans, gate inputs and worker packs, and provides an explicit read. The dashboard view was part of the design.
+
+**Closed:** 2026-11-26
+
+**By:** The SYS-40 backend delivery builds the typed tool, report store, Lead summaries, `aew report show` and plain-text backend accessor. The operator assigned the dashboard route, UI and browser verification to the separate frontend build on 2026-11-26. The SYS-40 board records the live Lead and CLI sign-off still owed.
+
+*Later notes: `notes.d/E157/`, oldest first (`python tools/register.py show E157`).*
 
 ### E167
 

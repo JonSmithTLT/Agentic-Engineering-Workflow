@@ -524,6 +524,12 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.engine.steering:Steering._append`
 
+## `reports`
+
+- `reports` (kept in git); named by `aew.engine.reports`: `DIRECTORY`; read by `aew.engine.reports`: `Reports.write`, `_read_published`; `aew.engine.store`: `replace_pending`
+  - Written by
+    - `aew.engine.reports:Reports.write`
+
 ## `roles`
 
 - `roles` (kept in git); read by `aew.engine.store`: `store_dirs`

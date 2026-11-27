@@ -29,13 +29,11 @@ BODY_HELP = ("Print the body of a work unit's record or of an evidence record (a
 
 
 def _body(a: argparse.Namespace) -> Any:
-    """The body for a person's terminal, or the whole result as JSON. The body is an agent's text, so what could steer
-    a terminal is shown, not sent: ``coordination.render.escaped``, the rule a worker's message is shown under. JSON
-    escapes them itself and keeps the text exact."""
-    from aew.coordination.render import escaped
+    """Show terminal controls visibly in the text view and preserve the exact body in JSON."""
+    from aew.util import escape_display_controls
 
     found = _engine(a).record_body(a.record_id)
-    return found if a.json else escaped(found["body"])
+    return found if a.json else escape_display_controls(found["body"])
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:

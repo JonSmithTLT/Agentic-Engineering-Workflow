@@ -46,8 +46,8 @@ def check_call(name: Any, arguments: Any, profile: str, switches: frozenset[str]
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
     if t.name == "steering":
         _check_steering(arguments)
-    if t.name == "explain":
-        _check_explain(arguments)
+    if t.name == "work_show":
+        _check_work_show(arguments)
     if t.name == "resolve":
         _check_resolve(arguments)
     return t
@@ -92,29 +92,40 @@ def _check_steering(arguments: dict[str, Any]) -> None:
                         *(f"{a}: not taken by {arguments['action']}" for a in extra)])
 
 
+def _check_work_show(arguments: dict[str, Any]) -> None:
+    if arguments.get("explain"):
+        _check_explain(arguments)
+        return
+    extra = sorted(arguments.keys() - {"work_id", "explain"})
+    if "work_id" not in arguments or extra:
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: inspect a work_id, or set explain to true",
+                                violations=[*([] if "work_id" in arguments else ["work_id: required"]),
+                                            *(f"{key}: requires explain" for key in extra)])
+
+
 def _check_explain(arguments: dict[str, Any]) -> None:
-    """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
-    and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
+    """`work_show` with `explain` names a unit, invocation or stage; `arguments` match the stage's schema, and a
+    stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
     out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
     if not {"work_id", "invocation", "stage"} & set(arguments):
-        raise AdapterInputError("INVALID_ARGUMENTS", "explain: name a work_id, an invocation or a stage",
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: name a work_id, an invocation or a stage",
                                 violations=["<arguments>: one of work_id, invocation or stage is required"])
     if "stage" not in arguments:
         if "arguments" in arguments:
-            raise AdapterInputError("INVALID_ARGUMENTS", "explain: arguments are a stage's, and need its stage",
+            raise AdapterInputError("INVALID_ARGUMENTS", "work_show: arguments are a stage's, and need its stage",
                                     violations=["arguments: given without stage"])
         return
     dispatch_only = sorted(set(arguments) & {"entrypoint", "role", "card", "scope", "invocation"})
     if dispatch_only:  # they ask about a dispatch; a stage's steps ask nothing of them (PR #170 review, finding 5)
-        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: a stage takes no {', '.join(dispatch_only)}",
+        raise AdapterInputError("INVALID_ARGUMENTS", f"work_show: a stage takes no {', '.join(dispatch_only)}",
                                 violations=[f"{a}: not taken with stage" for a in dispatch_only])
     inner = (arguments.get("arguments") or {}).get("work_id")
     if "work_id" in arguments and inner is not None and inner != arguments["work_id"]:
-        raise AdapterInputError("INVALID_ARGUMENTS", "explain: work_id and arguments.work_id name different units",
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: work_id and arguments.work_id name different units",
                                 violations=["arguments/work_id: differs from work_id"])
     t = contract.tool(arguments["stage"])
     if t is None or t.kind not in (contract.STAGE, contract.DECISION) or not t.progression:
-        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: {arguments['stage']!r} is not a stage",
+        raise AdapterInputError("INVALID_ARGUMENTS", f"work_show: {arguments['stage']!r} is not a stage",
                                 violations=["stage: not a stage of the catalog"],
                                 stages=[x.name for x in contract.TOOLS.values() if x.progression])
     given = dict(arguments.get("arguments") or {})
@@ -123,6 +134,6 @@ def _check_explain(arguments: dict[str, Any]) -> None:
     errors = sorted(_validator(t.name).iter_errors(given), key=lambda e: list(e.absolute_path))
     if errors:
         raise AdapterInputError(
-            "INVALID_ARGUMENTS", f"explain: the arguments do not match {t.name}'s schema",
+            "INVALID_ARGUMENTS", f"work_show: the arguments do not match {t.name}'s schema",
             violations=[f"arguments/{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}"
                         for e in errors[:20]])

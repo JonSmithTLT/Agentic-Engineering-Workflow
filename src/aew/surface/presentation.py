@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 DESCRIPTIONS = {
     "status": "Project state, decisions and actions, or one unit's record.",
     "resume": "Rebuild context from durable state, first after any restart. Each decision names its owner.",
-    "work_show": "Inspect a work unit and its evidence.",
-    "explain": "Explain legality, dispatch or stage availability; changes nothing.",
     "harness_status": "Inspect worker runs and progress; changes nothing.",
     "harness_wait": "Wait for a run to end or need the Lead; one call, no polling.",
     "checkpoint": "Record a bounded handoff note; advances no work.",

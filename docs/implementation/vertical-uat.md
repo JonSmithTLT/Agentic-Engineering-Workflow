@@ -108,7 +108,7 @@ the names are recorded as the Lead's (`lead.judgment`). The projection names the
 them (register E388); projection v2 names them on its actions too, with its `next`.
 
 Where that policy cannot make progress (no available action, a refusal, a blocked state), it falls back the way a
-real Lead did, and **counts it**: `explain` or help, the `cli` tool, `aew` from its shell, or a tool the projection did
+real Lead did, and **counts it**: `work_show` with `explain: true` or help, the `cli` tool, `aew` from its shell, or a tool the projection did
 not offer. The fallbacks are scripted per known gap so the run finishes, and every one is a ledger entry; the
 scripted Lead's own accounting is the ground truth for its calls. The known gaps on today's `main`:
 
@@ -117,10 +117,10 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | An empty project offers no action for the operator's request | `ticket_draft`, a tool the projection did not offer, with the Lead's own proposition and plan |
 | No decision asks for the proposed plan's approval | the Lead asks the operator anyway, then accepts the plan from its shell |
 | A decision has no typed tool | its `cli_fallback`, from the shell; for `RECONCILE` (an INTERRUPTED Ticket), with the phase it was interrupted from and a reason |
-| Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and a reason in the Lead's own words filled in, `--launch` as a refusal asks). A hint with any other placeholder runs nothing and is the gap `hint_not_followable`; a command that doesn't parse is the observation `hint_usage_error`. Neither has a counter or a threshold, and the summary always prints both |
+| Nothing AVAILABLE and no decision | one `work_show` with `explain: true`, then the command a projection hint names, from the shell (subject, revision and a reason in the Lead's own words filled in, `--launch` as a refusal asks). A hint with any other placeholder runs nothing and is the gap `hint_not_followable`. A command that doesn't parse is the observation `hint_usage_error`. The summary always prints both and neither has a counter or a threshold |
 | A prepared candidate with no decision offered: the publish decision reads the routed report, so this leaves a report that wasn't clean, or none | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
 | After a takeover and a reconcile, no implementer is active and nothing is offered (the hint's transition is refused) | a new attempt: `aew invoke create --role implementer --launch` (`work redispatch` for a non-mutating Ticket); the refused hint is recorded as `stale_hint` |
-| A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete (for `RESOLVE_STAGE`, `aew stage continue` with the Lead's own rationale; when that is refused and the refusal names `abandon`, `aew stage abandon` with the Lead's rationale), then stuck |
+| A decision still required after its answer was acted on (its call refused) | leave the original decision as recorded. Try one `work_show` with `explain: true`, then its `cli_fallback` if it is concrete. For `RESOLVE_STAGE` use `aew stage continue` with the Lead's own rationale. If that is refused and the refusal names `abandon`, use `aew stage abandon` with the Lead's rationale. If the decision is still required, mark the run stuck |
 | Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
 
 **The workers** come from the fake harness: implementer, reviewer, verifier and integration verifier, each run's
@@ -275,7 +275,7 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 
 | Counter | What counts |
 |---|---|
-| `help_calls` | `--help`, or `explain` used to find a command |
+| `help_calls` | `--help`, or `work_show` with `explain: true` used to find a command |
 | `guessed_commands` | any call to a tool or command the projection did not offer |
 | `cli_tool_calls` | the typed surface's `cli` passthrough |
 | `shell_aew_calls` | `aew` run from the Lead's shell (the scripted Lead's own accounting is the ground truth) |

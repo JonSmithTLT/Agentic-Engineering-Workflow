@@ -34,6 +34,10 @@ baseline:
           served: aew
           command: yq-go
 allocations:
+  E157:
+    bytes: 128
+    kind: measured
+    source: "The operator approved a 235 B reserve transfer on 2026-11-26 ('1..yup budget is good.'), measured against main 612767d3. E329 then removed report_write's revision argument. Against main 2db9b762, report_write and the explain fold into work_show add 72 MCP B and 56 guide B with messaging on, for 26755 B and 16 tools. With messaging off they add 56 guide B and save 12 MCP B, for 26455 B and 15 tools. The system and join byte counts are unchanged. The 107 B of the transfer left unused returns to operator_reserve."
   E158:
     bytes: 1200
     kind: estimate
@@ -58,14 +62,14 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-  # The room between the derived ceiling (baseline 24797 + the allocations above 5637 = 30434 B) and the operator's
+  # The room between the derived ceiling (baseline 24797 + the allocations above 5765 = 30562 B) and the operator's
   # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
   # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
   # than lowering the cap; any change to the cap itself is the operator's.
   operator_reserve:
-    bytes: 9566
+    bytes: 9438
     kind: reserve
-    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B."
+    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B."
     operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
     date: '2026-11-26'
 # Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
@@ -125,11 +129,13 @@ approval_history:
 # join 2, MCP 12067). No allocation covers the 270 B and none is changed: the baseline, the derived ceiling, the
 # 40000 B cap and operator_reserve's 8554 B all stand, and the growth sits in the room that reserve keeps under the
 # cap. That room is the operator's, so the pull request says so for the operator to accept or to ask for a cut.
+# E157's 56 B per mode are in its measured allocation, so it updates `after` and the net saving without putting
+# those same bytes in the baseline.
 guide_core:
   measured: '2026-11-26'
-  messaging_on: {before: 17715, after: 9419}
-  messaging_off: {before: 17537, after: 9199}
-  saving_bytes: 8296
+  messaging_on: {before: 17715, after: 9475}
+  messaging_off: {before: 17537, after: 9255}
+  saving_bytes: 8240
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:
 #   count: <approved byte ceiling>

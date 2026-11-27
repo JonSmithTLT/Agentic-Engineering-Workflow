@@ -107,7 +107,8 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
+        "steering",
         "resolve", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
@@ -151,7 +152,8 @@ def test_judgment_bearing_rows_name_their_judgments_and_others_name_none(catalog
 def test_only_workflow_advancing_rows_are_progression_rows(catalog):
     from aew.engine.primitives import spec_for
 
-    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "steering": "changes the steering mode",
+    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "report_write": "records a Lead report",
+                                               "steering": "changes the steering mode",
                                                "message_send": "records a message"}
     for t in catalog.values():
         if t.name in contract.NON_PROGRESSION_STAGES:
@@ -190,16 +192,18 @@ def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
 def test_explain_takes_a_stage_with_that_stages_own_arguments():
     """M4-E E4: a stage's arguments are checked against its own schema; `work_id` may be given
     once, beside the stage."""
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001"}, NORMAL).name == "explain"
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001"},
+                      NORMAL).name == "work_show"
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001",
                                   "arguments": {"work_id": "T-0001"}}, NORMAL)  # the same unit twice is fine
-    assert check_call("explain", {"stage": "ticket_draft", "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
-    assert check_call("explain", {"stage": "integration_publish",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_draft",
+                                   "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
+    assert check_call("work_show", {"explain": True, "stage": "integration_publish",
                                   "arguments": {"work_id": "T-0001", "prepared_candidate": "c"}}, NORMAL)
 
 
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
-    offered = contract.TOOLS["explain"].input_schema["properties"]["entrypoint"]["enum"]
+    offered = contract.TOOLS["work_show"].input_schema["properties"]["entrypoint"]["enum"]
     assert set(offered) == {n for n, e in ENTRYPOINTS.items() if e.covered_by is None}
     assert "dispatch.launch" not in offered and "lead_broker.relay" not in offered
 
@@ -313,22 +317,27 @@ def test_a_decision_never_carries_a_default():
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
-    ("explain", {"role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
-    ("explain", {"stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_draft", "arguments": {"title": "t"}}, NORMAL, "INVALID_ARGUMENTS"),  # no class
-    ("explain", {"work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),  # arguments need a stage
+    ("work_show", {"explain": True}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
+    ("work_show", {"explain": True, "role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
+    ("work_show", {"explain": True, "stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_draft", "arguments": {"title": "t"}},
+     NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("work_show", {"explain": True, "work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),
     # a stage takes no dispatch argument, and one unit (PR #170 review, finding 5)
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"}, NORMAL,
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
-     "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "card": "c"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}}, NORMAL,
-     "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "card": "c"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}},
+     NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1", "R-1"]}, NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1"], "timeout_s": 601}, NORMAL, "INVALID_ARGUMENTS"),
 ])

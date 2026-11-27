@@ -70,7 +70,7 @@ WITH_CASE = ("aew.dashboard.service", "Service.start", ("local/dashboard/endpoin
 # tests: every first entry a write resolves to is in it (else the write is unresolved: a new directory is a decision),
 # and every entry is the first entry of a record. The layout family reuses this table.
 TOP_LEVEL: tuple[str, ...] = (".gitignore", "coordination", "decisions", "evidence", "history", "knowledge", "local",
-                              "policy", "pricing", "project.yaml", "records", "roles", "state", "work")
+                              "policy", "pricing", "project.yaml", "records", "reports", "roles", "state", "work")
 
 # `aew.util` is the write mechanism: its callers are the writers, so a path written inside it is its caller's. So is the
 # store's own `write_file` (every write into the store goes through it: its docstring says so). So is the store's apply

@@ -20,10 +20,11 @@ from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 # The off catalogs carry E329's scoped inputs and E335's integration publication owner wording.
-# The compact resume description also says decisions name their owners.
-OFF_LIST_SHA = {"normal": "9a454fb7e34704d47dcb53be2a754ed873e6b02ec88c6518568d8fe99a8a68e8",
-                "recovery": "9b7cdfc98188f4c2d39bae721a88248761a42f07ec65c01838986dc7333e2099"}
-OFF_CLI_SHA = "969cfc4bc70bee703e8468c6408a50204ebc1e0554b2ad14d9cc000916a53304"
+# The compact resume description also says decisions name their owners. E157 adds `report_write` and moves the
+# explanation inputs to `work_show`.
+OFF_LIST_SHA = {"normal": "35b81b3d22b127f12a7d3a2b91141caaaed1e8265636d34772b3a65b981c72ec",
+                "recovery": "070fa4140745bb4bb1855dbea336e9e6ceafba919cae1627bd42cd0abc1b01c6"}
+OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
 
 
 def digest(value):
@@ -207,6 +208,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     # n-a: an independently captured standard-text oracle, not catalog() compared with its own stage objects.
     expected = {
         "checkpoint": "Record a checkpoint note and your next intended action (before a pause or a handoff).",
+        "report_write": "Save a Lead report and return its read command.",
         # E183: what works, and no confirmation request.
         "steering": "Lower your steering mode, or ask the operator to raise it; requests grant nothing. In crawl and "
                     "walk you take each step yourself. Lowering needs the operator's raise first; with no "

@@ -137,6 +137,8 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # The Lead's checkpoint (F15.1: the typed surface's one normal-profile mutation): a handoff note and next action,
     # in one transaction.
     PrimitiveSpec("checkpoint", MECHANICAL, (), (), (), "control_state", "append", None),
+    # A Lead report (E157): appended like a checkpoint, guarded only by its session's report limit under the lock.
+    PrimitiveSpec("report.write", MECHANICAL, (), (), (), "control_state", "append", None),
     # The Lead's own steering (M4-E E2): a lowering or a request, one transaction; it never raises authority.
     PrimitiveSpec("steering", MECHANICAL, (), ("execution",), (), "control_state", "prior_override_or_append", None),
     # A Lead coordination message (F9-A plan v4 D-17): recorded on its thread under the control lock, committing
@@ -227,6 +229,7 @@ CONTROL_OP_SPECS: dict[str, tuple[ControlOpSpec, ...]] = {
     "authority.accept": (ControlOpSpec("C", "candidate file SHA"),),
     "authority.reject": (ControlOpSpec("C", "candidate file SHA"),),
     "checkpoint": (ControlOpSpec("A", "Lead's own checkpoint"),),
+    "report.write": (ControlOpSpec("A", "Lead's session report limit"),),
     "evidence.ingest": (ControlOpSpec("A", "current running attempt and evidence integrity"),),
     "harness.launch": (ControlOpSpec("B", "current run id", request_id=True),),
     "history.audit": (ControlOpSpec("A", "audited root still current"),),

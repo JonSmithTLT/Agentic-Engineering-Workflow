@@ -228,7 +228,17 @@
         "anomalies": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
         "hints": {"description": "reader-only prose; never parsed", "type": "array", "items": {"type": "string"}},
         "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}},
-        "coordination": {"$ref": "#/$defs/coordination_attention"}
+        "coordination": {"$ref": "#/$defs/coordination_attention"},
+        "reports": {
+          "type": "object", "additionalProperties": false, "required": ["label", "items"],
+          "properties": {
+            "label": {"type": "string"},
+            "items": {"type": "array", "items": {
+              "type": "object", "additionalProperties": false, "required": ["id", "title"],
+              "properties": {"id": {"type": "string"}, "title": {"type": "string"}}
+            }}
+          }
+        }
       }
     },
     "stage_result": {

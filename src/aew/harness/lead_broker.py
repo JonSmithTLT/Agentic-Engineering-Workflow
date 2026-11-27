@@ -56,7 +56,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors, lead_credential
-from aew.engine import dispatch, faults
+from aew.engine import dispatch, faults, recall
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
 from aew.harness.contract import SEAT_COMMANDS
@@ -172,6 +172,9 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     # E231: the guide's sections. It reads committed policy, which the sandbox shows, but it is relayed so the broker
     # sees each read and counts it in the session's telemetry (`tool_calls.lookup`), as the failure criterion asks.
     ("guide", ("section", "json")),
+    # E185 (A-57 KP-B1, KP-R32): raw-history search, the Lead's read of the history store. Relayed, its process is a
+    # non-writer, so it takes the lock-free committed path; it exists only while the project's adopted policy has it on.
+    ("history search", ("terms", "kind", "since", "until", "limit", "json")),
 )}
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
 # The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
@@ -187,6 +190,8 @@ RELAYED_VALUES: dict[str, tuple[re.Pattern[str], str]] = {
     "commit": (re.compile(r"[^-\x00][^\x00]*"), "a revision that is not an option"),
     "text": (re.compile(rf"[^-\x00][^\x00]{{0,{TEXT_MAX - 1}}}"),
              f"search text: at most {TEXT_MAX} characters, not an option, no NUL"),
+    "terms": (re.compile(rf"[^-\x00][^\x00]{{0,{recall.MAX_QUERY_CHARS - 1}}}"),
+              f"a search term: at most {recall.MAX_QUERY_CHARS} characters, not an option, no NUL"),
 }
 _LOCAL = "a read of committed state, which the sandbox shows read-only: it runs there, lock-free"
 _HERE = "it reports on the environment it runs in: in the sandbox, the sandbox's"
@@ -198,7 +203,6 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("authority list", _LOCAL), ("context show", _LOCAL + " (it renders the pack, as in a worker's sandbox)"),
     ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("invoke show", _LOCAL),
     ("history links", _LOCAL), ("history list", _LOCAL), ("history log", _LOCAL), ("history show", _LOCAL),
-    ("history search", _LOCAL + " (its derived index is rebuilt privately)"),
     ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message lost", _LOCAL),
     ("message thread", _LOCAL),
     ("plan lint", _LOCAL), ("record body", _LOCAL), ("report show", _LOCAL),

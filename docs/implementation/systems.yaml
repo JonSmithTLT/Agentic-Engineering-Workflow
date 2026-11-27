@@ -1394,7 +1394,7 @@ systems:
       on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19,
       and O-CMD from its flip after its triage (E140's third PR).
   state:
-    board_state: built_off
+    board_state: partly_built
     built: 'yes'
     wired: []
     on_by_default: false
@@ -1558,8 +1558,8 @@ systems:
   - docs/implementation/notes.d/E175/2026-11-25-feat-sys13-ms5b.md
 - id: SYS-14
   name: Knowledge system (Arm B raw-history search; M6b capture, admission and recall)
-  purpose: Capture, admit and recall project knowledge for agents; today only an explicit, switched full-text search over
-    archived history.
+  purpose: Capture, admit and recall project knowledge for agents; today only an explicit full-text search over archived
+    history, on for a new project, which the Lead reads through a relayed command.
   serves_claims:
     closing_works:
     - K-01's own increment, after V-01 (the operator's selection before I-7, 2026-10-25)
@@ -1614,25 +1614,25 @@ systems:
     key: recall.raw_history_search
     default: 'off'
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: explicit
     owner: operator
     turning_on_changes: explicit, once adopted, registers `aew history search` for an operator terminal or a Lead shell
-      (refused inside an invocation) and serves the dashboard's /history/search route and its web page; nothing becomes
-      visible to a model
+      (refused inside an invocation; the contained Lead's read is relayed to its broker, lead_broker.RELAYED_READS) and
+      serves the dashboard's /history/search route and its web page; no typed tool serves it. A new project holds explicit
+      (`aew init`'s template); an existing one without the key reads off and is offered it at the operator's terminal (the
+      switch offer's recall_raw_history_search row)
   state:
-    board_state: built_off
+    board_state: partly_built
     built: partly
     wired:
     - cli:history search
     - dashboard:/history/search
-    on_by_default: false
+    on_by_default: true
     used_in_default_flow: 'no'
   finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the Lead''s relayed read of
     it on by default (E185, A-57 KP-B1). After V-01: K-01''s L profile (Lessons nominated,
     admitted and served) and F35''s pack serving, built, on and exercised in a real run.'
   remaining:
-  - slice: 'The Lead''s read of Arm B, on by default: a relayed `aew` command, not a typed tool (A-57, KP-B1)'
-    row: E185
-    estimate: 1 PR (estimate)
   - slice: 'After V-01: K-01''s L profile and F35''s pack serving'
     row: F35
     estimate: 4-8 PRs (estimate)
@@ -1669,15 +1669,19 @@ systems:
   recommendation: freeze
   who: Lead (the Lead's relayed read, E185); workers with F15.3 (HOLD-06, the match places it)
   reason: Arm B is what the register's V-01 milestone selects for knowledge (history and source lookup only, K-01's H profile,
-    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off. The operator has answered whether agents
-    reach H. The Lead reads it through a relayed command, on by default (E185, A-57 KP-B1), and workers' search is part of
-    E253. The rest is after V-01.
+    future-work.yaml (§1 text, at c11a61ea)), on for a new project and absent while off. The operator has answered whether
+    agents reach H. The Lead reads it through a relayed command, on by default (E185, closed; A-57 KP-B1), and workers'
+    search is part of E253. The rest is after V-01.
   evidence:
-  - src/aew/engine/recall.py:1-8 off by default and absent while off; refused inside an invocation
-  - src/aew/engine/recall.py:97-108,140-151 the switch read from adopted bytes only, failing closed
-  - src/aew/engine/recall.py:149 on only when the adopted policy's raw_history_search == explicit
-  - src/aew/policy/execution.py:148 STRING_SWITCHES row for recall.raw_history_search, first value (the default) off
-  - src/aew/schemas/execution.schema.json:103 the schema default off
+  - src/aew/engine/recall.py module docstring on for a new project and absent while off; refused inside an invocation
+  - src/aew/engine/recall.py:recall_search_enabled, search_enabled the switch read from adopted bytes only, failing closed;
+    on only when the adopted policy's raw_history_search == explicit
+  - src/aew/policy/execution.py:STRING_SWITCHES row for recall.raw_history_search, first value (an absent key) off;
+    TEMPLATE writes NEW_PROJECT_RAW_HISTORY_SEARCH, explicit
+  - src/aew/switch_offer.py:OFFERS the recall_raw_history_search row offers an absent key explicit
+  - src/aew/harness/lead_broker.py:RELAYED_READS history search, relayed for the contained Lead; HistoryCommands.history_search
+    takes the lock-free committed path in a non-writer
+  - src/aew/schemas/execution.schema.json the schema default off
   - src/aew/cli/history_commands.py:17-20,88-99 `history search` registered only when recall_search is true
   - src/aew/cli/main.py:55-81,175 recall_search_for() decides registration from the adopted policy
   - src/aew/dashboard/server.py:321-330 /history/search is a conditional route
@@ -2434,7 +2438,7 @@ systems:
   - src/aew/doctor.py
   depends_on: []
   state:
-    board_state: built_off
+    board_state: partly_built
     built: 'yes'
     wired: []
     on_by_default: false

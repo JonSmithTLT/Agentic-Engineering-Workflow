@@ -1670,8 +1670,9 @@ class Engine:
 
     def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
                                  since: str | None = None, until: str | None = None, limit: int = 10,
-                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
-                                 enabled: bool, fts5: bool,
+                                 enabled: bool, fts5: bool, deadline: float | None = None,
+                                 budget_s: float | None = None, budget_docs: int | None = None,
+                                 candidates: int | None = None,
                                  fence_token: Callable[[list[str]], str] | None = None,
                                  clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never

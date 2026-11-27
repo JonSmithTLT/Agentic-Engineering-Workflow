@@ -17,13 +17,21 @@ from pathlib import Path
 
 import pytest
 import worker_surface
-from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
+from aewflow import (
+    SUBTRACT_PATCH,
+    create_investigation,
+    create_planned_ticket,
+    dispatch,
+    plan_unit,
+    sample_project,
+    submit_record,
+)
 from conftest import clean_env, run_aew
 from fake_harness import IMPL_REPORT, HarnessLab
 from harness_conformance import FakeOpenCodeDriver, supervisor_gone, sync_dir
 
 from aew import process_kind
-from aew.engine import steering
+from aew.engine import recall, steering
 from aew.engine.api import Engine
 from aew.engine.store import ControlStore
 from aew.harness import bridge, broker_liveness, lead_broker, procs, runlog, wake_queue
@@ -70,6 +78,12 @@ def delivery_records(run: str | None, *, messages: bool = False) -> set[str]:
 
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
 CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+')
+# The one value a run draws at random: `history search`'s fence token (``recall.Substrate._result``, the CLI's).
+FENCE = re.compile(r"(?<=raw-history )[0-9a-f]{16}(?=>>)")
+
+
+def same(text: str) -> str:
+    return FENCE.sub("FENCE", CLOCK.sub("AGE", text))
 
 
 @pytest.fixture
@@ -151,9 +165,16 @@ def cases(run: str, invocation: str) -> list[list[str]]:
            ["map", "search", "core.py"], ["map", "search", "calc", "--kind", "path", "--limit", "3", "--json"],
            ["map", "search", "no such text", "--json"],
            ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation],
-           ["guide"], ["guide", "--json"], ["guide", "steps"], ["guide", "core", "--json"], ["guide", "nope"]]
+           ["guide"], ["guide", "--json"], ["guide", "steps"], ["guide", "core", "--json"], ["guide", "nope"],
+           ["history", "search", "calc"], ["history", "search", "add", "subtract", "--kind", "evidence", "--limit",
+                                            "3", "--since", "2026-01-01T00:00:00Z", "--json"]]
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out
+
+
+def recalled(rel: str) -> bool:
+    """The raw-history search's derived index, its directory and SQLite's companions: a cache, never the store."""
+    return rel == recall.SUBSTRATE_REL.rsplit("/", 1)[0] + "/" or rel.startswith(recall.SUBSTRATE_REL)
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
@@ -199,10 +220,11 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         assert served[-1:] == [argv], argv  # through the broker, never run by the client itself
         changed = changes(before, worker_surface.snapshot(lab.aew_root))
         told = [c for c in changed if argv[:2] == ["harness", "wait"] and c[1:] in delivery_records(run)]
-        assert [c for c in changed if c not in told] == [], argv
+        # `history search` catches up its own derived index (``recall.SUBSTRATE_REL``), as the host's search does
+        caught_up = [c for c in changed if argv[:2] == ["history", "search"] and recalled(c[1:])]
+        assert [c for c in changed if c not in told + caught_up] == [], argv
         here = direct(lab, *argv)
-        assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
-            here.returncode, CLOCK.sub("AGE", here.stdout), here.stderr), argv
+        assert (via.returncode, same(via.stdout), via.stderr) == (here.returncode, same(here.stdout), here.stderr), argv
     assert run in relayed(lab, broker, "harness", "status").stdout  # it read the run's own record, on the host
 
 
@@ -325,6 +347,54 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
             broker.close()
     finally:
         lab.cleanup()
+
+
+# Credential-shaped (built in pieces, so no scanner flags a fixture), as `history search`'s own tests plant one.
+PLANTED_TAIL = "Relayedtail" * 2 + "5678"
+PLANTED = "aew1.tk_" + "0123456789abcdef." + PLANTED_TAIL
+
+
+def test_the_leads_relayed_history_search_returns_what_the_store_holds_and_nothing_unredacted(lab, broker, tmp_path,
+                                                                                              monkeypatch):
+    """Register E185 (A-57 KP-B1, KP-R32): the Lead's read of the history store, a relayed command on by default. It
+    returns the archived record the store holds, as the operator's own search does (its fence token apart), and a
+    credential-shaped string in that record only redacted, so its tail finds nothing. It never takes the lock."""
+    p = lab.project
+    wid = create_investigation(p, tmp_path, title="Survey the numbat ledger")
+    plan_unit(p, tmp_path, wid, "Read calc/core.py.\n", reason="the survey's own plan")
+    role, _ = dispatch(p, wid)
+    record = submit_record(role, "discovery_record", body=f"Numbatfacts: {PLANTED} Wallabysums\n")
+    p.lead("evidence", "ingest", wid, "--evidence", record["evidence"])
+    p.lead("work", "accept", wid)  # archived: now in the history store
+    argv = ["history", "search", "Wallabysums", "--json"]  # its snippet ends at the match: the redaction before it
+    served: list[list[str]] = []
+    run_read = lead_broker.run_read
+    monkeypatch.setattr(lead_broker, "run_read", lambda engine, a, cwd, **kw: served.append(list(a)) or run_read(
+        engine, a, cwd, **kw))
+    with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
+        via = relayed(lab, broker, *argv)
+    assert via.returncode == 0, via.stderr
+    assert served == [argv]  # through the broker, on the host, never run by the client itself
+    found = json.loads(via.stdout)
+    assert [h["id"] for h in found["hits"]] == [record["evidence"]] and found["coverage"]["reasons"] == [], found
+    assert found["hits"][0]["expand"] == f"aew history show {record['evidence']}"
+    assert "aew1.<redacted>" in found["hits"][0]["snippet"] and PLANTED_TAIL not in via.stdout + via.stderr
+    here = direct(lab, *argv)
+    assert (via.returncode, same(via.stdout), via.stderr) == (here.returncode, same(here.stdout), here.stderr)
+    assert json.loads(relayed(lab, broker, "history", "search", PLANTED_TAIL, "--json").stdout)["hits"] == []
+
+
+@pytest.mark.parametrize("marker", ["AEW_INVOCATION", "AEW_INVOCATION_TOKEN"])
+def test_a_relayed_history_search_inside_an_invocation_is_still_refused_before_it_is_relayed(
+        lab, broker, monkeypatch, marker):
+    """Register E185: the refusal inside an invocation stays. The host's process, which the broker starts with its own
+    environment, can't see this one's markers, so the client refuses before anything is relayed."""
+    served: list[list[str]] = []
+    monkeypatch.setattr(lead_broker, "run_read", lambda engine, argv, cwd, **kw: served.append(argv))
+    out = run_aew("history", "search", "calc", cwd=lab.root, env={**contained(lab, broker), marker: "x"})
+    assert out.error["code"] == "CAPABILITY_UNAVAILABLE", out.stdout + out.stderr
+    assert out.error["details"] == {"reason": "not_in_invocations", "markers": [marker]}
+    assert broker.server.drain(20) and served == []
 
 
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):

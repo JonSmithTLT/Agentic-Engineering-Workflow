@@ -36,11 +36,13 @@ from aew.maps import service as maps
 from aew.policy import execution as X
 
 ZERO = "0" * 64
-MUTATING, TABLE, MAPS, MESSAGING = (o.switch for o in switch_offer.OFFERS)
+MUTATING, TABLE, MAPS, MESSAGING, RECALL = (o.switch for o in switch_offer.OFFERS)
 EXECUTION = "policy/execution.yaml"
 GATES, PRICES, MANIFEST = "policy/gates.yaml", "policy/pricing.yaml", "project.yaml"
 BOTH = [MUTATING, TABLE]  # the rows a project from before the first two defaults moved is offered
-ROWS = [MUTATING, TABLE, MAPS]  # these fixtures predate the original offers and retain the messaging default
+# These fixtures predate the original offers and retain the messaging default. History search's row (register E185)
+# runs with them: the policy rows it turns on are all tested, never a sample (review guide §5).
+ROWS = [MUTATING, TABLE, MAPS, RECALL]
 FROZEN = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
 
 
@@ -88,10 +90,11 @@ def old(tmp_path, request):
     row = getattr(getattr(request.node, "callspec", None), "params", {}).get("row")
     if row is not None:
         _strip_maps(p)
-    if getattr(row, "switch", row) == MESSAGING:
+    block = {MESSAGING: "coordination", RECALL: "recall"}.get(getattr(row, "switch", row))
+    if block is not None:  # an operational key init didn't write before its default moved
         path = p.root / ".aew" / EXECUTION
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        data.pop("coordination", None)
+        data.pop(block, None)
         path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
     p.adopt_policy()
     return p
@@ -329,6 +332,37 @@ def test_a_project_from_before_maps_is_offered_them_once_and_keeps_its_answer(be
     assert len(asked.prompts) == 1 and "This project holds off." in asked.prompts[0]
 
 
+@pytest.mark.parametrize("row", [RECALL])  # the fixture's project from before history search: no `recall` key
+def test_a_project_from_before_history_search_is_offered_it_and_taking_it_lets_the_lead_search(old, at_terminal,
+                                                                                               monkeypatch, row):
+    """Register E185 (A-57 KP-R32): an existing project with no ``recall`` key reads off and is offered history search
+    through the shared switch offer, not a legality setting; taking it writes a new project's value as text, keeps the
+    rest of the file, is adopted as the operator's, and registers `aew history search`. An ``off`` the operator wrote
+    is theirs and is never offered."""
+    from aew.engine import recall
+
+    only_row(monkeypatch, RECALL)
+    policy = old.root / ".aew" / EXECUTION
+    assert "recall" not in yaml.safe_load(policy.read_text(encoding="utf-8"))
+    assert not recall.recall_search_enabled(old.root / ".aew")
+    assert doctor(old) == {f"switch-offer:{RECALL}": "INFO: Switch offer: history search, off -> explicit. "
+                                                     "Answered at `aew opencode`'s start."}
+    text = policy.read_text(encoding="utf-8")
+    term, said = take(old, "CODE", at_terminal=at_terminal)
+    assert "This project holds off." in term.prompts[0] and "not a legality setting" in term.prompts[0]
+    assert "history search is now explicit, adopted as your decision" in said
+    taken = policy.read_text(encoding="utf-8")
+    assert taken.startswith(text) and X.raw_history_search(X.parse(taken.encode("utf-8"), source="t")) == (
+        X.NEW_PROJECT_RAW_HISTORY_SEARCH)
+    assert recall.recall_search_enabled(old.root / ".aew") and doctor(old) == {}
+    assert decisions(old)[-1]["type"] == "manifest_adoption"
+    assert old.ok("history", "search", "anything")["hits"] == []
+    policy.write_text(taken.replace("raw_history_search: explicit", 'raw_history_search: "off"'), encoding="utf-8",
+                      newline="\n")
+    old.adopt_policy()
+    assert switch_offer.standings(engine(old)) == [] and doctor(old) == {}  # the operator's own off
+
+
 @pytest.mark.parametrize("held", [None, '"off"'])
 def test_taking_maps_turns_them_on_as_a_new_project_has_them(before_maps, at_terminal, monkeypatch, held):
     """A key absent or set to off takes a new project's value, as text with the rest of the file kept, adopted as the
@@ -526,6 +560,8 @@ def test_the_hand_route_runs_as_printed_and_takes_the_declined_switch(old, at_te
     elif row == TABLE:
         assert engine(old).manifest["policy"]["pricing"] == PRICES
         assert (old.root / ".aew" / PRICES).read_bytes() == O.bundled_table()
+    elif row == RECALL:
+        assert X.raw_history_search(engine(old).execution_policy()[0]) == X.NEW_PROJECT_RAW_HISTORY_SEARCH
     else:
         assert X.pack_slices(engine(old).execution_policy()[0]) == X.NEW_PROJECT_PACK_SLICES
 
@@ -561,7 +597,8 @@ def _second_call(row: switch_offer.SwitchOffer, then: Any) -> switch_offer.Switc
 @pytest.mark.parametrize("row,own,edit", [
     (MUTATING, GATES, lambda data: data.update(non_mutating_concurrency=7)),
     (TABLE, MANIFEST, lambda data: data.setdefault("workspaces", {}).update(root="../somewhere-else")),
-    (MAPS, EXECUTION, lambda data: data.update(provider_env=["SYNTHETIC_PROVIDER_KEY"]))])
+    (MAPS, EXECUTION, lambda data: data.update(provider_env=["SYNTHETIC_PROVIDER_KEY"])),
+    (RECALL, EXECUTION, lambda data: data.update(provider_env=["SYNTHETIC_PROVIDER_KEY"]))])
 def test_another_edit_of_the_rows_own_file_while_the_prompt_waits_is_not_adopted_with_it(old, at_terminal, monkeypatch,
                                                                                          row, own, edit):
     """`only=` compares names, so the row's own file has to be seen as drifted before the row writes it."""
@@ -580,7 +617,7 @@ def test_another_edit_of_the_rows_own_file_while_the_prompt_waits_is_not_adopted
     assert not decisions(old)[-1]["reason"].startswith("switch offer")
 
 
-@pytest.mark.parametrize("row,theirs", [(MUTATING, GATES), (TABLE, PRICES), (MAPS, EXECUTION)])
+@pytest.mark.parametrize("row,theirs", [(MUTATING, GATES), (TABLE, PRICES), (MAPS, EXECUTION), (RECALL, EXECUTION)])
 def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_terminal, monkeypatch, row, theirs):
     only_row(monkeypatch, row)
     at_terminal("CODE")
@@ -591,6 +628,9 @@ def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_
         path.write_bytes(path.read_bytes().replace(b"mutating_concurrency: 1", b"mutating_concurrency: 7"))
     elif row == MAPS:  # the operator's own value, the one the offer would have written
         path.write_bytes(path.read_bytes() + f"maps:\n  pack_slices: {X.NEW_PROJECT_PACK_SLICES}\n".encode())
+    elif row == RECALL:
+        ours = f"recall:\n  raw_history_search: {X.NEW_PROJECT_RAW_HISTORY_SEARCH}\n"
+        path.write_bytes(path.read_bytes() + ours.encode())
     else:
         path.write_bytes(b"theirs\n")
     held = path.read_bytes()
@@ -630,7 +670,8 @@ def test_any_other_drift_refuses_and_lists_it(old, at_terminal, monkeypatch, row
     assert "policy/guardrails.yaml" in doctor(old)[f"switch-offer:{row}"]
 
 
-@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION])])
+@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION]),
+                                       (RECALL, [EXECUTION])])
 def test_a_drift_after_the_check_is_refused_inside_the_adopt_and_leaves_neither_file(old, at_terminal, monkeypatch, row,
                                                                                      files):
     """A real refusal, by `only=` inside the real adoption's transaction."""
@@ -650,7 +691,8 @@ def test_a_drift_after_the_check_is_refused_inside_the_adopt_and_leaves_neither_
     assert guard.read_text(encoding="utf-8") == edited  # never the offer's to touch
 
 
-@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION])])
+@pytest.mark.parametrize("row,files", [(MUTATING, [GATES]), (TABLE, [PRICES, MANIFEST]), (MAPS, [EXECUTION]),
+                                       (RECALL, [EXECUTION])])
 def test_a_failed_adopt_restores_every_file_it_wrote(old, at_terminal, monkeypatch, row, files):
     """A real failure: the real adoption refuses a credential that isn't the Lead's."""
     only_row(monkeypatch, row)

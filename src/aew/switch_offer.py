@@ -322,6 +322,18 @@ OFFERS: tuple[SwitchOffer, ...] = (
                               "Existing runs keep their launch settings until relaunched."),
               done=lambda o: (f"Lead–worker messaging is now {o.to}, adopted as your decision. To change it, "
                               f"edit .aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
+    # Raw-history search (register E185; A-57 KP-R32): init has never written the key before it, so an absent key is
+    # offered, and an `off` the operator wrote is theirs.
+    key_offer("recall_raw_history_search", label="history search", file=_policy_rel("execution"),
+              policy_key="execution", key_path=("recall", "raw_history_search"), old_values=(),
+              to_value=lambda: X.NEW_PROJECT_RAW_HISTORY_SEARCH, effective=lambda _: X.raw_history_search(None),
+              legality=False, schema="execution",
+              text=lambda o: (f"AEW's default for history search has moved from {o.held} to {o.to}: `aew history "
+                              "search` finds archived records and the evidence they hold, credentials redacted, for "
+                              "you and the Lead, whose session reads it relayed to its broker. It is never offered "
+                              f"inside a worker's invocation. This project holds {o.held}."),
+              done=lambda o: (f"history search is now {o.to}, adopted as your decision. To change it, edit "
+                              f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
 )
 
 

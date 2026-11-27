@@ -14,7 +14,7 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 ### `aew (contained Lead)`
 
 - **Kind:** non_writer
-- **Why:** the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there; and the reads that broker relays to the host for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing
+- **Why:** the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there; and the reads that broker relays to the host for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing but `history search`'s catch-up of the derived history index
 - **Declares itself at:** `aew.cli.main:_main`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 

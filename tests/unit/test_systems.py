@@ -676,13 +676,13 @@ def test_a_switch_the_init_template_sets_is_on_by_default_as_a_new_project_holds
     assert "default: off (a new project: structural)" in systems.render_markdown(data, {})
 
 
-def test_the_real_template_enables_maps_and_messaging_in_new_projects():
+def test_the_real_template_enables_maps_messaging_and_history_search_in_new_projects():
     """Which table switches a new project holds otherwise than an absent key, read from the real template: the rule
     above flips on_by_default only for these (project maps, 2026-11-11; the worker's map reads, the operator,
-    2026-11-25, O1)."""
+    2026-11-25, O1; history search for the Lead, register E185)."""
     real = owners_at_head()
     assert real.new_project == {("maps", "pack_slices"): "structural", ("maps", "reads"): "structural",
-                                ("coordination", "messaging"): "enabled"}
+                                ("coordination", "messaging"): "enabled", ("recall", "raw_history_search"): "explicit"}
 
 
 def test_non_binary_switch_is_checked_without_inventing_an_on_state(own):

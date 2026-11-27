@@ -489,6 +489,9 @@ def test_an_ingested_marked_finding_holds_the_next_advance(tmp_path):
     assert_control_invariants(p)
 
 
+RATIONALE = contract.tool("resolve", contract.ALL_SWITCHES).input_schema["properties"]["rationale"]
+
+
 def _disposition_decision(p: Project, wid: str | None, kind: str) -> dict[str, Any]:
     projection.clear_cache()
     status = R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid} if wid else {})["projection"]
@@ -512,7 +515,7 @@ def test_a_lead_that_fills_a_finding_decisions_judgment_inputs_disposes_of_it_th
     d = _disposition_decision(p, wid, "DISPOSE_FINDING")
     assert d["owner"] == "lead" and d["evidence"] == [f"{failing}#F1"]
     assert d["judgment_inputs"] == {"choice": {"options": list(contract.DISPOSITION_CHOICES)},
-                                    "rationale": contract.tool("resolve").input_schema["properties"]["rationale"]}
+                                    "rationale": RATIONALE}
     arguments = judged(d, choice)
     engine = Engine.discover(p.root)
     if choice == "follow_up":
@@ -539,7 +542,7 @@ def test_a_lead_that_fills_an_anomaly_decisions_judgment_inputs_disposes_of_it_t
     d = _disposition_decision(p, wid, "DISPOSE_ANOMALY")
     assert d["owner"] == "lead" and d["evidence"] == [an] and d["availability"] == "AVAILABLE"
     assert d["judgment_inputs"] == {"choice": {"options": list(contract.DISPOSITION_CHOICES)},
-                                    "rationale": contract.tool("resolve").input_schema["properties"]["rationale"]}
+                                    "rationale": RATIONALE}
     out = R.run_tool(Engine.discover(p.root), CTX, "resolve", judged(d, "not_applicable"), token=p.token)
     assert out["ok"], out["stopped"]
     assert "anomalies" not in control(p)

@@ -153,7 +153,7 @@ def test_a_lead_that_fills_the_stage_decisions_judgment_inputs_resolves_it_throu
     p = project
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
     decision = stage_decision(p, sid)
-    schema = contract.tool("resolve").input_schema
+    schema = contract.tool("resolve", contract.ALL_SWITCHES).input_schema
     assert decision["owner"] == "lead"
     assert decision["judgment_inputs"] == {"choice": {"options": list(contract.STAGE_CHOICES)},
                                            "rationale": schema["properties"]["rationale"]}

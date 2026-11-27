@@ -199,7 +199,7 @@ def test_a_resolve_decision_names_as_judgment_inputs_exactly_the_fields_its_argu
     Whole arguments name none, and the result contract accepts the field."""
     from aew.surface import contract
 
-    resolve = contract.tool("resolve").input_schema
+    resolve = contract.tool("resolve", contract.ALL_SWITCHES).input_schema
     kinds = _resolve_kinds()
     assert {"RESOLVE_STAGE", "DISPOSE_FINDING", "DISPOSE_CLAIM", "DISPOSE_ANOMALY"} <= set(kinds)
     for kind in kinds:

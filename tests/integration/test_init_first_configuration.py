@@ -275,8 +275,20 @@ def test_a_flag_is_refused_under_the_lead_broker_and_writes_nothing(tmp_path):
 # ---------------------------------------------------------------------------------------------- the driver's hook
 
 
+_WORLDS: list[Any] = []  # each world :func:`operator` made, closed after its test (its provider listener)
+
+
+@pytest.fixture(autouse=True)
+def _close_worlds():
+    yield
+    while _WORLDS:
+        for close in _WORLDS.pop().closers:
+            close()
+
+
 def operator(tmp_path: Path) -> S.Operator:
     lab = S.new_world(tmp_path)
+    _WORLDS.append(lab)
     return S.Operator(lab, L.Ledger("unit"), tmp_path, Mailbox(tmp_path / "sync" / "chat", "operator"))
 
 
@@ -323,7 +335,7 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
                                  {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
     assert res.returncode == 0, res.stderr
     recorded = {o["fixture"] for o in op.ledger.observations if o["kind"] == "setup_fixture"}
-    assert recorded == {"harness: fake", "containment.writable", "steering.mode",
+    assert recorded == {"harness: fake", "containment.writable", "containment.network.upstreams", "steering.mode",
                         f"known provider {S.OFFLINE_PROVIDER}"}
     assert set(op.ledger.counts().values()) == {0}, op.ledger.counts()
     execution = op.root / ".aew/policy/execution.yaml"
@@ -349,6 +361,34 @@ def test_the_contained_tuis_childdiag_directory_is_a_writable_root_the_real_path
     assert res.returncode == 0, res.stderr
     doc = yaml.safe_load((op.root / ".aew/policy/execution.yaml").read_text(encoding="utf-8"))
     assert str(children) in doc["containment"]["writable"], doc["containment"]
+
+
+def test_the_offline_worlds_doctor_never_sends_its_login_to_a_real_provider_host(tmp_path):
+    """Register E387 (the V-01 re-measure of 2026-11-26, C17): every provider AEW knows an address for relays, in the
+    world, to the world's own provider on loopback, through the policy the real path pins. So doctor's relay probe of
+    the operator's synthetic login (contained Linux) is answered there, never by the provider's real host, which
+    answered HTTP 401 in every V3 case."""
+    import sys
+
+    op = operator(tmp_path)
+    res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
+    assert res.returncode == 0, res.stderr
+    local = op.lab.provider.url
+    assert local.startswith("http://127.0.0.1:")
+    policy = Engine.discover(op.root).execution_policy()[0]
+    assert {p: netns.upstream(p, policy).url for p in netns.UPSTREAMS} == dict.fromkeys(netns.UPSTREAMS, local)
+    before = len(op.lab.provider.model_requests)
+    doctor = run_aew("-C", str(op.root), "doctor", "--json", env=op.lab.env)
+    relay = [c for c in json.loads(doctor.stdout)["checks"] if c["check"] == "provider-relay"]
+    leads = [c for c in relay if c["detail"].startswith("default Lead ")]
+    assert not any("HTTP 401" in c["detail"] or "HTTP 403" in c["detail"] for c in relay), relay
+    if sys.platform.startswith("linux"):  # the contained Lead's route: its probe reaches the world's provider
+        assert [c["status"] for c in leads] == ["PASS"], relay
+        assert "saved OpenCode API key" in leads[0]["detail"] and "provider answered HTTP 200" in leads[0]["detail"]
+        assert ("/v1/models" in [path for path, _ in op.lab.provider.model_requests[before:]]), relay
+    else:  # no contained Lead, so no probe of its route
+        assert leads == [] and len(op.lab.provider.model_requests) == before, relay
 
 
 def test_the_offline_world_settles_its_tool_offers_in_setup_recorded_and_never_counted(tmp_path):

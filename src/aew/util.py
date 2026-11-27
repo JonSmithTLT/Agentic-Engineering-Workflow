@@ -356,6 +356,7 @@ def write_temp(directory: Path, data: bytes, prefix: str) -> Path:
 
 
 SHARING_WAIT_S = 5.0  # how long a replace or a removal waits out a Windows sharing refusal before it raises
+SHARING_PAUSE_S = 0.05  # the pause between two attempts within that wait
 
 
 def replace_with_retry(src: Path, dst: Path) -> None:
@@ -369,7 +370,7 @@ def replace_with_retry(src: Path, dst: Path) -> None:
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:
                 raise
-            time.sleep(0.05)
+            time.sleep(SHARING_PAUSE_S)
 
 
 def unlink_with_retry(path: Path) -> None:
@@ -385,7 +386,7 @@ def unlink_with_retry(path: Path) -> None:
         except PermissionError:
             if not IS_WINDOWS or time.monotonic() > deadline:
                 raise
-            time.sleep(0.05)
+            time.sleep(SHARING_PAUSE_S)
 
 
 def atomic_write(path: Path, data: bytes | str) -> None:

@@ -79,7 +79,11 @@ def held_by_a_reader(path: Path, *, release_after: int | None = 1) -> Iterator[N
     is refused with a sharing violation until the reader lets go: on Windows a real handle, elsewhere (where an open
     file can be removed) the same refusal injected into ``Path.unlink`` for this path alone, with ``aew.util`` told it
     runs on Windows. The ``release_after``-th retry pause of the thread that entered releases it, independent of
-    scheduling; ``None`` holds it to the end and models a reader that outlasts the wait."""
+    scheduling; ``None`` holds it to the end and models a reader that outlasts the wait.
+
+    ``aew.util``'s shifted clock (and, off Windows, its Windows flag) hold for every thread and every ``aew.util``
+    primitive while the block is open, not only for this path's removal (``create_exclusive`` takes its rename branch
+    and ``fsync_dir`` does nothing, for example), so keep the block to the removal under test."""
     from aew import util
 
     owner = threading.get_ident()

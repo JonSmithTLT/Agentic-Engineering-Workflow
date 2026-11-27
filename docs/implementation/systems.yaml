@@ -1394,7 +1394,7 @@ systems:
       on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19,
       and O-CMD from its flip after its triage (E140's third PR).
   state:
-    board_state: partly_built
+    board_state: built_off
     built: 'yes'
     wired: []
     on_by_default: false
@@ -2438,7 +2438,7 @@ systems:
   - src/aew/doctor.py
   depends_on: []
   state:
-    board_state: partly_built
+    board_state: built_off
     built: 'yes'
     wired: []
     on_by_default: false

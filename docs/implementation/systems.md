@@ -8,9 +8,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **awaiting_signoff (built, awaiting your sign-off):** 10 — SYS-08, SYS-09, SYS-13, SYS-19, SYS-32, SYS-39, SYS-40, SYS-47, SYS-48, SYS-53
 
-**partly_built:** 19 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-12, SYS-14, SYS-15, SYS-16, SYS-18, SYS-21, SYS-23, SYS-25, SYS-43, SYS-45, SYS-51
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-11, SYS-14, SYS-15, SYS-16, SYS-18, SYS-21, SYS-25, SYS-43, SYS-45, SYS-51
 
-**built_off:** 0 — none
+**built_off:** 2 — SYS-12, SYS-23
 
 **built_not_wired:** 0 — none
 

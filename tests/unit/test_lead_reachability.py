@@ -14,7 +14,9 @@ import time
 import pytest
 
 from aew import errors
+from aew.cli import main as cli_main
 from aew.cli.main import build_parser
+from aew.engine import recall
 from aew.harness import bridge, lead_broker
 from aew.harness import contract as K
 from aew.surface import contract
@@ -105,13 +107,22 @@ def test_the_surface_map_marks_exactly_the_relayed_reads_and_each_is_a_read():
     (["map", "show", "--commit=--output=/tmp/x"], "relayed_value"),  # never an option for git
     (["harness", "wait", "../../../etc", "--timeout", "0"], "relayed_value"),  # a run id, never a path
     (["harness", "status", "INV-0001/.."], "relayed_value"),
+    # E185, review of #662 m2: a search term is never an option and is bounded (RELAYED_VALUES["terms"]), and the
+    # filters are names, never a path or an option
+    (["history", "search", "--", "-x"], "relayed_value"),
+    (["history", "search", "x" * (recall.MAX_QUERY_CHARS + 1)], "relayed_value"),
+    (["history", "search", "x", "--kind", "../x"], "relayed_value"),
+    (["history", "search", "x", "--since", "/etc/passwd"], "relayed_value"),
+    (["history", "search", "x", "--until=--x"], "relayed_value"),
 ])
 def test_a_read_outside_the_relayed_set_or_with_another_option_or_value_is_refused_before_anything_runs(
         argv, reason, monkeypatch):
     """Conditions 3 and 5: the broker parses the request against the command's own parser. A command outside the set
     is refused, naming the operator's route; a relayed one with an option it may not carry, or a value that could name
-    a directory, an output path or an option, is refused. None starts a process (the engine is never reached)."""
+    a directory, an output path or an option, is refused. None starts a process (the engine is never reached).
+    `history search` is registered as if its switch were on (that reading is test_history_search's)."""
     monkeypatch.setitem(lead_broker.RELAYED_READS, frozenset({"status"}), frozenset({"work_id"}))
+    monkeypatch.setattr(cli_main, "recall_search_for", lambda *_, **__: True)
     with pytest.raises(errors.PermissionDenied) as refused:
         lead_broker.run_read(object(), argv, ".")
     assert refused.value.details["reason"] == reason, refused.value.details
@@ -142,6 +153,16 @@ def test_a_relayed_wait_at_the_stated_bound_passes_it_and_one_second_more_is_ref
     assert refused.value.details["reason"] == "relayed_value", refused.value.details
     assert f"refuses --timeout {float(bound + 1)}: pass a finite number of seconds, at most {bound}" \
         in refused.value.message
+
+
+@pytest.mark.parametrize("terms", [["subtract implemented"], ["two words", "x" * recall.MAX_QUERY_CHARS]])
+def test_a_relayed_history_search_passes_a_phrase_with_a_space_and_a_term_at_the_bound(terms, monkeypatch, tmp_path):
+    """E185, review of #662 m2: a search term is a phrase, not a name, so one with a space, and one of exactly
+    ``recall.MAX_QUERY_CHARS``, pass the value check and go on to the project check, which finds no project in an empty
+    directory (so nothing runs)."""
+    monkeypatch.setattr(cli_main, "recall_search_for", lambda *_, **__: True)
+    with pytest.raises(errors.ProjectNotFound):
+        lead_broker.run_read(object(), ["history", "search", *terms, "--limit", "3"], str(tmp_path))
 
 
 def _ns(*argv: str) -> argparse.Namespace:

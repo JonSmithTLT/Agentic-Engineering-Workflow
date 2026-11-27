@@ -552,13 +552,15 @@ def full_ref_name(name: str, *, cwd: Path) -> str:
         raise NotFound(f"no ref {name} in this repository; AEW fetches nothing: create or fetch it yourself, then "
                        "name it again", reason="unknown_ref", ref=name)
     candidates = [prefix + name for prefix in REVIEWABLE_REF_PREFIXES if prefix + name in refs]
+    # git's own short forms (`heads/<b>`, `tags/<t>`, `remotes/<r>/<b>`) are candidates too, so a name both forms give,
+    # which git calls ambiguous, is refused here rather than read one way (#661's quick check, m6)
+    if f"refs/{name}" in refs and f"refs/{name}".startswith(REVIEWABLE_REF_PREFIXES):
+        candidates.append(f"refs/{name}")
     if len(candidates) == 1:
         return candidates[0]
     if candidates:
         raise UsageError(f"{name!r} names {len(candidates)} refs ({', '.join(candidates)}): give the full name",
                          reason="ambiguous_ref", ref=name, candidates=candidates)
-    if f"refs/{name}" in refs and f"refs/{name}".startswith(REVIEWABLE_REF_PREFIXES):
-        return f"refs/{name}"  # `heads/<b>`, `tags/<t>`, `remotes/<r>/<b>`: git's own short forms of an accepted ref
     if f"refs/{name}" in refs:
         raise UsageError(f"refs/{name} is outside the refs AEW reviews: name one in {accepted}",
                          reason="ref_namespace", ref=f"refs/{name}", accepted=list(REVIEWABLE_REF_PREFIXES))

@@ -117,6 +117,17 @@ def test_a_commit_id_is_refused_as_not_a_ref_with_the_way_to_review_one(project)
         assert exc.value.details["reason"] == "not_a_ref" and "create a branch at it" in exc.value.message
 
 
+def test_a_short_form_that_is_also_a_branchs_name_is_refused_as_ambiguous(project):
+    """#661's quick check, m6: with both `refs/heads/x` and `refs/heads/heads/x`, git calls `heads/x` ambiguous; AEW
+    refuses it, naming both, rather than review one silently."""
+    git("branch", "x", "feature/x", cwd=project.root)
+    git("branch", "heads/x", "feature/x", cwd=project.root)
+    with pytest.raises(UsageError) as exc:
+        G.full_ref_name("heads/x", cwd=project.root)
+    assert exc.value.details["reason"] == "ambiguous_ref"
+    assert exc.value.details["candidates"] == ["refs/heads/heads/x", "refs/heads/x"]
+
+
 def test_an_ambiguous_short_ref_is_refused_with_its_candidates(project):
     git("tag", "feature/x", "main", cwd=project.root)
     with pytest.raises(UsageError) as exc:

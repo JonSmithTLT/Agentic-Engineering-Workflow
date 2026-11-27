@@ -9,7 +9,7 @@ import re
 import pytest
 from aewflow import sample_project
 
-from aew.engine import api, lead_ops
+from aew.engine import api, lead_ops, resume_ops
 from aew.engine.api import Engine
 from aew.harness import procs, seat
 
@@ -66,7 +66,7 @@ def test_a_gone_session_with_a_handoff_pending_names_why_resume_is_refused_and_t
     assert row["status"] == "WARN"
     detail = row["detail"]
     assert "cannot resume it: a cooperative handoff is pending" in detail
-    assert "`aew lead handoff accept`" in detail and "aew lead takeover --reason" in detail
+    assert resume_ops.HANDOFF_ACCEPT in detail and "aew lead takeover --reason" in detail
     assert "resumes the seat" not in detail
     assert re.search(CAUSE, detail) and re.search(FIX, detail)
 

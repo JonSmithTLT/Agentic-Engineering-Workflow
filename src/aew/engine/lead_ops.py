@@ -96,9 +96,11 @@ def seat_doctor(lead: dict[str, Any]) -> tuple[str, str] | None:
         return "WARN", (f"{gone}. To recover it, run plain `aew opencode` at your own terminal: it resumes the seat, "
                         "carrying the active invocations, so no worker is stopped. If resume is refused, the operator "
                         f"takes the seat over there instead: `aew lead takeover --reason '{TAKEOVER_REASON}'`")
-    return "WARN", (f"{gone}, and `aew opencode` cannot resume it: {refused[1]}. To recover it, a successor accepts "
-                    "the handoff with `aew lead handoff accept`, or the operator takes the seat over at their own "
-                    f"terminal: `aew lead takeover --reason '{TAKEOVER_REASON}'`")
+    from aew.engine.resume_ops import HANDOFF_ACCEPT  # the handoff's next step in words: no offer secret printed
+
+    return "WARN", (f"{gone}, and `aew opencode` cannot resume it: {refused[1]}. To recover it, {HANDOFF_ACCEPT}, "
+                    "or the operator takes the seat over at their own terminal: "
+                    f"`aew lead takeover --reason '{TAKEOVER_REASON}'`")
 
 
 class Lead:

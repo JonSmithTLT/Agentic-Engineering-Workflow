@@ -31,6 +31,13 @@ def escape_display_controls(text: str) -> str:
                   lambda match: f"\\u{ord(match[0]):04x}", text)
 
 
+def code_fence(content: str) -> str:
+    """A Markdown code fence for ``content``: longer than any run of backticks in it, so no line of it can close the
+    fence; three backticks when it holds no run of three. The one owner of the rule, for every block of generated or
+    recorded text a pack fences (``knowledge.context``, ``maps.slices``)."""
+    return "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
+
+
 def decode_text(raw: bytes, *, source: str) -> str:
     """Text given to AEW is UTF-8. A byte-order mark is honoured and removed: UTF-8's, which Windows PowerShell 5.1
     writes for ``-Encoding utf8``, and UTF-16's, which it writes for ``>`` and ``Out-File``. Anything else that is

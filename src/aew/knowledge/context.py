@@ -29,7 +29,7 @@ from aew.harness.bridge import OPERATIONS as BRIDGE_OPERATIONS
 from aew.knowledge import evidence as E
 from aew.roles import AUTHORITY_SENSITIVE_CAPABILITIES, SLOT_ARCHETYPES
 from aew.schemas import schema
-from aew.util import dump_yaml
+from aew.util import code_fence, dump_yaml
 
 # Each report's format, copied as it stands by the model that reads it: a value here is one the engine accepts, and the
 # other values a field may take are listed beside it (`_allowed_values`), since a YAML comment would become part of the
@@ -527,8 +527,11 @@ def _checks(p: PackInputs) -> list[str]:
 
 def _findings(p: PackInputs) -> list[str]:
     lines = ["## Open review findings", ""]
-    lines += [f"- `{f['id']}` [{f['severity']}{', required' if f['required'] else ''}] {f['summary']}"
-              + (f" ({f['location']})" if f.get("location") else "") for f in p.open_findings] or ["- none"]
+    # The summary and location are a reviewer's recorded text: quoted, whole (no bound yet: register E401).
+    lines += [f"- `{f['id']}` [{f['severity']}{', required' if f['required'] else ''}] "
+              + _quoted({"text": str(f["summary"])})
+              + (f" ({_quoted({'text': str(f['location'])})})" if f.get("location") else "")
+              for f in p.open_findings] or ["- none"]
     return lines
 
 
@@ -576,21 +579,16 @@ def _inputs(p: PackInputs) -> list[str]:
     return lines
 
 
-def _fence(content: str) -> str:
-    """A code fence for ``content``, text a worker wrote or changed: longer than any run of backticks in it, so a run in
-    it cannot close the fence. Three backticks for content with no run of three or more."""
-    return "`" * max(3, 1 + max((len(run) for run in re.findall("`+", content)), default=0))
-
-
 def _fenced(info: str, content: str, empty: str = "") -> list[str]:
-    """``content`` in its fence (``_fence``), or ``empty`` there when it has none."""
-    fence = _fence(content)
+    """``content``, text a worker wrote or changed, in its fence (``util.code_fence``), or ``empty`` there when it has
+    none."""
+    fence = code_fence(content)
     return [fence + info, content or empty, fence]
 
 
 def _subject(p: PackInputs) -> list[str]:
     """The record under review, whole: what a reviewer or a verifier judges. Its fields and its body are what a worker
-    recorded, so each is fenced (``_fence``) and the body never reads as the pack's own headings."""
+    recorded, so each is fenced (``_fenced``) and the body never reads as the pack's own headings."""
     s = p.subject
     if not s:
         return []
@@ -635,7 +633,7 @@ def _history(p: PackInputs) -> tuple[list[str], list[list[str]], list[str]]:
     blocks, labels = [], []
     for h in p.history:
         content = h["content"].rstrip()
-        fence = _fence(content)  # a record written by a model may hold backticks
+        fence = code_fence(content)  # a record written by a model may hold backticks
         label = f"history:{h['id']}@{h['sha256'][:12]}"
         blocks.append(["", f"### {label} ({h['kind']}; source: {h['source']})", "",
                        f"Loaded because: {h['reason']}", "", f"{fence}yaml", content, fence])

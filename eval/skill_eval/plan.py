@@ -20,10 +20,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from aew_eval import prereg
+from aew_eval import prereg, walk
 from aew_eval.schemas import Invalid
 
-from skill_eval import arms, walk
+from skill_eval import arms
 
 # The operator's limit of USD 10 (register E135, Source). The runner holds each preregistration's budget to it and
 # sums nothing across experiments: what the limit covers in total is the operator's to say and to keep.

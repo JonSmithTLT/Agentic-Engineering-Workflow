@@ -17,9 +17,8 @@ OpenCode projection's; ``loaded`` is the adapter's. What it adds:
 * :mod:`skill_eval.run`: a skill evaluation's lane, around the walk;
 * :mod:`skill_eval.report`: the three measures, from the paired report.
 
-Two modules know no skill and are written to be lifted into the instrument as its shared walker and paired report
-(the operator, 2026-11-26): :mod:`skill_eval.walk` (a frozen schedule, block by block, under its budget) and
-:mod:`skill_eval.paired` (two arms' runs as pairs, their usage differences, blind packets and paired grades).
+The instrument supplies :mod:`aew_eval.walk` (a frozen schedule, block by block, under its budget) and
+:mod:`aew_eval.paired` (two arms' runs as pairs, their usage differences, blind packets and paired grades).
 
 It is a measuring instrument, never authority: no result here labels a skill, changes a card or satisfies a gate, and
 running it is the operator's act, with a keyed, paid model they approve for that event (register E135's note of

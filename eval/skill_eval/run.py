@@ -1,4 +1,4 @@
-"""A skill evaluation's lane: the shared walk (:mod:`skill_eval.walk`), with what a skill evaluation adds around it.
+"""A skill evaluation's lane: the shared walk (:mod:`aew_eval.walk`), with what a skill evaluation adds around it.
 
 :func:`run` checks that the frozen preregistration is a paired skill evaluation (:func:`skill_eval.plan.shape`),
 claims the lane for that one experiment, installs the two skill arms for the walk's duration, and walks the schedule
@@ -14,10 +14,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from aew_eval import raw
+from aew_eval import raw, walk
 from aew_eval.schemas import Invalid
 
-from skill_eval import arms, plan, walk
+from skill_eval import arms, plan
 
 LANE = "aew/skill-eval-lane/v1"
 LANE_FILE = "lane.json"
@@ -62,7 +62,7 @@ def run(frozen: dict[str, Any], *, cases: dict[str, Path], lane: Path, evaluator
     ``lane`` holds the experiment's ledger (``ledger/``) and scratch (``work/``), outside every git work tree;
     ``evaluator`` names what no arm may read (the key's directory, the cases, and the directory their source file
     is in, which holds its oracles and rubric: the command line passes all three). Returns the walk's account
-    (:func:`skill_eval.walk.walk`) with ``evaluator_material_hidden``. Raises :class:`aew_eval.schemas.Invalid` before
+    (:func:`aew_eval.walk.walk`) with ``evaluator_material_hidden``. Raises :class:`aew_eval.schemas.Invalid` before
     anything is registered when the preregistration is not a paired skill evaluation."""
     plan.shape(frozen)
     ledger_dir, work = lane / "ledger", lane / "work"

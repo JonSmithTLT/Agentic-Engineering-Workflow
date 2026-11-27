@@ -72,3 +72,13 @@ Once S3 binds evidence to a registry identity, changing version 1 in place would
 - The digests are platform independent by construction (canonical JSON, NFC, LF), pinned by fixed vectors (`test_digests_are_platform_independent`), including a record stored with CRLF line endings.
 - The engine cannot tell mechanically whether free text carries acceptance meaning, so the body and external references are in `acceptance`, and the title's misuse is found by review or confirmation (register F4's build note; S7's override).
 - A group's digest changes when a field is added to it, even an absent one (it joins the payload as `null`). That is why the registry is versioned once bindings exist.
+
+## Amendment 2026-11-27 — the reserved keys leave the registry (register E88)
+
+E88 removes the nine reserved F4 bookkeeping keys from the current registry
+before their writers land. The coordination-message schema retains its own
+required `ticket_revision` field, which stays null on dormant projects.
+
+The F4 plan's §3.3 table governs each key's classification when its slice
+introduces a writer. That slice adds the registry entry in the same pull
+request, as checked by invariant 50 and the schema classification test.

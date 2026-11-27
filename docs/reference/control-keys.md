@@ -35,7 +35,7 @@ The top-level properties of the control schema, which is closed and which the st
 - `tokens` (required, initial): `aew.engine.api:Engine.initialize`
 - `work` (required, initial): `aew.engine.api:Engine.initialize`
 
-## Unit keys (68)
+## Unit keys (59)
 
 The keys a unit in `work` carries: the properties of the schema's unit definition (open) joined with the Ticket field registry's inputs and engine bookkeeping. A lower bound: the control schema's unit definition is open and the registry's inventory is checked by the oracle's `ticket_field_violations` over every step of every walk, so a unit key written on a path no walk exercises is classified only once a walk reaches it.
 
@@ -55,7 +55,6 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 - `completion_record` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `completion_sha256` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `coordination` (bookkeeping, in the schema): `aew.coordination.layout:UNIT_KEY`
-- `coverage_obligations` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `created_at` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `depends_on` (input:dependencies, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `dispositions` (bookkeeping, in the schema): `aew.engine.disposition_ops:UNIT_KEY`
@@ -66,7 +65,6 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 - `execution_history` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `failure_evidence` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `findings` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `hierarchy_baseline` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `history` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `history_refs` (bookkeeping, in the schema): `aew.engine.ticket_fields:load_registry`
 - `implementer_invocation` (bookkeeping): `aew.engine.ticket_fields:load_registry`
@@ -91,19 +89,12 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 - `queue_history` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `record` (bookkeeping, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `record_sha256` (bookkeeping, in the schema, required): `aew.engine.ticket_fields:load_registry`
-- `recorded_digests` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `revision_events` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `revision_impact_holds` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `revision_pending` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `revision_refusals` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `revisions` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `risk_class` (input:gate_set, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `role_plan` (input:staffing): `aew.engine.ticket_fields:load_registry`
 - `scope_corrections` (input:scope, in the schema): `aew.engine.scope_ops:UNIT_KEY`
 - `stage_intents` (bookkeeping, in the schema): `aew.engine.ticket_fields:load_registry`
 - `state` (bookkeeping, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `state_reason` (bookkeeping): `aew.engine.ticket_fields:load_registry`
-- `ticket_revision` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `title` (input:card, in the schema, required): `aew.engine.ticket_fields:load_registry`
 - `waivers` (bookkeeping): `aew.engine.ticket_fields:load_registry`
 - `workspace` (bookkeeping): `aew.engine.ticket_fields:load_registry`

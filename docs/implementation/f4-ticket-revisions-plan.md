@@ -363,6 +363,8 @@ A versioned JSON document in the package, `src/aew/schemas/ticket-field-registry
 | `hierarchy_baseline`, `recorded_digests`, `revision_events`, `revision_refusals`, `ticket_revision`, `revisions`, `revision_pending`, `revision_impact_holds`, `coverage_obligations` and the `child_promoted_out` history event | control | engine bookkeeping (V5) | F4's own paths |
 | any other key in a record | record | `acceptance` (fail closed) | n/a |
 
+**E88 (2026-11-27).** This table still decides each reserved key's classification when its slice introduces a writer. [ADR-0016 amendment](adr/0016-ticket-revisions.md#amendment-2026-11-27--the-reserved-keys-leave-the-registry-register-e88)
+
 - **Material groups** (E19-B §4.3): `acceptance`, `check_definition`, `scope`, `gate_set`, `dependencies` and `kind`.
   `card` and `staffing` are not material.
 - **The title:**

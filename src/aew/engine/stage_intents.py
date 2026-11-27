@@ -95,6 +95,16 @@ STEP_STATE = "state"  # a later transition may bind the subject state that step 
 ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # judgments that accept a report
 
 
+# What a continue took from a launching step's ended run (register E400), as its commit's summary records it: the one
+# record of what the continue observed, which invariant 63 reads back (#651 review, m2), so no clock is compared.
+TOOK = re.compile(r"; took (R-[A-Za-z0-9-]+)'s evidence ([A-Za-z0-9_, -]*)")
+
+
+def took(run: str, ids: list[str]) -> str:
+    """The summary clause of a continue that took ``run``'s evidence ``ids``; ``TOOK`` reads it back."""
+    return f"; took {run}'s evidence {', '.join(ids)}"
+
+
 def cold_rel(intent_id: str, work_id: str | None) -> str:
     """Where an ended intent lives: under its unit, or in ``records/`` when it has none."""
     return f"work/{work_id}/stage-intents/{intent_id}.yaml" if work_id else f"{RECORDS_DIR}/{intent_id}.yaml"
@@ -403,8 +413,7 @@ class StageIntents:
             ctx.summary = (f"stage {si['tool']} ({intent}) continued by Lead generation {generation}: "
                            + {ACTIVE: f"from step {done + 1}", COMPLETED: "completed",
                               STOPPED: "its launch failed"}[status]
-                           + "".join(f"; took {run}'s evidence {', '.join(ids)}"  # E400: the ended run's work
-                                     for run, ids in (launch.get("taken") or {}).items()))
+                           + "".join(took(run, ids) for run, ids in (launch.get("taken") or {}).items()))
             ctx.refs.append(intent)
         return {"intent": intent, "status": status, "revision": rev, "next": done + 1, "generation": generation,
                 "launch": launch}
@@ -518,7 +527,7 @@ class StageIntents:
             left = (self.run_evidence(state, run)
                     if observed == K.ENDED_WITH_EVIDENCE and self.run_evidence and state is not None else None)
             if left is not None and left["bound"]:
-                taken[run] = list(left["evidence"])
+                taken[run] = list(left["taken"])
                 continue
             if left is not None and left["role"] == "implementer" and left["scope"] == "ticket":
                 return _snapshot_moved(last, run, observed, left)

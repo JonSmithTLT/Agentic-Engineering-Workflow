@@ -568,10 +568,13 @@ IMPLEMENT = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "un
              {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
 
 
-def ended_with_evidence(p, tmp_path, monkeypatch, steps: list[dict[str, Any]] | None = None):
+def ended_with_evidence(p, tmp_path, monkeypatch, steps: list[dict[str, Any]] | None = None, *,
+                        with_evidence: bool | None = None):
+    """The killed stage, its run ended as ``steps`` script it (by default ``IMPLEMENT``, which ends with evidence)."""
     lab, wid, sid, run = crashed_launch(p, tmp_path, monkeypatch, "ended", steps or IMPLEMENT)
     status, _ = runlog.observed_status(runlog.run_dir(p.root / ".aew", run))
-    assert status == "ended_with_evidence" if steps is None else status != "ended_with_evidence", status
+    expected = (steps is None) if with_evidence is None else with_evidence
+    assert (status == "ended_with_evidence") is expected, status
     return lab, wid, sid, run
 
 
@@ -676,8 +679,8 @@ def test_continue_after_a_kill_on_a_moved_snapshot_stops_and_names_the_relaunch_
 @pytest.mark.parametrize("how", ["unchanged", "moved", "without_evidence", "crashed"])
 def test_continue_never_relaunches_a_run_that_has_ended(project, tmp_path, monkeypatch, how):
     """Whatever the ended run left, the continue starts no supervisor, records no run and keeps the invocation's
-    credential: a relaunch is only ever the Lead's `harness.launch` (#142 review; the Lead's recommendation the
-    operator accepted, 2026-11-27)."""
+    credential: a relaunch is only ever the Lead's `harness.launch` (#142 review), which is what the operator chose for
+    a moved snapshot (2026-11-27), and the continue only names it."""
     p = project
     steps = {"without_evidence": [{"do": "note", "text": "done"}], "crashed": [{"do": "exit", "code": 3}]}.get(how)
     lab, wid, sid, run = ended_with_evidence(p, tmp_path, monkeypatch, steps)
@@ -697,10 +700,11 @@ def test_continue_never_relaunches_a_run_that_has_ended(project, tmp_path, monke
     assert_control_invariants(p)
 
 
-def test_the_invariants_report_a_continue_that_completed_over_a_run_that_left_no_evidence(
-        project, tmp_path, monkeypatch):
-    """Invariant 63's planted case: a binding that wrongly calls a run with no evidence taken lets the continue
-    complete the stage, and the invariants say so."""
+@pytest.mark.parametrize("planted", ["completed", "snapshot_moved"])
+def test_the_invariants_report_a_continue_over_a_run_that_left_no_evidence(project, tmp_path, monkeypatch, planted):
+    """Invariant 63's planted cases: a binding that wrongly says a run with no evidence left some, bound (the
+    continue completes the stage taking it) or not (the continue stops as ``snapshot_moved`` over it), and the
+    invariants say so."""
     from invariants import control_violations
 
     from aew.engine.workspace_ops import Invocations
@@ -710,15 +714,39 @@ def test_the_invariants_report_a_continue_that_completed_over_a_run_that_left_no
     try:
         monkeypatch.setattr(runlog, "observed_status", lambda d: ("ended_with_evidence", None))
         monkeypatch.setattr(Invocations, "run_evidence_binding", lambda self, state, r: {
-            "invocation": "?", "work_unit": wid, "role": "implementer", "scope": "ticket", "evidence": [],
-            "bound": True})
-        assert resolve(p, sid, "continue")["ok"]
+            "invocation": load_control(p.root)["work"][wid]["implementer_invocation"], "work_unit": wid,
+            "role": "implementer", "scope": "ticket", "evidence": ["INV-PLANTED-1"], "taken": ["INV-PLANTED-1"],
+            "bound": planted == "completed"})
+        out = resolve(p, sid, "continue")
+        assert out["ok"] is (planted == "completed"), out["stopped"]
         monkeypatch.undo()
         found = control_violations(p.root)
-        assert any(v.startswith(f"63: work/{wid}/stage-intents/{sid}.yaml: a continue completed it over {run}")
-                   for v in found), found
+        said = (f"a continue completed it taking {run}'s evidence ['INV-PLANTED-1']" if planted == "completed"
+                else f"stopped as snapshot_moved over ['{run}'], none of which left evidence")
+        assert any(v.startswith(f"63: work/{wid}/stage-intents/{sid}.yaml: {said}") for v in found), found
     finally:
         lab.cleanup()
+
+
+def test_continue_after_a_kill_whose_run_rechecked_after_its_report_stops_as_snapshot_moved(
+        project, tmp_path, monkeypatch):
+    """#651 review, M1: the implementer submits its report, edits one more file and runs its check again, then
+    ends. Its last record is on the new snapshot and its report on the old one, so its expected output is not bound
+    to the current snapshot: the continue stops as ``snapshot_moved`` instead of completing over a stale report."""
+    p = project
+    steps = [*IMPLEMENT, {"do": "write", "files": {"calc/extra.py": "X = 1\n"}}, {"do": "check", "id": "unit"}]
+    lab, wid, sid, run = ended_with_evidence(p, tmp_path, monkeypatch, steps, with_evidence=True)
+    try:
+        records = [e for e in E.scan(p.root / ".aew", wid)[0] if e["producer"].get("run") == run]
+        assert [e["kind"] for e in records] == ["check_result", "implementation_report", "check_result"]
+        row = unfinished(p)[sid]
+        assert row["checks"]["launch"]["status"] == "snapshot_moved", row["checks"]["launch"]
+        out = resolve(p, sid, "continue")
+        assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "snapshot_moved", out["stopped"]
+        assert Engine.discover(p.root).stage_intent(sid)["status"] == "STOPPED_AT_BOUNDARY"
+    finally:
+        lab.cleanup()
+    assert_control_invariants(p)
 
 
 @pytest.mark.parametrize("how", ["without_evidence", "crashed", "unsealed"])

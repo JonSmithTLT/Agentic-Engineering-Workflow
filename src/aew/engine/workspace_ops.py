@@ -25,7 +25,7 @@ from aew.errors import (
     NotFound,
     PermissionDenied,
 )
-from aew.harness import agentenv, base, registry
+from aew.harness import agentenv, base, registry, runlog
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
@@ -347,17 +347,22 @@ class Invocations:
     def run_evidence_binding(self, state: dict[str, Any], run: str) -> dict[str, Any] | None:
         """What a run that ended with its evidence left, for a stage's continue over it (register E400): the run's
         invocation, role and scope, the ids of the evidence it produced (from the sealed store, as ``harness_resume``
-        selects them), and whether the last of them is bound to the snapshot its invocation evaluates now
-        (``gates.bound_to``). None when that cannot be told: no such invocation, no record of the run, a seal the store
-        refuses (``find_evidence``'s rule: any integrity problem), or a workspace that is retired or gone. A caller
-        then takes nothing."""
+        selects them), and whether its expected output is bound to the snapshot its invocation evaluates now: the
+        latest record of each kind its run record's contract expected (``expected_kinds``, the set that made its
+        supervisor call it ``ended_with_evidence``), each ``gates.bound_to`` that snapshot (#651 review, M1: a check
+        run after the report is not the report). ``taken`` lists what is bound. None when that cannot be told: no such
+        invocation, no record of the run or of its expected output, a seal the store refuses (``find_evidence``'s
+        rule: any integrity problem), or a workspace that is retired or gone. A caller then takes nothing."""
         inv_id = K.invocation_of_run(run)
         inv = state["invocations"].get(inv_id) if inv_id else None
         if inv is None or inv["work_unit"] not in state["work"]:
             return None
         records, problems = E.scan(self.k.aew_root, inv["work_unit"])
         produced = [e for e in records if e["producer"].get("run") == run]
-        if problems or not produced:
+        record = runlog.read_record(runlog.run_dir(self.k.aew_root, run)) or {}
+        expected = set((record.get("contract") or {}).get("expected_kinds") or [])
+        latest = {e["kind"]: e for e in produced if e["kind"] in expected}  # the scan is in recording order
+        if problems or not latest:
             return None
         try:
             path, ws_id, _ = self.invocation_workspace(state, inv)
@@ -368,7 +373,8 @@ class Invocations:
         now = self.snapshot_of(path, ws_id)["relevant_inputs_fingerprint"]
         return {"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
                 "scope": inv.get("scope") or "ticket", "evidence": [e["id"] for e in produced],
-                "bound": G.bound_to(produced[-1], now)}  # the scan is in recording order: the report it ended on
+                "taken": [e["id"] for e in produced if G.bound_to(e, now)],
+                "bound": all(G.bound_to(e, now) for e in latest.values())}
 
     @staticmethod
     def execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:

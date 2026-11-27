@@ -16,7 +16,6 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -493,33 +492,39 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         taken_or_moved(si, where)
 
     def taken_or_moved(si: dict[str, Any], where: str) -> None:
-        """63 (register E400): a continue completes a stage over its launching step's run only while the run's
-        supervisor holds it, or once it ended with its evidence in the sealed store: a run whose record says it had
-        already ended when the continue committed, as anything else, never ends in COMPLETED. A ``snapshot_moved`` stop
-        is only ever over a run that ended with its evidence."""
+        """63 (register E400): what a continue took from its launching step's ended run is true. Its commit's summary
+        names each run it took and the evidence it took (``S.TOOK``, written when the run's status was read, so no
+        clock is compared: #651 review, m2): each such run is one the step launched, its record says it ended with
+        its evidence, and each id named is a sealed record that run produced. A ``snapshot_moved`` stop is only ever
+        over a run that ended with its evidence. The limit: a run the continue found live is not checked here."""
         resolution, closed, stop = si["resolution"], si["closed"], si.get("stopped")
         last = si["steps"][-1] if si["steps"] else None
         runs = ((last or {}).get("outputs") or {}).get("runs") or []
-        if not runs or not resolution or resolution["choice"] != "continue":
+        if not runs or not resolution or resolution["choice"] != "continue" or not closed \
+                or closed["rev"] != resolution["rev"]:
             return
-        moved = bool(stop and stop["error"].get("reason") == "snapshot_moved")
-        completed_by_it = si["status"] == S.COMPLETED and closed and closed["rev"] == resolution["rev"]
-        if not (moved or completed_by_it):
-            return
-        at = datetime.fromisoformat(resolution["at"].replace("Z", "+00:00"))
         wid = si["subject"]["id"]
-        produced = {e["producer"].get("run") for e in E.scan(aew, wid)[0]} if wid else set()
-        for run in runs:
+        produced = {e["id"]: e["producer"].get("run") for e in E.scan(aew, wid)[0]} if wid else {}
+
+        def ended_with_evidence(run: str) -> bool:
             record = runlog.read_record(runlog.run_dir(aew, run)) or {}
-            ended = record.get("ended_at")
-            with_evidence = record.get("status") == "ended_with_evidence" and run in produced
-            if moved and not with_evidence:
-                problems.append(f"63: {where}: stopped as snapshot_moved over {run}, which left no evidence")
-            # The continue's time is to the second: a run ended within that second counts as ended at it.
-            if completed_by_it and ended and not with_evidence and (
-                    datetime.fromisoformat(ended.replace("Z", "+00:00")).replace(microsecond=0) <= at):
-                problems.append(f"63: {where}: a continue completed it over {run}, which had ended "
-                                f"({record.get('status')}) without evidence in the store")
+            return record.get("status") == "ended_with_evidence" and run in produced.values()
+
+        if stop and stop["error"].get("reason") == "snapshot_moved" and not any(map(ended_with_evidence, runs)):
+            problems.append(f"63: {where}: stopped as snapshot_moved over {runs}, none of which left evidence")
+        if si["status"] != S.COMPLETED:
+            return
+        try:
+            [record] = outbox.read_transitions(aew, closed["rev"] - 1, closed["rev"], outbox=hot.get("outbox"))
+        except Exception as exc:  # noqa: BLE001 (the oracle reports, it does not crash)
+            problems.append(f"63: {where}: the continue's commit {closed['rev']} cannot be read: {exc}")
+            return
+        for run, ids in S.TOOK.findall(str(record.get("summary") or "")):
+            named = [i for i in ids.split(", ") if i]
+            if run not in runs or not ended_with_evidence(run) or not named \
+                    or any(produced.get(i) != run for i in named):
+                problems.append(f"63: {where}: a continue completed it taking {run}'s evidence {named}, which that "
+                                "run did not end with")
 
     def resolutions(si: dict[str, Any], where: str) -> None:
         """51 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held

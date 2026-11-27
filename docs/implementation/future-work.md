@@ -3942,17 +3942,17 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
 
-### E388
+### E400
 
-**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
+**Work:** Continuing a stage whose killed run has ended with evidence is refused at its launch: after a forced kill mid-stage, the Lead's `resolve` (choice `continue`, the RESOLVE_STAGE decision filled in) of the stage left unfinished commits its rebind and stops at `dispatch.launch` with `HARNESS_LAUNCH_FAILED` ("step 2 recorded R-INV-0001-1, and its run ended (ended_with_evidence)"), counted as a refusal. What a stage whose run has already ended with its evidence should offer instead (for example taking that run's evidence) is not settled here
 
-**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
+**Source:** The review of #630 (E388), its m1: V2-forced-mid-stage on #630's branch keeps one refusal, this one (ledger seq 26; on `main` the shell `aew stage continue` met it, seq 31). Neither C7 (E376) nor C16 (E386) covers it, and E374 is the steering loop's running stage, while this case runs with steering off
 
-**When:** **V-01**, the strict track of the burn-down (C5), placed by the operator, 2026-11-27: "Yes do 1-3 and start builders on C5 and C3"
+**When:** **Unscheduled**; the operator places it. Cited from C5 on the V-01 burn-down
 
-**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
+**Notes:** Filed by #630. Reproduced by `pytest -p no:xdist --lane vertical tests/acceptance/test_vertical_path.py -k forced_kill_mid_stage` on #630's first commit, `282fa456` (the run was of its working tree, whose `src` and vertical helpers that commit holds unchanged), and the same by the full review's rerun at `2f09ed80`: refusals 1, help_calls 1, shell_aew_calls 2
 
-*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
+*Later notes: `notes.d/E400/`, oldest first (`python tools/register.py show E400`).*
 
 ### E373
 
@@ -5447,6 +5447,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E388
+
+**Was:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carried `arguments` with no `choice` and no `rationale`, so a Lead that called the typed `resolve` with exactly what the projection supplied was refused and fell back to the shell
+
+**Closed:** 2026-11-27
+
+**By:** PR #630: each decision whose call is `resolve` names `judgment_inputs`, the fields the `resolve` schema requires that its arguments leave out: the choice, offered as the choices that run the decision's primitives (`contract.RESOLVE_CHOICE_PRIMITIVE`, through `projection.DECISION_PRIMITIVES`), and the rationale, as the schema's own field; REPLACE_GATE and ADD_SCOPE name their rationale the same way. The result schema accepts the field, the readable next step names what to add, and the scripted Lead writes a rationale input in its own words (`vertical-uat.md` §2 amended). Whether the steering loop's own running stage is offered at all stays E374's (Q9)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E389
 

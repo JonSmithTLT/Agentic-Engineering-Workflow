@@ -34,6 +34,7 @@ from conftest import Project
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
+from test_stage_resolve import judged
 from test_stage_runner import call, intent, intervene, launching
 from test_stages_ticket import HANG, _declared, _effects, _observe, _twins
 
@@ -501,6 +502,65 @@ def test_an_ingested_marked_finding_holds_the_next_advance(tmp_path):
            create_planned_ticket(p, tmp_path, title="Rename"), "--rationale", "renamed separately")
     p.lead("review", "ingest", wid, "--evidence", passing)
     assert unit(p, wid)["state"] == "REVIEW_PASSED"
+    assert_control_invariants(p)
+
+
+RATIONALE = contract.tool("resolve", contract.ALL_SWITCHES).input_schema["properties"]["rationale"]
+
+
+def _disposition_decision(p: Project, wid: str | None, kind: str) -> dict[str, Any]:
+    projection.clear_cache()
+    status = R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid} if wid else {})["projection"]
+    [d] = [d for d in status["decisions_required"] if d["decision"] == kind]
+    return d
+
+
+@pytest.mark.parametrize("choice", [c for c in contract.DISPOSITION_CHOICES if c != "follow_up"] + ["follow_up"])
+def test_a_lead_that_fills_a_finding_decisions_judgment_inputs_disposes_of_it_through_the_typed_call(tmp_path,
+                                                                                                    choice):
+    """Register E388: DISPOSE_FINDING names what its `resolve` call takes from the Lead, the choice (offered: the
+    dispositions, from the contract) and the rationale, so its arguments with those filled in dispose of the finding,
+    for each choice offered. `follow_up` takes its Ticket too, and a call without it is refused naming it."""
+    p = sample_project(tmp_path)
+    mark(p, review_severities=["minor"])
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    failing = review(p, wid, disposition="changes_required",
+                     findings=[MINOR, {"id": "F2", "severity": "major", "summary": "wrong", "required": True}])
+    p.lead("review", "ingest", wid, "--evidence", failing)  # REVIEW_FAILED: F1 recorded, not disposed of
+    d = _disposition_decision(p, wid, "DISPOSE_FINDING")
+    assert d["owner"] == "lead" and d["evidence"] == [f"{failing}#F1"]
+    assert d["judgment_inputs"] == {"choice": {"options": list(contract.DISPOSITION_CHOICES)},
+                                    "rationale": RATIONALE}
+    arguments = judged(d, choice)
+    engine = Engine.discover(p.root)
+    if choice == "follow_up":
+        with pytest.raises(AdapterInputError) as exc:
+            R.run_tool(engine, CTX, "resolve", arguments, token=p.token)
+        assert exc.value.details["violations"] == ["follow_up: required for choice follow_up"]
+        arguments["follow_up"] = create_planned_ticket(p, tmp_path, title="Rename")
+    out = R.run_tool(engine, CTX, "resolve", arguments, token=p.token)
+    assert out["ok"], out["stopped"]
+    [pointer] = unit(p, wid)["dispositions"]
+    assert pointer["subject"] == f"{failing}#F1" and pointer["choice"] == choice
+    assert not [d for d in R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid})["projection"]
+                ["decisions_required"] if d["decision"] == "DISPOSE_FINDING"]
+    assert_control_invariants(p)
+
+
+def test_a_lead_that_fills_an_anomaly_decisions_judgment_inputs_disposes_of_it_through_the_typed_call(tmp_path):
+    """Register E388: DISPOSE_ANOMALY names the same judgment inputs, and its arguments with them filled in dispose
+    of the anomaly through `resolve`."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    an = seed_anomaly(p, wid)
+    d = _disposition_decision(p, wid, "DISPOSE_ANOMALY")
+    assert d["owner"] == "lead" and d["evidence"] == [an] and d["availability"] == "AVAILABLE"
+    assert d["judgment_inputs"] == {"choice": {"options": list(contract.DISPOSITION_CHOICES)},
+                                    "rationale": RATIONALE}
+    out = R.run_tool(Engine.discover(p.root), CTX, "resolve", judged(d, "not_applicable"), token=p.token)
+    assert out["ok"], out["stopped"]
+    assert "anomalies" not in control(p)
     assert_control_invariants(p)
 
 

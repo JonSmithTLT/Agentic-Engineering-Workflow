@@ -181,3 +181,58 @@ def test_whose_decision_the_lead_facing_text_names_is_read_from_the_owner_table(
         assert head[1] == (f"decide PUBLISH on T-0001: {call}" if owner == P.LEAD else
                            f"{said} decision, PUBLISH on T-0001; it is carried out by: {call}"), head
         assert head[2] == f"decision: PUBLISH on T-0001, {said} (AVAILABLE)", head
+
+
+def _resolve_kinds() -> list[str]:
+    """The decision kinds whose call is `resolve`: those whose primitives a `resolve` choice runs (the contract's
+    ``RESOLVE_CHOICE_PRIMITIVE``)."""
+    from aew.surface import contract
+
+    run = set(contract.RESOLVE_CHOICE_PRIMITIVE.values())
+    return [k for k, primitives in projection.DECISION_PRIMITIVES.items() if set(primitives) <= run]
+
+
+def test_a_resolve_decision_names_as_judgment_inputs_exactly_the_fields_its_arguments_leave_out():
+    """Register E388: each `resolve` decision names what its call takes from its owner's judgment, read from the
+    contract: the schema's required fields the arguments leave out, the choice offered as the choices that run the
+    kind's own primitives (each a pair the contract maps to one of them), the rationale as the schema's own field.
+    Whole arguments name none, and the result contract accepts the field."""
+    from aew.surface import contract
+
+    resolve = contract.tool("resolve", contract.ALL_SWITCHES).input_schema
+    kinds = _resolve_kinds()
+    assert {"RESOLVE_STAGE", "DISPOSE_FINDING", "DISPOSE_CLAIM", "DISPOSE_ANOMALY"} <= set(kinds)
+    for kind in kinds:
+        primitives = projection.DECISION_PRIMITIVES[kind]
+        inputs = projection.judgment_inputs(kind, "resolve", {"subject": "X-1"})
+        assert inputs is not None and set(inputs) == set(resolve["required"]) - {"subject"}, kind
+        options = inputs["choice"]["options"]
+        assert options and set(options) == {c for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items()
+                                            if p in primitives}, kind
+        assert inputs["rationale"] == resolve["properties"]["rationale"], kind
+        assert projection.judgment_inputs(kind, "resolve", {"subject": "X-1", "choice": options[0]}) \
+            == {"rationale": inputs["rationale"]}, kind
+        assert projection.judgment_inputs(kind, "resolve", {"subject": "X-1", "choice": options[0],
+                                                            "rationale": "why"}) is None, kind
+        shown = {"decision": kind, "subject": "T-0001", "owner": projection.decision_owner(kind), "evidence": [],
+                 "tool": "resolve", "arguments": {"subject": "X-1"}, "availability": "AVAILABLE",
+                 "default": "NONE", "cli_fallback": None, "judgment_inputs": inputs}
+        validate_def("surface", "decision", shown, source="test")
+    assert projection.judgment_inputs("PUBLISH", None, None) is None  # no call to fill
+    assert projection.judgment_inputs("RESOLVE_STAGE", "resolve", None) is None
+
+
+def test_a_decision_whose_call_is_not_resolve_names_no_judgment_inputs_whatever_its_arguments_leave_out():
+    """The quick check of #630, m1: only `resolve`'s missing fields are judgments. A PUBLISH whose `integration_publish`
+    arguments lack the required `prepared_candidate` (a mechanical fact) names no judgment input, and the decision as
+    the projection builds it validates against the result contract."""
+    from aew.surface import contract
+
+    publish = contract.tool("integration_publish", contract.ALL_SWITCHES).input_schema
+    arguments = {"work_id": "T-0001"}
+    assert "prepared_candidate" in set(publish["required"]) - set(arguments)
+    assert projection.judgment_inputs("PUBLISH", "integration_publish", arguments) is None
+    shown = projection._decision("PUBLISH", "T-0001", tool="integration_publish", arguments=arguments,
+                                 cli_fallback=None, availability="AVAILABLE")
+    assert "judgment_inputs" not in shown
+    validate_def("surface", "decision", shown, source="test")

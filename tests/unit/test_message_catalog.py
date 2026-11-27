@@ -95,7 +95,8 @@ OFF_READERS = {
         "Only planned workflow stages; message_send has no planner.", {"_compose": 1}),
     "src/aew/surface/mcp.py": ("Wait classification only; message_send is not a wait.", {"_is_wait": 1}),
     "src/aew/surface/projection.py": (
-        "Only projected workflow actions; message_send is not a projection action.", {"_action": 1, "_project": 1}),
+        "Only projected workflow actions, and the call a decision names (judgment_inputs); message_send is neither a "
+        "projection action nor a decision's tool.", {"_action": 1, "_project": 1, "judgment_inputs": 1}),
     "src/aew/surface/readable.py": (
         "Primitive-to-stage rendering; record-only send has no completed step.", {"<module>": 1}),
     "src/aew/surface/stage.py": (

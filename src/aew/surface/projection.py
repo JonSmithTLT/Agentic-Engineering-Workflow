@@ -22,7 +22,8 @@ how their answer can change:
 Separately from availability (legality), each action says whether the caller can call it on its surface profile
 (``callable``, presentation only) and whether a stage runner may advance it without judgment (``auto_runnable``,
 never for a query or a wait, never dependent on the profile). Decisions never carry a default, and each states its
-owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out.
+owner (``owner``: ``lead`` or ``operator``; register E335), read from the primitives it carries out, and names what its
+call takes from that owner's judgment (``judgment_inputs``; register E388), read from the call's schema.
 """
 
 from __future__ import annotations
@@ -133,12 +134,46 @@ def decision_owner(name: str) -> str:
     return owners.pop() if len(owners) == 1 else OPERATOR
 
 
+def judgment_inputs(name: str, tool: str | None, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
+    """What a decision's `resolve` call takes from whoever decides it (register E388; the vertical's spec v2): each
+    field `resolve`'s schema requires that the decision's arguments leave out. With those filled in, the call has every
+    field the schema requires; a choice can need more, which only the adapter checks and whose refusal names it
+    (`follow_up` its Ticket; a REPLACE_GATE its ``approval_options`` entry). The ``choice`` offers as ``options`` only
+    the choices that run the decision's primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``, read through
+    ``DECISION_PRIMITIVES``); any other field, the rationale, is offered as its schema, for the decider to write. None
+    when the arguments are whole, or there is no call to fill: a decision never carries a default, so nothing here is a
+    value.
+
+    The limit: only `resolve`, whose required fields beyond those a decision supplies are all judgments (the result
+    schema's ``judgment_inputs`` names exactly those). Any other tool's decision names none, whatever its arguments
+    leave out: a field missing there (a mechanical fact such as a prepared candidate) is never offered as a judgment
+    (the quick check of #630, m1)."""
+    t = contract.tool(tool) if tool else None
+    if t is None or arguments is None or t.name != "resolve":
+        return None
+    schema = t.input_schema
+    primitives = DECISION_PRIMITIVES.get(name, ())
+    out: dict[str, Any] = {}
+    for field in schema.get("required") or ():
+        if field in arguments:
+            continue
+        prop = schema["properties"][field]
+        if field == "choice":
+            out[field] = {"options": list(contract.choices_running(*primitives) if primitives else prop["enum"])}
+        else:
+            out[field] = dict(prop)
+    return out or None
+
+
 def _decision(name: str, subject: str, *, tool: str | None, arguments: dict[str, Any] | None,
               cli_fallback: list[str] | None, evidence: list[str] | None = None,
               availability: str = UNKNOWN) -> dict[str, Any]:
-    return {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
-            "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
-            "cli_fallback": cli_fallback}
+    out = {"decision": name, "subject": subject, "owner": decision_owner(name), "evidence": list(evidence or []),
+           "tool": tool, "arguments": arguments, "availability": availability, "default": "NONE",
+           "cli_fallback": cli_fallback}
+    if inputs := judgment_inputs(name, tool, arguments):
+        out["judgment_inputs"] = inputs
+    return out
 
 
 def _blocker(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:

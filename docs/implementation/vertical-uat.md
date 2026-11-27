@@ -103,8 +103,9 @@ under `mechanical_calls`. With steering off the Lead calls the wait, as before.
 **Judgment inputs (v2).** Where an action, or a decision owned by the Lead or the mechanism, names `judgment_inputs`,
 the Lead supplies them, as its own judgment, and asks no one (never on an operator's decision, whose choice is the
 operator's): a value the projection offers (or the first of its `options`) fills an argument the
-projection's arguments leave out, and the names are recorded as the Lead's (`lead.judgment`). Today's projection names
-none; projection v2 does, with its `next`.
+projection's arguments leave out, an input offered with neither (a rationale) the Lead writes in its own words, and
+the names are recorded as the Lead's (`lead.judgment`). The projection names them on each decision whose call needs
+them (register E388); projection v2 names them on its actions too, with its `next`.
 
 Where that policy cannot make progress (no available action, a refusal, a blocked state), it falls back the way a
 real Lead did, and **counts it**: `explain` or help, the `cli` tool, `aew` from its shell, or a tool the projection did

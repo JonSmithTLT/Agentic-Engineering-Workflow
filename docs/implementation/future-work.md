@@ -3942,18 +3942,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
 
-### E388
-
-**Work:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carry `arguments` with no `choice` and no `rationale` and name no `judgment_inputs`, so a Lead that calls the typed `resolve` with exactly what the projection supplied is refused and falls back to the shell. Each such decision names its choice and its rationale as the Lead's judgment inputs (the vertical's spec v2), so the typed call is the governed path
-
-**Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
-
-**When:** **Unscheduled**; the operator places it
-
-**Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
-
-*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
-
 ### E373
 
 **Work:** An empty project offers the action for the operator's request: the project's projection offers `ticket_draft` as an AVAILABLE action on a project with no open Ticket, naming the inputs its call needs (title, scope, goal, plan), so a Lead asked for a fix starts from an offered action, not a guessed one. Today `_control_part` returns the project's part before any action (`src/aew/surface/projection.py:122`) and `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so `ticket_draft`, a built stage (`src/aew/surface/availability.py:173`), is never projected. With it, the scripted Lead fills those inputs from its own draft (`tests/helpers/vertical/lead.py`, `judged`)
@@ -5447,6 +5435,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E388
+
+**Was:** The Lead's `resolve` decisions name their judgment inputs: RESOLVE_STAGE and DISPOSE_FINDING, DISPOSE_CLAIM and DISPOSE_ANOMALY carried `arguments` with no `choice` and no `rationale`, so a Lead that called the typed `resolve` with exactly what the projection supplied was refused and fell back to the shell
+
+**Closed:** 2026-11-27
+
+**By:** PR #630: each decision whose call is `resolve` names `judgment_inputs`, the fields the `resolve` schema requires that its arguments leave out: the choice, offered as the choices that run the decision's primitives (`contract.RESOLVE_CHOICE_PRIMITIVE`, through `projection.DECISION_PRIMITIVES`), and the rationale, as the schema's own field; REPLACE_GATE and ADD_SCOPE name their rationale the same way. The result schema accepts the field, the readable next step names what to add, and the scripted Lead writes a rationale input in its own words (`vertical-uat.md` §2 amended). Whether the steering loop's own running stage is offered at all stays E374's (Q9)
+
+*Later notes: `notes.d/E388/`, oldest first (`python tools/register.py show E388`).*
 
 ### E389
 

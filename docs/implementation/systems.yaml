@@ -1311,7 +1311,8 @@ systems:
   - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07,
       and its requests: F25''s note of 2026-11-27) also shows tokens in the declared rate basis, after provider profiles declare
       `rate_basis` (STG-14), and the largest request, after the run-usage record carries it (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
+      ruling 2), and, if the designer rules that ruling 2''s requests include them, compaction, title and retried calls, after the record
+      carries them (F25''s note of 2026-11-27); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
     estimate: 1-2 small PRs (estimate), the basis after STG-14's rate_basis
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'

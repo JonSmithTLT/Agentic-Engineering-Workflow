@@ -643,6 +643,28 @@ def test_a_cached_scanner_archive_is_installed_only_when_it_matches_the_pinned_d
     assert not (refused / binary).exists() and len(calls) == installer.SCANNER_ATTEMPTS
 
 
+def test_a_cached_scanner_archive_that_cannot_be_read_costs_a_download_never_the_install(tmp_path, monkeypatch):
+    """A cache that cannot be read is best effort too (#659's quick check, m1): the job downloads, verifies and
+    installs, as on a cold cache."""
+    installer, binary, calls, _sleeps = _scanner_download(monkeypatch, tmp_path, [None])
+    cache, _key = installer.scanner_cache()
+    archive, _digest = installer.GITLEAKS[installer.sys.platform]
+    cache.mkdir(parents=True)
+    (cache / archive).write_bytes(b"unreadable")
+    real = installer.Path.read_bytes
+
+    def read_bytes(path):
+        if path == cache / archive:
+            raise PermissionError(13, "denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(installer.Path, "read_bytes", read_bytes)
+    target = tmp_path / "target"
+    target.mkdir()
+    installer.install_scanner(target)
+    assert (target / binary).read_bytes() == b"scanner" and len(calls) == 1
+
+
 def test_an_unregistered_writer_fails_after_the_real_staging_filter(tmp_path, monkeypatch):
     stage = _load("stage_evidence")
     source = tmp_path / "source"

@@ -16,17 +16,19 @@ import pytest
 
 from aew import owners as P
 from aew.cli.main import build_parser
+from aew.engine import operator_decisions as OD
 from aew.engine import primitives as PR
 from aew.errors import ValidationFailed
 from aew.harness import lead_broker
 from aew.schemas import schema, validate_def
 from aew.surface import projection
 
-# Register E350: commands the Lead can relay that carry out a decision the owner table makes the operator's. For
-# `integrate publish` that is W09's G3 approval, not built yet; `verify ingest` is PUBLISH's verifier variant (the same
-# command accepts a Ticket's own verification, which is the Lead's).
-E350_KNOWN_GAPS = frozenset({frozenset({"integrate", "publish"}), frozenset({"verify", "ingest"}),
-                             frozenset({"verify", "classify"}), frozenset({"work", "reconcile"})})
+# Register E350: commands the Lead can relay that carry out a decision the owner table makes the operator's, with
+# nothing of the operator's asked. `verify ingest` is PUBLISH's verifier variant (the same command accepts a Ticket's
+# own verification, which is the Lead's). `plan accept` and `integrate publish` are not gaps: a Lead session's call of
+# either waits for the operator's confirmation (#618, ``operator_decisions.COMMITS``).
+E350_KNOWN_GAPS = frozenset({frozenset({"verify", "ingest"}), frozenset({"verify", "classify"}),
+                             frozenset({"work", "reconcile"})})
 
 
 def _constants(node: ast.expr) -> set[str]:
@@ -58,6 +60,12 @@ def _commands(primitive: str) -> set[frozenset[str]]:
     def words(op: str) -> frozenset[str]:
         return frozenset(op.split(".")[:2])
     return {words(op) for op in {primitive, *PR.commit_ops(primitive)}} & _every_command()
+
+
+def _operator_confirmed(primitive: str) -> set[frozenset[str]]:
+    """The commands of a primitive whose commit a Lead session makes only with the operator's confirmation (#618): its
+    commit ops include one of ``operator_decisions.COMMITS``."""
+    return _commands(primitive) if PR.commit_ops(primitive) & set(OD.COMMITS.values()) else set()
 
 
 def _every_command() -> set[frozenset[str]]:
@@ -103,6 +111,7 @@ def test_the_lead_owns_the_review_and_verification_acceptances_and_the_operator_
     assert projection.decision_owner("ACCEPT_REVIEW_EVIDENCE") == P.LEAD
     assert projection.decision_owner("ACCEPT_VERIFICATION") == P.LEAD
     assert projection.decision_owner("PUBLISH") == P.OPERATOR
+    assert projection.decision_owner("PLAN") == P.OPERATOR  # register E351
     assert {k for k in projection.DECISION_PRIMITIVES if projection.decision_owner(k) == P.LEAD} == {
         "ACCEPT_REVIEW_EVIDENCE", "ACCEPT_VERIFICATION", "DISPOSE_ANOMALY", "DISPOSE_CLAIM", "DISPOSE_FINDING",
         "FINISH_PUBLISH", "RESOLVE_STAGE"}
@@ -117,10 +126,14 @@ def test_a_decision_the_lead_owns_is_one_a_lead_session_can_carry_out():
 
 def test_a_decision_the_operator_owns_is_not_lead_reachable_but_for_e350s_known_gaps():
     """Register E350: these commands are in LEAD_REACHABLE while the owner table makes them the operator's. The set is
-    pinned exactly: a new gap fails here, and so does one E350 closes, until it is taken off."""
-    gaps = {c for kind, primitives in projection.DECISION_PRIMITIVES.items()
-            if projection.decision_owner(kind) == P.OPERATOR
-            for p in primitives for c in _commands(p) & lead_broker.LEAD_REACHABLE}
+    pinned exactly: a new gap fails here, and so does one E350 closes, until it is taken off. A command a Lead session
+    carries out only with the operator's confirmation (#618) is no gap, and that set is pinned too: PLAN's `plan
+    accept` (register E351) and PUBLISH's `integrate publish`."""
+    operators = [p for kind, primitives in projection.DECISION_PRIMITIVES.items()
+                 if projection.decision_owner(kind) == P.OPERATOR for p in primitives]
+    confirmed = {c for p in operators for c in _operator_confirmed(p)}
+    assert confirmed == {frozenset({"plan", "accept"}), frozenset({"integrate", "publish"})}, confirmed
+    gaps = {c for p in operators for c in (_commands(p) - _operator_confirmed(p)) & lead_broker.LEAD_REACHABLE}
     assert gaps == E350_KNOWN_GAPS, sorted(map(sorted, gaps ^ E350_KNOWN_GAPS))
 
 

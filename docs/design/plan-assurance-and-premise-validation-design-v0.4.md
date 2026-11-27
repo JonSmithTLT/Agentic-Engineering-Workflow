@@ -1841,3 +1841,9 @@ Therefore:
 Or operationally:
 
 > **Establish success independently. Test the assumptions that change the decision. Protect the measuring stick. Challenge the intervention. Then mutate.**
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends PAV-40. The shared admission predicate evaluates the relevant current inputs and Lead authority at the revision the transition commits. Decision inputs remain tied to their scope and evidence. A caller does not supply a project-wide revision.
+
+[Adopted control-binding amendment](scoped-control-bindings-amendment-2026-11-25.md).

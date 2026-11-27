@@ -613,10 +613,10 @@ def test_commits_and_history_show_work_with_fts5_gone_and_search_says_unavailabl
     wid, rec = investigation(p, tmp_path, title="Survey", body="Facts.\n")  # in other processes: real FTS5
     engine = Engine.discover(p.root)
     # Lead commits in this process with FTS5 gone, one of them archiving a unit (the history's commit path).
-    engine.checkpoint(token=p.token, expect_rev=p.rev(), note="FTS5 is unavailable here")
-    made = engine.work_create(token=p.token, expect_rev=p.rev(), kind="ticket", title="Dropped", risk_class=1,
+    engine.checkpoint(token=p.token, note="FTS5 is unavailable here")
+    made = engine.work_create(token=p.token, kind="ticket", title="Dropped", risk_class=1,
                               mutating=False, scope_paths=["calc/**"], goal_backwards=["nothing"])["id"]
-    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=made, to="CANCELLED", reason="dropped")
+    engine.work_transition(token=p.token, work_id=made, to="CANCELLED", reason="dropped", prior_value="BLOCKED")
     assert engine.history_show(made)["record"]["unit"]["state"] == "CANCELLED"
     assert engine.history_show(rec)["id"] == rec
     with pytest.raises(errors.Unavailable) as refused:

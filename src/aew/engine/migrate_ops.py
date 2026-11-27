@@ -33,13 +33,15 @@ closure as unrecorded (independent P3 re-review, P3-R2). Its bundle is never rew
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import hierarchy as H
+from aew.engine import stage_migration
 from aew.engine.authority import require_lead
 from aew.engine.base import V2, TxnContext
 from aew.engine.store import Transition
-from aew.errors import AEWError, IllegalTransition, StaleRevision
+from aew.errors import AEWError, IllegalTransition
 from aew.harness import runlog
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
@@ -48,6 +50,18 @@ from aew.history.store import History
 if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.ports import ArchivePort, CoordinationPort, HierarchyPort, SteeringPort
+
+
+@dataclass
+class _NoMigrationNeeded(Exception):
+    """Another invocation completed the migration before this transaction acquired the lock."""
+
+    revision: int
+
+
+def _already_current(revision: int) -> dict[str, Any]:
+    return {"ok": True, "migrated": False, "schema": V2, "revision": revision,
+            "summary": "the control state is already v2; nothing to migrate"}
 
 
 class Migration:
@@ -83,37 +97,48 @@ class Migration:
             (root / rel).unlink()
         return found
 
-    def _upgrade_v2(self, token: str, expect_rev: int) -> dict[str, Any]:
-        """A v2 project's units archived before bundles recorded their cited checks get the annotation that pins
-        them, in one transaction (P3-R2); with none, nothing happens."""
+    @staticmethod
+    def _upgrade_stages(ctx: TxnContext) -> dict[str, bool]:
+        upgraded = {}
+        for sid, intent in sorted((ctx.state.get("stage_intents") or {}).items()):
+            if stage_migration.needs_upgrade(intent):
+                upgraded[sid] = stage_migration.upgrade(intent)
+                ctx.refs.append(sid)
+        return upgraded
+
+    def _upgrade_v2(self, token: str) -> dict[str, Any]:
+        """Pin checks cited by legacy archived units and migrate old active stage plans under the lock."""
         with self.k.store.session() as s:
             require_lead(s.state, token, archived=self.k.archived_credential)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
-                                    expected=expect_rev, current=s.revision)
-            if not self.archive.legacy_units(s.state):
-                return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
-                        "summary": "the control state is already v2; nothing to migrate"}
-        with self.k.lead_txn(token, expect_rev, "migrate.closure",
-                             reason="ADR-0011: a full audit covers the checks a verification cites") as ctx:
-            closed = self.archive.close_legacy(ctx, self.archive.legacy_units(ctx.state))
-            ctx.summary = (f"recorded the cited checks of {len(closed)} unit(s) archived before bundles recorded them "
-                           f"({sum(len(c['cited']) for c in closed)} check(s) pinned)")
+            intents = (s.state.get("stage_intents") or {}).values()
+            if not self.archive.legacy_units(s.state) and not any(map(stage_migration.needs_upgrade, intents)):
+                return _already_current(s.revision)
+        try:
+            with self.k.lead_txn(token, "migrate.closure",
+                                 reason="upgrade legacy history and active stage records") as ctx:
+                closed = self.archive.close_legacy(ctx, self.archive.legacy_units(ctx.state))
+                stages = self._upgrade_stages(ctx)
+                if not closed and not stages:
+                    raise _NoMigrationNeeded(ctx.session.revision)
+                ctx.summary = (f"recorded the cited checks of {len(closed)} unit(s) "
+                               "archived before bundles recorded them "
+                               f"({sum(len(c['cited']) for c in closed)} check(s) pinned)")
+                if stages:
+                    ctx.summary += (f"; upgraded {len(stages)} stage intent(s) to scoped bindings "
+                                    f"({sum(not rebound for rebound in stages.values())} require abandonment)")
+        except _NoMigrationNeeded as done:
+            return _already_current(done.revision)
         return {"ok": True, "migrated": False, "schema": V2, "revision": ctx.session.committed_revision,
-                "summary": ctx.summary, "closure": closed}
+                "summary": ctx.summary, "closure": closed, **({"stage_intents": stages} if stages else {})}
 
-    def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
+    def migrate(self, *, token: str) -> dict[str, Any]:
         if self.k.store.current()["schema"] == V2:  # a project is never v1 again once it is v2
-            return self._upgrade_v2(token, expect_rev)
+            return self._upgrade_v2(token)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.k.archived_credential)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
-                                    expected=expect_rev, current=s.revision)
             state = s.state
             if state["schema"] == V2:  # migrated meanwhile
-                return {"ok": True, "migrated": False, "schema": V2, "revision": s.revision,
-                        "summary": "the control state is already v2; nothing to migrate"}
+                return _already_current(s.revision)
             self.k.check_manifest_pin(state)
             live = self.live_runs(state)
             if live:
@@ -128,6 +153,7 @@ class Migration:
             state["schema"] = V2
             state["cold"] = {"root": M.empty_root()}
             ctx = TxnContext(session=s, actor=actor, prewrite=True)
+            stages = self._upgrade_stages(ctx)
             self.k.finalizers.run(ctx)  # archival (R6), with its records pre-written (R8)
             committed = ctx.commit_state or state
             for wid, v1 in legacy.items():
@@ -143,7 +169,7 @@ class Migration:
                        f"{len(committed['work'])} open units stay hot")
             revision = s.commit(Transition(op="migrate", actor=actor, summary=summary,
                                            reason="ADR-0011: finished work leaves the hot state", refs=ctx.refs),
-                                expect_rev=expect_rev, state=committed)
+                                state=committed)
         for effect in ctx.after_commit:  # retired observation worktrees, as after any archival commit
             try:
                 effect()
@@ -163,4 +189,4 @@ class Migration:
                 "history": {"entries": committed["cold"]["root"]["count"]},
                 "hot": {"units": len(committed["work"]), "invocations": len(committed["invocations"]),
                         "credentials": len(committed["tokens"])},
-                "legacy_digests": sorted(legacy)}
+                "legacy_digests": sorted(legacy), **({"stage_intents": stages} if stages else {})}

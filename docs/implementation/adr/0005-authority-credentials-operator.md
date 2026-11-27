@@ -281,3 +281,9 @@ AEW session and non-writer process. The new generation fences the old Lead and c
 invocations and their credentials. If any invocation will be carried or any leftover process may still run,
 the operator types one code after seeing the generation move and the invocations and processes concerned.
 The commit rechecks the holder and the subjects shown under lock and accepts unrelated revision changes.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+The engine checks the active Lead generation and each operation's declared subject binding inside the control lock. Lead takeover rechecks the generation and occupied seat shown in the operator's authorization. A handoff acceptance uses the live offer secret. A settings adoption compares the bytes shown at the terminal. Other scoped approvals similarly bind the particular item or content shown. A handoff or takeover still fences the superseded writer.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

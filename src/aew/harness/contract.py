@@ -57,19 +57,20 @@ PLAN_LOGIN_FAILURES = {
 }
 
 
-def plan_login_recovery(provider: str, invocation: str, *, retryable: bool = False) -> str:
+def plan_login_recovery(provider: str, invocation: str, run: str, *, retryable: bool = False) -> str:
     step = ("Wait until the store is available" if retryable else
             f"AEW never refreshes this login. Renew it at the operator's terminal (`opencode auth login {provider}`)")
-    cancel = fields_command(f"aew invoke cancel {invocation} {EXPECT_REV}", "reason", "plan login unavailable")
-    return f"{step}, then relaunch with `aew harness launch {invocation} {EXPECT_REV}`, or cancel it with:\n\n{cancel}"
+    cancel = fields_command(f"aew invoke cancel {invocation}", "reason", "plan login unavailable")
+    return (f"{step}, then relaunch with `aew harness launch {invocation} --prior-value {run}`, "
+            f"or cancel it with:\n\n{cancel}")
 
 
-def plan_login_failure(cause: Any, provider: str, invocation: str) -> str | None:
+def plan_login_failure(cause: Any, provider: str, invocation: str, run: str) -> str | None:
     detail = PLAN_LOGIN_FAILURES.get(cause) if isinstance(cause, str) else None
     if detail is None:
         return None
     return (f"the operator's {provider} plan login {detail}. "
-            + plan_login_recovery(provider, invocation, retryable=cause == "plan_login_unreadable_retryable"))
+            + plan_login_recovery(provider, invocation, run, retryable=cause == "plan_login_unreadable_retryable"))
 
 
 # Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
@@ -220,10 +221,6 @@ def invocation_of_run(run: str) -> str | None:
     return head if run.startswith("R-") and sep and n.isdigit() and head else None
 
 
-# What a printed command puts where the current revision goes: it names where the reader finds it (ITEMS 56; a bare
-# `N` named nothing). Every printed `--expect-rev` is `EXPECT_REV`; tests/helpers/printed_commands.py fills it.
-REVISION = "<revision from aew status>"
-EXPECT_REV = f"--expect-rev {REVISION}"
 # A steering step for several runs names one of them: the reader picks the run the step lists (#547 review m1).
 NAMED_RUN = "<run named here>"
 
@@ -259,13 +256,13 @@ def _scalar(value: str) -> str:
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
 _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "
-HELD_SEAT = f"{_HELD_SEAT}`aew lead release {EXPECT_REV}` gives it up"
+HELD_SEAT = f"{_HELD_SEAT}`aew lead release` gives it up"
 # D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
 HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
 
 
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
-CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
+CREATE_TICKET = fields_block("aew work create ticket --class <0-4>", {
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
@@ -644,7 +641,7 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
     return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"
 
 
-MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"
+MANIFEST_ADOPT = "`aew manifest adopt --reason <reason>`"
 
 
 # The Lead seat's credential-emitting commands, whole (``lead_broker.CREDENTIAL_EMITTING`` takes their paths from here),
@@ -662,7 +659,7 @@ def relaunchable(status: str) -> bool:
     return status not in (*LIVE_RUNS, ENDED_WITH_EVIDENCE, UNREADABLE)
 
 
-def launch_command(invocation: str) -> str:
+def launch_command(invocation: str, prior_value: str) -> str:
     """The command that launches, or relaunches, a harness run for ``invocation``: the ASSIGNED hint and the action
     projection's launch both read it here (#612 review, N3)."""
-    return f"aew harness launch {invocation} {EXPECT_REV}"
+    return f"aew harness launch {invocation} --prior-value {prior_value}"

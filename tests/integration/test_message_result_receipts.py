@@ -254,7 +254,7 @@ def test_a_relayed_receipt_owed_for_sent_bytes_outlives_this_sessions_close_but_
                 assert not closer.is_alive() and b._token == ""
                 if seat == "taken_over":
                     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "test"})
-                    w.e.lead_takeover(expect_rev=w.rev(), reason="a lost seat", session_label="lead-b")
+                    w.e.lead_takeover(reason="a lost seat", session_label="lead-b")
                 elif seat == "handoff_pending":
                     w.lead("lead_handoff_offer", carry_invocations=[w.inv])
                     lead = w.e.store.read_committed()["lead"]

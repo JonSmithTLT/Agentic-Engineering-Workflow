@@ -22,31 +22,32 @@ from evidence_files import (
     BEFORE_TESTS,
     BEFORE_TESTS_OUTCOME,
     CANCEL_COLLECTION,
+    CONTROLLER,
     FRAME,
     FRESH_S,
     INTERRUPTION_REASONS,
     LANE_REPORT_SCHEMA,
     NOT_SAMPLED,
-    OUTSIDE_CALL,
+    OUTCOME_FILES,
     OUTSIDE_TREE,
     PREFIX,
     SAMPLING_GAP,
     SAMPLING_POLICY,
+    STACK_NOT_OWED,
     WARNING,
     WATCHDOG_HEADER,
     WORKER_COUNT,
     WORKER_PHASES,
-    cancel_outcome,
     entries,
     finished_without_tests,
     is_link,
+    lifecycle_receipt,
     open_observation,
     policy_samples,
     pytest_phase,
     receipt_phases,
     sampling_failures,
     test_frame,
-    warning_outcome,
 )
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
@@ -93,19 +94,25 @@ def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
 
 def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
     """Read only positive transitions from the same registered worker on the phase clock, whose owner is
-    ``session_deadline.phase_clock_ns``."""
-    from session_deadline import session_directories
+    ``session_deadline.phase_clock_ns``.
+
+    A serial session's controller runs its tests itself and keeps a worker's receipt, so it is read as one, under the
+    name CONTROLLER, once it has a receipt; an xdist session's controller keeps none and has no row (register E3)."""
+    from session_deadline import marker, session_directories
 
     rows = []
     for directory in session_directories(root):
-        for path in sorted(directory.glob("worker-gw*-pid.txt")):
+        registered = sorted(directory.glob("worker-gw*-pid.txt"))
+        if any(directory.glob(lifecycle_receipt(CONTROLLER, "*", "*"))):
+            registered.append(marker(directory, f"{CONTROLLER}-pid"))
+        for path in registered:
             row = {"session": directory.name, "worker": path.stem.removesuffix("-pid"), "phase": "indeterminate"}
             rows.append(row)
             try:
                 pid = int(_phase_file(path))
                 birth = int(_phase_file(path.with_name(path.name.replace("-pid.", "-start."))))
                 row.update(pid=pid, start=birth)
-                receipt = directory / f"worker-{pid}-{birth}-lifecycle.txt"
+                receipt = directory / lifecycle_receipt(row["worker"], pid, birth)
                 lines = _phase_file(receipt).splitlines()
                 if len(lines) > len(WORKER_PHASES):
                     continue
@@ -118,7 +125,11 @@ def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
                     continue
                 prior = [phase for stamp, phase, _ in transitions if stamp <= at_ns]
                 if prior:
-                    row["phase"] = prior[-1]
+                    # How long the process had been collecting when its receipt is read here (`at_ns`: the signal
+                    # for the supervisor, the collection's own later instant for the cancellation collection), in
+                    # seconds since its first stamp. A collection that hangs is then visible in the before-tests
+                    # record, which otherwise carries no age (review of #616, m2).
+                    row.update(phase=prior[-1], collecting_s=round((at_ns - stamps[0]) / 1e9, 3))
             except (OSError, ValueError):
                 continue
     return rows
@@ -163,11 +174,20 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
     A lane cancelled while its sessions start has no worker in a test and no running name, so it has no worker
     observation to give (register E3: superseded CI run 45590135545, ten lanes 37 to 96 s into their pytest step). The
     claim rests on positive observations only: no registered process is in a test (no in-flight watchdog header) and no
-    running name is left; and each session either still starts, as an xdist session (whose controller runs no test)
-    each of whose registered workers' lifecycle receipts, read from its live writer (``phases``, from
-    ``phases_at_signal``), stands before its first test, or has finished, gracefully interrupted, with its own files and
-    the lane report showing that no test began (``evidence_files.finished_without_tests``; review of #579, M1). Anything
-    else writes nothing, so the missing evidence stays a defect.
+    running name is left; and each session either still starts, or has finished, gracefully interrupted, with its own
+    files and the lane report showing that no test began (``evidence_files.finished_without_tests``; review of #579,
+    M1). A session still starts when the lifecycle receipt of each process of it that runs tests, read from its live
+    writer (``phases``, from ``phases_at_signal``), stands before its first test: every registered worker of an xdist
+    session (whose controller runs no test), or the controller of a serial session, which runs its tests itself (the
+    serial lane of PR #608's run 45782924831, cancelled 2.4 s into its pytest step). A session with no worker roster
+    whose controller has no such receipt is not shown to be either. Anything else writes nothing, so the missing
+    evidence stays a defect.
+
+    A limit: the record says that no test had started, not that the start-up was healthy. A session stuck in its
+    collection (an import that hangs) and cancelled before its deadline is typed ``before tests`` with no defect and
+    no stack, a serial one now as an xdist one since #579. Each listed process's ``collecting_s`` is what shows a
+    long collection: the seconds since its ``collecting`` stamp when its receipt was read, which is the signal for
+    the supervisor's record and the collection's later instant for the cancellation collection's (review of #616, m2).
 
     No session at all is recorded as such: pytest had not registered one under the lane root. That reading of an
     absence rests on every lane command passing ``--session-deadline`` with its hang directory the lane root or one
@@ -179,6 +199,7 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
     if next(workers(root), None) is not None or running_names(root):
         return False
     rows = phases or []
+    kept = ("worker", "pid", "start", "phase", "collecting_s")  # what the record keeps of each live process
     sessions = []
     for directory in session_directories(root):
         session = {"session": directory.relative_to(root).as_posix()}
@@ -194,22 +215,28 @@ def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: 
                 if re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
                     worker = name.removesuffix("-pid.txt")
                     pid, start = int(files[name]), int(files[worker + "-start.txt"])
-                    phase = receipt_phases(files[f"worker-{pid}-{start}-lifecycle.txt"])[-1]
+                    phase = receipt_phases(files[lifecycle_receipt(worker, pid, start)])[-1]
                     listed.append({"worker": worker, "pid": pid, "start": start, "phase": phase})
             sessions.append({**session, "finished": True, "workers": listed})
             continue
+        registered = sorted(path.stem.removesuffix("-pid") for path in directory.glob("worker-gw*-pid.txt"))
+        mine = [row for row in rows if row.get("session") == directory.name]
         try:
             count = int(marker(directory, WORKER_COUNT).read_text(encoding="utf-8").strip())
         except (OSError, ValueError):
-            return False  # not shown to be an xdist session: a serial controller runs its tests itself
-        registered = sorted(path.stem.removesuffix("-pid") for path in directory.glob("worker-gw*-pid.txt"))
-        mine = [row for row in rows if row.get("session") == directory.name]
+            # No roster: a serial session, or an xdist one not yet set up. Only a live controller whose own receipt
+            # stands before its first test shows the first; an xdist controller keeps no receipt.
+            if (registered or [row.get("worker") for row in mine] != [CONTROLLER]
+                    or mine[0].get("phase") not in BEFORE_EXECUTION):
+                return False
+            sessions.append({**session, "serial": True,
+                             "workers": [{key: mine[0][key] for key in kept if key in mine[0]}]})
+            continue
         if (len(registered) > count or sorted(row.get("worker") for row in mine) != registered
                 or any(row.get("phase") not in BEFORE_EXECUTION for row in mine)):
             return False
         sessions.append({**session, "worker_count": count,
-                         "workers": [{key: row.get(key) for key in ("worker", "pid", "start", "phase")}
-                                     for row in mine]})
+                         "workers": [{key: row[key] for key in kept if key in row} for row in mine]})
     row = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": observer, "at": at, "sessions": sessions}
     try:
         with (root / BEFORE_TESTS).open("x", encoding="utf-8") as stream:
@@ -388,9 +415,6 @@ def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
     return json.dumps(row, ensure_ascii=True) + "\n"
 
 
-OUTCOME_FILES = {CANCEL_COLLECTION: cancel_outcome, WARNING: warning_outcome}
-
-
 def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None,
              reason: str) -> None:
     """Name why an interruption's capture kept no test stack for this worker, at this observation (register E3)."""
@@ -414,9 +438,9 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
     # queued workers are skipped; four concurrent readers bound the runner load.
     until = time.monotonic() + CAPTURE_BUDGET_S
     retried = reason in INTERRUPTION_REASONS
-    # Both interruptions name every worker they kept no test stack for (register E3): the cancellation collection in an
-    # outcome the evidence check reads, the Linux pre-signal warning in one that only says why, so its next sighting
-    # names a straddle, an exit or a dump without the test's frame (#561's quick check).
+    # Both interruptions name every worker they kept no test stack for (register E3), in an outcome the evidence check
+    # reads: it accepts the few in STACK_NOT_OWED and names any other in its defect, so a sighting says a straddle, an
+    # exit or a dump without the test's frame (#561's quick check; the operator, 2026-11-26).
     typed = reason in OUTCOME_FILES
     collection = reason == CANCEL_COLLECTION
     policy = sampling_policy(root) if collection else {}
@@ -487,7 +511,7 @@ def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-                if collection and pytest_phase(result[1]) in OUTSIDE_CALL:
+                if pytest_phase(result[1]) in STACK_NOT_OWED[reason]:
                     break  # a worker outside its test's call has no test frame to give, however often it is asked
         # The observation stands for the test of the retained dump, or the one first observed when none is kept.
         held = last[3] if last is not None else worker

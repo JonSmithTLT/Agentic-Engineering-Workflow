@@ -254,15 +254,21 @@ def dests(name: str) -> set[str]:
 
 
 def revision_dests(name: str) -> set[str]:
-    """The expected-revision arguments (`expect_rev`, `expect_map_rev`, ...): each is a compare-and-set."""
-    return {d for d in dests(name) if re.fullmatch(r"expect_\w*rev", d)}
+    """The map domain's independent compare-and-set."""
+    return dests(name) & {"expect_map_rev"}
+
+
+def binding_dests(name: str) -> set[str]:
+    """The scoped observations this command accepts from its previous result."""
+    return dests(name) & {"prior_value", "approval_digest"} | ({"candidate"} if name == "integrate publish" else set())
 
 
 def floor(name: str, kind: str) -> set[str]:
     """The refusal codes a command's or tool's own arguments imply."""
     if kind == "tool":
         t = _tools()[name]
-        codes = {"STALE_REVISION"} if "expect_rev" in t.input_schema.get("properties", {}) else set()
+        bindings = {"prior_value", "approval_digest", "prepared_candidate"}
+        codes = {"CHANGED_SINCE_READ"} if bindings & t.input_schema.get("properties", {}).keys() else set()
         return codes | ({"PERMISSION_DENIED", "STALE_AUTHORITY"} if t.mutates else set())
     p, ds = live_commands()[name], dests(name)
     codes = {"USAGE"} if "--fields" in p._option_string_actions else set()  # expanded by the client, refused there
@@ -270,6 +276,8 @@ def floor(name: str, kind: str) -> set[str]:
         codes |= {"USAGE", "PERMISSION_DENIED", "STALE_AUTHORITY"}  # no credential; not the Lead; superseded
     if revision_dests(name):
         codes.add("STALE_REVISION")
+    if binding_dests(name):
+        codes.add("CHANGED_SINCE_READ")
     if "invocation_token" in ds:
         codes.add("USAGE")
     return codes
@@ -496,10 +504,10 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
                 out.append(f"tool `{name}`: mutates {e.get('mutates')!r} contradicts contract.Tool.mutates")
             continue
         flags = set((e.get("mutates") or {}).get("with") or []) if m == "with" else set()
-        for dest in sorted(revision_dests(name)):
+        for dest in sorted(revision_dests(name) | binding_dests(name)):
             flag = "--" + dest.replace("_", "-")
             if m != "yes" and flag not in flags:
-                out.append(f"`aew {name}` takes {flag} (a compare-and-set): its mutates must be yes, or name {flag}")
+                out.append(f"`aew {name}` takes {flag} (a scoped binding): its mutates must be yes, or name {flag}")
         credential = dests(name) & {"token", "invocation_token"}
         if credential and m not in ("yes", "with") and not e.get("mutates_exempt"):
             out.append(f"`aew {name}` takes a credential ({sorted(credential)[0]}): its mutates must be yes or with, "
@@ -1421,13 +1429,10 @@ def build_sample(base: Path) -> Sample:
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "initial")
     assert run_cli(root, ["init"])[0] == 0
-    code, out, err = run_cli(root, ["--print-credential", "lead", "acquire", "--expect-rev", "0", "--session-label",
+    code, out, err = run_cli(root, ["--print-credential", "lead", "acquire", "--session-label",
                                     "probe"])
     assert code == 0, err
     token = json.loads(out)["token"]
-
-    def rev() -> str:
-        return str(json.loads(run_cli(root, ["lead", "show"])[1])["revision"])
 
     policy = root / ".aew" / "policy" / "execution.yaml"
     data = util.load_yaml(policy.read_text(encoding="utf-8")) or {}
@@ -1435,8 +1440,9 @@ def build_sample(base: Path) -> Sample:
     data["recall"] = {"raw_history_search": "explicit"}
     policy.write_text(util.dump_yaml(data), encoding="utf-8", newline="\n")
     # The operator's adoption, with the terminal channel substituted in process (as tests/conftest.py's as_operator).
-    Engine.discover(root).manifest_adopt(token=token, expect_rev=int(rev()), reason="the probe's sample",
-                                         authorization={"authorized_by": "operator-tty"})
+    engine = Engine.discover(root)
+    engine.manifest_adopt(token=token, reason="the probe's sample",
+                          authorization={"authorized_by": "operator-tty"}, binding=engine.manifest_approval())
     (base / "plan.md").write_text("Change the README.\n", encoding="utf-8")
     (base / "objective.md").write_text("The probe's Ticket.\n", encoding="utf-8")  # a body, for `record body` (E170)
     invocation_token = ""
@@ -1445,16 +1451,18 @@ def build_sample(base: Path) -> Sample:
                  ["plan", "propose", "T-0001", "--file", str(base / "plan.md"), "--assurance", "none"],
                  ["plan", "accept", "T-0001", "--revision", "1"],
                  ["work", "assign", "T-0001"]):
-        code, out, err = run_cli(root, ["--print-credential", *argv, "--expect-rev", rev()],
+        if argv[:2] == ["plan", "accept"]:
+            [plan] = engine.status("T-0001")["work_unit"]["plans"]
+            argv.extend(["--approval-digest", plan["sha256"]])
+        code, out, err = run_cli(root, ["--print-credential", *argv],
                                  env={"AEW_LEAD_TOKEN": token})
         assert code == 0, (argv, err)
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"
     engine = Engine.discover(root)
-    engine.message_record_lead(token=token, expect_rev=engine.store.read()["revision"], to="INV-0001",
+    engine.message_record_lead(token=token, to="INV-0001",
                                 body="The probe's worker reads its own coordination thread.")
-    report = engine.report_write(token=token, expect_rev=engine.store.current()["revision"],
-                                 title="Sample report", body="Report text")
+    report = engine.report_write(token=token, title="Sample report", body="Report text")
     s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token, report["id"])
     # Settle it: the first read after a commit deletes the spent redo records of the commits before it
     # (ControlStore._recover); that housekeeping belongs to the setup's commits, not to the first surface probed.
@@ -2194,7 +2202,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("home", lambda r: _new(r, "work list"), "new `aew work list` is homed diagnostic: give `diagnostic_just"),
     ("home", lambda r: _new(r, "work list", diagnostic_justification="handy"), "new `aew work list` is homed diag"),
     ("mutates", lambda r: _entry(r, "ticket_start", "tool").update(mutates="no"), "tool `ticket_start`: mutates"),
-    ("mutates", lambda r: _entry(r, "plan accept").update(mutates="no"), "`aew plan accept` takes --expect-rev"),
+    ("mutates", lambda r: _entry(r, "plan accept").update(mutates="no"), "`aew plan accept` takes --approval-digest"),
     ("mutates", lambda r: _entry(r, "map select-architecture").update(mutates="no"),
      "`aew map select-architecture` takes --expect-map-rev"),
     ("mutates", lambda r: _entry(r, "harness stop").update(mutates="no"), "`aew harness stop` takes a credential"),
@@ -2248,7 +2256,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "proposed `aew preflight`: V-01's path names no proposed command"),
     ("codes", lambda r: _entry(r, "init")["refusals"].append("SEAT_HELD"), "SEAT_HELD is not a code in aew.errors"),
     ("refusal_floor", lambda r: _entry(r, "plan accept").update(refusals=["USAGE"]),
-     "`aew plan accept`: its arguments imply refusals ['PERMISSION_DENIED', 'STALE_AUTHORITY', 'STALE_REVISION']"),
+     "`aew plan accept`: its arguments imply refusals ['CHANGED_SINCE_READ', 'PERMISSION_DENIED', 'STALE_AUTHORITY']"),
     ("refusal_floor", lambda r: _entry(r, "map select-architecture")["refusals"].remove("STALE_REVISION"),
      "`aew map select-architecture`: its arguments imply refusals ['STALE_REVISION']"),
     ("refusal_floor", lambda r: _entry(r, "ticket_start", "tool").update(refusals=[]), "tool `ticket_start`: its"),

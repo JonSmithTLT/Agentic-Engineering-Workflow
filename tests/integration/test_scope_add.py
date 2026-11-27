@@ -24,7 +24,7 @@ WHY = "the change to core needs its existing test extended"
 
 
 def add(p, wid: str, path: str, *, signed: bool = False, rationale: str = WHY) -> dict[str, Any]:
-    arguments = {"expect_rev": p.rev(), "subject": SC.item_id(wid, path), "rationale": rationale,
+    arguments = {"subject": SC.item_id(wid, path), "rationale": rationale,
                  "choice": SC.SIGNED_CHOICE if signed else SC.CHOICE}
     return R.run_tool(Engine.discover(p.root), CTX, "resolve", arguments, token=p.token)
 
@@ -304,7 +304,7 @@ def test_a_test_path_changed_outside_the_scope_is_offered_as_an_add_with_no_defa
                 "calc/other.py": "X = 1\n"})
     shown = projection.project(Engine.discover(p.root), CTX, wid)
     [decision] = [d for d in shown["decisions_required"] if d["decision"] == "ADD_SCOPE"]
-    assert decision["arguments"] == {"expect_rev": p.rev(), "subject": SC.item_id(wid, "tests/test_core.py"),
+    assert decision["arguments"] == {"subject": SC.item_id(wid, "tests/test_core.py"),
                                      "choice": SC.CHOICE}, decision
     assert decision["availability"] == "AVAILABLE" and decision["default"] == "NONE", decision
     # Taking it, with the Lead's reason, clears the violation; the decision is no longer offered.
@@ -347,8 +347,8 @@ def test_a_path_with_a_control_character_is_never_offered_as_an_add(running, mon
 
 def test_with_messaging_on_a_live_implementer_gets_a_message_send_that_runs_as_printed(running, monkeypatch):
     """PR #545 quick check, m6: with the project's messaging adopted, `harness send` is refused, so the add names
-    `message_send` to the implementer's invocation, with arguments its schema admits as printed (`expect_rev` is the
-    revision the add commits). The message is recorded; its delivery is not built yet."""
+    `message_send` to the implementer's invocation, with arguments its schema admits as printed. The message is
+    recorded; its delivery is not built yet."""
     import copy
 
     from test_coordination_store import OPERATOR, set_messaging
@@ -358,9 +358,9 @@ def test_with_messaging_on_a_live_implementer_gets_a_message_send_that_runs_as_p
 
     p, wid, _ = running
     set_messaging(p.root, "enabled")
-    Engine.discover(p.root).manifest_adopt(token=p.token, expect_rev=p.rev(), reason="messaging on",
-                                           authorization=OPERATOR)
     engine = Engine.discover(p.root)
+    engine.manifest_adopt(token=p.token, reason="messaging on",
+                          authorization=OPERATOR, binding=engine.manifest_approval())
     state = copy.deepcopy(engine.store.current())
     assert engine._scope.messaging(state)  # the adopted switch, read through the coordination port
     inv = state["work"][wid]["implementer_invocation"]
@@ -370,5 +370,5 @@ def test_with_messaging_on_a_live_implementer_gets_a_message_send_that_runs_as_p
     assert engine.guard_query(SC.OP, None, args, state=state)["availability"] == "AVAILABLE"
     [stale] = args["found"]["stale_invocations"]
     assert stale["commands"] == ["aew lead tool message_send --arguments -"], stale
-    assert stale["fields"]["expect_rev"] == state["revision"] + 1 and stale["fields"]["to"] == stale["invocation"]
+    assert "expect_rev" not in stale["fields"] and stale["fields"]["to"] == stale["invocation"]
     check_call("message_send", stale["fields"], "normal", frozenset({contract.MESSAGING}))  # admitted as printed

@@ -472,7 +472,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"] if s.get("covered_by") is None)]
         if revs != sorted(set(revs)):
             problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
-        if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):
+        retried = any(s.get("retried_after_stale_revision") for s in si["steps"])
+        if si.get("retried_after_stale_revision", False) != retried:
             problems.append(f"{where}: the intent's retry flag disagrees with its steps")
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):

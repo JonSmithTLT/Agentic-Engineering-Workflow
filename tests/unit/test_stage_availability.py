@@ -33,6 +33,7 @@ class FakeEngine:
         self.answers = answers or {}
         self.found = found or {}
         self.seen: list[tuple[str, str | None, dict[str, Any]]] = []
+        self.asked: list[tuple[str, dict[str, Any]]] = []
 
     gate_memo = staticmethod(contextlib.nullcontext)
     mode = "verifier"
@@ -51,6 +52,7 @@ class FakeEngine:
 
     def guard_query(self, primitive, work_id, args, *, state=None):
         self.seen.append((primitive, work_id, state))
+        self.asked.append((primitive, dict(args)))
         if primitive in self.found:
             args["found"] = self.found[primitive]
         answer = self.answers.get((primitive, args.get("card")), self.answers.get(primitive, AVAILABLE))
@@ -96,6 +98,7 @@ def test_step_one_is_queried_on_the_current_state_and_a_later_step_with_what_its
     assert s1 is state  # the current state, as committed
     unit = s3["work"]["T-0001"]
     assert unit["state"] == "ASSIGNED" and s3["invocations"][unit["implementer_invocation"]]["status"] == "active"
+    assert dict(engine.asked)["work.transition"]["prior_value"] == unit["state"]
     assert state["work"]["T-0001"]["state"] == "READY" and state["invocations"] == {}  # never the real state
     assert out["steps"][1] == {"n": 2, "primitive": "dispatch.launch", "produced_by": {contract.DISPATCH: 1},
                                "covered_by": 1, "availability": AVAILABLE, "reason_codes": [],
@@ -110,6 +113,7 @@ def test_an_ingest_step_produces_the_state_its_outcome_implies_and_its_evidence_
     assert out["availability"] == AVAILABLE
     seen = {p: s for p, _w, s in engine.seen}
     assert seen["work.transition"]["work"]["T-0001"]["state"] == "REVIEW_PASSED"
+    assert dict(engine.asked)["work.transition"]["prior_value"] == "REVIEW_PASSED"
     assert seen["work.transition"]["work"]["T-0001"]["evidence"] == [ref]
     assert seen["invoke.create.mutating"]["work"]["T-0001"]["state"] == "VERIFY_PENDING"
 
@@ -281,7 +285,7 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
         for call in CALLS[name]:
             # A stage whose steps depend on the state (M4-E E6a, `SA.APPLIES`) is planned with every such step in.
             shape = {"shape": {n: True for n in SA.APPLIES[name]}} if name in SA.APPLIES else {}
-            plan = stage_planners[name](dict(call, expect_rev=1), **shape)
+            plan = stage_planners[name](dict(call), **shape)
             # A step availability leaves unplanned for this call (its builder answers None: `ticket_draft` without a
             # plan) is one the planner leaves out too (M4-E E5a); every other step is planned, in contract order.
             planned = [n for n, build in enumerate(SA.STAGES[name], start=1) if build(call) is not None]
@@ -289,14 +293,18 @@ def disagreements(stage_planners: dict[str, Any]) -> list[str]:
                 out.append(f"{name}: planned {[p['primitive'] for p in plan]}")
                 continue
             for n, step in zip(planned, plan, strict=True):
-                asked, given = SA.STAGES[name][n - 1](call), step.get("args") or {}
-                for key, value in (asked or {}).items():
+                asked, given = SA.STAGES[name][n - 1](call) or {}, step.get("args") or {}
+                dependencies = t.produced_by[n - 1]
+                state_step = dict(dependencies).get(contract.STATE)
+                if step["primitive"] == "work.transition" and state_step in planned:
+                    asked = {**asked, "prior_value": {"$from": [state_step, contract.STATE]}}
+                for key, value in asked.items():
                     got = given.get(key)
-                    produced = isinstance(got, dict) and set(got) == {"$from"} and any(
-                        m == got["$from"][0] for _input, m in t.produced_by[n - 1])
+                    produced = key != "prior_value" and isinstance(got, dict) and set(got) == {"$from"} and any(
+                        m == got["$from"][0] for _input, m in dependencies)
                     if got != value and not produced and not (value is None and key not in given):
                         out.append(f"{name} step {n} {key}: guard asked {value!r}, planner gives {got!r}")
-                for key in sorted(set(given) & GUARD_READS[t.expands_to[n - 1]] - set(asked or {})):
+                for key in sorted(set(given) & GUARD_READS[t.expands_to[n - 1]] - set(asked)):
                     out.append(f"{name} step {n} {key}: planner gives {given[key]!r}, which the guard reads but is "
                                "never asked with")
     return out
@@ -463,7 +471,7 @@ def test_a_requirement_no_single_card_satisfies_blocks_the_request_stage():
         out = SA.stage_availability(engine, "ticket_request_review", {"work_id": "T-0001"})
         assert out["availability"] == BLOCKED and out["reason_codes"] == [SA.CARD_CHOICE_REQUIRED]
         with pytest.raises(CardChoiceRequired) as exc:
-            stage.plan_for(engine, "ticket_request_review", {"work_id": "T-0001", "expect_rev": 1})
+            stage.plan_for(engine, "ticket_request_review", {"work_id": "T-0001", })
         [blocker] = out["blockers"]
         assert (blocker["code"], blocker["message"], blocker["details"]) == (
             exc.value.code, exc.value.message, exc.value.details)
@@ -480,7 +488,7 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
     call = CALLS[name][0]
     engine = FakeEngine(_state())
     engine.cards = ["c1", "c2"]
-    plan = stage.plan_for(engine, name, dict(call, expect_rev=1))
+    plan = stage.plan_for(engine, name, dict(call))
     n = SA.CARDS[name][0]
     base = SA.STAGES[name][n - 1](call)
     dispatches = [p for p in plan if p["primitive"] == "invoke.create.mutating"]
@@ -490,18 +498,20 @@ def test_each_cards_dispatch_is_planned_as_availability_asks_it(name):
     assert stage.STAGES[name](dict(call), stage.recorded_cards(si)) == plan
 
 
-def test_stage_plans_do_not_bind_their_own_transition_state():
-    from itertools import product
-
-    from aew.surface import availability as sa
+@pytest.mark.parametrize(("name", "arguments", "shape", "prior"), [
+    ("ticket_start", {}, None, {"$from": [1, "state"]}),
+    ("ticket_request_review", {"prior_value": "RUNNING"}, None, "RUNNING"),
+    ("ticket_request_verification", {"review_evidence": "EV-0001"}, {1: True}, {"$from": [1, "state"]}),
+    ("ticket_request_verification", {"prior_value": "REVIEW_PASSED"}, {1: False}, "REVIEW_PASSED"),
+    ("ticket_prepare", {"verification_evidence": "EV-0002"}, {1: True}, {"$from": [1, "state"]}),
+    ("ticket_prepare", {"prior_value": "VERIFIED"}, {1: False}, "VERIFIED"),
+    ("ticket_prepare", {"prior_value": "REVIEW_PASSED"}, {1: False}, "REVIEW_PASSED"),
+    ("ticket_prepare", {}, {1: False, 2: False}, None),
+])
+def test_stage_plan_steps_bind_the_prior_value_from_the_call_or_a_preceding_step(name, arguments, shape, prior):
     from aew.surface import stage
 
-    args = {"work_id": "T-0001", "prior_value": "REVIEW_PENDING", "review_evidence": "EV-0001",
-            "verification_evidence": "EV-0002"}
-    names = set(sa.APPLIES) | set(sa.STARTS_AT) | {"ticket_start", "ticket_request_review"}
-    for name in sorted(names):
-        steps = tuple(sa.APPLIES.get(name, ()))
-        for options in product((False, True), repeat=len(steps)):
-            shape = {"shape": dict(zip(steps, options, strict=True))} if steps else {}
-            plan = stage.STAGES[name](args, **shape)
-            assert all("prior_value" not in (step.get("args") or {}) for step in plan), (name, shape)
+    plan = stage.STAGES[name]({"work_id": "T-0001", **arguments}, **({"shape": shape} if shape else {}))
+    assert [step["args"]["prior_value"] for step in plan if step["primitive"] == "work.transition"] == (
+        [prior] if prior is not None else [])
+    assert all("prior_value" not in (step.get("args") or {}) for step in plan if step["primitive"] != "work.transition")

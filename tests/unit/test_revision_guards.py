@@ -68,6 +68,6 @@ def test_plan_adopt_compares_the_loaded_evidence_with_the_accepted_sha(matches):
     commands.inputs = SimpleNamespace(find_unit_evidence=lambda *args: ev)
     refusal = ReachedFreshnessCheck if matches else GateUnsatisfied
     with pytest.raises(refusal) as exc:
-        commands.plan_adopt(token="synthetic", expect_rev=1, work_id="T-0002", evidence_id="E-0001", source="T-0001")
+        commands.plan_adopt(token="synthetic", work_id="T-0002", evidence_id="E-0001", source="T-0001")
     if not matches:
         assert exc.value.details == {"evidence": "E-0001", "expected": "accepted", "current": "modified"}

@@ -416,22 +416,40 @@ where one is available. A canceled job with a failed phase in its partial report
 supersessions retain their job IDs and do not count as failed test runs. A verified run-wide cancellation also
 covers sibling jobs with no annotation of their own, such as the matrix jobs GitHub creates unrendered after the job
 that defines their matrix was cancelled, both in the completed run and in assurance, which reads its run before it
-concludes.
+concludes. A pull request's `ci` run cancelled before any of its jobs existed has no check run, so no annotation names
+its group: the completed-run record derives the group from the run and names the successor from run history alone
+(`cancel_evidence.superseded_before_any_job`), under the same rule, exactly one other run of that group created within
+the cancelled run's life. It then reads "Superseded before any job was recorded" and counts no gap; with no such run,
+or more than one, or a run of any other workflow or event, the `[cancel-reason]` gap stays. It is an inference from
+run history, made for a first attempt only (a re-run keeps the first attempt's creation time), and a run of the same
+second counts only with a higher id.
 
 A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
 The lane supervisor at the signal, on either platform, or the cancellation collection, then records
 `runner-resources-before-tests.txt`, but only from positive observations: no watchdog header or running name, and each
-session either still starting, as an xdist session whose registered workers' lifecycle receipts, read from their live
-writers, stand before their first test, or finished after a graceful interrupt, with every worker's receipt short of
-execution and the lane report showing no test ran. No session registered at all is recorded too: that reading of an
-absence holds while every lane command passes `--session-deadline` with its hang directory the lane root or one level
-under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The evidence check types
+session either still starting, or finished after a graceful interrupt, with every worker's receipt short of
+execution and the lane report showing no test ran. A session is still starting when the lifecycle receipt of each of
+its processes that run tests, read from its live writer, stands before its first test: an xdist session's registered
+workers, or a serial session's controller, which runs its tests itself and keeps the same receipt under its own name
+(`session_deadline.PhaseReceipt`; since 2026-11-26, after the serial lane of PR #608's run 45782924831 was cancelled
+2.4 s into its pytest step and typed as a test interrupted). No session registered at all is recorded too: that
+reading of an absence holds while every lane command passes `--session-deadline` with its hang directory the lane
+root or one level under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The
+evidence check types
 such a lane `before tests` and accepts the record as its death evidence only while every session, worker (by pid and
-start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out; anything else is a
-`[before-tests]` defect. The proof's start-up control cancels a lane whose workers hold their collection and requires
-that typing with no defect, and its `verify` job ablates the rule on each `normal` plant. A serial session that has not
-finished, whose controller runs its tests itself and keeps no lifecycle receipt, is never recorded this way, so its gap
-stays a defect.
+start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out, and a session with no worker
+roster that had not finished lists its controller on the same terms; anything else is a `[before-tests]` defect. The
+proof's two start-up controls each cancel a lane that holds its collection, one in its xdist workers (`start`) and
+one in a serial session's controller (`start-serial`), and require that typing with no defect; its `verify` job
+ablates the rule on each `normal` plant. Two states are still never recorded, so their gap stays a defect: a
+controller that has registered its session and not yet begun its collection has no receipt (nor has an xdist session
+before its worker roster, which cannot be told from it), and a serial controller once it has entered its first test's
+protocol, which owes its watchdog header, its observation and its running name like any worker in a test.
+The record says that no test had started, not that the start-up was healthy: a session stuck in its collection (an
+import that hangs) and cancelled before its deadline is typed `before tests` with no defect and no stack, a serial one
+as an xdist one. What shows it is each listed process's `collecting_s` in the record, the seconds since its
+`collecting` stamp when its receipt was read: at the signal in the supervisor's record, at the later collection in the
+cancellation collection's.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The
@@ -445,3 +463,19 @@ Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent
 `python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
 kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker
 as assurance and excludes the proof workflow.
+
+**A live worker's interruption stack.** A worker that a cancellation observes alive inside a test's protocol owes a
+stack taken at that interruption (the Linux supervisor's pre-signal warning, or the cancellation collection) that
+holds a frame of its test function; without one the check reports `[live-stack]`. A worker outside its test's call has
+no such frame to give, so its typed outcome stands in for it, only for the same worker, test and collection instant,
+and only with a retained stack of the same interruption whose frames classify the same
+(`evidence_files.STACK_NOT_OWED`, `evidence_problems.outside_call`): setup, teardown or between tests at the
+cancellation collection (#561), and setup or teardown at the Linux warning. The second reverses #573's rule that none
+of the warning's outcomes excuses a stack: asked whether a Linux worker caught in setup or teardown at the cancel
+signal should be accepted as Windows already accepts it, the operator answered "Yes" (2026-11-26). Nothing else of the
+warning's is accepted: a dump inside the call without the test's frame, a worker that changed tests or exited during
+the attach, and a failed attach all still owe the stack. The defect names the typed outcome, for example
+`interrupted-2470.txt: live worker lacks its interruption stack (warning outcome: straddled a test change)`, so a
+sighting needs no artifact download. The proof's Linux cancel plant spends its odd cases' seconds in a fixture's
+setup, so its supersede control can catch a worker there; `verify_evidence.observe_cancel` accepts for it exactly
+what the check accepts and prints how many workers it caught outside their call.

@@ -47,30 +47,24 @@ def test_a_fields_block_keeps_yaml_quotes_backslashes_and_controls_distinct():
 # or now parses fails the liveness test (#319 review F3).
 B3 = "deferred: B3's file (E112, fix/e112-weaker-contexts)"
 EVIDENCE = "src/aew/engine/evidence_ops.py"
-BROKER, SUPERVISOR = "src/aew/harness/lead_broker.py", "src/aew/harness/supervisor.py"
+BROKER = "src/aew/harness/lead_broker.py"
 DEFERRED = {
     (EVIDENCE, "aew plan reconfirm {work_id} --reason ..."): B3,
     (EVIDENCE, "aew plan reconfirm <id> --reason ..."): B3,
-    (EVIDENCE, "aew integrate publish {work_id} --expect-rev N"): f"{B3}; #312 F3 (an already-ingested refusal)",
     (BROKER, "aew {command_name(ns)}"): f"{B3}; with the bare names #311 F3 named",
     (BROKER, "aew {name}"): f"{B3}; with the bare names #311 F3 named",
-    (SUPERVISOR, "aew harness launch {inv} {rev}"): B3,
-    (SUPERVISOR, "aew invoke cancel {inv} {rev} --fields - <<'EOF'\nreason: 'why this invocation must end'\nEOF"): B3,
-    (SUPERVISOR, "aew invoke create {wid} --launch --model PROVIDER/MODEL {rev}"): B3,
-    (SUPERVISOR, "aew work redispatch {wid} --launch --model PROVIDER/MODEL {rev} --fields - <<'EOF'\n"
-                 "reason: 'why this Ticket is redispatched'\nEOF"): B3,
 }
 DEFERRED_FILES = frozenset(path for path, _ in DEFERRED)  # B3's: the one-owner tests wait for them too
 
 # Sites whose command the finder cannot judge from the source, each with why and the test that checks it instead.
 EXEMPT = {
-    "src/aew/harness/contract.py:248": "the frame's owner (fields_block): its command and keys are each caller's, "
+    "src/aew/harness/contract.py:245": "the frame's owner (fields_block): its command and keys are each caller's, "
                                        "checked at each call",
     "src/aew/engine/custody_ops.py:158": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/cli/capability_commands.py:145": "the command word comes from a value: "
                                               "test_each_capability_change_names_a_capability_command",
-    "src/aew/harness/contract.py:403": "the command words come from bridge.MAP_OPERATIONS: "
+    "src/aew/harness/contract.py:400": "the command words come from bridge.MAP_OPERATIONS: "
                                        "test_the_worker_map_reads_line_names_real_commands",
 }
 
@@ -80,53 +74,31 @@ EXEMPT = {
 # The manifest header is part of the bytes init pins, including its informational adopt and authority references.
 # Other entries preserve the existing command references and advice until their callers are updated.
 LEGACY_BARE_SPANS = {
-    ("cli/work_commands.py", "aew harness launch"): 1,
-    ("dashboard/reasons.py", "aew migrate"): 1,
     ("engine/disposition_ops.py", "aew work dispose"): 1,
-    ("engine/evidence_ops.py", "aew integrate prepare"): 1,
     ("engine/evidence_ops.py", "aew work redispatch"): 1,
     ("engine/guide.py", "aew authority accept"): 1,
-    ("engine/guide.py", "aew authority reject"): 1,
     ("engine/guide.py", "aew evidence ingest"): 1,
-    ("engine/guide.py", "aew lead acquire"): 1,
     ("engine/guide.py", "aew lead takeover"): 1,
     ("engine/guide.py", "aew work transition"): 1,
-    ("engine/hierarchy_ops.py", "aew integrate reconcile"): 2,
-    ("engine/history_ops.py", "aew migrate"): 1,
-    ("engine/integration_ops.py", "aew integrate prepare"): 4,
-    ("engine/integration_ops.py", "aew integrate reconcile"): 3,
     ("engine/integration_ops.py", "aew integrate requeue"): 1,
     ("engine/lead_ops.py", "aew lead handoff accept"): 1,
     ("engine/migrate_ops.py", "aew harness stop|wait"): 1,
     ("engine/nonmutating_ops.py", "aew evidence ingest"): 2,
     ("engine/nonmutating_ops.py", "aew review ingest"): 1,
     ("engine/nonmutating_ops.py", "aew verify ingest"): 1,
-    ("engine/nonmutating_ops.py", "aew work accept"): 3,
     ("engine/nonmutating_ops.py", "aew work acknowledge-input"): 1,
-    ("engine/nonmutating_ops.py", "aew work close"): 1,
-    ("engine/nonmutating_ops.py", "aew work dispatch"): 2,
     ("engine/nonmutating_ops.py", "aew work redispatch"): 2,
-    ("engine/queue_ops.py", "aew integrate prepare"): 1,
     ("engine/reasons.py", "aew work reclassify"): 1,
     ("engine/resume_ops.py", "aew lead handoff accept"): 1,
     ("engine/resume_ops.py", "aew lead takeover"): 1,
     ("engine/stage_intents.py", "aew stage continue|abandon"): 1,
-    ("engine/steering.py", "aew lead mode lower"): 1,
-    ("engine/validation_ops.py", "aew integrate validate"): 1,
-    ("engine/validation_ops.py", "aew migrate"): 1,
     ("engine/work_ops.py", "aew work redispatch"): 1,
-    ("harness/contract.py", "aew lead release"): 1,
     ("harness/contract.py", "aew submit"): 2,
-    ("harness/lead_broker.py", "aew lead mode lower"): 1,
     ("harness/lead_broker.py", "aew lead takeover"): 2,
-    ("harness/opencode/projection.py", "aew lead handoff offer"): 1,
     ("harness/opencode/projection.py", "aew submit"): 1,
     ("knowledge/manifest.py", "aew authority accept"): 1,
     ("knowledge/manifest.py", "aew manifest adopt"): 1,
-    ("policy/execution.py", "aew harness launch"): 1,
     ("process_kind.py", "aew submit"): 1,
-    ("surface/availability.py", "aew work staff"): 1,
-    ("workspace/integration.py", "aew integrate reconcile"): 2,
 }
 
 
@@ -175,9 +147,8 @@ def test_every_exemption_and_deferral_is_still_live() -> None:
 
 
 OWNER = "src/aew/harness/contract.py"
-# A placeholder spelled out after `--expect-rev` (` ` or `=`: `<revision...>`, `N`, `REV`...), or the owner's text
-# itself anywhere, so that a copy split across literals or in an argv list is caught too (#319 quick check, F7).
-SPELLED = re.compile(rf"--expect-rev[ =](?:<|[A-Z])|{re.escape(K.REVISION)}")
+# Reject the retired flag in current guidance, including a literal in generated argv.
+RETIRED_REVISION = re.compile(r"--expect-rev\b")
 
 
 def _restating(pattern: re.Pattern[str], allowed: set[str]) -> list[str]:
@@ -189,11 +160,9 @@ def _restating(pattern: re.Pattern[str], allowed: set[str]) -> list[str]:
     return out
 
 
-def test_the_revision_placeholder_has_one_owner() -> None:
-    """Every printed `--expect-rev` takes its placeholder from ``contract.EXPECT_REV``: no other module spells one out
-    (`--expect-rev <revision>`, `--expect-rev=N`, the owner's text split across literals; the brief, step 2; #319
-    review F6, quick check F7). Files B3 owns wait for the follow-up."""
-    assert not _restating(SPELLED, set()), _restating(SPELLED, set())
+def test_no_printed_commands_take_the_retired_revision() -> None:
+    sites = [site for site in P.ast_sites() if RETIRED_REVISION.search(site.shown)]
+    assert not sites, sites
 
 
 # The modules besides the owner that name the heredoc without writing the frame: the CLI's own help for `--fields`, and
@@ -214,7 +183,7 @@ def test_a_full_history_audit_is_printed_whole() -> None:
     """``resume``'s history-audit step prints `--full` inside its command when the policy needs a full audit, so the
     reader copies the whole command (#319 review F5): each form is one span, and each parses."""
     audits = {s.text for s in P.ast_sites() if s.path == "src/aew/engine/resume_ops.py" and "history audit" in s.text}
-    assert audits == {f"aew history audit {K.EXPECT_REV}", f"aew history audit {K.EXPECT_REV} --full"}
+    assert audits == {"aew history audit --record", "aew history audit --record --full"}
     assert [P.parse(a, fenced=False)[0].full for a in sorted(audits)] == [False, True]
 
 
@@ -230,21 +199,21 @@ def test_the_two_finders_agree_both_ways() -> None:
 
 # ---------------------------------------------------------------------------------------------- planted controls
 
-GOOD = f"aew invoke cancel INV-1 {K.EXPECT_REV} --fields - <<'EOF'\nreason: 'why'\nEOF"
+GOOD = "aew invoke cancel INV-1 --fields - <<'EOF'\nreason: 'why'\nEOF"
 
 
 @pytest.mark.parametrize(
     ("command", "kind"),
     [
         pytest.param(GOOD, "fence", id="fenced"),
-        pytest.param(f"aew lead handoff cancel {K.EXPECT_REV}", "span", id="inline"),
-        pytest.param(f"aew work transition <T> --to REVIEW_PENDING|VERIFY_PENDING {K.EXPECT_REV}", "span",
+        pytest.param("aew lead handoff cancel", "span", id="inline"),
+        pytest.param("aew work transition <T> --to REVIEW_PENDING|VERIFY_PENDING", "span",
                      id="alternatives"),
-        pytest.param(f"aew authority accept <candidate> --class <contracts|decisions> {K.EXPECT_REV}", "span",
+        pytest.param("aew authority accept <candidate> --class <contracts|decisions>", "span",
                      id="choices"),
         pytest.param("aew work create --help", "span", id="help"),
         pytest.param("aew work show", "span", id="mention"),
-        pytest.param(f"aew lead takeover {K.EXPECT_REV} --reason 'the session is gone'", "field", id="field"),
+        pytest.param("aew lead takeover --reason 'the session is gone'", "field", id="field"),
     ],
 )
 def test_a_right_command_passes(command: str, kind: str) -> None:
@@ -254,21 +223,23 @@ def test_a_right_command_passes(command: str, kind: str) -> None:
 @pytest.mark.parametrize(
     ("command", "kind", "why"),
     [
-        pytest.param(GOOD.replace(f" {K.EXPECT_REV}", ""), "fence", "required: --expect-rev", id="missing-required"),
+        pytest.param("aew invoke cancel INV-1", "field", "required: --reason", id="missing-required"),
         pytest.param(GOOD.replace("reason: 'why'", "- 'why'"), "fence", "mapping", id="non-mapping-body"),
         pytest.param(GOOD.replace("reason:", "raeson:"), "fence", "no option --raeson", id="misspelled-key"),
         pytest.param(GOOD.removesuffix("\nEOF"), "fence", "not closed", id="unterminated-heredoc"),
         pytest.param(GOOD.replace("'why'", "'why'\nEOF\nmore: 'x'"), "fence", "closes early", id="early-eof"),
         pytest.param(GOOD.replace("INV-1", "<INV>"), "fence", "not in PLACEHOLDERS: <INV>", id="unknown-placeholder"),
-        pytest.param(GOOD.replace(K.REVISION, "N"), "fence", "invalid int value: 'N'", id="bare-N"),
+        pytest.param("aew work create ticket --class N --title example", "span", "invalid int value: 'N'",
+                     id="bare-N"),
         pytest.param(GOOD, "span", "one line", id="heredoc-inline"),
-        pytest.param(f"aew invoke create T-1 --role implementer|nobody {K.EXPECT_REV}", "span", "invalid choice",
+        pytest.param("aew invoke create T-1 --role implementer|nobody", "span", "invalid choice",
                      id="bad-alternative"),
-        pytest.param("aew lead takeover --reason why", "span", "required: --expect-rev", id="incomplete"),
+        pytest.param("aew lead takeover --expect-rev 17 --reason why", "span",
+                     "unrecognized arguments: --expect-rev", id="retired-option"),
         pytest.param("aew lead takeover", "field", "required", id="bare-name-in-a-field"),
         pytest.param("aew manifest adopt", "span", "--reason", id="missing-adopt-options"),
         pytest.param("aew manifest adoptt", "span", "invalid choice", id="misspelled-mention"),
-        pytest.param(f"aew work cancel T-1 --reason ... {K.EXPECT_REV}", "span", "elided value", id="elision"),
+        pytest.param("aew work cancel T-1 --reason ...", "span", "elided value", id="elision"),
     ],
 )
 def test_the_check_refuses_each_planted_defect(command: str, kind: str, why: str) -> None:
@@ -284,13 +255,13 @@ def refusal(work_id, held, verb):
     """A function docstring naming `aew work cancel`."""
     argparse.ArgumentParser().add_argument("--x", help="see `aew status`")
     a = f"run `aew work show {work_id}` first"
-    b = ("held" if held else "run `aew lead acquire --expect-rev N`")
+    b = ("held" if held else "run `aew work transition T-1 --prior-value RUNNING`")
     c = dict(next="aew lead takeover")
     d = {"remedy": f"aew work show {work_id}"}
-    e = fields_command(f"aew invoke cancel {work_id} --expect-rev 1", "reason", verb)
-    f = "a fenced block:\\n\\n```sh\\naew lead takeover --expect-rev 1 --fields - <<'EOF'\\nreason: 'x'\\nEOF\\n```"
-    g = fields_block("aew lead takeover --expect-rev 1", {"reason": "x"})
-    h = {"cli": ["work", "reconcile", work_id, "--to", "<phase>", "--expect-rev", "1"]}
+    e = fields_command(f"aew invoke cancel {work_id}", "reason", verb)
+    f = "a fenced block:\\n\\n```sh\\naew lead takeover --fields - <<'EOF'\\nreason: 'x'\\nEOF\\n```"
+    g = fields_block("aew lead takeover", {"reason": "x"})
+    h = {"cli": ["work", "reconcile", work_id, "--to", "<phase>"]}
     i = dict(cli_fallback=["aew", "work", "show", work_id])
     j = dict(cli_fallback=[x for x in ["work", "show"]], cli=held)
     return a, b, c, d, e, f, g, h, i, j
@@ -329,22 +300,23 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
     guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from discovery.static import rendered_guide
+
     from aew.engine.harness_ops import send_route
     from aew.errors import MessagingSnapshotMismatch
     from aew.policy import execution as X
-    from aew.surface import lead_text
 
     # The fallback invocation placeholder is printed only after the f-string has been evaluated.
     with pytest.raises(MessagingSnapshotMismatch) as mismatch:
         send_route(X.MESSAGING_ENABLED, X.MESSAGING_DISABLED, "next-step")
     [(relaunch, fenced)] = P.commands(str(mismatch.value))
     [args] = P.parse(relaunch, fenced=fenced)
-    assert args.invocation == "INV-0012" and args.expect_rev == 17
+    assert args.invocation == "INV-0012" and args.prior_value == "R-INV-0012-1"
     # So is the run a steering step over several runs names (#547 review m1): a value the step passes in.
     steer = [c for c, _ in P.commands(K.wait_step(["R-1", "R-2"], again=True)) if c.startswith("aew harness send")]
     assert [a.run for c in steer for a in P.parse(c, fenced=False)] == ["R-0003"]
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
-                         relaunch, *steer])
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), rendered_guide(),
+                         relaunch, *steer, transitions.operation_command("integrate.requeue", "T-0007")])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 
@@ -403,7 +375,7 @@ def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object
     message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced, "INV-0003")
     [(printed, fenced)] = P.commands(message)
     [args] = P.parse(printed, fenced=fenced)
-    assert (args.work_id, args.evidence, args.expect_rev) == ("T-0007", "EV-0003", 17)
+    assert (args.work_id, args.evidence) == ("T-0007", "EV-0003")
 
 
 @pytest.mark.parametrize("state", transitions.STATES)
@@ -446,6 +418,6 @@ def test_a_slot_is_filled_as_one_word() -> None:
         P.parse("aew work show T-1 T-2", fenced=False)
 
 
-def test_a_bare_name_instruction_with_required_options_fails() -> None:
+def test_migrate_is_a_complete_command_without_caller_arguments() -> None:
     [site] = [s for s in P.ast_sites() if s.path == "src/aew/engine/history_ops.py" and s.text == "aew migrate"]
-    assert "--expect-rev" in (_why_not(site) or "")
+    assert _why_not(site) is None

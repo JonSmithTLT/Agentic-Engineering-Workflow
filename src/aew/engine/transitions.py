@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from aew.errors import IllegalTransition
-from aew.harness.contract import EXPECT_REV
 
 STATES = (
     "BLOCKED", "READY", "ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED",
@@ -156,25 +155,25 @@ def lead_entry_guards(to: str, besides: str | None = None) -> list[str]:
 
 # The Lead command behind each operation, for refusals that say what applies instead (M3 audit X1).
 _COMMANDS = {  # each a complete command once its placeholders are filled (ITEMS 56)
-    "transition": f"aew work transition {{w}} --to {{to}} {EXPECT_REV}",
-    "assign": f"aew work assign {{w}} --launch {EXPECT_REV}",
-    "review.ingest": f"aew review ingest {{w}} --evidence <id> {EXPECT_REV}",
-    "verify.ingest": f"aew verify ingest {{w}} --evidence <id> {EXPECT_REV}",
-    "verify.classify": f"aew verify classify {{w}} --as <CLASS> --reason <reason> {EXPECT_REV}",
-    "plan.accept": f"aew plan accept {{w}} --revision <n> {EXPECT_REV}",
-    "integrate.publish": f"aew integrate publish {{w}} {EXPECT_REV}",
-    "accept": f"aew work accept {{w}} {EXPECT_REV}",
+    "transition": "aew work transition {w} --to {to} --prior-value {frm}",
+    "assign": "aew work assign {w} --launch",
+    "review.ingest": "aew review ingest {w} --evidence <id>",
+    "verify.ingest": "aew verify ingest {w} --evidence <id>",
+    "verify.classify": "aew verify classify {w} --as <CLASS> --reason <reason> --approval-digest <shown digest>",
+    "plan.accept": "aew plan accept {w} --revision <n> --approval-digest <shown digest>",
+    "integrate.publish": "aew integrate publish {w} --candidate <shown candidate commit>",
+    "accept": "aew work accept {w} --approval-digest <shown digest>",
     # Not a transition's own operation, but printed as one in the engine's next steps (E140's O-CMD flip): each is read
     # through `operation_command`, so a hint never restates it.
-    "evidence.ingest": f"aew evidence ingest {{w}} --evidence <id> {EXPECT_REV}",
-    "integrate.validate": f"aew integrate validate {{w}} {EXPECT_REV}",
-    "integrate.requeue": f"aew integrate requeue {{w}} --reason <reason> {EXPECT_REV}",
-    "work.redispatch": f"aew work redispatch {{w}} --reason <reason> --launch {EXPECT_REV}",
+    "evidence.ingest": "aew evidence ingest {w} --evidence <id>",
+    "integrate.validate": "aew integrate validate {w}",
+    "integrate.requeue": "aew integrate requeue {w} --reason <reason> --prior-value <current queue state>",
+    "work.redispatch": "aew work redispatch {w} --reason <reason> --launch",
 }
 _NOTES = {"accept": " (non-mutating Tickets)"}
 # The dispatch of a fresh invocation for a role, launched: the Lead's guide and the engine's hints both name it, and
 # both read it here (#547 review M1: a hint that dropped `--launch` made an invocation with no run).
-_DISPATCH = f"aew invoke create {{w}} {{who}} --launch {EXPECT_REV}"
+_DISPATCH = "aew invoke create {w} {who} --launch"
 
 
 def dispatch_command(work_id: str, role: str | None = None, *, card: str | None = None) -> str:
@@ -187,10 +186,9 @@ def dispatch_command(work_id: str, role: str | None = None, *, card: str | None 
 
 
 def operation_command(via: str, work_id: str, evidence: str = "<id>", *, flags: str = "") -> str:
-    """``via``'s command for ``work_id``, with the report named where there is one and any optional ``flags`` before
-    its revision: read from ``_COMMANDS``, never a copy of it (#547 review m2)."""
+    """``via``'s command for ``work_id``, with the report named where there is one and any optional ``flags``."""
     text = _COMMANDS[via].format(w=work_id).replace("<id>", evidence)
-    return text.replace(f" {EXPECT_REV}", f" {flags} {EXPECT_REV}") if flags else text
+    return f"{text} {flags}" if flags else text
 
 
 # The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and
@@ -254,9 +252,9 @@ def command(frm: str, dst: str, work_id: str = "<T>") -> str | None:
     rule = RULES.get((frm, dst))
     if rule is None or rule.via not in _COMMANDS:
         return None
-    text = _COMMANDS[rule.via].format(w=work_id, to=dst)
+    text = _COMMANDS[rule.via].format(w=work_id, to=dst, frm=frm)
     if rule.reason_required and "--reason" not in text:
-        text = text.replace(f" {EXPECT_REV}", f" --reason <reason> {EXPECT_REV}")
+        text += " --reason <reason>"
     return text
 
 

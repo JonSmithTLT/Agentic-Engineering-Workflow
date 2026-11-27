@@ -29,7 +29,10 @@ def parent(tmp_path):
 
 
 def _call(p, method, **kwargs):
-    return getattr(Engine.discover(p.root), method)(token=p.token, expect_rev=p.rev(), **kwargs)
+    engine = Engine.discover(p.root)
+    if method == "work_close" and "binding" not in kwargs:
+        kwargs["binding"] = engine.approval_subject(kwargs["work_id"], "work.close")["digest"]
+    return getattr(engine, method)(token=p.token, **kwargs)
 
 
 def _verify(p, story, evidence):
@@ -80,8 +83,9 @@ def test_a_second_failing_parent_ingest_waits_for_the_first_requirement(parent, 
     with pytest.raises(GateUnsatisfied, match=requirement) as exc:
         _verify(p, story, held)
     assert first in str(exc.value)
+    binding = Engine.discover(p.root).approval_subject(story, "work.close")["digest"]
     with pytest.raises(GateUnsatisfied, match=requirement):
-        _call(p, "work_close", work_id=story)
+        _call(p, "work_close", work_id=story, binding=binding)
     assert load_control(p.root) == before
 
     if classification == "ENVIRONMENT_OR_EVIDENCE_BLOCKED":

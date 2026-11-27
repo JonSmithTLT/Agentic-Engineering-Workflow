@@ -118,9 +118,9 @@ class Reports:
     def __init__(self, k: Kernel) -> None:
         self.k = k
 
-    def write(self, *, token: str, expect_rev: int, title: str, body: str,
+    def write(self, *, token: str, title: str, body: str,
               session_id: str | None = None) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "report.write") as ctx:
+        with self.k.lead_txn(token, "report.write") as ctx:
             try:
                 size = len(title.encode("utf-8")) + len(body.encode("utf-8"))
             except UnicodeEncodeError:

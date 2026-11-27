@@ -422,7 +422,8 @@ def seat_text() -> str:
 # Every Lead line here is true and needed, or it goes (E367; the operator, 2026-11-25: "harshly strip down anything
 # given to agents all the time"). A fact the guide's core owns is not repeated here: the guide is appended to every
 # Lead's text (:func:`lead_config`), and says that the Lead never implements, that it reads with its read, glob and
-# grep tools, how free text goes into the shell, the revision a tool returns, and the operator's approval channels.
+# grep tools, how free text goes into the shell, which scoped values a mutation needs, and the operator's approval
+# channels.
 WAIT_SENTENCE = f"Wait on runs with `harness_wait`: {WAIT_RULE}."
 _LEAD_SYSTEM_TEMPLATE = "\n".join([
     "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work "

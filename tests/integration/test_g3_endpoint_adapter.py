@@ -391,7 +391,7 @@ def test_a_mode_that_left_and_came_back_during_the_wait_refuses_on_its_version(s
         now = engine.steering_raise_preview(MODE)
         engine.steering_raise(_principal(), mode=MODE, generation=now["generation"],
                               legality_digest=now["legality_digest"])
-        engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl")
+        engine.steering_lower(token=project.token, mode="crawl", prior_value=engine.steering_view()["override_record"])
 
     steered.fake.on_decide = left_and_back
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
@@ -578,6 +578,6 @@ def test_a_concurrent_request_waits_its_turn_on_the_g3_path_too(steered, endpoin
 
 def test_the_lead_is_told_who_decides_and_how(steered):
     project = steered.project
-    said = steered.engine.steering_request(token=project.token, expect_rev=project.rev(), kind="raise",
+    said = steered.engine.steering_request(token=project.token, kind="raise",
                                            rationale="the work is ready", mode=MODE)
     assert f"aew lead mode raise {MODE}" in said["next"]

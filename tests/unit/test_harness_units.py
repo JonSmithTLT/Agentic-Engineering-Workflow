@@ -314,14 +314,14 @@ def _parse(*argv):
 
 
 @pytest.mark.parametrize("argv, refused", [
-    (("lead", "acquire", "--expect-rev", "0"), True),
-    (("lead", "takeover", "--expect-rev", "0", "--reason", "x"), True),
-    (("lead", "release", "--expect-rev", "0"), True),
-    (("lead", "handoff", "offer", "--expect-rev", "0"), True),
-    (("lead", "handoff", "accept", "--offer", "o", "--expect-rev", "0"), True),
-    (("lead", "handoff", "cancel", "--expect-rev", "0"), False),
-    (("plan", "accept", "T-1", "--revision", "1", "--expect-rev", "0"), False),
-    (("work", "assign", "T-1", "--expect-rev", "0"), False),
+    (("lead", "acquire", ), True),
+    (("lead", "takeover", "--reason", "x"), True),
+    (("lead", "release", ), True),
+    (("lead", "handoff", "offer", ), True),
+    (("lead", "handoff", "accept", "--offer", "o", ), True),
+    (("lead", "handoff", "cancel", ), False),
+    (("plan", "accept", "T-1", "--revision", "1", ), False),
+    (("work", "assign", "T-1", ), False),
     (("lead", "show"), False),
 ])
 def test_credential_emitting_commands_are_recognized(argv, refused):
@@ -335,12 +335,12 @@ def test_only_uncredentialed_lead_commands_route_to_a_lead_session(monkeypatch):
 
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
     monkeypatch.delenv(lead_broker.ENV_ENDPOINT, raising=False)
-    lead_cmd = _parse("checkpoint", "--next", "x", "--expect-rev", "3")
+    lead_cmd = _parse("checkpoint", "--next", "x")
     assert not lead_broker.routes(lead_cmd)  # no session
     monkeypatch.setenv(lead_broker.ENV_ENDPOINT, "ep")
     assert lead_broker.routes(lead_cmd)
     assert not lead_broker.routes(_parse("status"))  # read-only: runs locally
-    held = _parse("checkpoint", "--expect-rev", "3")
+    held = _parse("checkpoint")
     held.token = "t"  # a credential of its own, as the broker sets one
     assert not lead_broker.routes(held)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "t")

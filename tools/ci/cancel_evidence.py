@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from flake_register import CHECK_CONCURRENCY, _api, _pages, check_annotations  # noqa: E402
+from flake_register import CHECK_CONCURRENCY, CI_WORKFLOW, _api, _pages, check_annotations  # noqa: E402
 
 PRIORITY = re.compile(r"Cancel(?:ing|ling) since a higher priority waiting request for (.+?) exists\.?")
 MANUAL = "The operation was canceled."
@@ -146,6 +146,37 @@ def observe(repo, run, job, jobs):
     if group and re.fullmatch(r"ci-[0-9]+", group):
         newer = [with_pull_group(repo, r) for r in newer if r["id"] != run["id"]]
     return classify(run, job, notes, newer, jobs)
+
+
+def superseded_before_any_job(repo, run):
+    """The one run that replaced a ci pull-request run cancelled before any of its jobs existed, or None.
+
+    Such a run has no check run, so no annotation names its concurrency group (`observe` starts from one). The group
+    is derived from the run instead (`ci_group`, which names ci.yml's own group: another workflow's run is not in it),
+    and the successor comes from run history under `replacement`'s own rule: exactly one other run of that group
+    created within this run's life, and after it. No candidate, or more than one, names nothing: the caller keeps
+    its attribution gap.
+
+    This is an inference from run history, not an observation of GitHub's reason: a run with no job carries no
+    statement of why it was cancelled. It rests on ci.yml cancelling a pull request's run in progress for the next
+    one of its group, so a run of the group created within this run's life would have ended it in any case.
+
+    Only a first attempt is attributed. A re-run keeps the first attempt's `created_at`, so its window would take in
+    runs older than the re-run itself, and one of those cannot have replaced it (review of #615, finding 1).
+    """
+    if (run.get("path") != CI_WORKFLOW or run.get("event") != "pull_request" or run.get("conclusion") != "cancelled"
+            or not run.get("updated_at") or run.get("run_attempt") != 1):
+        return None
+    run = with_pull_group(repo, run)
+    group = ci_group(run)
+    if not group:
+        return None
+    newer = [with_pull_group(repo, r) for r in candidates(repo, run["workflow_id"], run["head_branch"], run["event"],
+                                                          run["created_at"], run["updated_at"])
+             # Run ids grow with creation, and `created_at` has one-second grain: a run of the same second with a
+             # lower id is this run's predecessor, never its successor (review of #615, finding 2).
+             if r["id"] > run["id"]]
+    return replacement(run, group, newer, [])
 
 
 def may_inherit_run_wide(run):

@@ -153,7 +153,6 @@ The `writers` fact of the `writers` records.
 - `aew.engine.disposition_ops:_unlink`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.reports:Reports.write`: no static call chain from any entry point's declaring function reaches this writer

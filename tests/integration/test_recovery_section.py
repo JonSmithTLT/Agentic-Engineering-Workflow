@@ -79,8 +79,7 @@ def leave_partial_work(impl: Role) -> None:
 
 def take_over(calc, monkeypatch) -> None:
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator-tty (test)"})
-    calc.token = Engine.discover(calc.root).lead_takeover(
-        expect_rev=calc.rev(), reason="the seat was lost", session_label="lead-b")["token"]
+    calc.token = Engine.discover(calc.root).lead_takeover(reason="the seat was lost", session_label="lead-b")["token"]
 
 
 def test_after_an_interruption_the_replacements_pack_names_its_predecessor_how_it_ended_and_the_paths_left(

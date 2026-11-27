@@ -17,11 +17,11 @@ from aewflow import (
     submit_record,
 )
 
-from aew.engine import reports
+from aew.engine import approval, reports
 from aew.engine.api import Engine
 from aew.engine.faults import InjectedFault
 from aew.engine.store import ControlStore
-from aew.errors import GateUnsatisfied, IntegrityError, NotFound, UsageError, ValidationFailed
+from aew.errors import ChangedSinceRead, GateUnsatisfied, IntegrityError, NotFound, UsageError, ValidationFailed
 from aew.knowledge import evidence
 from aew.knowledge.records import read_record
 from aew.surface import readable, run
@@ -39,7 +39,7 @@ def lab(tmp_path):
 
 def write(p, engine, *, context=None, **args):
     return run.run_tool(engine, context or SurfaceContext.outside_session(), "report_write",
-                        {"expect_rev": p.rev(), "title": "An answer", "body": BODY, **args}, token=p.token)
+                        {"title": "An answer", "body": BODY, **args}, token=p.token)
 
 
 def test_report_write_assigns_its_id_and_path_and_commits_no_work_transition(lab):
@@ -69,6 +69,20 @@ def test_report_write_refuses_lead_chosen_identity_or_storage(lab, input_name):
     assert error.value.code == "INVALID_ARGUMENTS"
     assert input_name in str(error.value.to_dict()) and p.rev() == rev
     assert not (engine.aew_root / "reports").exists()
+
+
+def test_an_unrelated_commit_never_stales_a_report_write_and_the_retired_revision_is_refused(lab):
+    # E329: a report write is Class A (`CONTROL_OP_SPECS`), guarded by its session's report limit under the lock.
+    p, engine = lab
+    rev = p.rev()
+    with pytest.raises(AdapterInputError) as error:
+        write(p, engine, expect_rev=rev)
+    assert error.value.code == "INVALID_ARGUMENTS" and "expect_rev" in str(error.value.to_dict())
+    with pytest.raises(TypeError, match="expect_rev"):
+        engine.report_write(token=p.token, expect_rev=rev, title="An answer", body=BODY)
+    intervening = engine.checkpoint(token=p.token, note="an unrelated update")["revision"]
+    result = write(p, engine)
+    assert result["ok"] and result["result"]["revision"] == intervening + 1
 
 
 def test_report_body_is_shown_only_on_explicit_read_and_terminal_controls_are_escaped(lab):
@@ -163,7 +177,7 @@ def test_the_read_only_view_reports_a_pending_apply_and_the_status_command_recov
         patch.setenv("AEW_FAULT", "txn.after_replace")
         patch.setenv("AEW_FAULT_MODE", "raise")
         with pytest.raises(InjectedFault):
-            engine.report_write(token=p.token, expect_rev=revision, title="An answer", body=BODY)
+            engine.report_write(token=p.token, title="An answer", body=BODY)
     state = engine.store.read_committed()
     assert state["revision"] == revision + 1
     [entry] = state[reports.RECENT_KEY]
@@ -225,7 +239,7 @@ def test_the_report_and_its_id_are_refused_as_workflow_evidence(lab, tmp_path):
         evidence.read(path)
     assert evidence.scan(engine.aew_root, ticket) == ([], [])
     with pytest.raises(NotFound, match=report_id):
-        engine.evidence_ingest(token=p.token, expect_rev=rev, work_id=ticket, evidence_id=report_id)
+        engine.evidence_ingest(token=p.token, work_id=ticket, evidence_id=report_id)
     assert p.rev() == rev
 
 
@@ -243,10 +257,10 @@ def test_a_report_cannot_be_adopted_as_a_plan_or_acknowledged_as_a_work_input(la
     with pytest.raises(ValidationFailed):
         read_record(report_path, "plan")
     with pytest.raises(UsageError, match=report_id):
-        engine.plan_adopt(token=p.token, expect_rev=rev, work_id=target, evidence_id=report_id, source=source,
+        engine.plan_adopt(token=p.token, work_id=target, evidence_id=report_id, source=source,
                           no_assurance=True)
     with pytest.raises(UsageError, match=report_id):
-        engine.work_acknowledge_input(token=p.token, expect_rev=rev, work_id=target, evidence_id=report_id,
+        engine.work_acknowledge_input(token=p.token, work_id=target, evidence_id=report_id,
                                       source=source, reason="try the report reference")
     assert p.rev() == rev
 
@@ -262,9 +276,16 @@ def test_a_report_is_refused_by_review_verification_and_gate_resolvers(lab, tmp_
     rev = p.rev()
     for ingest in (engine.review_ingest, engine.verify_ingest):
         with pytest.raises(NotFound, match=report_id):
-            ingest(token=p.token, expect_rev=rev, work_id=target, evidence_id=report_id)
+            ingest(token=p.token, work_id=target, evidence_id=report_id)
+    shown = engine.gate_show(target)
+    assert report_id not in shown["gates"] and report_id not in shown["gate_approval_digests"]
+    # E329: no approval subject is shown for a report, so an unbound waive is refused before the gate resolver; one
+    # bound to the gate context as it stands then reaches the resolver, which refuses the report as a gate.
+    with pytest.raises(ChangedSinceRead, match=report_id):
+        engine.waive(token=p.token, work_id=target, reason="try this report", gate=report_id)
     with pytest.raises(GateUnsatisfied, match=report_id):
-        engine.waive(token=p.token, expect_rev=rev, work_id=target, reason="try this report", gate=report_id)
+        engine.waive(token=p.token, work_id=target, reason="try this report", gate=report_id,
+                     binding=approval.gate_digest(shown, report_id))
     assert report_id not in engine.gate_show(target)["gates"] and p.rev() == rev
 
 

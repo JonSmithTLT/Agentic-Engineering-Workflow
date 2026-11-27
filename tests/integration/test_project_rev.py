@@ -1,5 +1,5 @@
 """The test helper ``Project.rev`` reads the control revision in this process: it must be what `aew lead show` reads,
-at every point, so every ``Project.lead`` call's `--expect-rev` is the committed revision, never a stale one."""
+at every point, so assertions about committed progress and revision ordering use the current state."""
 
 from __future__ import annotations
 

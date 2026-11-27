@@ -101,7 +101,6 @@ def _strings(description: str, *, min_items: int = 0, max_items: int | None = No
 
 # Descriptions are presentation only, trimmed to keep the normal surface inside its budget with the M4-E tools
 # (plan v3 §2.6; semantics unchanged).
-EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result's revision (CAS)"}
 WORK_ID_PATTERN = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}
 WORK_ID = {**WORK_ID_PATTERN, "description": "e.g. T-0012"}
 TEXT = {"type": "string", "description": "free text"}
@@ -121,11 +120,11 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
              "assurance": ASSURANCE, "reason": TEXT},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
 
-# The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
+# The `steering` tool's actions and the arguments each needs, beyond the action: required, then allowed (plan v3 E2).
 # The one owner of the tool's actions: the advertised enum and the schema's properties are derived from it, and the
 # runner checks a call's arguments against it. `request_confirmation` is not here: no confirmation exists for it to
 # ask for, so the catalog hides it and `request_raise` stays (register E183; the operator, 2026-11-06 and 2026-11-10).
-STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "prior_value", "rationale")),
+STEERING_ARGUMENTS = {"lower": (("mode", "prior_value"), ("mode", "prior_value", "rationale")),
                       "request_raise": (("mode", "rationale"), ("mode", "rationale"))}
 STEERING_ACTIONS = tuple(STEERING_ARGUMENTS)
 STEERING_ARGUMENT_SCHEMAS = {"mode": {"enum": ["crawl", "walk", "run"]}, "prior_value": {"type": "string"},
@@ -263,36 +262,34 @@ TOOLS: dict[str, Tool] = _catalog(
     # ---- single engine transactions, without a stage intent (§3.4)
     Tool("checkpoint", STAGE, MECHANICAL,
          "Record a checkpoint note and your next intended action (before a pause or a handoff).",
-         _obj({"expect_rev": EXPECT_REV,
-               "note": {**TEXT, "maxLength": NOTE_MAX},
+         _obj({"note": {**TEXT, "maxLength": NOTE_MAX},
                "next": {**TEXT, "maxLength": NEXT_MAX, "description": "the next intended action"}},
-              ("expect_rev",)),
+              ()),
          expands_to=("checkpoint",), mutates=True),
     Tool("report_write", STAGE, MECHANICAL, "Save a Lead report and return its read command.",
-         _obj({"expect_rev": EXPECT_REV, "title": TEXT, "body": TEXT}, ("expect_rev", "title", "body")),
+         _obj({"title": TEXT, "body": TEXT}, ("title", "body")),
          expands_to=("report.write",), mutates=True),
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
     Tool("steering", STAGE, MECHANICAL, STEERING_TEXT,
-         _obj({"expect_rev": EXPECT_REV, "action": {"enum": list(STEERING_ACTIONS)},
+         _obj({"action": {"enum": list(STEERING_ACTIONS)},
                **{name: STEERING_ARGUMENT_SCHEMAS[name] for name in dict.fromkeys(
                    name for _, allowed in STEERING_ARGUMENTS.values() for name in allowed)}},
-              ("expect_rev", "action")),
+              ("action",)),
          expands_to=("steering",), mutates=True),
     # ---- the Lead's explicit resolution of what `resume` or a stop lists (M4-E E3c; §3.4 rule 8): continue runs an
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
          "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan (W#plan).",
-         _obj({"expect_rev": EXPECT_REV,
-               "subject": {"type": "string", "minLength": 1},
+         _obj({"subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
                "follow_up": WORK_ID_PATTERN,
                "approval_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$",
                                    "description": "Shown SHA."},
                "replacement": {"type": "string"},  # not blank: checked by the adapter, as the rationale is
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
-              ("expect_rev", "subject", "choice", "rationale")),
+              ("subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
          expands_to=(*dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values()), *RESOLVE_LAUNCH),
@@ -312,7 +309,7 @@ TOOLS: dict[str, Tool] = _catalog(
     # steps repeat per card, in order (aew.surface.availability.CARDS)
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
-         _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
+         _obj({"title": {"type": "string", "minLength": 1},
                "risk_class": {"type": "integer", "minimum": 0, "maximum": 4},
                "scope": _strings("allowed change path globs"), "goal": _strings("goal-backwards criteria"),
                "contract": _strings("contract criteria"), "non_mutating": {"type": "boolean"},
@@ -320,27 +317,27 @@ TOOLS: dict[str, Tool] = _catalog(
                "rationale": TEXT, "body": TEXT, "card": {"type": "string", "minLength": 1},
                "plan": PLAN, "priority": {"enum": PRIORITY_LEVELS},
                "priority_reason": {"type": "string", "description": "why; needed unless normal"}},
-              ("expect_rev", "title", "risk_class")),
+              ("title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
          mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
     Tool("ticket_start", STAGE, POLICY_RESOLVED,
          "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "execution": EXECUTION}, ("work_id",)),
          expands_to=("work.assign", "dispatch.launch", "work.transition"), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((DISPATCH, 1),), ((STATE, 1), (IMPLEMENTER, 1)))),
     Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION,
-               "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "execution": EXECUTION,
+               "prior_value": {"const": "RUNNING"}}, ("work_id", "prior_value")),
          expands_to=("work.transition", "invoke.create.mutating", "dispatch.launch"), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1),), ((DISPATCH, 2),))),
     Tool("ticket_request_verification", STAGE, JUDGMENT_BEARING,
          "Accept the review report, if one is due, move the Ticket to VERIFY_PENDING and launch the verifiers policy "
          "requires.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "review_evidence": EVIDENCE_ID,
-               "execution": EXECUTION, "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "review_evidence": EVIDENCE_ID,
+               "execution": EXECUTION, "prior_value": {"const": "REVIEW_PASSED"}}, ("work_id",)),
          expands_to=("review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("accept_review_evidence",), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
@@ -348,8 +345,8 @@ TOOLS: dict[str, Tool] = _catalog(
     Tool("ticket_prepare", STAGE, JUDGMENT_BEARING,
          "Accept the verification, if one is due, and prepare the integration candidate. Publication stays a separate "
          "decision.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "verification_evidence": EVIDENCE_ID,
-               "execution": EXECUTION}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "verification_evidence": EVIDENCE_ID, "execution": EXECUTION,
+               "prior_value": {"enum": ["REVIEW_PASSED", "VERIFIED"]}}, ("work_id",)),
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
          required_judgments=("accept_verification",), promotes=("execution",),
@@ -365,10 +362,10 @@ TOOLS: dict[str, Tool] = _catalog(
          # Whose decision it carries out is the owner table's (register E335), never restated here.
          f"Publish the prepared integration candidate: calling this carries out "
          f"{whose(owner_of('integrate.publish'), to_lead=True)} publication decision.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
+         _obj({"work_id": WORK_ID,
                "prepared_candidate": {"type": "string", "minLength": 1},
                "verification_evidence": EVIDENCE_ID},  # verifier mode: the report accepted (plan v3 B2.5)
-              ("expect_rev", "work_id", "prepared_candidate")),
+              ("work_id", "prepared_candidate")),
          expands_to=("verify.ingest.integration", "integrate.publish", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("publish_candidate",), dispatches=True, mutates=True, progression=True,
          produced_by=((), ((VALIDATION, 1),), ((CANDIDATE, 2),), ((DISPATCH, 3),))),
@@ -376,15 +373,14 @@ TOOLS: dict[str, Tool] = _catalog(
         "message_send", STAGE, MECHANICAL,
         "Record a coordination message for an active worker, not a scope change. "
         "Deliver at next step (default), turn end or relaunch.",
-        _obj({"expect_rev": EXPECT_REV,
-              "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
+        _obj({"to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},
               "kind": {"enum": list(L.KINDS)},
               "in_reply_to": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
               "refs": {"type": "array", "maxItems": L.MAX_REFS,
                        "items": {"type": "string", "minLength": 1, "maxLength": L.MAX_REF_CHARS}},
               "idempotency_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,64}$"},
-              "when": {"enum": ["next-step", "turn-end"]}}, ("expect_rev", "to", "body")),
+              "when": {"enum": ["next-step", "turn-end"]}}, ("to", "body")),
         expands_to=("message.send",), mutates=True, switch=MESSAGING,
     ),
 )

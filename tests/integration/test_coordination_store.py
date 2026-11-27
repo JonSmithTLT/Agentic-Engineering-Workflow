@@ -45,7 +45,6 @@ from aew.errors import (
     RefUnknown,
     ReplyNotInThread,
     StaleAuthority,
-    StaleRevision,
     ValidationFailed,
 )
 from aew.policy import execution as X
@@ -77,13 +76,16 @@ class World:
         return self.e.store.read()["revision"]
 
     def lead(self, method: str, **kw: Any) -> Any:
-        return getattr(self.e, method)(token=self.token, expect_rev=self.rev(), **kw)
+        if method == "plan_accept":
+            plans = self.e.status(kw["work_id"])["work_unit"]["plans"]
+            kw["binding"] = next(p["sha256"] for p in plans if p["revision"] == kw["revision"])
+        elif method in {"work_transition", "harness_launch"} and "prior_value" not in kw:
+            kw["prior_value"] = self.e.prior_value(method, kw.get("work_id") or kw["invocation"])
+        return getattr(self.e, method)(token=self.token, **kw)
 
     def send(self, body: str = "Requirement 4 is not met: check shutdown while recv() blocks.", **kw: Any) -> Any:
         kw.setdefault("token", self.token)
         kw.setdefault("to", self.inv)
-        if "expect_rev" not in kw:
-            kw["expect_rev"] = self.rev()
         return self.e.message_record_lead(body=body, **kw)
 
     def reply(self, in_reply_to: str | None, body: str = "Confirmed; correcting it.", **kw: Any) -> Any:
@@ -131,11 +133,12 @@ def world(tmp_path: Path, *, messaging: str | None = "enabled", checks: bool = F
         (root / ".aew/policy/checks.yaml").write_text(util.dump_yaml(QUICK_CHECKS), encoding="utf-8", newline="\n")
     pin(root)
     e = Engine.discover(root)
-    token = e.lead_acquire(expect_rev=0, session_label="lead-a")["token"]
+    token = e.lead_acquire(session_label="lead-a")["token"]
     w = World(root, e, token, "", "", "", root)
     if messaging is not None and not new_project:
         set_messaging(root, messaging)
-        e.manifest_adopt(token=token, expect_rev=w.rev(), reason=f"messaging {messaging}", authorization=OPERATOR)
+        e.manifest_adopt(token=token, reason=f"messaging {messaging}", authorization=OPERATOR,
+                         binding=e.manifest_approval())
 
     w.wid = w.lead("work_create", kind="ticket", title="Add subtract()", risk_class=1, mutating=True,
                    scope_paths=["calc/**", "tests/**"], goal_backwards=["calc.core.subtract(5, 3) == 2"],
@@ -215,27 +218,18 @@ def test_recording_takes_the_control_lock_and_moves_no_revision(w, monkeypatch):
 # ---------------------------------------------------------------------------------------------- revision and retries
 
 
-def test_a_lead_message_with_a_stale_expect_rev_records_nothing(w):
-    """D-4 step 2, D-17 (N2): ``expect_rev`` is the revision the Lead read, checked under the lock before anything else
-    runs; a stale one is refused and no thread, marker or line is written."""
-    stale = w.rev() - 1
-    with pytest.raises(StaleRevision) as exc:
-        w.send(expect_rev=stale)
-    assert exc.value.details["current"] == w.rev()
-    with pytest.raises(StaleRevision):
-        w.send(expect_rev=None)
+def test_the_retired_lead_message_input_writes_nothing(w):
+    with pytest.raises(TypeError, match="expect_rev"):
+        w.send(expect_rev=w.rev())
     assert w.coordination_files() == []
 
 
-def test_a_lead_retry_with_a_new_expect_rev_returns_the_existing_message(w):
-    """D-8 (N2): ``expect_rev`` is not part of the derivation. A Lead whose retry was refused as stale re-reads and
-    retries with the new revision, and gets the original back: the first attempt was recorded."""
-    first = w.send(expect_rev=w.rev())
-    w.lead("checkpoint", note="the revision moves", next_action="retry the message")
-    with pytest.raises(StaleRevision):
-        w.send(expect_rev=first["revision"])
-    again = w.send(expect_rev=w.rev())
+def test_a_lead_message_repeat_after_an_unrelated_checkpoint_returns_the_original(w):
+    first = w.send()
+    w.lead("checkpoint", note="another action", next_action="repeat the message")
+    again = w.send()
     assert again["duplicate"] and again["message"] == first["message"]
+    assert again["revision"] == w.rev() > first["revision"]
     assert len(w.e.message_thread(w.inv)["messages"]) == 1
 
 
@@ -271,7 +265,7 @@ def test_a_new_generation_resending_a_superseded_message_records_a_new_one(w):
     matches the old generation's message; the new generation's own retry still does."""
     old = w.send("Re-run the integration test.")["message"]
     offer = w.lead("lead_handoff_offer", note="handing over", carry_invocations=[w.inv])["offer"]
-    accepted = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="lead-b")
+    accepted = w.e.lead_handoff_accept(offer=offer, session_label="lead-b")
     w.token = accepted["token"]
     new = w.send("Re-run the integration test.")
     assert not new["duplicate"] and new["message"]["id"] != old["id"] and new["message"]["sender"] == "lead:2"
@@ -314,10 +308,10 @@ RACER = """
 import json, os, sys, time
 from pathlib import Path
 from aew.engine.api import Engine
-root, inv, rev, go = sys.argv[1:]
+root, inv, go = sys.argv[1:]
 while not Path(go).exists():
     time.sleep(0.005)
-out = Engine.discover(Path(root)).message_record_lead(token=os.environ["RACE_LEAD_TOKEN"], expect_rev=int(rev), to=inv,
+out = Engine.discover(Path(root)).message_record_lead(token=os.environ["RACE_LEAD_TOKEN"], to=inv,
                                                      body="race", idempotency_id="race-1")
 print(json.dumps({"id": out["message"]["id"], "duplicate": out["duplicate"]}))
 """
@@ -329,7 +323,7 @@ def test_two_processes_racing_one_idempotency_id_record_one_message(w, tmp_path)
     go = tmp_path / "go"
     kw: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     env = {**os.environ, "RACE_LEAD_TOKEN": w.token}
-    procs = [subprocess.Popen([sys.executable, "-c", RACER, str(w.root), w.inv, str(w.rev()), str(go)], env=env,
+    procs = [subprocess.Popen([sys.executable, "-c", RACER, str(w.root), w.inv, str(go)], env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **kw) for _ in range(2)]
     time.sleep(0.5)  # both started and polling (a late starter still races correctly: it finds the message)
     go.write_text("go", encoding="utf-8")
@@ -481,7 +475,7 @@ def test_a_writer_whose_lock_file_was_removed_appends_nothing_and_the_thread_sta
         if not raced["done"]:
             raced["done"] = True
             (w.root / ".aew/local/control.lock").unlink()
-            other = Engine.discover(w.root).message_record_lead(token=w.token, expect_rev=w.rev(), to=w.inv,
+            other = Engine.discover(w.root).message_record_lead(token=w.token, to=w.inv,
                                                                 body="from writer B")
             raced["other"] = other["message"]["id"]
         return real(self, invocation)
@@ -624,8 +618,9 @@ def test_refs_are_bounded_resolved_and_scoped(w):
                    scope_paths=["calc/**"], goal_backwards=["other"], contract=["none"])["id"]
     policy = w.root / EXECUTION
     policy.write_text(policy.read_text(encoding="utf-8") + "# reviewed\n", encoding="utf-8", newline="\n")
-    decision = w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="a reviewed comment",
-                                  authorization=OPERATOR)["decision"]  # a project decision, about no unit
+    binding = w.e.manifest_approval()
+    decision = w.e.manifest_adopt(token=w.token, reason="a reviewed comment",
+                                  authorization=OPERATOR, binding=binding)["decision"]  # a project decision
     lead = w.send(refs=[f"ticket:{w.wid}", "source:calc/core.py#L1-L2", "source:tests/test_core.py"])["message"]
     assert lead["refs"] == [f"ticket:{w.wid}", "source:calc/core.py#L1-L2", "source:tests/test_core.py"]
     ok = [f"ticket:{other}", f"message:{lead['id']}", f"decision:{decision}", "source:calc/core.py#L3"]
@@ -750,7 +745,7 @@ def test_a_superseded_generation_records_nothing(w, monkeypatch):
     old = w.token
     # The operator's takeover, confirmed at their terminal (substituted in-process, as test_stage_runner does).
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator-tty (test)"})
-    w.e.lead_takeover(expect_rev=w.rev(), reason="the seat was lost", session_label="lead-b")
+    w.e.lead_takeover(reason="the seat was lost", session_label="lead-b")
     with pytest.raises(StaleAuthority):
         w.send("from the old Lead", token=old)
     assert w.thread_path().read_bytes() == before
@@ -818,16 +813,19 @@ def test_the_switch_is_read_from_adopted_bytes_only(tmp_path):
     edited = policy.read_bytes()
     policy.write_bytes(edited.replace(b"messaging: enabled", b"messaging: on"))
     with pytest.raises(ValidationFailed) as refused:
-        w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn it on", authorization=OPERATOR)
+        w.e.manifest_adopt(token=w.token, reason="turn it on", authorization=OPERATOR,
+                              binding=w.e.manifest_approval())
     assert refused.value.details["reason"] == "yaml_boolean"
     policy.write_bytes(edited)
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn messaging on", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="turn messaging on", authorization=OPERATOR,
+                              binding=w.e.manifest_approval())
     assert w.send()["ok"]
     set_messaging(w.root, "disabled")  # an unadopted edit never keeps it on either
     with pytest.raises(MessagingDisabled) as exc:
         w.send("after the edit")
     assert exc.value.details["reason"] == "not_adopted"
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn messaging off", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="turn messaging off", authorization=OPERATOR,
+                              binding=w.e.manifest_approval())
     with pytest.raises(MessagingDisabled) as exc:
         w.send("after adopting off")
     assert exc.value.details["reason"] == "switched_off"
@@ -920,7 +918,7 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     w = world(tmp_path / "migrated", messaging=None)
     policy = {p: p.read_bytes() for p in (w.root / ".aew/policy").glob("*.yaml")}
     (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
-    w.e.migrate(token=w.token, expect_rev=w.rev())
+    w.e.migrate(token=w.token)
     assert load_control(w.root)["schema"] == "aew/control/v2"
     assert {p: p.read_bytes() for p in (w.root / ".aew/policy").glob("*.yaml")} == policy
     assert not (w.root / ".aew" / L.COORDINATION_DIR).exists()

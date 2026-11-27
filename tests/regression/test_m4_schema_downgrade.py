@@ -46,7 +46,7 @@ def test_the_baseline_engine_refuses_a_control_file_with_an_unfinished_stage(tmp
     from aew.engine.base import V2_ONLY_KEYS
 
     p = sample_project(tmp_path)
-    Engine.discover(p.root).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest="0" * 64,
+    Engine.discover(p.root).stage_open(token=p.token, tool="probe", contract_digest="0" * 64,
                                        arguments={}, judgment_inputs=[], base_class="MECHANICAL",
                                        effective_class="MECHANICAL", plan=[{"primitive": "checkpoint"}],
                                        subject=None, ingress="test")

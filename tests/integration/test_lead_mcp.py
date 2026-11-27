@@ -72,22 +72,25 @@ def test_through_the_real_adapter_the_text_is_readable_and_the_structured_conten
 def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(tmp_path):
     p = lead_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
+    blocked = create_planned_ticket(p, tmp_path, title="A running Ticket without report evidence")
+    p.lead("work", "assign", blocked)
+    p.lead("work", "transition", blocked, "--to", "RUNNING")
     rev = _rev(p)
     env_file = tmp_path / "server-env.json"
     argv, transcript = _argv(tmp_path, "lead", [
         *HANDSHAKE,
         {"call": "status", "arguments": {}},
-        {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "note": "paused", "next": "start T-0001"}},
+        {"call": "checkpoint", "arguments": {"note": "paused", "next": "start T-0001"}},
         {"call": "work_show", "arguments": {"work_id": wid, "explain": True}},
         {"call": "nope", "arguments": {}},
         # every catalog row is built since E6a: a stage call naming no Ticket instead
-        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision"}},
+        {"call": "ticket_prepare", "arguments": {}},
         {"call": "cli", "arguments": {"argv": ["status"]}},
-        {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
+        {"call": "checkpoint", "arguments": {"bogus": True}},
         {"server_env": str(env_file)},
         {"call": "status", "arguments": {"work_id": wid}},
-        # M4-E E5b: a request stage through the MCP ingress, on a READY Ticket: its first step refuses
-        {"call": "ticket_request_review", "arguments": {"expect_rev": "$revision", "work_id": wid}},
+        # The binding matches, so the request reaches the step and its ordinary gate refuses the missing evidence.
+        {"call": "ticket_request_review", "arguments": {"work_id": blocked, "prior_value": "RUNNING"}},
     ])
     res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
     assert res.returncode == 0, res.stderr
@@ -132,7 +135,7 @@ def test_mcp_report_write_uses_the_live_brokers_session_and_returns_an_explicit_
     argv, transcript = _argv(tmp_path, "report", [
         *HANDSHAKE,
         {"call": "status", "arguments": {}},
-        {"call": "report_write", "arguments": {"expect_rev": "$revision", "title": "Answer", "body": body}},
+        {"call": "report_write", "arguments": {"title": "Answer", "body": body}},
         {"call": "resume", "arguments": {}},
     ])
     res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
@@ -174,7 +177,7 @@ def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabrica
         time.sleep(0.1)
     assert (sync / "ready").exists(), "the Lead session never became ready"
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator (test)"})
-    Engine.discover(p.root).lead_takeover(expect_rev=_rev(p), reason="session lost", session_label="operator")
+    Engine.discover(p.root).lead_takeover(reason="session lost", session_label="operator")
     time.sleep(1.5)  # the broker's watchdog notices within a second and closes its bridge
     (sync / "go").touch()
     out, err = proc.communicate(timeout=300)

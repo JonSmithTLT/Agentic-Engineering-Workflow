@@ -210,6 +210,98 @@ def test_never_reached():
     assert rows[0]["kind"] == "superseded (by run 1) before tests" and rows[0]["A2"] == "yes"
 
 
+@pytest.mark.parametrize("cancelled", [
+    pytest.param("interrupted while collecting", marks=pytest.mark.skipif(
+        IS_WINDOWS, reason="a graceful interrupt is SIGINT to the session's process group, POSIX's")),
+    "killed while collecting", "killed in a test"])
+def test_a_real_serial_session_is_typed_before_tests_only_until_its_first_test(tmp_path, monkeypatch, cancelled):
+    """A real serial session's controller runs its tests itself and keeps a worker's lifecycle receipt. Cancelled while
+    it collects, whether it then ends gracefully or is killed outright, its lane is typed ``before tests`` from the
+    record taken off its live receipt and its published bundle. Cancelled inside a test, its receipt stands at
+    execution, nothing is recorded, and the lane still owes its worker observation (register E3: PR #608's serial
+    lane, job 139788422783, killed 2.4 s into its pytest step). The killed cases run on every platform: on Windows
+    the receipt's live writer is found by who holds the file, and a hosted cancel there ends the lane outright."""
+    import signal
+
+    import worker_evidence
+    from evidence_files import BEFORE_TESTS, CONTROLLER, WARNING
+
+    root = tmp_path / "lane"
+    root.mkdir()
+    hold = """
+Path(f"ready-{os.getpid()}").touch()
+bounds.bounded_wait("inner.worker_phase", Path("never").exists, seconds=60)
+"""
+    in_test = cancelled == "killed in a test"
+    module = f"""
+import os
+import bounds
+from pathlib import Path
+{"" if in_test else hold}
+def test_held():
+    {hold.strip().replace(chr(10), chr(10) + "    ") if in_test else "pass"}
+"""
+    proj = project(tmp_path, module)
+    proc = subprocess.Popen([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
+                             "--session-deadline", "120", "--hang-dir", str(root),
+                             f"--lane-report={root / 'report.json'}", "--running-tests-dir", str(root), "tests"],
+                            cwd=proj, env=env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            **(NO_WINDOW if IS_WINDOWS else {"start_new_session": True}))
+    try:
+        bounds.bounded_wait("test.inner_started", lambda: any(proj.glob("ready-*")),
+                            gone=lambda: proc.poll() is not None)
+        session = session_dir(root)
+        # The controller by its own registration, not by the launched pid: a launcher may stand between them.
+        controller = alive_identity(session / "controller-pid.txt")
+        rows = worker_evidence.phases_at_signal(root, session_deadline.phase_clock_ns())
+        assert [(row["worker"], row["pid"], row["start"], row["phase"]) for row in rows] == [
+            (CONTROLLER, *controller, "execution-started" if in_test else "collecting")], rows
+        assert not (session / "worker-count.txt").exists()
+        assert worker_evidence.before_tests(root, time.time(), rows, observer=WARNING) is not in_test
+        if cancelled.startswith("interrupted"):
+            os.killpg(proc.pid, signal.SIGINT)
+        else:
+            assert proctree.end(controller)  # abrupt, as a hosted cancel ends a lane: no hook runs
+        assert proc.wait(timeout=60) != 0 or not cancelled.startswith("interrupted")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=60)
+    if cancelled.startswith("interrupted"):
+        assert (session / "session-finished.txt").is_file()
+    else:
+        # The sentinel sees the controller gone and records it before it exits; nothing then holds the folder.
+        bounds.bounded_wait("test.abnormal_exit", (session / "abnormal-exit.txt").is_file)
+        sentinel_ends(session)
+        assert not (session / "session-finished.txt").exists()
+    assert (root / BEFORE_TESTS).is_file() is not in_test
+
+    tools = Path(lanes.__file__).resolve().parents[2] / "tools" / "ci"
+    monkeypatch.syspath_prepend(str(tools))
+    import check_evidence_run
+    import stage_evidence
+
+    name = f"serial 1/1 ({'windows' if IS_WINDOWS else 'ubuntu'}-latest)"
+    (root / "runner-resources-job.txt").write_text(f'{{"job_label": "{name}"}}\n', encoding="utf-8")
+    monkeypatch.setattr(stage_evidence, "scan", lambda *args: {})
+    published = tmp_path / "published"
+    published.mkdir()
+    stage_evidence.stage(root, published / "evidence-real-attempt-1")
+    stage_evidence.stage(root, published / "lane-report-evidence-real-attempt-1", reports_only=True)
+    reason = {"kind": "superseded", "run": 1, "head_sha": "0" * 40, "event": "pull_request"}
+    job = {"id": 1, "name": name, "conclusion": "cancelled", "steps": [], "cancel_reason": reason}
+    scored = []
+    defects = check_evidence_run.check_jobs(published, [job], score_rows=scored)
+    if in_test:
+        # Its watchdog header and running name are in the bundle; with no observation of it, the defect stays.
+        assert scored[0]["kind"] == "superseded (by run 1)" and scored[0]["A2"] == "no"
+        assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects), defects
+        assert not any("[running]" in d for d in defects), defects
+    else:
+        assert defects == []
+        assert scored[0]["kind"] == "superseded (by run 1) before tests" and scored[0]["A2"] == "yes"
+
+
 def test_an_unwritable_phase_receipt_preserves_a_real_xdist_test_failure(tmp_path):
     output = tmp_path / "out"
     # An existing directory at the receipt path prevents creation on either OS.

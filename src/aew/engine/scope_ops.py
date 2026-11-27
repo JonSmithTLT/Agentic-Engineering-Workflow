@@ -44,7 +44,6 @@ from aew.engine.guards import require
 from aew.errors import AEWError, GateUnsatisfied, GitError, IllegalTransition, UsageError, ValidationFailed
 from aew.harness import contract as K
 from aew.harness import runlog
-from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import format_id
 from aew.maps import rules as map_rules
 from aew.policy import execution as X
@@ -209,7 +208,7 @@ def parse_item(subject: str) -> tuple[str, str] | None:
 def remedy(work_id: str) -> str:
     """How the Lead adds a test path to a Ticket's scope: the typed call, and its form from a shell."""
     return (f"to add one exact test path to {work_id}'s scope on the record, use the typed `resolve` tool: subject "
-            f"`{item_id(work_id, '<path>')}`, choice `{CHOICE}`, a `rationale` and `expect_rev`; from a shell, `aew "
+            f"`{item_id(work_id, '<path>')}`, choice `{CHOICE}`, and a `rationale`; from a shell, `aew "
             "lead tool resolve --arguments -` with those arguments as JSON on standard input")
 
 
@@ -592,7 +591,7 @@ class ScopeCorrections:
             raise IllegalTransition(
                 f"{work_id} has no unwaived review or verification gate, so no one but its implementer would read the "
                 f"widened diff: raise its class first with `aew work reclassify {work_id} --class <0-4> --reason "
-                f"<reason> {EXPECT_REV}`", work_id=work_id, reason="no_independent_reader")
+                f"<reason>`", work_id=work_id, reason="no_independent_reader")
 
     def run_status(self, run: str) -> str:
         """What the run's local evidence says it is now (``runlog.observed_status``)."""
@@ -613,8 +612,7 @@ class ScopeCorrections:
         is re-dispatched too: a fresh invocation on the kept workspace (``run_status``; PR #540 quick check, m-b).
         With coordination ``messaging`` on, the scope guidance uses `message_send` to record a live implementer's
         message and preserve a held session (PR #545 review, m2).
-        Its arguments are whole, as `message_send` takes them: ``expect_rev`` is the revision the add commits, the
-        state's next (PR #545 quick check, m6)."""
+        Its arguments are whole, as `message_send` takes them (PR #545 quick check, m6)."""
         why = f"`{path}` was added to {work_id}'s scope on the record, so this invocation's context pack changed"
         out = []
         for inv_id, inv in sorted(state["invocations"].items()):
@@ -624,7 +622,7 @@ class ScopeCorrections:
             live = inv.get("role") == "implementer" and runs and run_status(runs[-1]["run"]) in K.LIVE_RUNS
             if live and messaging:
                 commands = ["aew lead tool message_send --arguments -"]
-                fields = {"expect_rev": state["revision"] + 1, "to": inv_id,
+                fields = {"to": inv_id,
                           "body": f"{why}: you may now change `{path}`"}
             elif live:
                 commands = [f"aew harness send {runs[-1]['run']} --fields -"]
@@ -637,10 +635,10 @@ class ScopeCorrections:
                         "fields": fields})
         return out
 
-    def scope_add(self, *, token: str, expect_rev: int, subject: str, rationale: str,
+    def scope_add(self, *, token: str, subject: str, rationale: str,
                   signed: bool = False) -> dict[str, Any]:
         args: dict[str, Any] = {"subject": subject, "rationale": rationale, "signed": signed}
-        with self.k.lead_txn(token, expect_rev, OP, reason=rationale) as ctx:
+        with self.k.lead_txn(token, OP, reason=rationale) as ctx:
             require(self.add_query(ctx.state, None, args))
             found = args["found"]
             work_id, path = found["work_id"], found["path"]
@@ -657,7 +655,7 @@ class ScopeCorrections:
                       "rationale": rationale.strip()[:MAX_TEXT], "signoff": found["signoff"],
                       "stops": found["stops"], "unchecked": found["unchecked"], "obligations": found["obligations"],
                       "by": dict(ctx.actor), "generation": ctx.state["lead"]["generation"],
-                      "expected_revision": expect_rev, "rev": ctx.session.revision + 1, "at": utc_now(),
+                      "rev": ctx.session.revision + 1, "at": utc_now(),
                       "decision": decision, "stale_invocations": found["stale_invocations"]}
             validate("scope-correction", record, source=f"scope correction {sc}")
             self._write(ctx, unit, record)

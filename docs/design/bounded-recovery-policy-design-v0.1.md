@@ -170,3 +170,9 @@ M4-H records `STALE_REVISION`, launch failure, and lost-run base rates per cell.
 F19 evaluates whether the bounded rules reduce Lead turns/time-to-correct-disposition without false recovery. Product recovery occurs inside the counted run and must not be hidden as a free experiment retry.
 
 No evidence from row 1 or row 3 is sufficient to auto-promote rows 4, 6, or 8.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This retires BRP-03's R5-1 project-revision retry. A scoped change stops the step and identifies the subject to re-read. The first refusal leaves committed steps standing. BRP-10 keeps the stale-retry metric with a product-path expectation of zero. Existing launch-failure recovery still needs its own termination and side-effect evidence.
+
+[Adopted control-binding amendment](scoped-control-bindings-amendment-2026-11-25.md).

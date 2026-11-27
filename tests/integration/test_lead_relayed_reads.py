@@ -391,7 +391,7 @@ def test_a_relayed_wait_never_holds_a_lead_write_and_returns_when_the_run_ends(l
     waiting = wait_in_flight(lab, broker, run)
     try:
         out = bridge.call("lead.cli", {"argv": ["work", "create", "ticket", "--title", "While a wait is held",
-                                                "--class", "1", "--expect-rev", str(lab.project.rev())],
+                                                "--class", "1", ],
                                        "cwd": str(lab.root), "stdin": ""},
                           endpoint=broker.env[lead_broker.ENV_ENDPOINT], key=broker.env[lead_broker.ENV_KEY])
         assert out["result"]["id"]

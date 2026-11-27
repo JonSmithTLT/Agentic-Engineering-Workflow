@@ -20,13 +20,6 @@ items:
   what: 'For the Lead''s always-sent text: whether to make the four schema changes the audit of 2026-11-25 found worth about
     3.1 KB per request, and whether the Lead MCP server''s instructions count in the Lead''s pool'
 
-- row: E351
-  needs: decision
-  owner: designer
-  due: V-01
-  what: 'The V-01 burn-down''s Q8: "What is the plan decision kind''s name? The vertical records a decision under its kind
-    lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."'
-
 - row: E373
   needs: decision
   owner: designer
@@ -63,6 +56,17 @@ items:
   due: V-01
   what: 'The V-01 burn-down''s Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which
     decision does the projection offer, and is it the operator''s?"'
+
+- row: E381
+  needs: design
+  owner: designer
+  due: V-01
+  what: 'The design of the V-01 wire track''s actions that have none (the burn-down''s Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`,
+    which STG-03''s closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381,
+    E382 and E383 now hold their work; the shape of each is the designer''s'
+  blocks:
+  - E382
+  - E383
 
 - row: E99
   needs: design

@@ -47,7 +47,7 @@ def operator_takeover(p, reason: str) -> str:
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        return Engine.discover(p.root).lead_takeover(expect_rev=rev, reason=reason, session_label="lead-b")["token"]
+        return Engine.discover(p.root).lead_takeover(reason=reason, session_label="lead-b")["token"]
     finally:
         aew.operator.authorize = original
 
@@ -93,7 +93,7 @@ def test_serial_lifecycle_session_destruction_and_reconstruction(tmp_path):
     p.token = operator_takeover(p, "Lead session destroyed (AT-1)")
     assert p.ok("lead", "show")["generation"] == 2
     res = p.aew("work", "transition", t2, "--to", "CANCELLED", "--reason", "x",
-                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": lost_token})
+                env={"AEW_LEAD_TOKEN": lost_token})
     assert res.error["code"] == "STALE_AUTHORITY"
     control = p.ok("work", "show", t2)["control"]
     assert control["state"] == "INTERRUPTED" and control["interrupted_from"] == "RUNNING"

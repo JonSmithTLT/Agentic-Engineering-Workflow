@@ -50,12 +50,11 @@ BARE_PYTHON = re.compile(r"""(?<!["'])\{python\}(?!["'])""")
 QUOTED_PYTHON = '"{python}"'
 
 
-def post_pin_route(*files: str, fresh: bool = False) -> str:
-    """What changing a pinned policy file takes, ``fresh`` on a project just initialized, at revision 0. Whatever prints
-    it adds ``K.HELD_SEAT``."""
-    acquire = "`aew lead acquire --expect-rev 0`" if fresh else f"`aew lead acquire {K.EXPECT_REV}`"
+def post_pin_route(*files: str) -> str:
+    """What changing a pinned policy file takes. Whatever prints it adds ``K.HELD_SEAT``."""
     edits = ", ".join(f".aew/{file}" for file in files)
-    return f"run {acquire}, edit the settings in {edits}, then run {K.MANIFEST_ADOPT} at the operator's terminal"
+    return (f"run `aew lead acquire`, edit the settings in {edits}, "
+            f"then run {K.MANIFEST_ADOPT} at the operator's terminal")
 
 
 def already_initialized(aew_root: Any) -> str:
@@ -137,7 +136,7 @@ def _provider_env(provider: str) -> tuple[str, ...]:
         raise _refuse("unknown_provider",
                       f"--model: provider {provider!r} isn't one this flag knows "
                       f"({', '.join(sorted(netns.PROVIDER_KEY_ENV))}). Another provider is a hand edit: `aew init` "
-                      f"without these flags, {post_pin_route(X.REL_PATH, fresh=True)}, naming its "
+                      f"without these flags, {post_pin_route(X.REL_PATH)}, naming its "
                       f"containment.network.upstreams entry there. {K.HELD_SEAT}", provider=provider)
     return (name,)
 
@@ -207,7 +206,7 @@ class FirstConfiguration:
         if self.argv is None or self.identity is None:  # at least one was given, or there would be no configuration
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
             return (f"this project still has no {missing}. To add it, "
-                    f"{post_pin_route(file, fresh=True)}. {K.HELD_SEAT}. "
+                    f"{post_pin_route(file)}. {K.HELD_SEAT}. "
                     "Then start the Lead with `aew opencode --acquire`")
         var = self.provider_env[0]
         hidden = "; ".join(f"{shell}: `{form}`" for shell, form in lead_credential.forms(var, var).items())

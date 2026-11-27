@@ -745,10 +745,10 @@ def a_read_only_role_cannot_change_its_observation(lab, driver, tmp_path):
 @scenario()
 def an_agent_cannot_perform_lead_operations(lab, driver, tmp_path):
     _, inv, run = launch_ticket(lab, driver, tmp_path, [
-        {"do": "aew", "args": ["work", "transition", "T-0001", "--to", "REVIEW_PENDING", "--expect-rev", "99"]},
-        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", "--expect-rev", "99"],
+        {"do": "aew", "args": ["work", "transition", "T-0001", "--to", "REVIEW_PENDING", ]},
+        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", ],
          "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "99"]}])
+        {"do": "aew", "args": ["lead", "acquire", ]}])
     rev = lab.project.rev()
     lab.wait(run)
     codes = [code_of(lab.step(run, i)) for i in range(3)]

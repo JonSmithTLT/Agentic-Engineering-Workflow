@@ -1578,9 +1578,22 @@ entries:
   cause: >-
     A Linux xdist worker alive when the supervisor's interruption observed it had no interruption stack
     (evidence_problems' live-stack), seen in the dozens on runs a newer push superseded since at least 2026-11-24 00:36.
-    The pre-signal warning attach failed; PR 554 records each attempt's typed outcome, so the next sighting names why.
+    Not established for the hosted sightings: each worker's typed outcome (#573) is in its bundle and the check's
+    message does not print it. Reproduced locally (2026-11-26) with a worker in fixture setup at the signal: the
+    pre-signal warning attach succeeds and its stack is kept, but the check wants a frame of the test function, which
+    a worker outside its test's call cannot have. The Windows collection excuses that state (#561); the Linux warning
+    does not (#573: none of its outcomes excuses a stack). A worker that changed tests during the attach is the other
+    candidate. From 2026-11-26 a sighting's run is the superseded ci run and its job is that run's evidence check
+    run; the earlier rows give the run the check run was filed under, and name the ci run in their note.
   owner: CI flake triage
   row: E3
+  planned_fix: >-
+    PR 617 (the operator, 2026-11-26): the Linux warning's setup
+    or teardown outcome, with its retained stack, is accepted as the Windows collection's is, and the live-stack
+    defect names the typed outcome. This entry closes once a superseded Linux integration run shows the typed outcome
+    accepted: its lanes cancelled in fixture setup or teardown carry no live-stack defect. A defect that names another
+    outcome (a straddled test change, an exit, a dump inside the call) stays a sighting here and is not covered by
+    this fix.
   evidence:
   - run: 45295949117
     job: 138124957110
@@ -1613,6 +1626,44 @@ entries:
       integration 6/8 (ubuntu), job 139072636094, of superseded ci run 45575360924 (PR 571): live-stack for
       interrupted-2439, with no unavailable marker, so the pre-signal warning's miss went through an untyped path (a
       straddle, an exit during the attach or a dump without the test's frame), which #573 types.
+  - run: 45780063188
+    job: 139781219080
+    at: '2026-11-26T08:21:56Z'
+    note: >-
+      evidence check of this superseded ci run (PR 606 at 24076924; the completed-run record is check
+      139787212456): live-stack for one worker of integration 3/8 (job 139773657774) and three of integration 4/8 (job
+      139773657808), ubuntu. The first sightings after #573; the typed outcomes are in artifacts 15098507312 and
+      15098582462 and were not read.
+  - run: 45780328190
+    job: 139789637043
+    at: '2026-11-26T08:39:48Z'
+    note: >-
+      evidence check of this superseded ci run (PR 607 at 1715a183): live-stack for two workers of integration
+      1/8 (job 139779304457) and one of integration 3/8 (job 139779304371), ubuntu; outcomes in artifacts 15099432277
+      and 15099067980, not read.
+  - run: 45781663365
+    job: 139799481002
+    at: '2026-11-26T09:00:14Z'
+    note: >-
+      evidence check of this superseded ci run (PR 597 at 72461d35): live-stack for one worker of integration
+      6/8 (job 139779707733), ubuntu; outcome in artifact 15100991546, not read.
+  - run: 45787278179
+    job: 139841492855
+    at: '2026-11-26T10:19:52Z'
+    note: >-
+      evidence check of this superseded ci run (PR 608 at 706cf95a, superseded by run 45796343639 at 23e62fce):
+      live-stack for interrupted-2670 of integration 7/8, ubuntu. The bundle was not read.
+  - run: 45780063188
+    job: 139773657808
+    at: '2026-11-26T08:16:49Z'
+    kind: diagnostic
+    observation: timing of the interrupt path and a local reproduction
+    note: >-
+      Job log of integration 4/8: the superseding run was created 08:16:48, the lane's pytest was killed by the
+      supervisor's cleanup at 08:16:49.50 and the step ended 08:16:49.57, so capture, records and forward all ran
+      within about 1.5 s; no stack was lost to the grace period. Locally, the real lane supervisor and py-spy over a
+      two-worker session, one worker sleeping in a function fixture's setup: its warning sample is kept with the
+      fixture's frames, its typed outcome is setup, and evidence_problems reports this entry's live-stack defect.
 - id: phase-receipt-coarse-tick
   scope: test
   lane: integration

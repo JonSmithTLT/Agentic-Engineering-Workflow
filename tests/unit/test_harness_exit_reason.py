@@ -17,6 +17,7 @@ CONTENT_FILTER = "the agent's turn ended: failed (provider.content-filter, 200: 
 def make_supervisor(record: dict | None = None) -> tuple[Supervisor, list[tuple[str, str]]]:
     supervisor = Supervisor.__new__(Supervisor)
     supervisor.inv_id = "INV-0001"
+    supervisor.run = "R-INV-0001-1"
     supervisor.record = record if record is not None else {"contract": {"expected_kinds": []}, "work_unit": "T-0001"}
     supervisor._evidence = lambda **_kwargs: []  # type: ignore[method-assign]
     ended: list[tuple[str, str]] = []
@@ -51,7 +52,7 @@ def test_known_outcome_is_exposed_in_crash_reason() -> None:
 def test_content_filter_outcome_names_a_relaunch_and_a_new_model_not_a_prompt_change(spelling: str) -> None:
     reason = finish_reason({"exit_code": 1, "detail": f"the agent's turn ended: failed (provider.{spelling})"})
     assert f"provider.{spelling}" in reason
-    assert "`aew harness launch INV-0001 --expect-rev <revision from aew status>`" in reason
+    assert "`aew harness launch INV-0001 --prior-value R-INV-0001-1`" in reason
     assert "aew invoke cancel INV-0001" in reason
     assert "aew invoke create T-0001 --launch --model PROVIDER/MODEL" in reason
     assert "prompt" not in reason  # no governed command changes an invocation's prompt (PR #310 review, F1)
@@ -146,17 +147,15 @@ def test_every_command_the_content_filter_reason_prints_parses_as_printed(monkey
     reason = finish_reason({"exit_code": 1, "detail": CONTENT_FILTER})
     parsed = [parse(argv, stdin, monkeypatch) for argv, stdin in printed_commands(reason)]
     assert len(parsed) == 4, reason
-    cancel, create, redispatch, launch = parsed  # the fenced blocks in order, then the inline command
-    assert (launch.harness_cmd, launch.invocation, launch.expect_rev) == ("launch", "INV-0001", 7)
-    assert (cancel.invoke_cmd, cancel.invocation, cancel.expect_rev) == ("cancel", "INV-0001", 7)
+    cancel, redispatch, launch, create = parsed  # the fenced blocks in order, then the inline commands
+    assert (launch.harness_cmd, launch.invocation, launch.prior_value) == ("launch", "INV-0001", "R-INV-0001-1")
+    assert (cancel.invoke_cmd, cancel.invocation) == ("cancel", "INV-0001")
     assert cancel.reason == "why this invocation must end"
-    assert (create.invoke_cmd, create.work_id, create.launch, create.model, create.expect_rev) == (
-        "create", "T-0001", True, "vendor/model-a", 7)
-    assert (redispatch.work_id, redispatch.launch, redispatch.model, redispatch.expect_rev) == (
-        "T-0001", True, "vendor/model-a", 7)
+    assert (create.invoke_cmd, create.work_id, create.launch, create.model) == (
+        "create", "T-0001", True, "vendor/model-a")
+    assert (redispatch.work_id, redispatch.launch, redispatch.model) == ("T-0001", True, "vendor/model-a")
     assert redispatch.reason == "why this Ticket is redispatched"
-    # the convention (#311): every revision comes from `aew status`, and no reason is typed inline
-    assert reason.count("--expect-rev <revision from aew status>") == 4 and "--reason" not in reason
+    assert "--expect-rev" not in reason and "--reason" not in reason
 
 
 def test_auth_reason_is_unchanged_even_with_outcome() -> None:

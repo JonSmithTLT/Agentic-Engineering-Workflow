@@ -25,14 +25,6 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
-### E351
-
-**Due by:** V-01 · **Owner:** designer · **Needs:** decision
-
-**What:** The V-01 burn-down's Q8: "What is the plan decision kind's name? The vertical records a decision under its kind lowercased, so anything but `PLAN` needs the oracle to map it to `plan`."
-
-**Blocks:** -
-
 ### E373
 
 **Due by:** V-01 · **Owner:** designer · **Needs:** decision
@@ -72,6 +64,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 **What:** The V-01 burn-down's Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which decision does the projection offer, and is it the operator's?"
 
 **Blocks:** -
+
+### E381
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** design
+
+**What:** The design of the V-01 wire track's actions that have none (the burn-down's Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`, which STG-03's closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381, E382 and E383 now hold their work; the shape of each is the designer's
+
+**Blocks:** E382, E383
 
 ### E99
 
@@ -146,3 +146,7 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 **Blocks:** -
 
 ## Blocked until then
+
+- **E382** waits for E381 (design, designer, by V-01)
+
+- **E383** waits for E381 (design, designer, by V-01)

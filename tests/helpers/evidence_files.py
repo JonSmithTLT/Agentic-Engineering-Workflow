@@ -8,6 +8,7 @@ import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 
@@ -79,19 +80,32 @@ SAMPLING_POLICY = "runner-resources-sampling.txt"
 # M1). Hosted CI samples every worker, a serial lane's controller included (operator, 2026-11-25).
 NOT_SAMPLED = "not sampled in the owned tree"
 SAMPLING_GAP = "never sampled although its lane's policy samples it"
-# The Linux pre-signal warning's outcome for a worker outside the supervisor's tree. The warning's outcomes only say why
-# a stack is missing; none of them excuses one (register E3).
+# The Linux pre-signal warning's outcome for a worker outside the supervisor's tree. It only says why a stack is
+# missing, as every outcome of the warning does but the two in STACK_NOT_OWED (register E3).
 OUTSIDE_TREE = "outside the supervisor's owned tree"
 # The pytest phases outside a test's call, where a live worker has no test-function frame to give. evidence_problems
 # accepts only these, and only when the retained frames themselves classify so (register E3).
 OUTSIDE_CALL = ("setup", "teardown", "between tests")
+# The typed outcomes of each interruption for which a live worker owes no test-function frame, each only with a
+# retained stack of that interruption whose frames classify the same (pytest_phase). The Linux warning's setup and
+# teardown are accepted as the Windows collection's are. This reverses #573's "none of them excuses one": asked
+# whether a Linux worker caught in setup or teardown at the cancel signal should be accepted as Windows already
+# accepts it, the operator answered "Yes" (2026-11-26). Nothing else of the warning's is accepted: a worker inside
+# its call with no test frame, one that changed tests or exited during the attach, and one py-spy could not read
+# all still owe their stack.
+STACK_NOT_OWED = {CANCEL_COLLECTION: OUTSIDE_CALL, WARNING: ("setup", "teardown")}
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
-# An xdist worker's lifecycle receipt (session_deadline.Worker): its phases, in order. A worker runs no test before it
-# records the last one, which it writes on entering its first test's protocol.
+# The lifecycle receipt of a process that runs tests (session_deadline.PhaseReceipt): its phases, in order. An xdist
+# worker keeps one, and so does a serial session's controller, which runs its tests itself; an xdist controller runs
+# none and keeps none. The process runs no test before it records the last phase, which it writes on entering its
+# first test's protocol.
 WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
 BEFORE_EXECUTION = WORKER_PHASES[:-1]
+# The name a serial session's controller is registered and listed under (`controller-pid`, `controller-start`), where
+# an xdist worker's is `worker-gwN`.
+CONTROLLER = "controller"
 # A lane cancelled while its sessions were still starting has no test running and no worker in a test, so it has no
 # worker observation or running name to give. worker_evidence.before_tests records that, from positive observations
 # only, and evidence_problems accepts it as the cancellation's complete death evidence once the bundle bears it out
@@ -104,9 +118,15 @@ LANE_REPORT_SCHEMA = "aew/lane-report/v1"
 WORKER_COUNT = "worker-count"
 
 
+def lifecycle_receipt(worker: str, pid: object, start: object) -> str:
+    """The file name of the lifecycle receipt that the registered process ``worker`` (`worker-gwN`, or CONTROLLER for
+    a serial session's controller) keeps in its session's directory, by its pid and start."""
+    return f"{CONTROLLER if worker == CONTROLLER else 'worker'}-{pid}-{start}-lifecycle.txt"
+
+
 def receipt_phases(text: str) -> list[str] | None:
-    """The phases an xdist worker's lifecycle receipt records, in order, or None when it records none or is not a
-    prefix of WORKER_PHASES."""
+    """The phases a lifecycle receipt records, in order, or None when it records none or is not a prefix of
+    WORKER_PHASES."""
     try:
         phases = [line.split()[1] for line in text.splitlines()]
     except IndexError:
@@ -131,14 +151,20 @@ def finished_without_tests(files: dict[str, str], reports: list[dict]) -> str | 
     An interrupt during start-up lets pytest end gracefully: the session writes ``session-finished`` and a complete
     lane report with no results (review of #579, M1). Every registered worker (``worker-gwN-pid`` and ``-start``) must
     have its lifecycle receipt, never past collection, and every lane report must be complete with no test's result.
+    A serial session's controller keeps a receipt only once its collection begins, so it owes none, but one it kept
+    must stop before its first test too.
     ``files`` maps the
     session directory's file names to their text."""
     for name in sorted(files):
+        if fnmatchcase(name, lifecycle_receipt(CONTROLLER, "*", "*")):
+            phases = receipt_phases(files[name])
+            if phases is None or WORKER_PHASES[-1] in phases:
+                return "its controller's lifecycle receipt does not stop before its first test"
         if not re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
             continue
         worker = name.removesuffix("-pid.txt")
         try:
-            receipt = f"worker-{int(files[name])}-{int(files[worker + '-start.txt'])}-lifecycle.txt"
+            receipt = lifecycle_receipt(worker, int(files[name]), int(files[worker + '-start.txt']))
         except (KeyError, ValueError):
             return f"{worker} has no recorded identity"
         phases = receipt_phases(files.get(receipt, ""))
@@ -201,6 +227,10 @@ def cancel_outcome(pid: int, start: int) -> str:
 def warning_outcome(pid: int, start: int) -> str:
     """The snapshots file naming why the Linux pre-signal warning kept no test stack for one worker identity."""
     return f"{pid}-{start}-warning-outcome.txt"
+
+
+# Each interruption's typed-outcome file, by its sample reason: the one owner of which file answers which interruption.
+OUTCOME_FILES = {CANCEL_COLLECTION: cancel_outcome, WARNING: warning_outcome}
 
 
 def entries(text: str):

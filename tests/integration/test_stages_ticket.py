@@ -190,7 +190,7 @@ def test_a_launch_is_planned_only_after_a_dispatch_made_with_launch(tmp_path, pl
     e = Engine.discover(p.root)
     rev = int(e.store.read()["revision"])
     with pytest.raises(IllegalTransition) as exc:
-        e.stage_open(token=p.token, expect_rev=rev, tool="probe", contract_digest="x", arguments={},
+        e.stage_open(token=p.token, tool="probe", contract_digest="x", arguments={},
                      judgment_inputs=[], base_class="POLICY_RESOLVED", effective_class="POLICY_RESOLVED", plan=plan,
                      subject=None, ingress="test")
     assert exc.value.details["reason"] == "not_covered", why
@@ -235,21 +235,21 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name):
         if name == "ticket_draft_without_plan":
             out = call(staged, "ticket_draft", **{k: v for k, v in DRAFT.items() if k != "plan"})
             assert out["ok"] and [s["primitive"] for s in out["completed_steps"]] == ["work.create"]
-            e.work_create(token=direct.token, expect_rev=rev(), kind="ticket", title=DRAFT["title"], risk_class=1,
+            e.work_create(token=direct.token, kind="ticket", title=DRAFT["title"], risk_class=1,
                           mutating=True, scope_paths=DRAFT["scope"], goal_backwards=DRAFT["goal"],
                           contract=DRAFT["contract"], body="")
         elif name == "ticket_draft":
             assert call(staged, "ticket_draft", **DRAFT)["ok"]
-            made = e.work_create(token=direct.token, expect_rev=rev(), kind="ticket", title=DRAFT["title"],
+            made = e.work_create(token=direct.token, kind="ticket", title=DRAFT["title"],
                                  risk_class=1, mutating=True, scope_paths=DRAFT["scope"], goal_backwards=DRAFT["goal"],
                                  contract=DRAFT["contract"], body="")
-            e.plan_propose(token=direct.token, expect_rev=rev(), work_id=made["id"], body=DRAFT["plan"]["body"],
+            e.plan_propose(token=direct.token, work_id=made["id"], body=DRAFT["plan"]["body"],
                            affected_paths=DRAFT["plan"]["affected"], no_assurance=True)
         else:
             out = call(staged, "ticket_start", work_id="T-0001")
             assert out["ok"], out["stopped"]
-            e.launch_dispatched(e.work_assign(token=direct.token, expect_rev=rev(), work_id="T-0001", launch=True))
-            e.work_transition(token=direct.token, expect_rev=rev(), work_id="T-0001", to="RUNNING")
+            e.launch_dispatched(e.work_assign(token=direct.token, work_id="T-0001", launch=True))
+            e.work_transition(token=direct.token, work_id="T-0001", to="RUNNING", prior_value="ASSIGNED")
         a, b = end_state(staged.root, recorded), end_state(direct.root, recorded)
         assert differences(a, b) == [], "\n".join(differences(a, b))
     finally:
@@ -322,10 +322,9 @@ def test_declared_effects_cover_observed_effects(tmp_path, monkeypatch, primitiv
 
     try:
         if primitive == "dispatch.launch":
-            Engine.discover(twin.root).work_assign(token=tok, expect_rev=int(Engine.discover(twin.root).store.read()[
-                "revision"]), work_id="T-0001")
+            Engine.discover(twin.root).work_assign(token=tok, work_id="T-0001")
             before = _observe(p)
-            e.launch_dispatched(e.work_assign(token=tok, expect_rev=rev(), work_id="T-0001", launch=True))
+            e.launch_dispatched(e.work_assign(token=tok, work_id="T-0001", launch=True))
             launched = _effects(before, _observe(p))
             assert launched <= _declared("work.assign") | _declared("dispatch.launch"), launched
             beyond = _effects(_observe(twin), _observe(p))  # the same assignment, with and without its launch
@@ -333,14 +332,14 @@ def test_declared_effects_cover_observed_effects(tmp_path, monkeypatch, primitiv
             return
         before = _observe(p)
         if primitive == "work.create":
-            e.work_create(token=tok, expect_rev=rev(), kind="ticket", title="Another", risk_class=1)
+            e.work_create(token=tok, kind="ticket", title="Another", risk_class=1)
         elif primitive == "plan.propose":
-            e.plan_propose(token=tok, expect_rev=rev(), work_id="T-0001", body="2. Another revision.\n",
+            e.plan_propose(token=tok, work_id="T-0001", body="2. Another revision.\n",
                            reason="a second plan", no_assurance=True)
         else:
-            e.work_assign(token=tok, expect_rev=rev(), work_id="T-0001")
+            e.work_assign(token=tok, work_id="T-0001")
             before = _observe(p)
-            e.work_transition(token=tok, expect_rev=rev(), work_id="T-0001", to="RUNNING")
+            e.work_transition(token=tok, work_id="T-0001", to="RUNNING", prior_value="ASSIGNED")
         seen = _effects(before, _observe(p))
         assert "control_state" in seen and seen <= _declared(primitive), seen
     finally:
@@ -375,7 +374,7 @@ def test_a_cancellations_effects_are_declared(tmp_path, monkeypatch, held):
             directory = runlog.run_dir(p.root / ".aew", run)
             lab.until(lambda: runlog.observed_status(directory)[0] == "running", "wait.condition", what=f"{run} to run")
         before = _observe(p)
-        e.work_transition(token=p.token, expect_rev=rev(), work_id=wid, to="CANCELLED", reason="not needed")
+        e.work_transition(token=p.token, work_id=wid, to="CANCELLED", reason="not needed", prior_value="RUNNING")
         if held == "observation":
             assert not path.exists()  # removed with its invocation's archival
         else:

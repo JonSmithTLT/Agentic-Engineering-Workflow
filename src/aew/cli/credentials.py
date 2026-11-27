@@ -97,17 +97,17 @@ def _recovery(key: str, result: dict[str, Any], args: argparse.Namespace) -> str
     """How to recover from losing the credential ``key`` names: by its kind, never its value (#311 review, F1)."""
     if key == "token":
         return ("The Lead credential is lost: recover with the operator-authorized takeover at an interactive "
-                "terminal:\n\n" + K.fields_command(f"aew lead takeover {K.EXPECT_REV}", "reason",
+                "terminal:\n\n" + K.fields_command("aew lead takeover", "reason",
                                                     "the issued Lead credential was lost") + "\n")
     if key == "offer":
         return ("The handoff offer's secret is lost: cancel the offer with "
-                f"`aew lead handoff cancel {K.EXPECT_REV}`, then offer again.")
+                "`aew lead handoff cancel`, then offer again.")
     if key == "invocation_token":
         invocation = result.get("invocation")
         if not _invocation_id(invocation):
             invocation = "<invocation from aew harness status>"
         return (f"The invocation credential of {invocation} is lost: cancel the invocation with:\n\n"
-                + K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                + K.fields_command(f"aew invoke cancel {invocation}", "reason",
                                    "its credential was lost") + "\n")
     again = "`aew dashboard serve`" if getattr(args, "dashboard_cmd", None) == "serve" else "`aew dashboard open`"
     return f"The dashboard's session URL is lost: run {again} again for a new one."

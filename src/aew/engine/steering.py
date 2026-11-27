@@ -47,6 +47,7 @@ from aew.errors import (
     MigrationRequired,
     PermissionDenied,
     StaleAuthority,
+    StalePolicy,
     SteeringNotConfigured,
     UsageError,
 )
@@ -221,6 +222,25 @@ def confirmation_reason(mode: str | None, primitives: list[str] | tuple[str, ...
         if outside:
             return f"walk: {p} changes {', '.join(outside)}, outside the bookkeeping allow-list (A1 §2)"
     return None
+
+
+def check_stage_admission(state: dict[str, Any], digests: dict[str, str], attribution: dict[str, Any],
+                          plan: list[dict[str, Any]], effective_class: str) -> None:
+    """Check automation authority in the same lock that opens the stage intent."""
+    from aew.engine.primitives import JUDGMENT_BEARING
+
+    mode = effective(state)
+    bound = (attribution["mode"], attribution["mode_record"], attribution["mode_generation"])
+    current = (mode.get("mode"), mode.get("record"), mode.get("generation"))
+    if bound != current:
+        raise IllegalTransition("steering authority changed after the action was projected", reason="steering_moved")
+    for name in ("legality_digest", "operational_digest"):
+        if digests[name] != attribution[name]:
+            raise StalePolicy("steering policy changed after the action was projected", field=name,
+                              bound=attribution[name], current=digests[name])
+    refusal = confirmation_reason(mode["mode"], [step["primitive"] for step in plan])
+    if refusal or effective_class == JUDGMENT_BEARING:
+        raise IllegalTransition("the projected action requires a Lead decision", reason="confirmation_unavailable")
 
 
 def envelope(policy: dict[str, Any] | None) -> dict[str, int]:
@@ -420,8 +440,7 @@ class Steering:
                                "source": now["source"], "record": now["record"],
                                "override_record": approval.override_value(state)}
         if now["mode"] in ("walk", "run"):
-            out["lower_arguments"] = {"action": "lower", "expect_rev": state["revision"],
-                                      "prior_value": out["override_record"]}
+            out["lower_arguments"] = {"action": "lower", "prior_value": out["override_record"]}
         if now.get("ended"):
             out["ended_override"] = now["ended"]
         if default is not None and is_raise(default, now["mode"]):
@@ -549,12 +568,12 @@ class Steering:
 
     # ------------------------------------------------------------------ the Lead's own (A1 §1.2)
 
-    def lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+    def lower(self, *, token: str, mode: str, rationale: str = "",
               prior_value: str | None = None) -> dict[str, Any]:
         """The Lead lowers its effective mode for its own generation (a restriction, never authority)."""
         if mode not in ("crawl", "walk"):
             raise UsageError("a Lead lowers to crawl or walk")
-        with self.k.lead_txn(token, expect_rev, "steering.lower") as ctx:
+        with self.k.lead_txn(token, "steering.lower") as ctx:
             state = ctx.state
             self._require_configured()
             previous = approval.override_value(state)
@@ -577,10 +596,10 @@ class Steering:
         out = {"ok": True, "record": record, "previous": now, "mode": mode, "override_record": record,
                "revision": revision}
         if mode == "walk":
-            out["lower_arguments"] = {"action": "lower", "expect_rev": revision, "prior_value": record}
+            out["lower_arguments"] = {"action": "lower", "prior_value": record}
         return out
 
-    def request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
+    def request(self, *, token: str, kind: str, rationale: str, mode: str | None = None,
                 action_ref: str | None = None) -> dict[str, Any]:
         """Record the Lead's request for a raise or a confirmation. It grants nothing: only the operator, at the
         endpoint, can raise or confirm (A1 §1.3). One raise request is open at a time (a new one replaces it), and a
@@ -589,7 +608,7 @@ class Steering:
             raise UsageError("a request is for a raise or a confirmation")
         if not rationale.strip():
             raise UsageError("a request carries its rationale")
-        with self.k.lead_txn(token, expect_rev, "steering.request") as ctx:
+        with self.k.lead_txn(token, "steering.request") as ctx:
             state = ctx.state
             self._require_configured()
             generation = int(state["lead"]["generation"])

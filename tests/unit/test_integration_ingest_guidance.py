@@ -63,7 +63,7 @@ def _query(state: dict[str, Any], evidence_id: str, *, lease: dict[str, Any] | N
 
 
 def _state(*, status: str | None, state: str = "COMMIT_READY", evidence: str | None = "EV-1") -> dict[str, Any]:
-    integration = {"status": status}
+    integration = {"status": status, "candidate": "c" * 40}
     if evidence is not None:
         integration["post_integration_evidence"] = evidence
     return {"work": {"T-1": {"state": state, "integration": integration}},
@@ -79,7 +79,8 @@ def test_already_ingested_live_candidate_guidance_is_specific_and_pure() -> None
     assert blocker.error.code == "ILLEGAL_TRANSITION"
     assert "integration verification is already ingested" in blocker.message
     assert "candidate is leased for publishing" in blocker.message
-    assert "aew integrate publish T-1 --expect-rev N" in blocker.message
+    candidate = state["work"]["T-1"]["integration"]["candidate"]
+    assert f"`aew integrate publish T-1 --candidate {candidate}`" in blocker.message
     assert "ingest again" in blocker.message
     assert state == before
 

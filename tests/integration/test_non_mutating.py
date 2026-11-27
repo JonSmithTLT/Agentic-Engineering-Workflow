@@ -30,7 +30,7 @@ def show(p, wid):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -130,7 +130,7 @@ def test_read_only_roles_cannot_act_beyond_their_archetype(tmp_path):
                                                                "findings": []}}, expect_ok=False)
     assert as_review.error["code"] == "PERMISSION_DENIED"
     as_lead = p.aew("work", "transition", wid, "--to", "REVIEW_PENDING",
-                    "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": out["invocation_token"]})
+                    env={"AEW_LEAD_TOKEN": out["invocation_token"]})
     assert as_lead.error["code"] == "PERMISSION_DENIED"  # an invocation credential never drives control state
     assert refused(p, "work", "assign", wid)["code"] == "ILLEGAL_TRANSITION"
     assert refused(p, "integrate", "prepare", wid)["code"] == "ILLEGAL_TRANSITION"

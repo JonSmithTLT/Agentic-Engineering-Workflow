@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 from aewflow import DISCOVERY, PROPOSAL, RESEARCH, SUBTRACT_PATCH, sample_project
 from invariants import cap_violations, control_violations
+from test_composition_walk import observed_arguments
 
 from aew import operator
 from aew.engine import hierarchy as H
@@ -96,7 +97,7 @@ class HierarchyWalk:
         return state["work"][wid] if wid in state["work"] else self.engine.work_show(wid)["control"]
 
     def lead(self, method: str, **kw: Any) -> Any:
-        return getattr(self.engine, method)(token=self.token, expect_rev=self.state()["revision"], **kw)
+        return getattr(self.engine, method)(token=self.token, **observed_arguments(self.engine, method, kw))
 
     def submit(self, tok: str, kind: str, meta: dict[str, Any]) -> str:
         text = f"---\n{dump_yaml(meta)}---\nwalk\n"
@@ -336,7 +337,7 @@ class HierarchyWalk:
 
     def handoff(self, wid: str) -> None:
         offer = self.lead("lead_handoff_offer")["offer"]
-        out = self.engine.lead_handoff_accept(offer=offer, expect_rev=self.state()["revision"])
+        out = self.engine.lead_handoff_accept(offer=offer)
         self.token, self.gen = out["token"], out["generation"]
 
     def handoff_cancel(self, wid: str) -> None:
@@ -344,7 +345,7 @@ class HierarchyWalk:
 
     def takeover(self, wid: str) -> None:
         self.mp.setattr(operator, "authorize", lambda *a, **k: {"authorized_by": "walk-operator-stub"})
-        out = self.engine.lead_takeover(expect_rev=self.state()["revision"], reason="walk: previous Lead lost")
+        out = self.engine.lead_takeover(reason="walk: previous Lead lost")
         self.token, self.gen = out["token"], out["generation"]
 
     # ------------------------------------------------------------------ choice

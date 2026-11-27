@@ -41,7 +41,6 @@ from aew.engine import hierarchy as H
 from aew.engine.dispatch import Blocker, GuardRegistration, checked
 from aew.engine.guards import require
 from aew.errors import IllegalTransition, NotFound, OperatorAuthorizationRequired, UsageError, ValidationFailed
-from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.schemas import validate
@@ -79,9 +78,9 @@ def parse_item(subject: str) -> tuple[str, str] | None:
 def remedy(owner: str, gate: str) -> str:
     """How the item is settled: the typed call, and its form from a shell (no shell sees the arguments)."""
     return (f"settle `{item_id(owner, gate)}` with the typed `resolve` tool: choice `{CHOICE}`, the gate that carries "
-            "its standard as `replacement`, a `rationale` and `expect_rev` (from `aew status`); from a shell, "
-            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. `aew status` lists "
-            "the live invocations it would make stale")
+            "its standard as `replacement`, a `rationale` and the shown `approval_digest`; from a shell, "
+            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. The typed `status` "
+            "tool shows each replacement's approval digest and the live invocations it would make stale")
 
 
 def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) -> bool:
@@ -145,8 +144,8 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
 
 def redispatch_entry(state: dict[str, Any], inv_id: str, inv: dict[str, Any], why: str) -> dict[str, Any]:
     """``redispatch_commands`` with what they read: ``fields`` for each `--fields -` (the cancellation's reason), and,
-    for a plan assessor, the ``arguments`` its typed dispatch reads on stdin, to which the Lead adds ``expect_rev``
-    (#586 review, m1). The typed route takes no card: an assessor of another card is dispatched again by the operator,
+    for a plan assessor, the ``arguments`` its typed dispatch reads on stdin (#586 review, m1). The typed route
+    takes no card: an assessor of another card is dispatched again by the operator,
     at their own terminal (``operator``)."""
     entry: dict[str, Any] = {"commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
     if inv.get("scope") == E.ASSESSMENT_SCOPE:
@@ -154,8 +153,8 @@ def redispatch_entry(state: dict[str, Any], inv_id: str, inv: dict[str, Any], wh
         card = (inv.get("card") or {}).get("id")
         if card != E.ASSESSOR_CARD:
             entry["operator"] = (f"the typed route dispatches the built-in {E.ASSESSOR_CARD}; to dispatch {card} "
-                                 f"again, the operator runs `aew plan assess {inv['work_unit']} --card {card} --launch "
-                                 f"{EXPECT_REV}` at their own terminal instead")
+                                 f"again, the operator runs `aew plan assess {inv['work_unit']} --card {card} "
+                                 "--launch` at their own terminal instead")
     return entry
 
 
@@ -163,17 +162,16 @@ def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any])
     """The commands that re-dispatch an active invocation whose context pack changed, complete and parser-valid: a
     non-mutating executor's attempt is superseded; any other invocation is cancelled and dispatched again with its card
     (addendum 3; the scope add's result names them the same way, register E126)."""
-    rev = EXPECT_REV
     wid = inv["work_unit"]
     unit = state["work"][wid]
     if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
-        return [f"aew work redispatch {wid} --launch {rev} --fields -"]
+        return [f"aew work redispatch {wid} --launch --fields -"]
     card = (inv.get("card") or {}).get("id")
     if inv.get("scope") == E.ASSESSMENT_SCOPE:  # a plan assessor: the Lead's typed dispatch, its arguments on stdin
-        return [f"aew invoke cancel {inv_id} {rev} --fields -", E.assessor_call(wid, "")[0]]
+        return [f"aew invoke cancel {inv_id} --fields -", E.assessor_call(wid, "")[0]]
     pick = f"--card {card}" if card else f"--role {inv['role']}"
     scope = " --scope integration" if inv.get("scope") == "integration" else ""
-    return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew invoke create {wid} {pick}{scope} --launch {rev}"]
+    return [f"aew invoke cancel {inv_id} --fields -", f"aew invoke create {wid} {pick}{scope} --launch"]
 
 
 def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, Any]]:
@@ -350,15 +348,14 @@ class GateRepair:
 
         return checked(check)
 
-    def gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
+    def gate_replace(self, *, token: str, subject: str, replacement: str | None,
                      rationale: str, binding: str | None = None) -> dict[str, Any]:
         args: dict[str, Any] = {"subject": subject, "replacement": replacement, "rationale": rationale}
-        with self.k.lead_txn(token, expect_rev, OP, reason=rationale) as ctx:
+        with self.k.lead_txn(token, OP, reason=rationale) as ctx:
             require(self.replace_query(ctx.state, None, args))
-            if binding is not None:
-                current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
-                                if item["id"] == subject), None)
-                approval.compare(OP, subject, binding, current["digest"] if current else None)
+            current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
+                            if item["id"] == subject), None)
+            approval.compare(OP, subject, binding, current["digest"] if current else None)
             found = args["found"]
             owner = found["work_id"]
             unit = ctx.state["work"][owner]
@@ -367,7 +364,7 @@ class GateRepair:
             rev = ctx.session.revision + 1
             record = {"schema": SCHEMA, "id": gc, "work_unit": owner, "replaced": found["gate"], "with": replacement,
                       "reason": rationale.strip()[:MAX_TEXT], "by": dict(ctx.actor),
-                      "generation": ctx.state["lead"]["generation"], "expected_revision": expect_rev, "rev": rev,
+                      "generation": ctx.state["lead"]["generation"], "rev": rev,
                       "at": utc_now(), "stale_invocations": found["stale_invocations"]}
             if binding is not None:
                 record["approval_ref"] = f"{subject}@record:{binding}"

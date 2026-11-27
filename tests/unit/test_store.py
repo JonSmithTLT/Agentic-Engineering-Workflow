@@ -16,7 +16,7 @@ from store_model import check_invariants, init, make_store, one_transaction  # n
 
 from aew.engine.faults import InjectedFault  # noqa: E402
 from aew.engine.store import Transition  # noqa: E402
-from aew.errors import IntegrityError, ProjectNotFound, StaleRevision  # noqa: E402
+from aew.errors import IntegrityError, ProjectNotFound  # noqa: E402
 
 FAULT_POINTS = [
     "txn.before_stage",
@@ -46,15 +46,13 @@ def test_missing_project(tmp_path):
         make_store(tmp_path).read()
 
 
-def test_stale_expected_revision_rejected(tmp_path):
+def test_transactions_compute_the_next_revision_under_the_store_lock(tmp_path):
     store = init(tmp_path)
+    writer = make_store(tmp_path)
+    assert writer.read()["revision"] == 0
     one_transaction(store)
-    before = (tmp_path / "state/control.yaml").read_bytes()
-    with pytest.raises(StaleRevision) as exc:
-        one_transaction(store, expect_rev=0)
-    assert exc.value.details == {"expected": 0, "current": 1}
-    assert (tmp_path / "state/control.yaml").read_bytes() == before
-    assert check_invariants(tmp_path) == 1
+    assert one_transaction(writer) == 2
+    assert check_invariants(tmp_path) == 2
 
 
 def test_immutable_record_never_overwritten(tmp_path):

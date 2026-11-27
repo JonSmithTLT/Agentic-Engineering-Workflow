@@ -3476,7 +3476,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E329
 
-**Work:** The revision check's PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`, takeover, handoff accept and `Session.commit`'s re-check; `expect_rev` is removed outright (the operator, 2026-11-25); open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification's WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every A operation, and the vertical's `revision_args` and `stale_retries` at 0. The revision stays as the commit order, the log key, the history cursor, the dashboard's cursors and ETag, and a stamp on records
+**Work:** The revision check's PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`, takeover, handoff accept and `Session.commit`'s re-check; `expect_rev` is removed outright (the operator, 2026-11-25); open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification's WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests cover the admission boundary for every A entry and exercise four direct writers through their own handlers. The vertical's `revision_args` and `stale_retries` are 0. The revision stays as the commit order, the log key, the history cursor, the dashboard's cursors and ETag, and a stamp on records
 
 **Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 2, 4 and 5; the operator's yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"
 
@@ -3665,18 +3665,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the register PR of 2026-11-11
 
 *Later notes: `notes.d/E350/`, oldest first (`python tools/register.py show E350`).*
-
-### E351
-
-**Work:** Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3) is not a kind the action projection emits today, so E335's owner table has no row for it. Its own decision kind, with its owner, is this row
-
-**Source:** The designer's ruling of 2026-11-11 on E334 and E335 (`designer-decisions-2026-11-11-e334-e335.md`), part 2
-
-**When:** **Unscheduled**, after E335
-
-**Notes:** Filed by the register PR of 2026-11-11
-
-*Later notes: `notes.d/E351/`, oldest first (`python tools/register.py show E351`).*
 
 ### E352
 
@@ -3948,7 +3936,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The review of #597 (E335), its m2: the vertical's steering-on counters. In V1 steering-on, with RESOLVE_STAGE the Lead's, each stage the steering loop leaves unfinished costs a refused `resolve`, an `explain` and a shell `aew stage continue` (refusals 1 to 4, help calls 1 to 2 against base `b71908e0`), whoever owns it
 
-**When:** **Unscheduled**; the operator places it
+**When:** **V-01**, the strict track of the burn-down (C5), placed by the operator, 2026-11-27: "Yes do 1-3 and start builders on C5 and C3"
 
 **Notes:** Filed by #597. E335 is its nearest row; the scripted Lead already supplies `judgment_inputs` where a decision names them (`tests/helpers/vertical/lead.py`, `judged`)
 
@@ -5367,6 +5355,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #440 (`35388ef1`), with its follow-ons on #449 (`daf41fcc`): a contained Linux OpenCode worker on the relay route uses its provider's stored API-key login through the built-in upstream, a usable export first, and `aew doctor` names the source, never the value. Windows custody is E341; which usage pot a worker draws from is E354 and E355
 
 *Later notes: `notes.d/E337/`, oldest first (`python tools/register.py show E337`).*
+
+### E351
+
+**Was:** Plan approval as a projection decision kind: `plan` (W01, W02 and W16, `DECIDE_WORK_PROPOSAL`, protected by G3) is not a kind the action projection emits today, so E335's owner table has no row for it. Its own decision kind, with its owner, is this row
+
+**Closed:** 2026-11-26
+
+**By:** #628: a proposed plan revision that `plan accept` would take now is the operator's `PLAN` decision (the kind's name is the operator's ruling of 2026-11-26, Q8), with `plan accept` bound to the plan's SHA-256 as its `cli_fallback` and the operator's confirmation command as `ask_operator`; the steering loop stops on it as the operator's. The wire action is E390, the typed accept E163
+
+*Later notes: `notes.d/E351/`, oldest first (`python tools/register.py show E351`).*
 
 ### E354
 

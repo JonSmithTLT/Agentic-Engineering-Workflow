@@ -211,7 +211,7 @@ def test_an_unknown_provider_is_refused_naming_the_hand_edit_route(flags):
     with pytest.raises(UsageError) as refused:
         parse(**flags)
     assert refused.value.details["reason"] == "unknown_provider"
-    assert "aew lead acquire --expect-rev 0" in refused.value.message
+    assert "aew lead acquire" in refused.value.message
     assert "containment.network.upstreams" in refused.value.message
 
 
@@ -349,9 +349,9 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
     text = parse(**flags).next_step()
     assert f"no {missing}." in text and f".aew/{file}" in text
     spans = printed(text)
-    assert spans[0] == "aew lead acquire --expect-rev 0" and spans[1].startswith("aew manifest adopt --reason")
+    assert spans[0] == "aew lead acquire" and spans[1].startswith("aew manifest adopt --reason")
     assert spans[2] == "aew opencode --acquire" and K.HELD_SEAT in text
-    assert spans[3:] == [f"aew lead release {K.EXPECT_REV}", "aew opencode --acquire"]
+    assert spans[3:] == ["aew lead release", "aew opencode --acquire"]
     assert text.endswith("Then start the Lead with `aew opencode --acquire`")
 
 
@@ -418,8 +418,8 @@ def test_the_refusal_on_an_initialized_project_says_what_it_takes_now():
     text = FC.already_initialized("/repo/.aew")
     assert "already an initialized AEW project" in text and K.HELD_SEAT in text
     assert ".aew/policy/checks.yaml, .aew/policy/execution.yaml" in text
-    assert printed(text)[1:3] == [f"aew lead acquire {K.EXPECT_REV}",
-                                  f"aew manifest adopt --reason <reason> {K.EXPECT_REV}"]
+    assert printed(text)[1:3] == ["aew lead acquire",
+                                  "aew manifest adopt --reason <reason>"]
 
 
 # ---------------------------------------------------------------------------------------------- where the flags are

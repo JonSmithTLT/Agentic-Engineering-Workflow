@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/stage-intent/v1",
   "title": "AEW stage intent",
-  "description": "M4-E E3 (plan v3; typed Lead surface design v0.2 §3.4): the durable journal of one stage call. It opens by CAS on the caller's expected revision as the stage's first commit, binds the call, the state it started from and its planned primitive steps, and records each step as it commits. Hot (control state `stage_intents`) while ACTIVE; written whole and immutable to its cold home when it ends, and never changed after.",
+  "description": "M4-E E3 (plan v3; typed Lead surface design v0.2 §3.4): the durable journal of one stage call. Its first commit binds the call, its subject and its planned primitive steps. Each step is recorded in its own commit. Hot (control state `stage_intents`) while ACTIVE; written whole and immutable to its cold home when it ends, and never changed after.",
   "type": "object",
   "required": ["schema", "id", "tool", "status", "contract_digest", "arguments", "arguments_digest", "judgment_inputs",
                "base_class", "effective_class", "ingress", "caller", "generation", "opened", "binding", "subject",
-               "plan", "steps", "retried_after_stale_revision", "stopped", "rebound", "resolution", "closed"],
+               "plan", "steps", "stopped", "rebound", "resolution", "closed"],
   "additionalProperties": false,
   "properties": {
     "schema": {"const": "aew/stage-intent/v1"},
@@ -39,8 +39,8 @@
     "caller": {"type": "object", "description": "The Lead actor that opened the intent."},
     "generation": {"description": "The Lead generation that owns the intent: only it may commit a step; `resolve continue` rebinds it (F18 §14).", "type": "integer", "minimum": 1},
     "opened": {
-      "type": "object", "required": ["expect_rev", "rev", "at"], "additionalProperties": false,
-      "properties": {"expect_rev": {"type": "integer", "minimum": 0}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}}
+      "type": "object", "required": ["rev", "at"], "additionalProperties": false,
+      "properties": {"expect_rev": {"description": "Historical input of an intent opened before E329.", "type": "integer", "minimum": 0}, "rev": {"type": "integer", "minimum": 1}, "at": {"type": "string"}}
     },
     "binding": {
       "description": "What every step is checked against. A legality digest that moved is STALE_POLICY (rule 6); the operational digest is recorded, never enforced. A stage that accepts evidence binds the obligations digest (the subject's effective obligations, E5b), recorded for attribution; the authorization and lease bindings arrive with E6.",
@@ -70,7 +70,7 @@
           "primitive": {"$ref": "#/$defs/name"},
           "operation_class": {"$ref": "#/$defs/operation_class"},
           "key": {"$ref": "#/$defs/step_key"},
-          "args": {"type": "object", "description": "The step's bound arguments; a value may be {\"$from\": [m, field]}, resolved from step m's recorded outputs."}
+          "args": {"type": "object", "description": "The step's bound arguments; a value may be {\"$from\": [m, field]}, resolved from step m's recorded outputs or subject state."}
         }
       }
     },
@@ -105,7 +105,7 @@
         }
       }
     },
-    "retried_after_stale_revision": {"description": "R5-1: some step was retried once after STALE_REVISION.", "type": "boolean"},
+    "retried_after_stale_revision": {"description": "Historical R5-1 retry marker on intents recorded before E329.", "type": "boolean"},
     "stopped": {
       "oneOf": [
         {"type": "null"},

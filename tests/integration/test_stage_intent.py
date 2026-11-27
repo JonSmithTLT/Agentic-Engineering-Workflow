@@ -18,7 +18,7 @@ from aew.engine import primitives as P
 from aew.engine import stage_intents as SI
 from aew.engine import steering as S
 from aew.engine.api import Engine
-from aew.errors import IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, StaleRevision
+from aew.errors import IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy
 from aew.knowledge.manifest import DEFAULT_GATES
 
 ZERO = "0" * 64
@@ -34,9 +34,9 @@ def engine(p) -> Engine:
 
 
 def open_stage(p, *, steps: int = 2, subject: str | None = None, primitive: str = "checkpoint",
-               token: str | None = None, expect_rev: int | None = None) -> str:
-    out = engine(p).stage_open(token=token or p.token, expect_rev=p.rev() if expect_rev is None else expect_rev,
-                               tool="probe", contract_digest=ZERO, arguments={"why": "a test"}, judgment_inputs=[],
+               token: str | None = None) -> str:
+    out = engine(p).stage_open(token=token or p.token, tool="probe", contract_digest=ZERO,
+                               arguments={"why": "a test"}, judgment_inputs=[],
                                base_class="MECHANICAL", effective_class="MECHANICAL",
                                plan=[{"primitive": primitive}] * steps, subject=subject, ingress="test")
     return out["intent"]
@@ -44,7 +44,7 @@ def open_stage(p, *, steps: int = 2, subject: str | None = None, primitive: str 
 
 def run_step(p, intent: str, n: int, *, final: bool = False, token: str | None = None) -> dict:
     with SI.step(intent, n, final=final):
-        return engine(p).checkpoint(token=token or p.token, expect_rev=p.rev(), note=f"{intent} step {n}",
+        return engine(p).checkpoint(token=token or p.token, note=f"{intent} step {n}",
                                     next_action=f"after {intent} step {n}")
 
 
@@ -78,13 +78,13 @@ def test_terminal_intents_leave_hot_state(project):
     run_step(p, done, 1, final=True)
     stopped = open_stage(p)
     run_step(p, stopped, 1)
-    e.stage_stop(token=p.token, expect_rev=p.rev(), intent=stopped, n=2, boundary="first_refusal",
+    e.stage_stop(token=p.token, intent=stopped, n=2, boundary="first_refusal",
                  code="ILLEGAL_TRANSITION", message="refused")
     refused = open_stage(p)
-    e.stage_stop(token=p.token, expect_rev=p.rev(), intent=refused, n=1, boundary="first_refusal",
+    e.stage_stop(token=p.token, intent=refused, n=1, boundary="first_refusal",
                  code="ILLEGAL_TRANSITION", message="refused")
     abandoned = open_stage(p)
-    e.stage_abandon(token=p.token, expect_rev=p.rev(), intent=abandoned, rationale="not needed after all")
+    e.stage_abandon(token=p.token, intent=abandoned, rationale="not needed after all")
     assert "stage_intents" not in load_control(p.root)
     assert [e.stage_intent(i)["status"] for i in (done, stopped, refused, abandoned)] == [
         "COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"]
@@ -92,29 +92,28 @@ def test_terminal_intents_leave_hot_state(project):
     assert_control_invariants(p)
 
 
-def test_opening_is_a_cas_on_the_expected_revision(project):
-    """§3.4 rules 1 and 2: a stale call opens nothing and changes nothing."""
+def test_opening_a_stage_does_not_replace_an_active_intent(project):
     p = project
+    sid = open_stage(p)
     before = load_control(p.root)
-    with pytest.raises(StaleRevision):
-        open_stage(p, expect_rev=p.rev() - 1)
+    with pytest.raises(IllegalTransition) as refusal:
+        open_stage(p)
+    assert refusal.value.details == {"reason": "open_intent", "intent": sid}
     assert load_control(p.root) == before
 
 
-@pytest.mark.parametrize(("done", "code", "boundary"), [
-    (0, "STALE_REVISION", "stale_revision"), (2, "STALE_REVISION", "stale_revision"),
-    (1, "ILLEGAL_TRANSITION", "refused"), (1, "STALE_REVISION", "refused")])
-def test_only_partial_stale_stops_can_remain_active(project, done, code, boundary):
+@pytest.mark.parametrize("done", [0, 1, 2])
+def test_a_recorded_stop_closes_the_intent_and_keeps_its_steps(project, done):
     p = project
     sid = open_stage(p)
     for n in range(1, done + 1):
         run_step(p, sid, n)
-    before = load_control(p.root)
-    with pytest.raises(IllegalTransition) as exc:
-        engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=sid, n=min(done + 1, 2),
-                             code=code, boundary=boundary, message="a stop", await_resolution=True)
-    assert exc.value.details["reason"] == "not_resolvable_stop"
-    assert load_control(p.root) == before
+    before = engine(p).stage_intent(sid)
+    engine(p).stage_stop(token=p.token, intent=sid, n=min(done + 1, 2), code="ILLEGAL_TRANSITION",
+                         boundary="refused", message="a stop")
+    closed = engine(p).stage_intent(sid)
+    assert closed["steps"] == before["steps"] and sid not in hot(p)
+    assert closed["status"] == (SI.STOPPED if done else SI.REFUSED)
     assert_control_invariants(p)
 
 
@@ -136,9 +135,9 @@ def test_a_primitive_that_commits_twice_is_not_one_step(project):
     p = project
     si = open_stage(p)
     with SI.step(si, 1):
-        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="once")
+        engine(p).checkpoint(token=p.token, note="once")
         with pytest.raises(IllegalTransition) as exc:
-            engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="twice")
+            engine(p).checkpoint(token=p.token, note="twice")
     assert exc.value.details["reason"] == "step_commits_twice"
     assert len(hot(p)[si]["steps"]) == 1
 
@@ -278,7 +277,7 @@ def test_a_superseded_generations_stage_is_never_continued_implicitly(project):
     original = aew.operator.authorize
     aew.operator.authorize = lambda challenge, **_: {"authorized_by": "operator-tty (test substitute)"}
     try:
-        new = engine(p).lead_takeover(expect_rev=p.rev(), reason="the Lead's session was lost",
+        new = engine(p).lead_takeover(reason="the Lead's session was lost",
                                       session_label="operator")["token"]
     finally:
         aew.operator.authorize = original
@@ -289,9 +288,9 @@ def test_a_superseded_generations_stage_is_never_continued_implicitly(project):
         run_step(p, si, 2, token=new)  # the new Lead does not own the intent
     assert exc.value.details["reason"] == "not_owner" and p.rev() == rev
     with pytest.raises(StaleAuthority):  # nor record its stop: that is the owner's runner's bookkeeping
-        engine(p).stage_stop(token=new, expect_rev=p.rev(), intent=si, n=2, boundary="first_refusal", code="X",
+        engine(p).stage_stop(token=new, intent=si, n=2, boundary="first_refusal", code="X",
                              message="x")
-    engine(p).stage_abandon(token=new, expect_rev=p.rev(), intent=si, rationale="the new Lead decides afresh")
+    engine(p).stage_abandon(token=new, intent=si, rationale="the new Lead decides afresh")
     assert engine(p).stage_intent(si)["resolution"]["generation"] == 2
 
 
@@ -307,7 +306,7 @@ def test_a_unit_stage_ends_under_its_unit_and_travels_into_its_bundle(project, t
         open_stage(p, subject=wid)  # one unfinished stage per unit
     assert exc.value.details["reason"] == "open_intent"
     run_step(p, si, 1)
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=si, rationale="the plan changed")
+    engine(p).stage_abandon(token=p.token, intent=si, rationale="the plan changed")
     [pointer] = load_control(p.root)["work"][wid]["stage_intents"]
     assert pointer["path"] == f"work/{wid}/stage-intents/{si}.yaml" and pointer["status"] == "ABANDONED"
     p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed")
@@ -329,7 +328,7 @@ def test_a_stage_whose_unit_was_archived_meanwhile_is_annotated_on_it(project, t
     wid = create_planned_ticket(p, tmp_path)
     si = open_stage(p, subject=wid)
     p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "cancelled by a primitive meanwhile")
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=si, rationale="its unit is gone")
+    engine(p).stage_abandon(token=p.token, intent=si, rationale="its unit is gone")
     e = engine(p)
     state = e._k.store.read()
     [note] = [a for a in e._archive._index(state).annotations(wid) if a["rel"] == "stage_intent"]
@@ -354,7 +353,7 @@ def test_an_unknown_intent_is_not_found(project):
     with pytest.raises(NotFound):
         engine(p).stage_intent("SI-9999")
     with pytest.raises(NotFound):
-        engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent="SI-9999", rationale="x")
+        engine(p).stage_abandon(token=p.token, intent="SI-9999", rationale="x")
 
 
 def test_a_step_commits_only_the_primitive_it_planned(project, tmp_path):
@@ -365,30 +364,24 @@ def test_a_step_commits_only_the_primitive_it_planned(project, tmp_path):
     si = open_stage(p)
     rev = p.rev()
     with SI.step(si, 1), pytest.raises(IllegalTransition) as exc:
-        engine(p).work_transition(token=p.token, expect_rev=p.rev(), work_id=wid, to="CANCELLED",
-                                  reason="not the planned step")
+        engine(p).work_transition(token=p.token, work_id=wid, to="CANCELLED",
+                                  reason="not the planned step", prior_value="READY")
     assert exc.value.details["reason"] == "step_primitive_mismatch" and p.rev() == rev
     assert load_control(p.root)["work"][wid]["state"] != "CANCELLED" and hot(p)[si]["steps"] == []
 
 
-def test_a_judgment_bearing_step_is_never_committed_as_a_retry(project):
-    """#140 review, finding 2 (§3.4 rules 4 and 5): only a non-judgment step of a non-judgment stage is retried after a
-    stale revision; the engine refuses the rest, and records the retry it allows."""
+def test_automation_cannot_open_a_judgment_bearing_stage(project, monkeypatch):
     p = project
-    judged = engine(p).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest=ZERO, arguments={},
-                                  judgment_inputs=["why"], base_class="JUDGMENT_BEARING",
-                                  effective_class="JUDGMENT_BEARING", plan=[{"primitive": "checkpoint"}],
-                                  subject=None, ingress="test")["intent"]
-    with SI.step(judged, 1, retried=True), pytest.raises(IllegalTransition) as exc:
-        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="replayed judgment")
-    assert exc.value.details["reason"] == "judgment_replay"
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=judged, rationale="a test")
-    si = open_stage(p, steps=1)
-    with SI.step(si, 1, retried=True, final=True):
-        engine(p).checkpoint(token=p.token, expect_rev=p.rev(), note="a mechanical retry")
-    record = engine(p).stage_intent(si)
-    assert record["retried_after_stale_revision"] and record["steps"][0]["retried_after_stale_revision"]
-    assert_control_invariants(p)
+    e = engine(p)
+    monkeypatch.setattr(S, "effective", lambda _: {"mode": "run", "record": "SM-0001", "generation": 1})
+    attribution = {"mode": "run", "mode_record": "SM-0001", "mode_generation": 1, **e.policy_digests()}
+    before = load_control(p.root)
+    with pytest.raises(IllegalTransition) as exc:
+        e.stage_open(token=p.token, tool="probe", contract_digest=ZERO, arguments={}, judgment_inputs=["why"],
+                     base_class="JUDGMENT_BEARING", effective_class="JUDGMENT_BEARING",
+                     plan=[{"primitive": "checkpoint"}], subject=None, ingress="test", auto_run=attribution)
+    assert exc.value.details["reason"] == "confirmation_unavailable"
+    assert load_control(p.root) == before
 
 
 @pytest.mark.parametrize("base, effective, primitive", [
@@ -399,7 +392,7 @@ def test_a_stages_effective_class_is_never_understated(project, base, effective,
     """#140 review, finding 2: R5-1 gates on the effective class, so it is at least the row's and every step's."""
     p = project
     with pytest.raises(IllegalTransition) as exc:
-        engine(p).stage_open(token=p.token, expect_rev=p.rev(), tool="probe", contract_digest=ZERO, arguments={},
+        engine(p).stage_open(token=p.token, tool="probe", contract_digest=ZERO, arguments={},
                              judgment_inputs=[], base_class=base, effective_class=effective,
                              plan=[{"primitive": primitive}], subject=None, ingress="test")
     assert exc.value.details["reason"] == "class_understated" and "stage_intents" not in load_control(p.root)
@@ -413,15 +406,15 @@ def test_a_stop_names_the_step_it_stopped_at(project):
     run_step(p, si, 1)
     for n in (1, 3, 9):
         with pytest.raises(IllegalTransition) as exc:
-            engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=si, n=n, boundary="first_refusal",
+            engine(p).stage_stop(token=p.token, intent=si, n=n, boundary="first_refusal",
                                  code="X", message="x")
         assert exc.value.details["reason"] == "stop_out_of_order"
-    engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=si, n=2, boundary="first_refusal", code="X",
+    engine(p).stage_stop(token=p.token, intent=si, n=2, boundary="first_refusal", code="X",
                          message="x")
     assert engine(p).stage_intent(si)["stopped"]["n"] == 2
     done = open_stage(p, steps=1)
     run_step(p, done, 1)  # every step committed; its after-commit effect failed (a launch: rule 7)
-    engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=done, n=1, boundary="launch_failed", code="X",
+    engine(p).stage_stop(token=p.token, intent=done, n=1, boundary="launch_failed", code="X",
                          message="the launch failed")
     assert engine(p).stage_intent(done)["status"] == "STOPPED_AT_BOUNDARY"
     assert_control_invariants(p)
@@ -453,7 +446,7 @@ def test_a_record_pinned_by_its_unit_is_never_shadowed_by_an_unpinned_copy(proje
     p = project
     wid = create_planned_ticket(p, tmp_path)
     si = open_stage(p, subject=wid)
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=si, rationale="the genuine record")
+    engine(p).stage_abandon(token=p.token, intent=si, rationale="the genuine record")
     forged = p.root / ".aew" / SI.RECORDS_DIR / f"{si}.yaml"
     forged.parent.mkdir(parents=True, exist_ok=True)
     genuine = (p.root / ".aew" / f"work/{wid}/stage-intents/{si}.yaml").read_text(encoding="utf-8")
@@ -468,11 +461,11 @@ def test_a_units_stage_record_must_be_pinned_by_its_pointer_or_annotation(projec
     p = project
     hot_wid = create_planned_ticket(p, tmp_path, title="Kept hot")
     kept = open_stage(p, subject=hot_wid)
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=kept, rationale="pinned by its pointer")
+    engine(p).stage_abandon(token=p.token, intent=kept, rationale="pinned by its pointer")
     gone_wid = create_planned_ticket(p, tmp_path, title="Archived first")
     noted = open_stage(p, subject=gone_wid)
     p.lead("work", "transition", gone_wid, "--to", "CANCELLED", "--reason", "archived before its stage ended")
-    engine(p).stage_abandon(token=p.token, expect_rev=p.rev(), intent=noted, rationale="pinned by an annotation")
+    engine(p).stage_abandon(token=p.token, intent=noted, rationale="pinned by an annotation")
     assert_control_invariants(p)
     for wid, si in ((hot_wid, kept), (gone_wid, noted)):
         record = p.root / ".aew" / f"work/{wid}/stage-intents/{si}.yaml"

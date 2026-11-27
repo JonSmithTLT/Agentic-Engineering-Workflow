@@ -171,7 +171,8 @@ def _next(result: dict[str, Any]) -> str:
     that can be made now, an action that moves the work (never a primitive that carries a judgment, ``_weighed``), a
     wait, the engine's own hint, or what blocks it. Whose the decision is comes from its ``owner`` (register E335; the
     quick check of #597, m1): the Lead is told to decide only its own, and another's is named as theirs, with the call
-    that carries it out. A call or a printed command is never shortened: it must run as printed."""
+    that carries it out, and, where the decision names one (``ask_operator``), the operator's confirmation that call
+    waits for. A call or a printed command is never shortened: it must run as printed."""
     projection = _projection(result)
     scope = _scope(result)
     if _payload(result).get("next_action"):
@@ -181,6 +182,8 @@ def _next(result: dict[str, Any]) -> str:
             name = f"{_one_line(decision.get('decision'))} on {_one_line(decision.get('subject'))}"
             what, how = (f"decide {name}", ": ") if decision.get("owner") == LEAD else \
                 (f"{whose(decision.get('owner'))} decision, {name}", "; it is carried out by: ")
+            if decision.get("ask_operator"):  # the confirmation a Lead session's call waits for (register E351)
+                what += f"; ask the operator to confirm it at their own terminal: {_whole(decision['ask_operator'])}"
             if decision.get("tool"):
                 return what + how + _whole(_call(decision["tool"], decision.get("arguments")))
             return what + how + _whole(_command(decision["cli_fallback"])) if decision.get("cli_fallback") else what

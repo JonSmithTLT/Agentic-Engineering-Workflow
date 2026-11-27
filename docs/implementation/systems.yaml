@@ -4297,8 +4297,8 @@ systems:
     through as the upstream sent it; how OpenCode backs off on it is not measured (E123''s note of 2026-11-09). Split from
     the frozen gateway (SYS-25) so the freeze does not stop it.'
   evidence:
-  - 'src/aew/harness/containment/client_cert.py:49-50 (the policy field containment.network.client_certs and its cert,
-    key and ca files), :184 (context: the relay''s TLS context presents the certificate)'
+  - 'src/aew/harness/containment/client_cert.py:50-51 (the policy field containment.network.client_certs and its cert,
+    key and ca files), :185-196 (context: the relay''s TLS context presents the certificate)'
   - 'src/aew/schemas/execution.schema.json:73 (client_certs, legality_affecting)'
   - 'src/aew/harness/containment/relay.py:1586-1609 (a handshake failure answers 502 client_cert_required or client_cert_refused,
     naming the policy field)'

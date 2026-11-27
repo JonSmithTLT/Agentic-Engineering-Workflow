@@ -39,10 +39,12 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
 5. sends the request and its body (a model call's as it was read, framed by its length; any other's framed as it
    came, by ``Content-Length`` or chunked), then streams the response back as it comes, until the upstream ends it,
    the client goes away or the stream's time is up. It removes a credential from a failed answer's body before it
-   reaches the run: a non-2xx answer to a request that carried one is held first, up to the record's excerpt bound
-   (:data:`EXCERPT_RAW_BYTES`), and any of the request's credential values in its body taken out by the record's own
-   redaction (:class:`_Scrub`). One that holds none goes on exactly as it came; one that does goes on without it,
-   re-framed (:meth:`ProviderRelay._failed_answer`). A 2xx answer streams as it comes, untouched.
+   reaches the run: on a route whose grant holds a credential, a non-2xx answer is held first, until its end, the
+   record's excerpt bound (:data:`EXCERPT_RAW_BYTES`) or :data:`EXCERPT_DRAIN_S`, so a slow one's head goes on up to
+   that much later, and the grant's credential values in its body are taken out by the record's own redaction
+   (:class:`_Scrub`). One whole within the hold that holds none goes on exactly as it came; one whole that holds one
+   goes on without it, framed by its new length; any other goes on cleaned as it comes, unencoded and re-framed
+   (:meth:`ProviderRelay._failed_answer`). A 2xx answer streams as it comes, untouched.
 
 **Bounds:** the relay bounds request size, the model-call bodies it holds, concurrency and stream time, each an
 implementation bound below, set by the host-side code that starts the relay and never by a request or the sandbox. A
@@ -63,8 +65,9 @@ other. A request refused while its body was still arriving (too large, stalled, 
 resetting its connection) is ``refused`` even after its head went upstream, as the upstream never got it whole. A
 non-2xx answer whose body then breaks stays ``forwarded``: the provider had settled the call. A stream the relay itself
 ends, as the run ends or its client goes, stays ``forwarded`` too. A body with neither length nor chunking that the
-upstream cuts ends at the harness in a clean close, as its own end would: HTTP/1.1 cannot mark it, and the shim's leg
-is a socket file, which carries no reset. Only the record tells the two apart (``upstream_broken``).
+upstream cuts ends at the harness in a clean close, as its own end would, and so does a failed answer cleaned as it
+streams to an HTTP/1.0 client (which is never sent chunks): HTTP/1.1 cannot mark it, and the shim's leg is a socket
+file, which carries no reset. Only the record tells the two apart (``upstream_broken``).
 
 **The record:** a fixed operation label distinguishes recognized model calls and model lists without recording the
 request target; only a request refused for its operation, once past the path check, also records its method and its
@@ -899,8 +902,9 @@ class ProviderRelay(Service):
             failed = status is None or not 200 <= status < 300
             if failed:
                 excerpt = _Excerpt(response)
-            # A failed answer's body is held, and any credential the request carried taken out, before it goes on
-            # (:meth:`_failed_answer`); a 2xx answer, and any answer to a request that carried none, streams as it came
+            # On a route whose grant holds a credential, a failed answer's body is held, and the grant's credential
+            # values taken out, before it goes on (:meth:`_failed_answer`); a 2xx answer, and any answer on a route
+            # that holds none, streams as it came
             holding = failed and bool(_Scrub(held).values) and tracked.kind != "none"
             ended: str | None = None
             clean: _Clean | None = None

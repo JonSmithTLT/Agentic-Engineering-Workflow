@@ -2257,7 +2257,7 @@ def test_a_failed_answer_that_holds_no_credential_reaches_the_sandbox_byte_for_b
     assert b"X-AEW-Refusal" not in answer and entries[0]["outcome"] == "forwarded"
 
 
-def test_a_failed_answer_to_a_request_that_carried_no_credential_is_never_held():
+def test_a_failed_answer_on_a_route_that_holds_no_credential_is_never_held():
     """A route with nothing to swap in (a client certificate's) has nothing to take out: a failed answer streams as it
     comes, its head before its body, as before."""
     seam = Seam()

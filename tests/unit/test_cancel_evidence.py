@@ -833,6 +833,11 @@ def test_a_failed_gh_read_names_gh_s_own_error(monkeypatch):
 BEFORE = "integration 8/8 (ubuntu-latest)"
 
 
+SERIAL_PHASES = ("collecting", "collection-ended", "execution-started")
+SERIAL_LAYOUTS = {"serial collecting": "collecting", "serial collection ended": "collection-ended",
+                  "serial executing": "execution-started"}
+
+
 def _starting_lane(raw, layout):
     """A lane root as a cancellation finds it while its sessions start. ``layout`` names the sessions' state."""
     raw.mkdir(parents=True, exist_ok=True)
@@ -845,7 +850,14 @@ def _starting_lane(raw, layout):
     (session / "controller-pid.txt").write_text("42")
     (session / "controller-start.txt").write_text("4200")
     if layout == "serial":
-        return []
+        return []  # a controller with no receipt: before its collection, or an xdist session with no roster yet
+    if layout.startswith("serial "):
+        # The one process runs the tests and keeps a worker's receipt under its own name (PR #608's serial lane).
+        reached = SERIAL_PHASES.index(SERIAL_LAYOUTS[layout]) + 1
+        (session / "controller-42-4200-lifecycle.txt").write_text(
+            "".join(f"{stamp} {name} 7\n" for stamp, name in enumerate(SERIAL_PHASES[:reached], start=10)))
+        return [{"session": session.name, "worker": "controller", "pid": 42, "start": 4200,
+                 "phase": SERIAL_LAYOUTS[layout]}]
     (session / "worker-count.txt").write_text("2\n")
     rows = []
     phase = {"collecting": "collecting", "collection ended": "collection-ended", "executing": "execution-started",
@@ -922,9 +934,10 @@ def test_a_lane_cancelled_before_any_test_started_has_complete_typed_evidence(tm
                                     "finished without a receipt", "finished past execution",
                                     "finished with an incomplete report", "finished with a result collected nothing"])
 def test_a_cancelled_lane_whose_tests_may_have_begun_is_never_typed_before_tests(tmp_path, monkeypatch, layout):
-    # A serial controller runs its own tests and keeps no lifecycle receipt, and a worker past its first test has begun
-    # its tests. A finished session is shown not to have begun one only by its receipts and its lane report. None of
-    # these is shown to stand before its first test, so the gap stays a defect.
+    # A session with no worker roster whose controller has no lifecycle receipt is not shown to be serial and before
+    # its first test, and a worker past its first test has begun its tests. A finished session is shown not to have
+    # begun one only by its receipts and its lane report. None of these is shown to stand before its first test, so
+    # the gap stays a defect.
     raw = tmp_path / "raw"
     rows = _starting_lane(raw, "executing" if layout == "finished past execution" else layout.split()[0])
     result = {"tests/test_a.py::test_a": {"outcome": "passed"}}
@@ -1005,6 +1018,138 @@ def test_a_before_tests_record_the_bundle_contradicts_is_a_defect(tmp_path, monk
         if contradiction == "a test's autopsy":
             assert any("[before-tests] autopsy/tests_unit_test_a.py_test_a-0123: a test's autopsy" in d
                        for d in defects), defects
+
+
+@pytest.mark.parametrize("layout", ["serial collecting", "serial collection ended"])
+def test_a_serial_lane_cancelled_while_its_controller_collects_is_typed_before_tests(tmp_path, monkeypatch, layout):
+    # PR #608's serial 1/1 (ubuntu-latest), job 139788422783, killed 2.4 s into its pytest step: no test had begun, and
+    # the lane was typed as a test interrupted because a serial controller kept no receipt to show it.
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, layout), monkeypatch)
+    record = json.loads((raw / "runner-resources-before-tests.txt").read_text())
+    assert record["sessions"] == [{"session": "autopsy/session-42-abc", "serial": True, "workers": [
+        {"worker": "controller", "pid": 42, "start": 4200, "phase": SERIAL_LAYOUTS[layout]}]}]
+    check = _load("check_evidence_run")
+    rows = []
+    assert check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows) == []
+    assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
+
+
+@pytest.mark.parametrize("state", ["no receipt", "past collection", "writer gone", "a worker registered",
+                                   "another session's controller"])
+def test_a_serial_controller_without_a_receipt_or_past_collection_still_owes_its_observation(
+        tmp_path, monkeypatch, state):
+    # The other side: a serial controller that may have begun a test, or whose receipt is not read from its live
+    # writer, is never recorded, so the lane is a cancellation in a test, which owes its observation and its name.
+    raw = tmp_path / "raw"
+    rows = _starting_lane(raw, {"no receipt": "serial", "past collection": "serial executing"}.get(
+        state, "serial collecting"))
+    if state == "writer gone":
+        rows[0]["phase"] = "indeterminate"  # as phases_at_signal reads a receipt whose writer no longer holds it
+    elif state == "a worker registered":
+        (raw / "autopsy/session-42-abc/worker-gw0-pid.txt").write_text("101\n")  # not a serial session after all
+    elif state == "another session's controller":
+        rows[0]["session"] = "session-77-def"
+    _collect(raw, rows, monkeypatch)
+    assert not (raw / "runner-resources-before-tests.txt").exists()
+    check = _load("check_evidence_run")
+    scored = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=scored)
+    assert scored[0]["kind"] == f"superseded (by run {NEW['id']})" and scored[0]["A2"] == "no"
+    assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects)
+    assert any("[running] missing running test name" in d for d in defects)
+
+
+@pytest.mark.parametrize("layout", ["serial executing", "serial collection ended", "serial torn receipt"])
+def test_a_finished_serial_session_is_typed_before_tests_only_by_a_controller_receipt_short_of_its_first_test(
+        tmp_path, monkeypatch, layout):
+    # A finished session is read from its files. Its lane report can show no result while its controller had entered
+    # a test's protocol (interrupted in a session fixture), so the controller's own receipt must stop before its first
+    # test too (review of #616, m1).
+    import evidence_files
+
+    raw = tmp_path / "raw"
+    _starting_lane(raw, "serial collecting" if layout == "serial torn receipt" else layout)
+    session = raw / "autopsy/session-42-abc"
+    if layout == "serial torn receipt":
+        (session / "controller-42-4200-lifecycle.txt").write_text("")
+    (session / "session-finished.txt").write_text("2026-11-26 10:02:37 pid 42: the session finished (exit 2);")
+    (raw / "report.json").write_text(json.dumps(NOTHING_RAN))
+    files = {path.name: path.read_text() for path in session.iterdir()}
+    refusal = evidence_files.finished_without_tests(files, [NOTHING_RAN])
+    _collect(raw, [], monkeypatch)  # the controller is gone: no live phase is read
+    check = _load("check_evidence_run")
+    rows = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows)
+    if layout == "serial collection ended":
+        assert refusal is None and defects == []
+        record = json.loads((raw / "runner-resources-before-tests.txt").read_text())
+        assert record["sessions"] == [{"session": "autopsy/session-42-abc", "finished": True, "workers": []}]
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests"
+    else:
+        assert refusal == "its controller's lifecycle receipt does not stop before its first test"
+        assert not (raw / "runner-resources-before-tests.txt").exists()
+        assert rows[0]["kind"] == f"superseded (by run {NEW['id']})"
+        assert any("[death-record] cancel: no pre-cleanup worker observation" in d for d in defects)
+
+
+@pytest.mark.parametrize("sign", ["watchdog header", "running name"])
+def test_a_serial_controller_in_a_test_is_never_recorded_as_before_tests(tmp_path, sign):
+    # Even against rows that claim it is still collecting: its own watchdog header, or a running name, decides.
+    from types import SimpleNamespace
+
+    import watchdog
+    import worker_evidence
+
+    rows = _starting_lane(tmp_path, "serial collecting")
+    if sign == "watchdog header":
+        guard = watchdog.HangWatchdog(SimpleNamespace(getoption=lambda *_: str(tmp_path)), 120)
+        (tmp_path / "hang-main-42.txt").write_text(guard._header(SimpleNamespace(nodeid="tests/test_a.py::test_a")))
+        [controller] = worker_evidence.workers(tmp_path)
+        assert controller.controller and controller.identity == (42, 4200)
+    else:
+        (tmp_path / "running-42.txt").write_text("tests/test_a.py::test_a\n")
+    assert not worker_evidence.before_tests(tmp_path, 1.0, rows, observer="cancel collection")
+    assert not (tmp_path / "runner-resources-before-tests.txt").exists()
+
+
+@pytest.mark.parametrize("contradiction", ["execution started", "receipt missing", "start mismatch",
+                                           "receipt short of the phase", "controller not listed",
+                                           "controller identity unpublished"])
+def test_a_serial_before_tests_record_the_bundle_contradicts_is_a_defect(tmp_path, monkeypatch, contradiction):
+    raw = tmp_path / "raw"
+    _collect(raw, _starting_lane(raw, "serial collection ended" if contradiction == "receipt short of the phase"
+                                 else "serial collecting"), monkeypatch)
+    session = raw / "autopsy/session-42-abc"
+    receipt = session / "controller-42-4200-lifecycle.txt"
+    if contradiction == "execution started":
+        with receipt.open("a") as stream:
+            stream.write("30 collection-ended 7\n40 execution-started 7\n")
+        expected = "session-42-abc/controller-42-4200-lifecycle.txt: a worker had started its tests"
+    elif contradiction == "receipt missing":
+        receipt.unlink()
+        expected = "session-42-abc: controller has no lifecycle receipt bearing out its recorded phase"
+    elif contradiction == "start mismatch":
+        (session / "controller-start.txt").write_text("999\n")
+        expected = "session-42-abc: controller is not recorded, by pid and start, before its first test"
+    elif contradiction == "controller identity unpublished":
+        (session / "controller-pid.txt").unlink()
+        expected = "session-42-abc: controller is not recorded, by pid and start, before its first test"
+    elif contradiction == "receipt short of the phase":
+        receipt.write_text("10 collecting 7\n")
+        expected = "session-42-abc: controller has no lifecycle receipt bearing out its recorded phase"
+    else:
+        # A record that lists the session with no process of it: nothing shows its controller had run no test.
+        path = raw / "runner-resources-before-tests.txt"
+        record = json.loads(path.read_text())
+        record["sessions"][0]["workers"] = []
+        path.write_text(json.dumps(record, sort_keys=True) + "\n")
+        expected = "session-42-abc: a session with no worker roster does not list its controller before its first test"
+    check = _load("check_evidence_run")
+    rows = []
+    defects = check.check_jobs(_published(tmp_path, raw, monkeypatch), [_cancelled_lane_job()], score_rows=rows)
+    assert any(f"[before-tests] {expected}" in d for d in defects), defects
+    assert rows[0]["A2"] == "no"
 
 
 @pytest.mark.parametrize("bounded_read", ["observed", "unavailable"])
@@ -1135,8 +1280,9 @@ def test_every_lane_command_keeps_its_sessions_where_the_collection_looks():
     assert seen >= 10 and problems == [], problems
 
 
+@pytest.mark.parametrize("scenario", ["start", "start-serial"])
 @pytest.mark.parametrize("outcome", ["held", "twin late", "ended early"])
-def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection(monkeypatch, outcome):
+def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection(monkeypatch, outcome, scenario):
     # The hosted row for the before-tests record (#579, M1): both start-up lanes run START_READY_SECONDS before the
     # control cancels, inside the plant's hold; a lane that ended first is named, as runner queueing when its twin
     # was not yet held, and never passes.
@@ -1152,6 +1298,9 @@ def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection
     startup = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(startup)  # outside a start-up plant its import holds nothing
     assert prove.START_READY_SECONDS + 60 < startup.HOLD_S < prove.CANCEL_PLANT_SECONDS
+    # Each control's plant kind is one the plant holds, and the serial control's is the plant's serial twin.
+    kind = prove.START_KINDS[scenario]
+    assert set(prove.START_KINDS.values()) == set(startup.KINDS) and kind.endswith("-serial") == (scenario != "start")
     waits = []
 
     def now():
@@ -1169,7 +1318,7 @@ def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection
             running = now() >= started
             ended = outcome == "ended early" and index == 0 and now() >= started + 40
             stamp = datetime.fromtimestamp(started, UTC).isoformat()
-            rows.append({"id": index + 1, "name": f"plant ({os_name}, cancel-start, none)", "runner_id": 7,
+            rows.append({"id": index + 1, "name": f"plant ({os_name}, {kind}, none)", "runner_id": 7,
                          "conclusion": None, "steps": [{
                              "name": "Real planted lane", "started_at": stamp if running else None,
                              "status": "completed" if ended else "in_progress"}]})
@@ -1177,7 +1326,7 @@ def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection
 
     monkeypatch.setattr(prove, "_api", jobs)
     if outcome == "held":
-        assert [job["id"] for job in prove.wait_for_start_up("x/y", 42)] == [1, 2]
+        assert [job["id"] for job in prove.wait_for_start_up("x/y", 42, scenario)] == [1, 2]
         assert now() >= 30 + prove.START_READY_SECONDS
     elif outcome == "twin late":
         # Linux's lane ends at its deadline while Windows has no lane yet: the queueing is named.
@@ -1188,12 +1337,37 @@ def test_the_start_up_control_cancels_only_once_both_lanes_hold_their_collection
             return rows
 
         monkeypatch.setattr(prove, "_api", late)
-        with pytest.raises(prove.PlantQueued, match="cancel-start, none\\) was not held"):
-            prove.wait_for_start_up("x/y", 42)
+        with pytest.raises(prove.PlantQueued, match=f"{kind}, none\\) was not held"):
+            prove.wait_for_start_up("x/y", 42, scenario)
     else:
         with pytest.raises(RuntimeError, match="lane ended before its start-up cancellation") as failed:
-            prove.wait_for_start_up("x/y", 42)
+            prove.wait_for_start_up("x/y", 42, scenario)
         assert not isinstance(failed.value, prove.PlantQueued)
+
+
+@pytest.mark.parametrize("kind, worker, held", [
+    ("cancel-start", "gw0", True), ("cancel-start", None, False),  # an xdist plant's controller runs no test
+    ("cancel-start-serial", None, True), ("cancel-start-serial", "gw0", False),
+    ("cancel", None, False), ("disabled", "gw0", False)])
+def test_the_start_up_plant_holds_the_collection_of_the_process_that_runs_its_tests(monkeypatch, kind, worker, held):
+    import importlib.util
+    import threading
+    from types import SimpleNamespace
+
+    waits = []
+    monkeypatch.setattr(threading, "Event", lambda: SimpleNamespace(wait=waits.append))
+    monkeypatch.setenv("AEW_EVIDENCE_PLANT", kind)
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    if worker:
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", worker)
+    spec = importlib.util.spec_from_file_location("startup", ROOT / "tests/integration/evidence_plants/startup.py")
+    startup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(startup)
+    assert waits == ([startup.HOLD_S] if held else [])
+    if kind.startswith("cancel-start"):
+        # A hold that ends without its cancellation fails the plant's one test, in either kind.
+        with pytest.raises(AssertionError, match="plant misfired"):
+            startup.test_start_up_held_until_cancelled()
 
 
 def test_a_controller_ended_by_the_cancellation_still_lets_the_lane_be_typed_before_tests(tmp_path, monkeypatch):
@@ -1208,8 +1382,9 @@ def test_a_controller_ended_by_the_cancellation_still_lets_the_lane_be_typed_bef
     assert rows[0]["kind"] == f"superseded (by run {NEW['id']}) before tests" and rows[0]["A2"] == "yes"
 
 
+@pytest.mark.parametrize("scenario", ["start", "start-serial"])
 @pytest.mark.parametrize("kind", ["manual-or-api cancel", "manual-or-api cancel before tests"])
-def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch, kind):
+def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch, kind, scenario):
     # The start-up control's accepted side (#579 quick check, m5): a target job with complete evidence that is not
     # typed "before tests" fails the control.
     prove = _load("prove_cancel_evidence")
@@ -1222,7 +1397,9 @@ def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch,
     monkeypatch.setattr(prove, "_api", lambda repo, endpoint: parent if endpoint == "actions/runs/7" else target)
     monkeypatch.setattr(prove, "dispatch", lambda *args: None)
     monkeypatch.setattr(prove, "target_run", lambda *args: target)
-    monkeypatch.setattr(prove, "wait_for_start_up", lambda repo, ident: [{"id": 1}, {"id": 2}])
+    waited = []
+    monkeypatch.setattr(prove, "wait_for_start_up", lambda repo, ident, which: waited.append(which) or [
+        {"id": 1}, {"id": 2}])
     monkeypatch.setattr(prove, "_gh_read", lambda *args: b"HTTP/2 200\r\ndate: Wed, 25 Nov 2026 14:40:00 GMT\r\n")
     reason = {"kind": "manual-or-api", "message": CANCEL.MANUAL, "actor": "github-actions[bot]"}
     rows = [{"job": job, "missing": [], "cancel_reason": reason, "A2": "yes", "artifacts": [9],
@@ -1231,7 +1408,8 @@ def test_the_start_up_control_fails_a_target_not_typed_before_tests(monkeypatch,
     monkeypatch.setattr(prove, "run_jobs", lambda *args: [])
     monkeypatch.setattr(prove, "classify", lambda *args: {"kind": "unresolved"})
     if kind.endswith("before tests"):
-        prove.main("start")
+        prove.main(scenario)
     else:
         with pytest.raises(RuntimeError, match="was not typed as cancelled before tests"):
-            prove.main("start")
+            prove.main(scenario)
+    assert waited == [scenario]  # each control waits on its own plants

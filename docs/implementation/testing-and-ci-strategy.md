@@ -427,17 +427,29 @@ second counts only with a higher id.
 A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
 The lane supervisor at the signal, on either platform, or the cancellation collection, then records
 `runner-resources-before-tests.txt`, but only from positive observations: no watchdog header or running name, and each
-session either still starting, as an xdist session whose registered workers' lifecycle receipts, read from their live
-writers, stand before their first test, or finished after a graceful interrupt, with every worker's receipt short of
-execution and the lane report showing no test ran. No session registered at all is recorded too: that reading of an
-absence holds while every lane command passes `--session-deadline` with its hang directory the lane root or one level
-under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The evidence check types
+session either still starting, or finished after a graceful interrupt, with every worker's receipt short of
+execution and the lane report showing no test ran. A session is still starting when the lifecycle receipt of each of
+its processes that run tests, read from its live writer, stands before its first test: an xdist session's registered
+workers, or a serial session's controller, which runs its tests itself and keeps the same receipt under its own name
+(`session_deadline.PhaseReceipt`; since 2026-11-26, after the serial lane of PR #608's run 45782924831 was cancelled
+2.4 s into its pytest step and typed as a test interrupted). No session registered at all is recorded too: that
+reading of an absence holds while every lane command passes `--session-deadline` with its hang directory the lane
+root or one level under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The
+evidence check types
 such a lane `before tests` and accepts the record as its death evidence only while every session, worker (by pid and
-start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out; anything else is a
-`[before-tests]` defect. The proof's start-up control cancels a lane whose workers hold their collection and requires
-that typing with no defect, and its `verify` job ablates the rule on each `normal` plant. A serial session that has not
-finished, whose controller runs its tests itself and keeps no lifecycle receipt, is never recorded this way, so its gap
-stays a defect.
+start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out, and a session with no worker
+roster that had not finished lists its controller on the same terms; anything else is a `[before-tests]` defect. The
+proof's two start-up controls each cancel a lane that holds its collection, one in its xdist workers (`start`) and
+one in a serial session's controller (`start-serial`), and require that typing with no defect; its `verify` job
+ablates the rule on each `normal` plant. Two states are still never recorded, so their gap stays a defect: a
+controller that has registered its session and not yet begun its collection has no receipt (nor has an xdist session
+before its worker roster, which cannot be told from it), and a serial controller once it has entered its first test's
+protocol, which owes its watchdog header, its observation and its running name like any worker in a test.
+The record says that no test had started, not that the start-up was healthy: a session stuck in its collection (an
+import that hangs) and cancelled before its deadline is typed `before tests` with no defect and no stack, a serial one
+as an xdist one. What shows it is each listed process's `collecting_s` in the record, the seconds since its
+`collecting` stamp when its receipt was read: at the signal in the supervisor's record, at the later collection in the
+cancellation collection's.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The

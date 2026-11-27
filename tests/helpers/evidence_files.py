@@ -8,6 +8,7 @@ import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 
@@ -96,10 +97,15 @@ STACK_NOT_OWED = {CANCEL_COLLECTION: OUTSIDE_CALL, WARNING: ("setup", "teardown"
 # lane_step writes this only when it stops a lane for the Windows host's resources; the evidence check names that
 # death by it (register E3).
 HOST_STOP_FILE = "runner-resources-host-high-water.txt"
-# An xdist worker's lifecycle receipt (session_deadline.Worker): its phases, in order. A worker runs no test before it
-# records the last one, which it writes on entering its first test's protocol.
+# The lifecycle receipt of a process that runs tests (session_deadline.PhaseReceipt): its phases, in order. An xdist
+# worker keeps one, and so does a serial session's controller, which runs its tests itself; an xdist controller runs
+# none and keeps none. The process runs no test before it records the last phase, which it writes on entering its
+# first test's protocol.
 WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
 BEFORE_EXECUTION = WORKER_PHASES[:-1]
+# The name a serial session's controller is registered and listed under (`controller-pid`, `controller-start`), where
+# an xdist worker's is `worker-gwN`.
+CONTROLLER = "controller"
 # A lane cancelled while its sessions were still starting has no test running and no worker in a test, so it has no
 # worker observation or running name to give. worker_evidence.before_tests records that, from positive observations
 # only, and evidence_problems accepts it as the cancellation's complete death evidence once the bundle bears it out
@@ -112,9 +118,15 @@ LANE_REPORT_SCHEMA = "aew/lane-report/v1"
 WORKER_COUNT = "worker-count"
 
 
+def lifecycle_receipt(worker: str, pid: object, start: object) -> str:
+    """The file name of the lifecycle receipt that the registered process ``worker`` (`worker-gwN`, or CONTROLLER for
+    a serial session's controller) keeps in its session's directory, by its pid and start."""
+    return f"{CONTROLLER if worker == CONTROLLER else 'worker'}-{pid}-{start}-lifecycle.txt"
+
+
 def receipt_phases(text: str) -> list[str] | None:
-    """The phases an xdist worker's lifecycle receipt records, in order, or None when it records none or is not a
-    prefix of WORKER_PHASES."""
+    """The phases a lifecycle receipt records, in order, or None when it records none or is not a prefix of
+    WORKER_PHASES."""
     try:
         phases = [line.split()[1] for line in text.splitlines()]
     except IndexError:
@@ -139,14 +151,20 @@ def finished_without_tests(files: dict[str, str], reports: list[dict]) -> str | 
     An interrupt during start-up lets pytest end gracefully: the session writes ``session-finished`` and a complete
     lane report with no results (review of #579, M1). Every registered worker (``worker-gwN-pid`` and ``-start``) must
     have its lifecycle receipt, never past collection, and every lane report must be complete with no test's result.
+    A serial session's controller keeps a receipt only once its collection begins, so it owes none, but one it kept
+    must stop before its first test too.
     ``files`` maps the
     session directory's file names to their text."""
     for name in sorted(files):
+        if fnmatchcase(name, lifecycle_receipt(CONTROLLER, "*", "*")):
+            phases = receipt_phases(files[name])
+            if phases is None or WORKER_PHASES[-1] in phases:
+                return "its controller's lifecycle receipt does not stop before its first test"
         if not re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
             continue
         worker = name.removesuffix("-pid.txt")
         try:
-            receipt = f"worker-{int(files[name])}-{int(files[worker + '-start.txt'])}-lifecycle.txt"
+            receipt = lifecycle_receipt(worker, int(files[name]), int(files[worker + '-start.txt']))
         except (KeyError, ValueError):
             return f"{worker} has no recorded identity"
         phases = receipt_phases(files.get(receipt, ""))

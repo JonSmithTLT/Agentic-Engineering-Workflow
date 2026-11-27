@@ -108,28 +108,32 @@ def wait_for_runners(jobs, labels):
 
 # The start-up control (register E3; review of #579, M1): its plants' workers hold their collection for
 # startup.HOLD_S inside the plants' CANCEL_PLANT_SECONDS deadline, which the twin barrier aligns, so the control
-# cancels once both lanes have run this long, when their workers are collecting whichever moment it lands.
-START_LABELS = tuple(f"plant ({runner}, cancel-start, none)" for runner in ("ubuntu-24.04", "windows-latest"))
+# cancels once both lanes have run this long, when their workers are collecting whichever moment it lands. The serial
+# control's plants run one process each, whose controller holds its own collection (the serial lane of PR #608's run
+# 45782924831, cancelled before its first test and typed as a test interrupted).
+START_KINDS = {"start": "cancel-start", "start-serial": "cancel-start-serial"}  # each control's plant kind
 START_READY_SECONDS = 90
 START_WINDOW_SECONDS = 12 * 60
 
 
-def wait_for_start_up(repo, ident):
+def wait_for_start_up(repo, ident, scenario="start"):
+    labels = tuple(f"plant ({runner}, {START_KINDS[scenario]}, none)" for runner in ("ubuntu-24.04", "windows-latest"))
+
     def jobs():
         return _api(repo, f"actions/runs/{ident}/attempts/1/jobs?per_page=100")["jobs"]
 
-    wait_for_runners(jobs, START_LABELS)
+    wait_for_runners(jobs, labels)
 
     def held():
         attempt = jobs()
         named = {job["name"]: job for job in attempt}
-        for label, twin in zip(START_LABELS, reversed(START_LABELS), strict=True):
+        for label, twin in zip(labels, reversed(labels), strict=True):
             if named.get(label) and ended(named[label]):
                 if not ready_job(twin, attempt, START_READY_SECONDS):
                     raise PlantQueued(f"a plant's runner queued past its deadline: {twin} was not held in its "
                                       f"start-up before {label}'s lane ended")
                 raise RuntimeError(f"{label}'s lane ended before its start-up cancellation")
-        ready = [ready_job(label, attempt, START_READY_SECONDS) for label in START_LABELS]
+        ready = [ready_job(label, attempt, START_READY_SECONDS) for label in labels]
         return ready if all(ready) else None
 
     return poll(held, START_WINDOW_SECONDS, "both start-up lanes to hold their collection")
@@ -206,7 +210,7 @@ def verify_pretrigger(directory, attempt, trigger_at):
 
 
 def main(scenario):
-    if scenario not in {"manual", "supersede", "start"}:
+    if scenario not in {"manual", "supersede", *START_KINDS}:
         raise ValueError("expected a controlled cancellation scenario")
     repo = os.environ["GITHUB_REPOSITORY"]
     parent = int(os.environ["GITHUB_RUN_ID"])
@@ -230,8 +234,8 @@ def main(scenario):
     target = poll(lambda: target_run(repo, workflow, parent, head, branch, group + "-target"), 90, "the target run")
     ident = target["id"]
 
-    targets = wait_for_start_up(repo, ident) if scenario == "start" else wait_for_workers(repo, ident)
-    if scenario in {"manual", "start"}:
+    targets = wait_for_start_up(repo, ident, scenario) if scenario in START_KINDS else wait_for_workers(repo, ident)
+    if scenario == "manual" or scenario in START_KINDS:
         # A server timestamp taken before requesting cancellation is a conservative, independent lower bound.
         response = _gh_read("--include", "--silent", f"repos/{repo}/actions/runs/{ident}")
         date = next(line.split(b":", 1)[1].decode().strip() for line in response.splitlines()
@@ -259,7 +263,7 @@ def main(scenario):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         all_rows = inspect_run(repo, concluded, directory=root)
-        if scenario != "start":
+        if scenario not in START_KINDS:
             verify_pretrigger(root, concluded["run_attempt"], trigger_at)
     gaps = {r["job"]: r["missing"] for r in all_rows if r["missing"]}
     if gaps:
@@ -276,7 +280,7 @@ def main(scenario):
             raise RuntimeError("the hosted manual cancellation actor is missing or incorrect")
         if row["A2"] != "yes" or row["missing"] or not row["artifacts"]:
             raise RuntimeError(f"target {row['job']} lacks verifiable worker evidence: {row['missing']}")
-        if scenario == "start" and not row["kind"].endswith(" before tests"):
+        if scenario in START_KINDS and not row["kind"].endswith(" before tests"):
             # The accepted side of the before-tests record, on the hosted path (#579, M1): typed, with no defect.
             raise RuntimeError(f"start-up target {row['job']} was not typed as cancelled before tests: {row['kind']}")
         print(f"Canceled run {ident}, job {row['job']}, reason {json.dumps(reason)}, A2={row['A2']}, "

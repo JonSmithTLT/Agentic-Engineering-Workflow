@@ -180,12 +180,18 @@ def test_evidence_proof_cancels_superseded_runs_and_runs_cancel_plants_on_schedu
     cancel = jobs["cancel-plant"]
     assert cancel["if"] == ("github.event_name != 'pull_request' && "
                             "(!inputs.probe_origin || inputs.probe_role == 'target')")
-    # The start-up control's target alone runs the start-up plant (register E3; #579, M1).
-    assert cancel["strategy"]["matrix"]["kind"] == ("${{ inputs.probe_scenario == 'start' && "
-                                                    "fromJSON('[\"cancel-start\"]') || fromJSON('[\"cancel\"]') }}")
-    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", "start"]
+    # Each start-up control's target alone runs its start-up plant: the xdist one (register E3; #579, M1) and its
+    # serial twin, whose command runs one process.
+    prove = _load("prove_cancel_evidence")
+    assert cancel["strategy"]["matrix"]["kind"] == (
+        "${{ " + "".join(f"inputs.probe_scenario == '{scenario}' && fromJSON('[\"{kind}\"]') || "
+                         for scenario, kind in prove.START_KINDS.items()) + "fromJSON('[\"cancel\"]') }}")
+    assert jobs["run-cancel-control"]["strategy"]["matrix"]["scenario"] == ["manual", "supersede", *prove.START_KINDS]
     scenarios = proof[True]["workflow_dispatch"]["inputs"]["probe_scenario"]["options"]
-    assert scenarios == ["manual", "supersede", "start"]
+    assert scenarios == ["manual", "supersede", *prove.START_KINDS]
+    command = next(step["with"]["command"] for step in jobs["plant"]["steps"] if step.get("id") == "lane")
+    assert "matrix.kind == 'cancel-start-serial') && '-p no:xdist'" in command
+    assert "startsWith(matrix.kind, 'cancel-start') && 'startup.py'" in command
     assert cancel["steps"] == jobs["plant"]["steps"]
     assert set(jobs["plant"]["needs"]) == {"cancel-trigger-linux", "cancel-trigger-windows"}
     for platform in ("linux", "windows"):
@@ -789,19 +795,26 @@ def test_a_phase_read_can_outlast_its_budget_without_delaying_cleanup(tmp_path, 
     assert done.wait(5) and result["status"] == "unavailable"
 
 
-@pytest.mark.parametrize("history,identity,expected", [
-    (None, True, "indeterminate"), ("", True, "indeterminate"),
-    ("10 collecting\n", True, "collecting"),
-    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting"),
-    ("10 collecting\n15 collection-ended\n", True, "collection-ended"),
-    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started"),
-    ("21 collecting\n", True, "indeterminate"), ("20 collecting\n", True, "indeterminate"),
-    ("10 collecting\n", False, "indeterminate"), ("10 collecting", True, "indeterminate"),
-    ("15 collecting\n12 collection-ended\n", True, "indeterminate"),
-    ("10 collecting\n15 execution-started\n", True, "indeterminate"),
+SECOND_NS = 1_000_000_000
+
+
+@pytest.mark.parametrize("history,identity,expected,collecting_s", [
+    (None, True, "indeterminate", None), ("", True, "indeterminate", None),
+    ("10 collecting\n", True, "collecting", 0.0),
+    ("10 collecting\n30 collection-ended\n40 execution-started\n", True, "collecting", 0.0),
+    ("10 collecting\n15 collection-ended\n", True, "collection-ended", 0.0),
+    ("10 collecting\n15 collection-ended\n18 execution-started\n", True, "execution-started", 0.0),
+    ("21 collecting\n", True, "indeterminate", None), ("20 collecting\n", True, "indeterminate", None),
+    ("10 collecting\n", False, "indeterminate", None), ("10 collecting", True, "indeterminate", None),
+    ("15 collecting\n12 collection-ended\n", True, "indeterminate", None),
+    ("10 collecting\n15 execution-started\n", True, "indeterminate", None),
+    # Read 2.5 s after the `collecting` stamp and 1 s after the later one: the age is in seconds, and is measured from
+    # the first stamp, when the process began collecting (#616 quick check, q1).
+    (f"{SECOND_NS} collecting\n{5 * SECOND_NS // 2} collection-ended\n", True, "collection-ended", 2.5),
+    (f"{SECOND_NS} collecting\n", True, "collecting", 2.5),
 ])
-def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(tmp_path, monkeypatch,
-                                                                                   history, identity, expected):
+def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_worker(
+        tmp_path, monkeypatch, history, identity, expected, collecting_s):
     import worker_evidence as ev
 
     directory = tmp_path / "autopsy/session-test"
@@ -815,8 +828,11 @@ def test_worker_phase_at_signal_requires_ordered_receipts_from_the_same_live_wor
         (directory / "worker-123-456-lifecycle.txt").write_text(history)
     monkeypatch.setattr(ev, "_live_phase_writer", lambda path, pid, birth, fd: (pid, birth, fd) == (123, 456, 7)
                         and identity)
-    assert ev.phases_at_signal(tmp_path, 20) == [
-        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected}]
+    # A phase that is read comes with the seconds since the worker's `collecting` stamp, at this read (10 ns, or 2.5 s).
+    age = {} if collecting_s is None else {"collecting_s": collecting_s}
+    at = 7 * SECOND_NS // 2 if collecting_s else 20
+    assert ev.phases_at_signal(tmp_path, at) == [
+        {"session": "session-test", "worker": "worker-gw0", "pid": 123, "start": 456, "phase": expected, **age}]
 
 
 @pytest.mark.parametrize("failed_phase", session_deadline.WORKER_PHASES)
@@ -876,6 +892,63 @@ def test_a_worker_phase_is_read_at_a_later_signal_however_coarse_the_monotonic_t
         worker._close_phase()
     # The runner's own clock, not the simulated tick: a 15.6 ms one fails here on the Windows lanes.
     assert session_deadline.time.get_clock_info(session_deadline.PHASE_CLOCK).resolution <= 1e-6
+
+
+def test_a_serial_controllers_receipt_is_read_from_its_live_writer_and_an_xdist_controller_has_none(tmp_path):
+    """A serial session's controller runs its tests itself, so its phase is read like a worker's, under its own name,
+    and only while it holds the receipt; an xdist controller keeps none and is no row (register E3: PR #608's serial
+    lane, cancelled before its first test)."""
+    import json
+    import os
+
+    import proctree
+    import worker_evidence as ev
+    from evidence_files import BEFORE_TESTS, CONTROLLER, lifecycle_receipt
+
+    pid, birth = proctree.identity(os.getpid())
+    xdist = tmp_path / "autopsy/session-xdist"
+    serial = tmp_path / "autopsy/session-serial"
+    for directory in (xdist, serial):
+        directory.mkdir(parents=True)
+        (directory / "controller-pid.txt").write_text(f"{pid}\n")
+        (directory / "controller-start.txt").write_text(f"{birth}\n")
+    (xdist / "worker-count.txt").write_text("2\n")
+    assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns()) == []
+    assert not ev.before_tests(tmp_path, 1.0, [], observer="warning")  # a controller with no receipt shows nothing
+    controller = object.__new__(session_deadline.Controller)
+    controller.lifecycle = serial / lifecycle_receipt(CONTROLLER, pid, birth)
+    try:
+        for phase in session_deadline.WORKER_PHASES[:-1]:
+            controller._record_phase(phase)
+            rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())
+            collecting_s = rows[0].pop("collecting_s")
+            assert rows == [{"session": "session-serial", "worker": CONTROLLER, "phase": phase, "pid": pid,
+                             "start": birth}]
+            assert 0 <= collecting_s < 60
+            rows[0]["collecting_s"] = collecting_s
+        assert ev.before_tests(tmp_path, 1.0, rows, observer="warning")
+        record = json.loads((tmp_path / BEFORE_TESTS).read_text())
+        # By name: the record lists the sessions in the order the file system gives their folders, which differs by
+        # platform (Windows listed the serial one first: fast 1/2 (windows-latest), job 139886271839).
+        listed = {s["session"]: s for s in record["sessions"]}
+        assert sorted(listed) == ["autopsy/session-serial", "autopsy/session-xdist"], record
+        assert len(record["sessions"]) == 2, record
+        assert "serial" not in listed["autopsy/session-xdist"] and listed["autopsy/session-xdist"]["workers"] == []
+        # How long the controller had been collecting is kept, so a collection that hangs shows (#616, m2).
+        assert listed["autopsy/session-serial"]["serial"] is True, record
+        assert listed["autopsy/session-serial"]["workers"] == [{
+            "worker": CONTROLLER, "pid": pid, "start": birth, "phase": "collection-ended",
+            "collecting_s": collecting_s}], record
+        (tmp_path / BEFORE_TESTS).unlink()
+        controller._record_phase(session_deadline.WORKER_PHASES[-1])
+        rows = ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())
+        assert rows[0]["phase"] == "execution-started"
+        assert not ev.before_tests(tmp_path, 1.0, rows, observer="warning")  # it has entered its first test
+    finally:
+        controller._close_phase()
+    # The receipt is left behind with no live writer: its last line no longer stands for the controller's phase.
+    assert ev.phases_at_signal(tmp_path, session_deadline.phase_clock_ns())[0]["phase"] == "indeterminate"
+    assert not (tmp_path / BEFORE_TESTS).exists()
 
 
 def test_hosted_warning_attach_records_only_process_outcomes(tmp_path, monkeypatch):

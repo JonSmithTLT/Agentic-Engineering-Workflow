@@ -135,31 +135,31 @@ def decision_owner(name: str) -> str:
 
 
 def judgment_inputs(name: str, tool: str | None, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
-    """What a decision's call takes from whoever decides it (register E388; the vertical's spec v2): each field its
-    tool's schema requires that the decision's arguments leave out. With those filled in, the call has every field the
-    schema requires; a choice can need more, which only the adapter checks and whose refusal names it (`follow_up`
-    its Ticket; a REPLACE_GATE its ``approval_options`` entry). An enumerated field offers its ``options``:
-    `resolve`'s ``choice`` only the choices that run the decision's primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``,
-    read through ``DECISION_PRIMITIVES``). Any other field is offered as its schema, for the decider to write (a
-    rationale). None when the arguments are whole, or there is no call to fill: a decision never carries a default, so
-    nothing here is a value.
+    """What a decision's `resolve` call takes from whoever decides it (register E388; the vertical's spec v2): each
+    field `resolve`'s schema requires that the decision's arguments leave out. With those filled in, the call has every
+    field the schema requires; a choice can need more, which only the adapter checks and whose refusal names it
+    (`follow_up` its Ticket; a REPLACE_GATE its ``approval_options`` entry). The ``choice`` offers as ``options`` only
+    the choices that run the decision's primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``, read through
+    ``DECISION_PRIMITIVES``); any other field, the rationale, is offered as its schema, for the decider to write. None
+    when the arguments are whole, or there is no call to fill: a decision never carries a default, so nothing here is a
+    value.
 
-    The limit: every field missing is taken for a judgment, so a decision's arguments must carry every field that is
-    not one (a mechanical fact such as a prepared candidate); one left out would be offered as a judgment input."""
+    The limit: only `resolve`, whose required fields beyond those a decision supplies are all judgments (the result
+    schema's ``judgment_inputs`` names exactly those). Any other tool's decision names none, whatever its arguments
+    leave out: a field missing there (a mechanical fact such as a prepared candidate) is never offered as a judgment
+    (the quick check of #630, m1)."""
     t = contract.tool(tool) if tool else None
-    if t is None or arguments is None:
+    if t is None or arguments is None or t.name != "resolve":
         return None
     schema = t.input_schema
+    primitives = DECISION_PRIMITIVES.get(name, ())
     out: dict[str, Any] = {}
     for field in schema.get("required") or ():
         if field in arguments:
             continue
         prop = schema["properties"][field]
-        primitives = DECISION_PRIMITIVES.get(name, ())
-        if t.name == "resolve" and field == "choice" and primitives:
-            out[field] = {"options": list(contract.choices_running(*primitives))}
-        elif "enum" in prop:
-            out[field] = {"options": list(prop["enum"])}
+        if field == "choice":
+            out[field] = {"options": list(contract.choices_running(*primitives) if primitives else prop["enum"])}
         else:
             out[field] = dict(prop)
     return out or None

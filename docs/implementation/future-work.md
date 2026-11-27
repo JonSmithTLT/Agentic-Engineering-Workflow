@@ -3950,7 +3950,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled**; the operator places it. Cited from C5 on the V-01 burn-down
 
-**Notes:** Filed by #630. Reproduced by `pytest -p no:xdist --lane vertical tests/acceptance/test_vertical_path.py -k forced_kill_mid_stage` at #630's head: refusals 1, help_calls 1, shell_aew_calls 2
+**Notes:** Filed by #630. Reproduced by `pytest -p no:xdist --lane vertical tests/acceptance/test_vertical_path.py -k forced_kill_mid_stage` on #630's first commit, `282fa456` (the run was of its working tree, whose `src` and vertical helpers that commit holds unchanged), and the same by the full review's rerun at `2f09ed80`: refusals 1, help_calls 1, shell_aew_calls 2
 
 *Later notes: `notes.d/E400/`, oldest first (`python tools/register.py show E400`).*
 

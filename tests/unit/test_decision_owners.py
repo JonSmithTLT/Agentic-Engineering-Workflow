@@ -220,3 +220,19 @@ def test_a_resolve_decision_names_as_judgment_inputs_exactly_the_fields_its_argu
         validate_def("surface", "decision", shown, source="test")
     assert projection.judgment_inputs("PUBLISH", None, None) is None  # no call to fill
     assert projection.judgment_inputs("RESOLVE_STAGE", "resolve", None) is None
+
+
+def test_a_decision_whose_call_is_not_resolve_names_no_judgment_inputs_whatever_its_arguments_leave_out():
+    """The quick check of #630, m1: only `resolve`'s missing fields are judgments. A PUBLISH whose `integration_publish`
+    arguments lack the required `prepared_candidate` (a mechanical fact) names no judgment input, and the decision as
+    the projection builds it validates against the result contract."""
+    from aew.surface import contract
+
+    publish = contract.tool("integration_publish", contract.ALL_SWITCHES).input_schema
+    arguments = {"expect_rev": 3, "work_id": "T-0001"}
+    assert "prepared_candidate" in set(publish["required"]) - set(arguments)
+    assert projection.judgment_inputs("PUBLISH", "integration_publish", arguments) is None
+    shown = projection._decision("PUBLISH", "T-0001", tool="integration_publish", arguments=arguments,
+                                 cli_fallback=None, availability="AVAILABLE")
+    assert "judgment_inputs" not in shown
+    validate_def("surface", "decision", shown, source="test")

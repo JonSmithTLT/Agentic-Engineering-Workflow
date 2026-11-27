@@ -24,7 +24,7 @@ from aew.harness.opencode import projection
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 from aew_eval import arms as f19_arms  # noqa: E402
-from aew_eval import fixture, paired, prereg, raw, walk  # noqa: E402  # noqa: E402
+from aew_eval import fixture, paired, prereg, raw, walk  # noqa: E402
 from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid  # noqa: E402
 from skill_eval import __main__ as cli  # noqa: E402

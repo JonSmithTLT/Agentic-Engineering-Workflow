@@ -1,7 +1,7 @@
-This batch delivers the reviewed `agent-security-review` and
-`security-control-validation` 0.2.1 candidates as optional on
+This batch delivers the reviewed `agent-security-review` 0.2.1 and
+`security-control-validation` 0.2.2 candidates as optional on
 `security_reviewer` v2. Its foundation remains `security-review`.
-The runtime bundles are 6,972 B and 7,982 B respectively. The manifest pins
+The runtime bundles are 6,972 B and 8,115 B respectively. The manifest pins
 each file and bundle. Public text limits the procedures to defensive method
 and cites the public records of the October 19 and October 24 rulings.
 

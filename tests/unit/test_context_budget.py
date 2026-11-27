@@ -56,7 +56,7 @@ def everything(role: str) -> ctx.PackInputs:
                               "goal_backwards": ["the story works"]}],
                   inherited={"non_waivable": ["review"], "floor": 1},
                   inputs=[{"id": "R-1", "kind": "research_record", "from": "T-0", "freshness": "FRESH",
-                           "basis": "same tree", "summary": ["a finding"],
+                           "basis": "same tree", "summary": [{"conclusion": "a finding"}],
                            # what the record left open (E198): a section of its own for a role that produces the work
                            "open": ctx.open_items({"research": {"uncertainties": ["is it stable?", "which version?"],
                                                                 "constraints": ["needs 3.11"]}})}],

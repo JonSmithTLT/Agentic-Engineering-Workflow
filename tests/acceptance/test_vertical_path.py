@@ -100,9 +100,9 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         # The real harness calls its provider through the run's relay (Linux), which needs the provider's address, as
         # the lab gives its own provider one (HarnessLab.create): one that resolves nowhere, since nothing calls it.
         # Without it a launch, and so doctor's read of the model list, stops at the relay before the list.
-        # (After containment.writable, which sets the containment block this adds to.)
-        fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
-            network={"upstreams": {"vuatprov": "https://vuatprov.invalid/v1"}})
+        # (After the world's containment.network.upstreams, whose map this adds to.)
+        fixtures["containment.network.upstreams.vuatprov"] = lambda doc: doc["containment"]["network"][
+            "upstreams"].update(vuatprov="https://vuatprov.invalid/v1")
     fixtures["checks.unit.caches"] = lambda doc: doc["checks"]["unit"].update(
         caches=["__pycache__/", "*.pyc", ".pytest_cache/"])
     res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)

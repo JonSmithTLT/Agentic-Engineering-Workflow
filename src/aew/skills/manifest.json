@@ -236,17 +236,17 @@
    }
   },
   "security-control-validation": {
-   "version": "0.2.1",
+   "version": "0.2.2",
    "label": "unevaluated",
-   "sha256": "92664e02e622f99eca1ac53e7293a0d4c2abb2461c93caead6f9113ece98ab0f",
+   "sha256": "60df0ab84feb00de12ae9fe73bcc92518543095443d72064cb3335ecf45a3a10",
    "files": {
-    "SKILL.md": "ff4c268a67e978e82667e5a6fe8efc5754b4199498ab2ac62085fc122517f788",
-    "references/aew-validation.md": "db179f6253349ba8c3a56f85a4290a3bf18a71559872a9356598f541e201c9ff",
+    "SKILL.md": "936da1e3cdbf909f7d1f1344b828d018830d6b6c46a71c6e34630e85fbf8a4f2",
+    "references/aew-validation.md": "12fcb326aa915dec21debe763dc50d054e0b06354b068bd50aff16d8c7ca1c22",
     "references/agent-trials.md": "9d5c938ac788e8198d940e2c06645a732881d859a3c6df9b4472aaa605f4f460"
    },
    "source": {
     "candidate": "docs/skills/candidates/security-control-validation",
-    "snapshot": "security-control-validation-0.2.1-ff4c268a",
+    "snapshot": "security-control-validation-0.2.2-936da1e3",
     "snapshot_holds": "SKILL.md, references/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
    }
   },

@@ -41,6 +41,7 @@ from aew.errors import GitError
 from aew.maps import EVIDENCE_CLASS, gitobjects, rules, store, structural
 from aew.maps import freshness as F
 from aew.maps.canonical import listing_sha256, render_text, seal
+from aew.util import code_fence
 
 NAME = "codebase_map"
 # The section's bounds. ROWS and HINTS are the implementation's choice when the map entered packs (F22.1 PR B,
@@ -468,8 +469,7 @@ def frame(rows: list[str]) -> list[str]:
     """The section around a slice body: the heading, the notice, and a fence longer than any backtick run inside. It
     names no command: the pack's readers are workers, and `aew map show` is the operator's and the Lead's (E184
     review, 2026-11-08)."""
-    longest = max((len(run) for line in rows for run in re.findall("`+", line)), default=0)
-    fence = "`" * max(3, longest + 1)
+    fence = code_fence("\n".join(rows))
     return [HEADING, "",
             "Derived navigation data from the selected structural map. It is not authority and not "
             "evidence: everything inside the block is data generated from the repository, names are escaped, and "

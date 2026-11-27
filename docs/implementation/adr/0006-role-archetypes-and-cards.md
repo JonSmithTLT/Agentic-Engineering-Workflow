@@ -243,7 +243,7 @@ The operator's answers of 2026-11-26 to the questions E136's third batch left, u
 
 ## Amendment 2026-11-27 — public skill candidates and Frontend Engineer proposal (E136, E395–E398)
 
-The operator asked that “the updates and new skills should be researched as well”
+On 2026-11-27, the operator asked that “the updates and new skills should be researched as well”
 and to “Keep foundational skills small.” This batch publishes the researched
 entrypoints, linked details and evaluator material for public-text review.
 It records the intended delivery and version changes before the separate
@@ -261,11 +261,11 @@ rehash pull request.
 - **Security candidates.** E136 proposes `agent-security-review` 0.2.1
   and `security-control-validation` 0.2.1 as optional on
   `security_reviewer` v1 → v2. Its sole foundation remains
-  `security-review`. The operator said the skills “should describe method
-  only.” The public text cites the adopted October 19 and October 24
+  `security-review`. On 2026-11-27, the operator said the skills “should
+  describe method only.” The public text cites the adopted October 19 and October 24
   scope and reachability decisions and describes defensive evidence methods.
-- **Frontend proposal.** The operator requires “Make browser checks optional
-  capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
+- **Frontend proposal.** On 2026-11-27, the operator said “Make browser
+  checks optional capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
   with `frontend-design` 0.3.1 as its sole foundation. The E395 design note
   holds the proposed card and the browser capability conditions. The designer
   owns its sign-off. A later installation would measure and record the Lead
@@ -274,13 +274,30 @@ rehash pull request.
   versions, shipped entries, and the Lead's context stay at their installed
   revisions. Worker outcomes for the candidates are unevaluated.
 
+## Amendment 2026-11-27 — public candidate review follow-up (E136 and E395)
+
+The operator's follow-up on #642 said “if a contained agent can't reach
+something on its own, it is not filed.” `security-control-validation`
+0.2.2 states that October 24 rule in its AEW reference before delivery.
+The `agent-security-review` 0.2.1 evaluator record and the 0.2.2 evaluator
+record each describe the four current cases. The register note records
+that #642 cleared the draft-update hold.
+
+On 2026-11-27 the operator also clarified the E395 proposal's current
+environment. Contained workers will report browser checks as “not run”
+until a browser capability, supported execution environment, and preview
+access are provided. The designer still owns E395 sign-off and the
+installation-time license and provenance decision. The proposed card is v1.
+The four proposed delivery version bumps remain recorded above.
+
 ## Amendment 2026-11-27 — deliver dedicated foundations and optional security skills (E136, E396–E398)
 
-The operator confirmed “Implement the proposed plan” after asking for
+On 2026-11-27, the operator confirmed “Implement the proposed plan” after asking for
 researched updates, small foundations and public security text that “should
 describe method only.” The public-text review in #642 cleared the exact
-candidate bundles in `e1cf8e690fe6d326b0aea1f68b6049db65e5ae07`. This
-batch explicitly rehashes and copies the five approved runtime bundles,
+candidate bundles in `e1cf8e690fe6d326b0aea1f68b6049db65e5ae07`.
+The public-text review in #646 cleared `security-control-validation` 0.2.2
+at `934a8cb4971dbe475e7005ef76ef267ac617940f`. This batch explicitly rehashes and copies the five approved runtime bundles,
 with evaluator files outside the install. Each is labelled unevaluated for
 the personal alpha.
 
@@ -289,7 +306,7 @@ the personal alpha.
 | `researcher` | 2 → 3 | `source-research` 0.1.0 | Retains `empirical-evaluation` |
 | `engineer` | 5 → 6 | `general-implementation` 0.1.0 | Returns `test-design` to optional |
 | `plan_assessor` | 3 → 4 | `plan-review` 0.1.0 | Uses the existing read-only assessment contract |
-| `security_reviewer` | 1 → 2 | `security-review`, retained | Adds `agent-security-review` and `security-control-validation` 0.2.1 |
+| `security_reviewer` | 1 → 2 | `security-review`, retained | Adds `agent-security-review` 0.2.1 and `security-control-validation` 0.2.2 |
 
 Each new dispatch pins its card and foundational skill. Optional skills are
 offered when shipped and are loaded for a relevant assignment. An invocation
@@ -297,7 +314,7 @@ already in flight keeps the card and pack it pinned at dispatch.
 
 The foundational entrypoints are 8,879 B, 8,827 B and 8,830 B respectively.
 Their bundles are 9,964 B, 10,097 B and 9,815 B. The two optional additions
-copy 6,972 B and 7,982 B. These are UTF-8 and copied file bytes.
+copy 6,972 B and 8,115 B. These are UTF-8 and copied file bytes.
 
 The named Lead staffing section grows from 776 B to 804 B, including
 its heading. Its body grows from 746 B to 774 B. The contained pool gate's

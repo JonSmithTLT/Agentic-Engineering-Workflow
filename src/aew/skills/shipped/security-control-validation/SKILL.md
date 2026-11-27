@@ -2,7 +2,7 @@
 name: security-control-validation
 description: Assess a named defensive control with static inspection, supplied evidence and ordinary checks. Skip vulnerability discovery and incident response.
 metadata:
-  version: '0.2.1'
+  version: '0.2.2'
   status: candidate
 ---
 

@@ -73,7 +73,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 39 | closed: E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3), closed by #346, #415, #421 and #430 |
 | 40 | E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3 (E131, closed by #422), MS4+MS6, MS5, then MS5b with default-on |
 | 41 | E363 | The test suite's duplication down to what is required or beneficial, with the module heap guard (the operator, 2026-11-24) |
-| 42 | E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25) |
+| 42 | closed: E329 | The revision check's switch-on: `expect_rev` goes away entirely (the operator, 2026-11-25), closed by #596 and the vertical re-measure at `8c85f377` |
 | 43 | closed: E366 | The plan assessor's pack fitted to its scope, with a pack-truth test (the operator, 2026-11-25), closed by #594 |
 | 44 | E367 | The Lead's system text and tool list rewritten, with a truth test, after the guide's core plus pointers |
 | 45 | E368 | Worker packs as a core plus pointers, after E367 |
@@ -3474,18 +3474,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E221/`, oldest first (`python tools/register.py show E221`).*
 
-### E329
-
-**Work:** The revision check's PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`, takeover, handoff accept and `Session.commit`'s re-check; `expect_rev` is removed outright (the operator, 2026-11-25); open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification's WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests cover the admission boundary for every A entry and exercise four direct writers through their own handlers. The vertical's `revision_args` and `stale_retries` are 0. The revision stays as the commit order, the log key, the history cursor, the dashboard's cursors and ETag, and a stamp on records
-
-**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 2, 4 and 5; the operator's yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"
-
-**When:** **Now** (the operator, 2026-11-25: "my goal was expect rev goes away entirely. Aew knows what revision is taking place and expect rev doesnt really save us from anything"). The last of the revision check's chain: E326, E327, E328 and E330, which it follows, are closed
-
-**Notes:** Filed by the register PR of 2026-11-10. What the operator accepted with it: an A operation that is legal but rests on an old reading of unrelated state can commit; the generation still stops a stale Lead
-
-*Later notes: `notes.d/E329/`, oldest first (`python tools/register.py show E329`).*
-
 ### E331
 
 **Work:** Settings adopted at the operator's terminal, with no Lead token: `aew manifest adopt`, E164's `aew policy model allow` and `aew policy route`, and `aew authority accept` and `reject`, each through adopt or the authority operation itself, never a new write route. It is refused inside an AEW session, from a non-writer process and without a terminal. The prompt shows each file's diff against the pinned version, and the commit compares the digests shown (a C binding); the record is the operator's own (kind operator, `authorized_by` operator-tty, no Lead actor); a running Lead keeps its seat and meets STALE_POLICY at its next affected step. The code is the weaker-contexts register's to decide: while it is clear on this host the diff takes a plain confirmation, and while a weaker context is live or recent the typed-back code is asked, naming the weaker run. Its PR also rewrites `aew init`'s flagless and partial-flag `next` to the new path, and lands the amendments (ADR-0005 and ADR-0001's lines on who adopts, the surface map's adopt entry, the guides' seat dance)
@@ -4026,18 +4014,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
 
-### E387
-
-**Work:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows (`src/aew/doctor.py:160`, `src/aew/harness/doctor_relay.py`) send the world's synthetic OpenCode login to the real provider host, which answers HTTP 401, in every V3 case. The world gives doctor's relay probe a local upstream, or the probe is held off in it, so no offline case reaches a real host
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C17), from the vertical's re-measure of 2026-11-26 at `3640b585`: an observation with no counter; it changes no verdict
-
-**When:** **V-01**, the strict track of the burn-down
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
-
 ### E390
 
 **Work:** `DECIDE_WORK_PROPOSAL` on the O-01 wire: V01-01 step 5 (`plan`, W02; WIS the owner, G3-protected), so the operator's plan approval is a confirmed decision and the oracle derives the step as landed. Today it is not in the vendored O-01 registry, and the act is `plan accept` (`src/aew/cli/work_commands.py:367`). Its owner, WIS, is outside the pinned G3 wire's owner enum (`g3/aew_g3/g3-wire.schema.json`, `ConsumeRequest.owner`), so it cannot be consumed without a G3 wire change. E351 is the plan's decision kind in the projection, not this wire action
@@ -4097,6 +4073,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by #623, which does not fix it: the seal read is shared. That pull request's carriage-return test goes through a work unit's body, which is read as bytes
 
 *Later notes: `notes.d/E399/`, oldest first (`python tools/register.py show E399`).*
+
+### E401
+
+**Work:** Bound recorded text in the pack sections that E198's quoting pass left unbounded or as they were, as #614 does for recovery items: an open finding's summary and location (quoted and whole since that pass; the implementer's, reviewer's and verifier's packs, where the section is mandatory and a bound needs a way to the whole finding first), and quote and bound a work unit's title in the requirement, hierarchy, request and child-work sections. The documents those sections print whole as Markdown by design (a requirement's body and acceptance criteria, an ancestor's, the accepted plan) are decided in the same pass: fenced as the record under review is, or left as they are with the reason. Done when `tests/unit/test_pack_truth.py`'s recorded-text guard plants in each of them, bounded
+
+**Source:** E198's quoting pass (`fix/pack-recorded-text-quoting`, #639), which checked these sections and left them
+
+**When:** **Unscheduled**, any idle slot; compatible with E368's rewrite, which may move these sections
+
+**Notes:** Filed by the E198 quoting pass
+
+*Later notes: `notes.d/E401/`, oldest first (`python tools/register.py show E401`).*
 
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
@@ -5260,6 +5248,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E328/`, oldest first (`python tools/register.py show E328`).*
 
+### E329
+
+**Was:** The revision check's PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without its binding is refused; the project-wide compare is dropped at every site; `expect_rev` is removed outright (the operator, 2026-11-25); open stage intents are migrated; the amendments the ruling lists land in the same PR; and the vertical's `revision_args` and `stale_retries` are 0
+
+**Closed:** 2026-11-27
+
+**By:** #596 (`2db9b762`): every class B and C binding required, the project-wide compare dropped, `expect_rev` removed from the public Python, CLI and tool arguments, open stage intents migrated by `aew migrate`, and the amendments landed (`notes.d/E329/`). The vertical re-measure on `main` at `8c85f377` (V-01 burn-down, C4) showed `revision_args` and `stale_retries` at 0 in all 8 cases the alpha reads, where `revision_args` was 7, 9, 4 and 99 at `f848983e`; each case ran once
+
+*Later notes: `notes.d/E329/`, oldest first (`python tools/register.py show E329`).*
+
 ### E330
 
 **Was:** Seat resume: `aew opencode` resumes a held seat with a new seat operation, distinct from takeover. It applies only when the seat was taken by `aew opencode` (the seat records the acquisition's kind, host and user), on the same host and user, the old session's recorded process is gone, no handoff is pending, and the caller is not inside an AEW session, is not a non-writer process and has a terminal. It moves to a new generation with the old credentials revoked, carries the active invocations so no worker is killed, and records a `seat_resume` decision naming the operator, both generations, what was carried and the processes left. A typed-back code is asked once, only when invocations are carried or processes are left, and it names each. A live other Lead, a seat not taken that way, another host or user, a pending handoff or a failed check refuses, naming the holder and `aew lead takeover`. With it: `aew opencode` takes a vacant seat without `--acquire`, and the typed-token route stays when `AEW_LEAD_TOKEN` is set or a flag asks for the hidden prompt; and the vertical driver's `reopen()` starts `aew opencode` on the held seat, so resume takes it, where the alpha verdict fails the takeover branch and the strict instrument keeps it as its counted fallback. The amendments (ADR-0005's resume paragraph, ADR-0009's held-seat lines, and the flagless start's, which the designer words) land with it
@@ -5409,6 +5407,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E387
+
+**Was:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows sent the world's synthetic OpenCode login to the real provider host, which answered HTTP 401, in every V3 case (cluster C17 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)
+
+**Closed:** 2026-11-27
+
+**By:** PR #635 (`1dfa6418`), test-only: the offline world (`scripted_operator.new_world`) starts its own provider, a loopback listener closed with the lab, and its `containment.network.upstreams` fixture names it as the upstream of every provider AEW knows an address for, so doctor's and init's relay probes of the world's login are answered there (HTTP 200) and no offline case reaches a real host. `aew doctor` itself is unchanged. `test_the_offline_worlds_doctor_never_sends_its_login_to_a_real_provider_host` proves it; the V3 and V1 verdicts are as on `main`
+
+*Later notes: `notes.d/E387/`, oldest first (`python tools/register.py show E387`).*
 
 ### E388
 

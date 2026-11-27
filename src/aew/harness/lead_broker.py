@@ -60,7 +60,7 @@ from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
 from aew.harness.contract import SEAT_COMMANDS
-from aew.maps.query import TEXT_MAX
+from aew.maps.reads import TEXT_MAX
 from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"

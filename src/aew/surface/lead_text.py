@@ -62,6 +62,7 @@ WHEN = {
     "report_write": "write from what you've read; consult for unread code or checks",
     "steering": "lower your steering mode, or ask the operator to raise it or confirm an action",
     "message_send": "steer a running worker",
+    "map": "find a file, or read the codebase map; hits are candidates",
 }
 
 

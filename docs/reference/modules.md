@@ -358,6 +358,7 @@ None.
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.maps.query`
+- `aew.maps.reads`
 - `aew.maps.service`
 - `aew.util`
 
@@ -1741,7 +1742,7 @@ None.
 - `aew.harness.wake_queue`
 - `aew.harness.weaker_register`
 - `aew.lead_credential`
-- `aew.maps.query`
+- `aew.maps.reads`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
@@ -2269,10 +2270,15 @@ None.
 - `aew.maps.canonical`
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
+- `aew.maps.reads`
 - `aew.maps.rules`
 - `aew.maps.slices`
 - `aew.maps.store`
 - `aew.maps.structural`
+
+### `aew.maps.reads`
+
+None.
 
 ### `aew.maps.rules`
 
@@ -2547,6 +2553,8 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
+- `aew.maps`
+- `aew.policy`
 - `aew.schemas`
 
 ### `aew.surface`
@@ -2573,12 +2581,16 @@ None.
 
 ### `aew.surface.context`
 
+- `aew.policy.execution`
 - `aew.surface.contract`
 
 ### `aew.surface.contract`
 
 - `aew.coordination.layout`
+- `aew.harness.bridge`
 - `aew.knowledge.evidence`
+- `aew.maps.reads`
+- `aew.maps.structural`
 - `aew.owners`
 - `aew.priority_levels`
 - `aew.surface.context`
@@ -2654,6 +2666,8 @@ None.
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.defects`
+- `aew.maps.query`
+- `aew.maps.service`
 - `aew.schemas`
 - `aew.surface`
 - `aew.surface.availability`

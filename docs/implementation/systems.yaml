@@ -4515,7 +4515,9 @@ systems:
   - E163
   as_built:
   - modules:aew.maps.query
+  - modules:aew.maps.reads
   - cli-commands:map search
+  - tools:map
   touches:
   - src/aew/maps/query.py
   - src/aew/harness/supervisor.py
@@ -4556,10 +4558,10 @@ systems:
     estimate: 1-2 PRs (estimate, census)
   - slice: 'F15.8''s map reads, unfrozen by the operator after E293 (2026-11-25: "unfreeze 15.8 after E293"): the shared
       query module, `aew map search` and the worker bridge rows map.show and map.search are built (the mapping series''
-      PR A); the Lead''s typed map tool (PR A2) and outline, symbol, callers and callees over F22.4''s facts (PR C)
-      remain'
+      PR A), and so is the Lead''s typed map tool under maps.reads (PR A2); outline, symbol, callers and callees over
+      F22.4''s facts (PR C) remain'
     row: F15.8
-    estimate: 2 PRs (the mapping series' plan, revision 2)
+    estimate: 1 PR (the mapping series' plan, revision 2)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       F15.8''s other items: evidence.show, check.suggest, tools.presentation and the in-sandbox aew-run server'
     row: F15.8
@@ -4607,6 +4609,9 @@ systems:
   evidence:
   - 'src/aew/maps/query.py: the shared map query module; src/aew/harness/bridge.py MAP_OPERATIONS: map.show and map.search;
     src/aew/policy/execution.py maps.reads, written structural by `aew init`'
+  - 'src/aew/surface/contract.py: the Lead''s typed `map` row behind the maps.reads switch (PR A2), its schema from
+    MAP_OPERATIONS and src/aew/maps/reads.py; src/aew/surface/run.py `_map` answers through aew.maps.query at
+    service.read_context, the context `aew map search` reads at'
   - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
     through the aew CLI, not MCP tools'
   - 'src/aew/surface/__init__.py:14: SERVER_NAME = "aew-lead"; aew-run and aew-knowledge appear only in this comment (grep

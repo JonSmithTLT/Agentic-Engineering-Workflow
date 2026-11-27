@@ -22,10 +22,12 @@ def without_descriptions(value):
     return value
 
 
-def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send():
-    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send"]
-    assert set(contract.ALL_SWITCHES) == {"coordination.messaging"}
-    assert "message_send" not in contract.catalog()
+def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send_and_map():
+    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send", "map"]
+    assert set(contract.ALL_SWITCHES) == {"coordination.messaging", "maps.reads"}
+    assert "message_send" not in contract.catalog() and "map" not in contract.catalog()
+    assert list(contract.catalog(frozenset({contract.MESSAGING}))) == [*contract.catalog(), "message_send"]
+    assert list(contract.catalog(frozenset({contract.MAPS}))) == [*contract.catalog(), "map"]
 
 
 def test_the_compact_presentation_changes_only_descriptions():
@@ -57,6 +59,7 @@ def test_every_built_row_is_offered_on_exactly_its_declared_profiles(switches, p
     assert offered == [t for t in rows.values() if t.built and profile in t.profiles]
     assert ("cli" in {t.name for t in offered}) == (profile == "recovery")
     assert ("message_send" in {t.name for t in offered}) == bool(switches)
+    assert ("map" in {t.name for t in offered}) == bool(switches)
 
 
 @pytest.mark.parametrize("value", ["not JSON", "{}", '"coordination.messaging"', '[7]', '["unknown"]'])
@@ -127,6 +130,10 @@ OFF_READERS = {
         {"test_o_cmd_checks_typed_tool_names_against_the_contract": 1,
          "test_a_typed_tool_behind_a_switch_is_a_known_tool_name_never_an_o_cmd_finding": 1,
          "test_o_secret_reads_the_typed_tools_arguments": 2}),
+    "tests/unit/test_lead_map_catalog.py": (
+        "A planted `map` row without its switch, to show the off-surface comparison fails when the row leaks; the "
+        "switched rows are read through catalog(MAPS_ON).",
+        {"test_a_map_row_or_line_offered_without_the_switch_fails_the_comparison": 1}),
     "tests/unit/test_lead_reachability.py": (
         "Send has no operator-only primitive, pinned by the on catalog contract.",
         {"test_no_typed_tool_reaches_an_operator_only_command": 2}),

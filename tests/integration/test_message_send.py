@@ -25,6 +25,10 @@ SRC = Path(__file__).resolve().parents[2] / "src"
 OFF_LIST_SHA = {"normal": "35b81b3d22b127f12a7d3a2b91141caaaed1e8265636d34772b3a65b981c72ec",
                 "recovery": "070fa4140745bb4bb1855dbea336e9e6ceafba919cae1627bd42cd0abc1b01c6"}
 OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
+# The off surface these pins hold is every switch off: `maps.reads` offers the Lead's typed `map` tool (register F15.8,
+# PR A2), so a world that compares against them has it off too.
+MAPS_OFF = "off"
+MAPS_ON = "structural"  # where a test compares a snapshot with every switch on (ALL_SWITCHES), it sets this itself
 
 
 def digest(value):
@@ -68,7 +72,7 @@ def test_with_messaging_off_tools_list_is_byte_identical_on_both_profiles(profil
 
 @pytest.mark.parametrize("messaging", [None, "disabled"])
 def test_with_messaging_off_lead_tool_list_is_byte_identical(tmp_path, messaging):
-    w = world(tmp_path, messaging=messaging)
+    w = world(tmp_path, messaging=messaging, maps_reads=MAPS_OFF)
     result = cli(w, "lead", "tool", "--list")
     assert result.returncode == 0, result.stderr
     assert digest(json.loads(result.stdout)) == OFF_CLI_SHA
@@ -237,7 +241,7 @@ def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
 
 
 def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp_path, monkeypatch):
-    w = world(tmp_path, messaging=None)
+    w = world(tmp_path, messaging=None, maps_reads=MAPS_OFF)
     with broker(w) as b:
         assert contract.ENV_SWITCHES not in b.env
         monkeypatch.setenv(contract.ENV_SWITCHES, json.dumps(sorted(contract.ALL_SWITCHES)))
@@ -248,7 +252,7 @@ def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp
 
 
 def test_broker_snapshot_does_not_follow_an_adoption_mid_session(tmp_path):
-    w = world(tmp_path, messaging=None)
+    w = world(tmp_path, messaging=None, maps_reads=MAPS_ON)
     with broker(w) as b:
         set_messaging(w.root, "enabled")
         w.e.manifest_adopt(token=w.token, reason="enable messaging", authorization=OPERATOR,
@@ -261,13 +265,13 @@ def test_broker_snapshot_does_not_follow_an_adoption_mid_session(tmp_path):
 
 @pytest.mark.parametrize("messaging", [None, "disabled"])
 def test_with_messaging_off_the_lead_session_environment_is_byte_identical(tmp_path, messaging):
-    w = world(tmp_path, messaging=messaging)
+    w = world(tmp_path, messaging=messaging, maps_reads=MAPS_OFF)
     with broker(w) as b:
         assert b.env == {lead_broker.ENV_ENDPOINT: b.server.address, lead_broker.ENV_KEY: b.server.key_hex}
 
 
 def test_an_on_broker_cannot_record_after_the_operator_disables_messaging(tmp_path):
-    w = world(tmp_path)
+    w = world(tmp_path, maps_reads=MAPS_ON)
     with broker(w) as b:
         set_messaging(w.root, "disabled")
         w.e.manifest_adopt(token=w.token, reason="disable messaging", authorization=OPERATOR,

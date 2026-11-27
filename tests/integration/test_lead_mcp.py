@@ -100,7 +100,7 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert [t["name"] for t in listed["tools"]] == [  # no cli
         "status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
         "steering", "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
-        "ticket_prepare", "integration_publish", "message_send"]
+        "ticket_prepare", "integration_publish", "message_send", "map"]  # map: a new project's maps.reads is on (F15.8)
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])

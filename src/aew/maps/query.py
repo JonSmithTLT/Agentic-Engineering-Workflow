@@ -40,6 +40,7 @@ from aew.errors import AEWError, GitError, MapCurrentnessUnproven, UsageError
 from aew.maps import EVIDENCE_CLASS, gitobjects, rules, slices, store, structural
 from aew.maps import freshness as F
 from aew.maps.canonical import render_text
+from aew.maps.reads import KINDS, SCOPES, SEARCH_LIMIT, SEARCH_LIMIT_MAX, TEXT_MAX
 
 SCHEMA = "aew/map-answer/v1"
 # A-14 §4's categories, as historical v0.5 §7.2's four states name them; the series' PR C adds PARTIAL (ruling Q3).
@@ -57,9 +58,8 @@ MAX_ANSWER_BYTES = 64 * 1024
 SCOPE_ROWS = structural.CAPS["directories"]
 # Listing the basis tree (exact search) and the scoped rows: the slice's bound, for the same `ls-tree`.
 LISTING_S = slices.SCOPE_LISTING_S
-SEARCH_LIMIT, SEARCH_LIMIT_MAX, TEXT_MAX = 20, 100, 200
-KINDS = ("any", "path")
-SCOPES = ("", "none", "ticket")
+# The reads' arguments and bounds (KINDS, SCOPES, TEXT_MAX, the search limits) are ``aew.maps.reads``'s, which the
+# Lead's typed `map` tool renders too (PR A2).
 # The lexical fallback (the plan's §3.5): the capability register's provider for this capability, never a hard-coded
 # `rg`, bounded in time and in hits, rooted at the caller's workspace.
 SEARCH_CAPABILITY = "EXACT_CODE_SEARCH"
@@ -72,8 +72,16 @@ ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "genera
 # of its session is no authority), so it names the route, never a principal. A Lead's relayed read and its shell's
 # read print the same bytes (the relayed reads' condition 2). A worker's reads name its invocation.
 CLI_RECIPIENT = {"kind": "cli", "who": "the Lead or the operator (not authenticated by a read)"}
+# The Lead's typed `map` tool (PR A2): the same reader, which a read authenticates no better, by its own route.
+TOOL_RECIPIENT = {**CLI_RECIPIENT, "kind": "lead_tool"}
 NEXT_SOURCE = {"step": "read the source in your workspace with your own tools (your editor, `rg`, `grep -rn`)",
                "cost": "unbounded by AEW: you choose what to read"}
+
+
+# How a route spells a read's arguments when a refusal names one (#654's review, m3): the CLI, and a worker's run, which
+# reads through it, by its flags (`--limit`); the Lead's typed `map` tool by its arguments' own names (`limit`), since
+# it has no flags to pass. ``argument`` is the one place a refusal takes a name from.
+FLAGS, NAMES = "flags", "names"
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,12 @@ class Context:
     workspace: Path | None = None
     # None: the Ticket's scope could not be read, which an answer says, never as "not restricted" (#576's review, m9)
     scope_paths: tuple[str, ...] | None = field(default=())
+    arguments: str = FLAGS  # how a refusal names an argument: FLAGS or NAMES
+
+
+def argument(ctx: Context, name: str) -> str:
+    """``name`` as the reader's route spells it: ``--limit`` on the CLI and in a worker's run, ``limit`` on the tool."""
+    return name if ctx.arguments == NAMES else f"--{name}"
 
 
 # ------------------------------------------------------------------------------------------- the envelope
@@ -304,21 +318,21 @@ def _check_section(name: str) -> None:
         raise UsageError(f"no section {render_text(name, 80)!r}; the sections are {', '.join(structural.SECTIONS)}")
 
 
-def _parse_limit(limit: str | int | None) -> int:
+def _parse_limit(ctx: Context, limit: str | int | None) -> int:
     if limit in (None, ""):
         return SEARCH_LIMIT
     try:
         n = int(str(limit))
     except ValueError:
-        raise UsageError(f"--limit must be a whole number from 1 to {SEARCH_LIMIT_MAX}") from None
+        raise UsageError(f"{argument(ctx, 'limit')} must be a whole number from 1 to {SEARCH_LIMIT_MAX}") from None
     if not 1 <= n <= SEARCH_LIMIT_MAX:
-        raise UsageError(f"--limit must be a whole number from 1 to {SEARCH_LIMIT_MAX}", limit=n)
+        raise UsageError(f"{argument(ctx, 'limit')} must be a whole number from 1 to {SEARCH_LIMIT_MAX}", limit=n)
     return n
 
 
-def _check_text(text: str, kind: str) -> str:
+def _check_text(ctx: Context, text: str, kind: str) -> str:
     if kind not in KINDS:
-        raise UsageError(f"--kind is one of {', '.join(KINDS)}", kind=render_text(kind, 40))
+        raise UsageError(f"{argument(ctx, 'kind')} is one of {', '.join(KINDS)}", kind=render_text(kind, 40))
     if not text or "\0" in text or len(text) > TEXT_MAX or not text.strip():
         raise UsageError(f"the search text is 1 to {TEXT_MAX} characters, with no NUL")
     if kind == "path":
@@ -334,8 +348,8 @@ def search(ctx: Context, text: str, kind: str = "any", limit: str | int | None =
     ending in it as whole components, over the complete listing, each labelled with the map sections that name it.
     Lexical, only when exact finds nothing and ``kind`` is ``any``: the workspace's text. Every hit is a candidate."""
     kind = kind or "any"
-    text = _check_text(text, kind)
-    n = _parse_limit(limit)
+    text = _check_text(ctx, text, kind)
+    n = _parse_limit(ctx, limit)
     subject = {"text": render_text(text), "kind": kind, "limit": n}
     basis, record, why, fresh = _read(ctx)
     try:
@@ -566,7 +580,8 @@ def serve(ctx: Context, op: str, args: dict[str, Any]) -> dict[str, Any]:
             raise UsageError("scope is ticket or none", scope=render_text(where, 40))
         if where == "ticket":
             if name and name != "directories":
-                raise UsageError("--scope ticket gives the Ticket's directories; it takes no other --section")
+                raise UsageError(f"{argument(ctx, 'scope')} ticket gives the Ticket's directories; it takes no other "
+                                 f"{argument(ctx, 'section')}")
             return scope(ctx)
         return section(ctx, name) if name else status(ctx)
     if op == "map.search":

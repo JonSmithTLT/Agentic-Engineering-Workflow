@@ -201,7 +201,8 @@ def test_an_unknown_provider_is_refused_naming_the_route_that_still_works():
     written nothing, is the one text where it is still a step."""
     with pytest.raises(UsageError) as refused:
         parse(model="fakeprov/m")
-    assert "`aew init` without these flags" in refused.value.message and K.HELD_SEAT in refused.value.message
+    assert "`aew init` without these flags" in refused.value.message
+    assert "aew lead acquire" not in refused.value.message and "needs no Lead credential" in refused.value.message
 
 
 @pytest.mark.parametrize("flags", [{"model": "fakeprov/m"}, {"model": "m", "provider": "vuatprov"},
@@ -211,7 +212,7 @@ def test_an_unknown_provider_is_refused_naming_the_hand_edit_route(flags):
     with pytest.raises(UsageError) as refused:
         parse(**flags)
     assert refused.value.details["reason"] == "unknown_provider"
-    assert "aew lead acquire" in refused.value.message
+    assert "aew manifest adopt" in refused.value.message and "aew lead acquire" not in refused.value.message
     assert "containment.network.upstreams" in refused.value.message
 
 
@@ -348,10 +349,9 @@ def test_next_with_a_check_and_an_opencode_model_sets_its_key_for_workers_and_na
 def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags, missing, file):
     text = parse(**flags).next_step()
     assert f"no {missing}." in text and f".aew/{file}" in text
-    spans = printed(text)
-    assert spans[0] == "aew lead acquire" and spans[1].startswith("aew manifest adopt --reason")
-    assert spans[2] == "aew opencode --acquire" and K.HELD_SEAT in text
-    assert spans[3:] == ["aew lead release", "aew opencode --acquire"]
+    spans = printed(text)  # the adoption needs no seat (register E331), so no seat step comes before or after it
+    assert spans[0].startswith("aew manifest adopt --reason") and spans[1:] == ["aew opencode --acquire"]
+    assert "needs no Lead credential" in text and K.HELD_SEAT not in text
     assert text.endswith("Then start the Lead with `aew opencode --acquire`")
 
 
@@ -361,7 +361,6 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
 # The literals that name `aew lead acquire` without the seat's sentence, and why each may.
 NO_SEAT_SENTENCE = {
     "lead_ops.py": "a takeover refused on a vacant seat: not a first step, and its reader already holds the route",
-    "first_configuration.py": "`post_pin_route` itself: each caller adds the sentence, and the detector checks it",
     "contract.py": "`SEAT_COMMANDS`, which the Lead's system text names as the operator's and refused there: no step "
                    "anyone follows (E367)",
 }
@@ -383,43 +382,46 @@ def shown_texts(tree: ast.AST) -> Iterator[str]:
 def test_every_text_that_names_lead_acquire_says_it_holds_the_seat():
     """Review of #329, F3's class: an operator who follows such a text gets a held seat, which then refuses the
     `--acquire` that `aew init`'s `next` named. So the text says so, in the one sentence with the way back. Limits: the
-    literal spelling `aew lead acquire`, or a call of `post_pin_route`, which prints it, in one f-string of what
-    `src/aew` can show (the guides are the test below); it reads no meaning, so an entry above stays only for the
-    reason it gives, and never excuses a caller of `post_pin_route`."""
+    literal spelling `aew lead acquire` in one f-string of what `src/aew` can show (the guides are the test below); it
+    reads no meaning, so an entry above stays only for the reason it gives. `post_pin_route` prints no seat step since
+    the adoption needs none (register E331), and the last assertion holds it there."""
     src = Path(aew.__file__).parent
     exempt = set()
     missing = []
     for path in sorted(src.rglob("*.py")):
         for text in shown_texts(ast.parse(path.read_text(encoding="utf-8"))):
-            caller = "post_pin_route(" in text
-            if not (caller or "aew lead acquire" in text) or "HELD_SEAT" in text:
+            if "aew lead acquire" not in text or "HELD_SEAT" in text:
                 continue
-            if path.name in NO_SEAT_SENTENCE and not caller:
+            if path.name in NO_SEAT_SENTENCE:
                 exempt.add(path.name)
             else:
                 missing.append(f"{path.name}: {text[:100]}")
     assert missing == []
     assert exempt == set(NO_SEAT_SENTENCE)  # an entry with nothing left to excuse goes
+    assert "aew lead" not in FC.post_pin_route(FC.CHECKS_REL, X.REL_PATH)
 
 
 @pytest.mark.parametrize("guide", ["quickstart.md", "lead-guide.md"])
-def test_every_guide_section_that_names_lead_acquire_names_the_way_back(guide):
-    """Review of #329, F2: classifying leaves the seat held, and `aew lead release` is what gives `--acquire` back."""
+def test_no_guide_sends_the_operator_through_the_seat_to_adopt_or_classify(guide):
+    """Register E331: adopting and classifying need no Lead credential, so no guide section that names them names a seat
+    step; and a section that still names `aew lead acquire` names the way back (review of #329, F2)."""
     text = (Path(aew.__file__).resolve().parents[2] / "docs" / "guides" / guide).read_text(encoding="utf-8")
-    sections = [s for s in re.split(r"^#+ ", text, flags=re.M) if "aew lead acquire" in s]
-    assert sections  # control: the guide still names it, or this test looks at nothing
-    for section in sections:
+    sections = re.split(r"^#+ ", text, flags=re.M)
+    operator_steps = [s for s in sections if "aew manifest adopt" in s or "aew authority accept" in s]
+    assert guide == "lead-guide.md" or operator_steps  # control: the quickstart still shows them
+    for section in operator_steps:
+        assert "aew lead acquire" not in section and "aew lead release" not in section, section[:80]
+    for section in (s for s in sections if "aew lead acquire" in s):
         assert "`aew lead release`" in section and "--acquire" in section, section[:80]
         assert "holds the seat" in section, section[:80]
 
 
 def test_the_refusal_on_an_initialized_project_says_what_it_takes_now():
-    """Review of #329, F8: the code stays as ruled, and the message gives the way forward."""
+    """Review of #329, F8: the code stays as ruled, and the message gives the way forward, with no seat step (E331)."""
     text = FC.already_initialized("/repo/.aew")
-    assert "already an initialized AEW project" in text and K.HELD_SEAT in text
+    assert "already an initialized AEW project" in text and "needs no Lead credential" in text
     assert ".aew/policy/checks.yaml, .aew/policy/execution.yaml" in text
-    assert printed(text)[1:3] == ["aew lead acquire",
-                                  "aew manifest adopt --reason <reason>"]
+    assert printed(text)[1:3] == ["aew manifest adopt --reason <reason>", "aew opencode --acquire"]
 
 
 # ---------------------------------------------------------------------------------------------- where the flags are

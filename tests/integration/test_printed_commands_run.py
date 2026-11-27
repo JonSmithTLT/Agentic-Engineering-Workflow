@@ -94,7 +94,9 @@ def test_doctor_a_changed_manifest_is_adopted_as_printed(tmp_path, monkeypatch):
     argv, body = printed_argv(p, *printed(drift["detail"], "manifest adopt"))
     assert body is None
     monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
-    monkeypatch.setattr(operator, "ask", lambda prompt, **_: re.search(r"code ([0-9A-F]{6})", prompt)[1])
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)  # the operator's own terminal, in-process (E331)
+    monkeypatch.setattr(operator, "ask", lambda prompt, **_: (m[1] if (m := re.search(r"code ([0-9A-F]{6})", prompt))
+                                                             else "yes"))
     assert cli.main(["-C", str(p.root), *argv]) in (0, None)
     assert p.rev() == before + 1
     assert manifest_pin()["status"] == "PASS"

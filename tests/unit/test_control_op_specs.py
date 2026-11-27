@@ -21,7 +21,7 @@ SOURCE = ENGINE.parent
 UNCHECKED = {"anomaly.record", "steering.raise", "custody.register", "integrate.route",
              "harness.stop", "harness.send", "harness.interrupt"}
 FORWARDERS = {("api.py", "lead_txn"), ("validation_ops.py", "txn")}
-TRANSACTION_COMMITS = {("base.py", "lead_txn"), ("base.py", "custody_txn")}
+TRANSACTION_COMMITS = {("base.py", "lead_txn"), ("base.py", "custody_txn"), ("base.py", "operator_txn")}
 
 
 def _strings(node, bindings, seen=frozenset()):
@@ -68,7 +68,7 @@ class EntryScan(ast.NodeVisitor):
     def visit_Call(self, node):
         if isinstance(node.func, ast.Attribute):
             name = node.func.attr
-            if name in {"lead_txn", "txn", "custody_txn"}:
+            if name in {"lead_txn", "txn", "custody_txn", "operator_txn"}:
                 location = self.file, self.function
                 position = 1
                 expr = node.args[position] if len(node.args) > position else next(
@@ -234,9 +234,14 @@ TRANSACTION_HANDLERS = {
 }
 
 HANDLER_CASES = {
-    "authority_accept": [{"klass": "contracts", "decided_by": "lead"}],
-    "authority_reject": [{"decided_by": "lead"}],
-    "manifest_adopt": [{"authorization": {"authorized_by": "operator-tty"}}],
+    # Each with the Lead's credential, and as the operator's own transaction with none (register E331).
+    "authority_accept": [{"klass": "contracts", "decided_by": "lead", "token": "synthetic"},
+                         {"klass": "contracts", "decided_by": "operator", "token": None,
+                          "authorization": {"authorized_by": "operator-tty"}}],
+    "authority_reject": [{"decided_by": "lead", "token": "synthetic"},
+                         {"decided_by": "operator", "token": None, "authorization": {"authorized_by": "operator-tty"}}],
+    "manifest_adopt": [{"authorization": {"authorized_by": "operator-tty"}, "token": "synthetic"},
+                       {"authorization": {"authorized_by": "operator-tty"}, "token": None}],
     "dispose": [{"choice": "accept_risk", "follow_up": None}],
     "waive": [{"gate": "gate"}],
     "work_depend": [{"add": ["T-0002"]}],
@@ -287,7 +292,8 @@ def test_control_op_specs_match_runtime_transaction_entries(monkeypatch, tmp_pat
     }
     session = SimpleNamespace(state=state, revision=1)
     store = SimpleNamespace(current=lambda: state, session=lambda: nullcontext(session))
-    k = SimpleNamespace(lead_txn=record, store=store, aew_root=tmp_path, archived_credential=None)
+    k = SimpleNamespace(lead_txn=record, operator_txn=record, store=store, aew_root=tmp_path,
+                        archived_credential=None)
     monkeypatch.setattr(history_ops, "require_lead", lambda *a, **kw: None)
     monkeypatch.setattr(migrate_ops, "require_lead", lambda *a, **kw: None)
     for (module, owner), methods in TRANSACTION_HANDLERS.items():
@@ -428,3 +434,18 @@ def test_journal_labels_follow_the_spec_of_the_entered_operation():
     assert actual_covers == covers
     for entries in covers.values():
         assert entries <= P.CONTROL_OP_SPECS.keys()
+
+
+def test_the_operators_family_is_exactly_the_ops_its_transaction_is_opened_with():
+    """Review of #641, point 4: `authority.OPERATOR_OPS` owns the operator's closed family (register E331), and the
+    engine opens `operator_txn` with those ops and no other, each a declared control op."""
+    from aew.engine.authority import OPERATOR_OPS
+
+    opened = set()
+    for path in SOURCE.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "operator_txn":
+                op = node.args[1] if len(node.args) > 1 else None
+                assert isinstance(op, ast.Constant), f"{path.name}:{node.lineno}: an operator_txn op is a literal"
+                opened.add(op.value)
+    assert opened == OPERATOR_OPS and OPERATOR_OPS <= P.CONTROL_OP_SPECS.keys()

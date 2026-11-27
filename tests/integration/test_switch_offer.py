@@ -504,8 +504,9 @@ def _follow_the_hand_route(p, line: str, monkeypatch) -> None:
     printed = re.search(r"`(aew manifest adopt [^`]+)`", line)[1]
     command = shlex.split(printed.replace("<reason>", "'by hand'"))
     argv = command[1:]
-    monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
-    monkeypatch.setattr(operator, "ask", lambda prompt, timeout=0: re.search(r"code ([0-9A-F]{6})", prompt)[1])
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)  # the operator's own terminal, in-process (E331)
+    monkeypatch.setattr(operator, "ask", lambda prompt, **_: (m[1] if (m := re.search(r"code ([0-9A-F]{6})", prompt))
+                                                             else "yes"))
     assert cli.main(["-C", str(root), *argv]) in (0, None)
 
 

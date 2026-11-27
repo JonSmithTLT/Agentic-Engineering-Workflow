@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import process_kind
-from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.authority import CUSTODY_PUBLISH, OPERATOR_OPS, require_custodian, require_lead
 from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
 from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
@@ -21,6 +21,7 @@ from aew.errors import (
     IllegalTransition,
     IntegrityError,
     MigrationRequired,
+    PermissionDenied,
     ProjectNotFound,
     WorkspaceNotAuthority,
 )
@@ -498,6 +499,49 @@ class Kernel:
                                         schema=s.state.get("schema"))
             self.check_manifest_pin(s.state)
             self._txn_pins = s.state.get(POLICY_PINS)
+            try:
+                ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                yield ctx
+                self.finalizers.run(ctx)
+                s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
+                                    events=ctx.events), state=ctx.commit_state)
+            finally:
+                self._txn_pins = _NOT_IN_TXN
+            for effect in ctx.after_commit:  # best effort, as in a Lead transaction
+                try:
+                    effect()
+                except (AEWError, OSError):
+                    pass
+
+    @contextmanager
+    def operator_txn(self, authorization: dict[str, str] | None, op: str, *, reason: str | None = None,
+                     _adopting_manifest: bool = False) -> Iterator[TxnContext]:
+        """A control transition the operator makes at their own terminal, with no Lead credential (register E331): the
+        adoption of the settings (``manifest.adopt``) and an authority decision recorded as theirs. Its actor is the
+        operator alone (``kind: operator``, ``authorized_by: operator-tty``), never a Lead, and the Lead seat is not
+        touched: a running Lead keeps it, and its next step bound to policy that moved meets STALE_POLICY (the stage
+        journal's finalizer, as after any adoption). Admission is the operator's confirmation, typed or confirmed at
+        their own terminal (``operator.require_operator_attribution``), in place of the Lead's credential; the pins,
+        the v1 rule and every finalizer are a Lead transaction's."""
+        from aew.operator import require_operator_attribution
+
+        if op not in OPERATOR_OPS:  # a closed family, as custody's (review of #641, point 4)
+            raise PermissionDenied(f"`{op}` is not one of the operator's own decisions at their terminal "
+                                   f"({', '.join(sorted(OPERATOR_OPS))}): it needs the Lead credential",
+                                   reason="not_operator_op", op=op)
+        require_operator_attribution(True, authorization, f"`{op}` without a Lead credential")
+        assert authorization is not None  # narrowed by the check above
+        actor = {"kind": "operator", "authorized_by": authorization["authorized_by"],
+                 **({"confirmation": authorization["confirmation"]} if "confirmation" in authorization else {})}
+        with self.store.session() as s:
+            if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                raise MigrationRequired(
+                    "this project's control state is v1: migrate it first (the operator runs `aew migrate` at their "
+                    "own terminal); until then the operator can adopt the manifest", schema=s.state.get("schema"),
+                    next_action="aew migrate")
+            if not _adopting_manifest:
+                self.check_manifest_pin(s.state)
+            self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
             try:
                 ctx = TxnContext(session=s, actor=actor, txn_op=op)
                 yield ctx

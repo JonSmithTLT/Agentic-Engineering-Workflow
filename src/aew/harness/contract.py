@@ -257,8 +257,6 @@ def _scalar(value: str) -> str:
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
 _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "
 HELD_SEAT = f"{_HELD_SEAT}`aew lead release` gives it up"
-# D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
-HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
 
 
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.

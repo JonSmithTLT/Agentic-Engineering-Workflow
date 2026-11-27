@@ -61,7 +61,7 @@ RESUME_ORDER = [
 HANDOFF_ACCEPT = "the successor accepts it with the offer secret the outgoing Lead gave it (`lead handoff accept`)"
 # The ways onto a vacant seat: one text, for `aew status` and `aew resume` both (review of #329, F3).
 VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no credential shown, or `aew lead acquire "
-               f"` shows one for the edit-and-adopt route. {HELD_SEAT}")
+               f"` shows one for Lead commands at your own terminal. {HELD_SEAT}")
 
 
 def _scope_added(unit: dict[str, Any]) -> dict[str, Any]:
@@ -139,16 +139,11 @@ class Resume:
                            "`aew migrate` at their own terminal (a Lead session is refused it)")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates (the operator, at their own terminal; a Lead session is "
-                           "refused it, and it blocks nothing). A session started with `aew opencode --acquire` "
-                           "doesn't ask: that path shows no credential, and a takeover would turn the live Lead "
-                           "read-only, so the operator classifies after it exits, at their own terminal. First they "
-                           f"take the seat: `aew lead acquire` when the exit reported it released, or "
-                           f"`aew lead takeover --reason <reason>` when it reported it held. When it "
-                           "reported superseded, the Lead that took the seat classifies. Then `aew authority list`, "
-                           "and for each "
-                           "`aew authority accept <candidate> "
-                           f"--class <contracts|decisions|schemas|source|orientation>` or "
-                           f"`aew authority reject <candidate> --reason <reason>`. {HELD_SEAT}")
+                           "refused it, and it blocks nothing). It needs no Lead credential and leaves the Lead seat "
+                           "with its holder, so the operator classifies whenever they like, a Lead running or not: "
+                           "`aew authority list`, and for each `aew authority accept <candidate> "
+                           "--class <contracts|decisions|schemas|source|orientation>` or "
+                           "`aew authority reject <candidate> --reason <reason>`")
         try:
             unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:

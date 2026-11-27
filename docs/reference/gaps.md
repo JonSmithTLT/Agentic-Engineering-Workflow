@@ -197,14 +197,15 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.kit:prepare`: Path.write_text of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit.receipt:write_receipt`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit.receipt:write_receipt`: atomic_write of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.operator_adopt:adopt`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here
 - `aew.profile:cli_finish`: open of a path this reading cannot place: the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect`: sqlite3.connect of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main`: Path.write_text of a path this reading cannot place: `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
-- `aew.switch_offer:_restore`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
-- `aew.switch_offer:_restore`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.switch_offer:_take`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove`: shutil.rmtree of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

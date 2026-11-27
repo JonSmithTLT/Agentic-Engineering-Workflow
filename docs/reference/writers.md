@@ -564,6 +564,10 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/packs/{}/pack.md`
   - `aew.engine.context_ops:ContextPacks.build_pack` (direct: atomic_write)
   - `aew.engine.context_ops:ContextPacks.context_pack` (direct: atomic_write)
+- `local/pinned`, named by `aew.engine.pinned_copies:DIR`
+  - `aew.engine.pinned_copies:keep` (direct: Path.mkdir)
+- `local/pinned/{}`
+  - `aew.engine.pinned_copies:keep` (direct: atomic_write)
 - `local/recall`
   - `aew.engine.recall:Substrate._connect` (direct: Path.mkdir)
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`
@@ -872,13 +876,14 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.kit.receipt:write_receipt` (direct: atomic_write): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit:prepare` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit:prepare` (direct: Path.write_text): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.operator_adopt:adopt` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main` (direct: Path.write_text): `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
-- `aew.switch_offer:_restore` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
-- `aew.switch_offer:_restore` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.switch_offer:_take` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove` (direct: shutil.rmtree): `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

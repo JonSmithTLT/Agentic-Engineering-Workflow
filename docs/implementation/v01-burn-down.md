@@ -3,8 +3,8 @@
 **Status:** living implementation document (operator, 2026-11-26: a V-01 burn-down plan page, its missing rows filed,
 and a check that keeps it from going stale). It is not a design and decides nothing: each fix is its register row's,
 and each question below is the operator's or the designer's. The operator answered Q1, Q5, Q7 and Q10 on 2026-11-26.
-The alpha scripted gate passed at the re-measure of 2026-11-27 (`f848983e`); the strict gate still fails 4 of its 8
-cases (below, "The order"). It changes no threshold: those are
+The alpha scripted gate passed at the re-measure of 2026-11-27 (`f848983e`); the strict gate still fails 4 of the 8
+cases the alpha reads, and its other ten were not re-run (below, "The order"). It changes no threshold: those are
 [`vertical-uat.md`](vertical-uat.md)'s, which only the operator changes.
 
 **What it maps.** V-01's acceptance oracle, the [vertical UAT](vertical-uat.md), is red on Linux. This page maps the
@@ -138,7 +138,7 @@ designer's session's to decide:
 Two tracks. The alpha gate is the personal alpha's scripted gate ([the register](future-work.md), §1;
 `tests/helpers/vertical/alpha.py`), which excuses the G3 steps not yet landed. The strict gate is the vertical itself.
 
-**The alpha gate** is the near-term bar (the operator's answer to Q7). The re-measure's ledgers of 2026-11-26 failed it on two lines, V1's decisions and V2-forced's takeover; both are clear since the three fixes below.
+**The alpha gate** is the near-term bar (the operator's answer to Q7). The re-measure's ledgers of 2026-11-26 failed it on two lines, V1's decisions and V2-forced's takeover; both are clear since C1 and C7 below.
 1. **C15** (E385, done: #602 merged on 2026-11-26). It turns G3 #213 green and does not touch the alpha.
 2. **C1** (E335, done: #597). It clears the alpha's V1 line.
 3. **C7 + C8** (E376 and E377, done: #603). It clears the V2-forced line. **The alpha is then
@@ -161,8 +161,9 @@ records it.
 - **Alpha receipt: NOT RECORDED.** It is a real-model run the operator starts, not part of the scripted gate.
 - **Each case ran once,** so the pass does not show stability.
 
-The strict gate at the same measure still fails 4 of the 8. Each failure, as the measure's report reads it, and the
-clusters it maps to:
+The strict gate still fails 4 of the 8 cases the alpha reads; its other ten were not re-run, since the alpha does not
+read them: V1 compatible-move, the V2 exit/kill and steering-on cases, V2 same-shell, V3 stale-lead-session, V4 and
+G3 #213. Each failure of the 8, as the measure's report reads it, and the clusters it maps to:
 
 | Case | Strict | Fails on | Clusters |
 |---|---|---|---|

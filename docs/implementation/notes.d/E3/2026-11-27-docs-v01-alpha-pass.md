@@ -21,7 +21,7 @@ is meant to be fixed by a future E3 pull request.
 - **(c) A full re-run of a `ci.yml` run leaves `assurance` failing.** After the re-run, the attempt-1 `lane-report-*`
   artifacts stay listed but their stored file returns 404 (`Failed to GetSignedArtifactURL: ... (404) Not Found:
   artifact not found`), and `assurance` downloads every `lane-report-*` (`ci.yml:459`, `:464`), so it stops on that
-  one every time. Seen on run 45831204645 (#612; attempts 2 and 3, artifact 15135839858,
+  one every time. Seen on run 45831204645 (#612; attempt 2, a full re-run, and attempt 3, a re-run of `assurance` only; artifact 15135839858,
   `lane-report-evidence-lane-report-Linux-integration-8-step-5-attempt-1`) and run 45838021798 (#623, attempt 2).
   The fix there was a fresh run, through a merge of `main` with the operator's go-ahead. Meant to fix it: `assurance`
   reads only the reports of each lane's newest attempt.

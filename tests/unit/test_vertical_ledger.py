@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from vertical import ledger as L
 
@@ -812,3 +813,37 @@ def test_a_scripted_lead_thread_that_dies_is_a_harness_fault_in_the_ledger():
     led.lead_event(events[0])
     assert "harness faults: lead.thread_died" in led.summary()
     assert "lead silent or ended" not in led.summary()
+
+
+def test_the_call_in_flight_at_the_kill_is_the_scenarios_never_the_leads_refusal():
+    """E386: the call the killed session had in flight is refused BROKER_UNREACHABLE because the kill took the broker
+    with it. It is recorded as the scenario's and shown, never counted under refusals. The rule is that narrow: the
+    same refusal from a session the test did not kill counts, so does any other code from the killed one, and so does
+    a refusal the killed session called past (it was not the call in flight)."""
+    def call(session: str, code: str, tool: str = "ticket_start") -> dict[str, Any]:
+        return {"kind": "call", "via": "mcp", "tool": tool, "arguments": {"work_id": "T-0001"}, "offered": True,
+                "session": session, "ok": False, "stopped": {"error": {"code": code, "message": "m"}}}
+
+    led = L.Ledger("V2-forced-mid-stage")
+    led.session_killed("killed")
+    led.lead_event(call("killed", "BROKER_UNREACHABLE"))
+    assert led.counts()["refusals"] == 0 and "refusals" not in led.over()
+    (seen,) = [o for o in led.observations if o["kind"] == "killed_in_flight"]
+    assert seen["evidence"]["tool"] == "ticket_start"
+    assert "the scenario's (refused in flight at the kill): ticket_start BROKER_UNREACHABLE" in led.summary()
+
+    led.lead_event(call("reopened", "BROKER_UNREACHABLE"))  # the session the test did not kill
+    assert led.counts()["refusals"] == 1 and [o for o in led.observations if o["kind"] == "killed_in_flight"]
+
+    other = L.Ledger("V2-forced-mid-stage")
+    other.session_killed("killed")
+    other.lead_event(call("killed", "STALE_REVISION", tool="stale_hint"))  # another code, from the killed one
+    assert other.counts()["refusals"] == 1
+
+    past = L.Ledger("V2-forced-mid-stage")
+    past.session_killed("killed")
+    past.lead_event(call("killed", "BROKER_UNREACHABLE"))
+    past.lead_event({"kind": "call", "via": "mcp", "tool": "status", "arguments": {}, "offered": True,
+                     "session": "killed", "ok": True})
+    assert past.counts()["refusals"] == 1
+    assert not [o for o in past.observations if o["kind"] == "killed_in_flight"]

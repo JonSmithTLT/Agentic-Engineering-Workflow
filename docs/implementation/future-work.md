@@ -4050,18 +4050,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E384/`, oldest first (`python tools/register.py show E384`).*
 
-### E386
-
-**Work:** The forced kill's own refusal is not the Lead's: in V2's forced case, the call in flight when the test kills the session mid-stage (`ticket_start`, refused `BROKER_UNREACHABLE`) is recorded as the scenario's, not counted under the Lead's `refusals`, a one-line rule beside E338's excuses
-
-**Source:** The V-01 burn-down plan (`docs/implementation/v01-burn-down.md`, C16), from the vertical's re-measure of 2026-11-26 at `3640b585`
-
-**When:** **V-01**, the strict track of the burn-down, beside E338
-
-**Notes:** Filed by the V-01 burn-down PR of 2026-11-26
-
-*Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
-
 ### E387
 
 **Work:** The vertical's offline world stays offline under `aew doctor`: its `provider-relay` rows (`src/aew/doctor.py:160`, `src/aew/harness/doctor_relay.py`) send the world's synthetic OpenCode login to the real provider host, which answers HTTP 401, in every V3 case. The world gives doctor's relay probe a local upstream, or the probe is held off in it, so no offline case reaches a real host
@@ -5445,6 +5433,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** PR #602 (`e58ffdb1`): the offline world's `containment.writable` fixture holds the test's children directory while an autopsy session runs, and the G3-213 vertical case passes on its unchanged assertions. Filed and closed by the V-01 burn-down PR (#601), which merged second
 
 *Later notes: `notes.d/E385/`, oldest first (`python tools/register.py show E385`).*
+
+### E386
+
+**Was:** The forced kill's own refusal is not the Lead's: in V2's forced case, the call in flight when the test kills the session mid-stage (`ticket_start`, refused `BROKER_UNREACHABLE`) was counted under the Lead's `refusals` (cluster C16 of the V-01 burn-down, `docs/implementation/v01-burn-down.md`)
+
+**Closed:** 2026-11-27
+
+**By:** The pull request from `feat/e386-forced-kill-refusal`: the scripted operator tells the ledger which Lead session it killed, and the ledger records that session's last call, when it is refused `BROKER_UNREACHABLE`, as the scenario's (`killed_in_flight`, shown in the summary) instead of counting it under `refusals`; any other code, any other session, or a call the killed session made after it still counts (`vertical-uat.md` §4's `refusals` row amended). The re-measure of 2026-11-27 (`f848983e`) did not observe the refusal, so no counter moves today
+
+*Later notes: `notes.d/E386/`, oldest first (`python tools/register.py show E386`).*
 
 ### E388
 

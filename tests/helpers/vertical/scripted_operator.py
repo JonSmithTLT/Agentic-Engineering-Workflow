@@ -123,6 +123,7 @@ class Session:
     err: Path
     pidfile: Path
     tty: int | None = None  # the master of the pseudo-terminal the session runs on (Linux), while it is open
+    lead_session: str = ""  # the open's id the scripted Lead stamps on its events (Operator.new_session)
 
     def ended(self) -> bool:
         return self.proc.poll() is not None
@@ -293,7 +294,7 @@ class Operator:
             proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
                                              stdout=o, stderr=e, resume_prompt=resume_prompt)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
-        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
+        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master, lead_session=lead_spec["session"])
         self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
@@ -448,6 +449,7 @@ class Operator:
 
                 os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
+            self.ledger.session_killed(session.lead_session)
         try:
             code = session.proc.wait(EXIT_S)
         except subprocess.TimeoutExpired:

@@ -265,6 +265,8 @@ class Ledger:
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
         self.seq = 0
+        self.killed: set[str] = set()  # the Lead sessions the test killed (V2's forced case), by their open's id
+        self.in_flight: dict[str, dict[str, Any]] = {}  # each killed session's last call, when its broker was gone
 
     # ------------------------------------------------------------------ recording
 
@@ -374,6 +376,10 @@ class Ledger:
         if _starts(words, LIFECYCLE_COMMANDS):
             self.count("lifecycle_steps", evidence, actor="operator", step=step)
 
+    def session_killed(self, session: str) -> None:
+        """The test killed the Lead session ``session`` (its open's id) from outside, as V2's forced case does."""
+        self.killed.add(session)
+
     def lead_event(self, event: dict[str, Any]) -> None:
         """One event from the scripted Lead's own accounting (the ground truth for its calls, spec §4)."""
         kind = event.get("kind")
@@ -405,8 +411,22 @@ class Ledger:
         if "expect_rev" in flat or "--expect-rev" in flat:
             self.count("revision_args", evidence, actor="lead", step=step,
                        note="supplied by the projection" if e.get("offered") else "")
+        session = e.get("session")
+        if (earlier := self.in_flight.pop(session, None)) is not None:  # not its last call: the Lead's after all
+            self.observations.remove(earlier)
+            self.count("refusals", earlier["evidence"], actor="lead", step=earlier["step"])
         if e.get("ok") is False:
-            self.count("refusals", {**evidence, "stopped": e.get("stopped")}, actor="lead", step=step)
+            refused = {**evidence, "stopped": e.get("stopped")}
+            code = ((e.get("stopped") or {}).get("error") or {}).get("code")
+            if session in self.killed and code == "BROKER_UNREACHABLE":
+                # The call in flight when the test killed the session is refused because the kill took the broker
+                # with it: the scenario's doing, recorded and never the Lead's refusal (register E386). Only the
+                # session's last call: a later one from it counts this refusal after all.
+                self.observe("killed_in_flight", evidence=refused, step=step,
+                             note="the call in flight when the test killed the session")
+                self.in_flight[session] = self.observations[-1]
+            else:
+                self.count("refusals", refused, actor="lead", step=step)
         if e.get("mechanical"):
             self.count("mechanical_calls", evidence, actor="lead", step=step,
                        note="steering on" if self.steering else "steering off: measured, not held to 0")
@@ -506,6 +526,10 @@ class Ledger:
         if staled:  # which actor's commit staled each STALE_REVISION the Lead met (the loop's, or another's)
             lines.append("stale revisions, staled by: " + "; ".join(
                 f"{o.get('tool')} at {o.get('expect_rev')}: {o.get('op')}, {o.get('by')}" for o in staled))
+        for o in self.observations:  # recorded as the scenario's, not counted under refusals (register E386)
+            if o["kind"] == "killed_in_flight":
+                lines.append(f"the scenario's (refused in flight at the kill): {o['evidence'].get('tool')} "
+                             f"{((o['evidence'].get('stopped') or {}).get('error') or {}).get('code')}")
         lines.append("operator fallbacks: " + (", ".join(o.get("step") or "?" for o in self.operator_fallbacks())
                                                or "none"))
         for name, r in sorted(self.hard_limits.items()):

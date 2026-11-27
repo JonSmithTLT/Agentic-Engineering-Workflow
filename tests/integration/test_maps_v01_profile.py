@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 from aewflow import create_investigation, dispatch, sample_project
+from sleep_patch import patch_clock
 
 from aew.maps import freshness as F
 from aew.maps import gitobjects, rules, service, slices, store, structural
@@ -215,8 +216,9 @@ def test_no_map_freshness_turns_current_on_a_timer(tmp_path, monkeypatch):
     b = g("rev-parse", "HEAD", cwd=commit(repo))
     first = F.freshness(repo, record, b, service.identity())
     later = time.time() + 365 * 24 * 3600
-    monkeypatch.setattr(time, "time", lambda: later)
-    monkeypatch.setattr(time, "monotonic", lambda: later)
+    # This thread's clock only: the worker's session deadline reads the same `time` module (main's run 45997128944)
+    patch_clock(monkeypatch, "time", lambda: later)
+    patch_clock(monkeypatch, "monotonic", lambda: later)
     F.clear_cache()
     assert F.freshness(repo, record, b, service.identity()) == first
     assert first["status"] == "STALE" and first["reasons"] == ["path_listing"]

@@ -1,4 +1,4 @@
-"""Patching ``time.sleep`` for one test's own thread only.
+"""Patching ``time.sleep``, and the clocks of ``time``, for one test's own thread only.
 
 ``module.time`` is the one shared ``time`` module, so ``monkeypatch.setattr(module.time, "sleep", ...)`` replaces
 ``sleep`` for every thread in the worker process, not only for the code under test. A thread an earlier test left
@@ -13,6 +13,12 @@ others: ``setattr`` or ``patch.object`` with positional arguments ``time`` (or `
 binding, a ``from time import sleep`` binding and a ``time`` module bound to another name are not seen: the reviewer
 reads for them. No check by binding is done (see that module's docstring).
 
+:func:`patch_clock` does the same for a clock (``time.time``, ``time.monotonic``, ...). The worker's own threads read
+the shared clocks: the session deadline's thread (``session_deadline.Worker``) wakes at least once a minute and exits
+the worker when ``time.monotonic()`` is past its deadline. On ``main``'s push run 45997128944 (Windows, integration
+14/14) ``test_no_map_freshness_turns_current_on_a_timer`` moved ``time.monotonic`` a year ahead for every thread, that
+thread woke inside the patch, and gw2 exited 1.4 s into the test, 20 minutes before the real deadline.
+
 This module imports nothing from AEW: helper children may load it.
 """
 
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from types import ModuleType
 
 import pytest
@@ -44,3 +51,19 @@ def patch_sleep(monkeypatch: pytest.MonkeyPatch, module: ModuleType) -> list[flo
 
     monkeypatch.setattr(module.time, "sleep", sleep)
     return sleeps
+
+
+def patch_clock(monkeypatch: pytest.MonkeyPatch, name: str, reading: Callable[[], float]) -> None:
+    """Replace the shared ``time`` module's clock ``name`` with ``reading``, for the calling thread only.
+
+    Every other thread reads the real clock, so the worker's session deadline, the hang watchdog and a thread an
+    earlier test left running are not moved with the test's clock. Call it from the test's own thread, as
+    :func:`patch_sleep`. A module that bound the clock at import (``from time import monotonic``) is not reached.
+    """
+    real = getattr(time, name)
+    owner = threading.get_ident()
+
+    def clock() -> float:
+        return reading() if threading.get_ident() == owner else real()
+
+    monkeypatch.setattr(time, name, clock)

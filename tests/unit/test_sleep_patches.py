@@ -31,7 +31,7 @@ import types
 from pathlib import Path
 
 import pytest
-from sleep_patch import patch_sleep
+from sleep_patch import patch_clock, patch_sleep
 
 TESTS = Path(__file__).resolve().parents[1]
 # This module plants the banned spellings below; the helper is the one sanctioned patch.
@@ -188,3 +188,25 @@ def test_patch_sleep_records_and_skips_its_own_threads_sleeps_and_other_threads_
     assert sleeps == [30]
     assert skipped_for < 5  # a skip that regressed to a real sleep would take 30 s
     assert len(slept) == 1 and slept[0] >= 0.04
+
+
+def test_a_clock_a_test_moves_a_year_ahead_is_never_the_clock_another_thread_reads(monkeypatch):
+    """The worker's session-deadline thread compares ``time.monotonic()`` with its deadline; a clock moved for every
+    thread ended gw2 on main's push run 45997128944 (``sleep_patch``'s docstring). Only the patching thread's reads
+    move."""
+    later = time.time() + 365 * 24 * 3600
+    patch_clock(monkeypatch, "time", lambda: later)
+    patch_clock(monkeypatch, "monotonic", lambda: later)
+    seen: dict[str, float] = {}
+
+    def other():
+        seen["time"], seen["monotonic"] = time.time(), time.monotonic()
+
+    thread = threading.Thread(target=other)
+    thread.start()
+    thread.join(10)
+    assert time.time() == time.monotonic() == later  # the patching thread's clock moved
+    assert seen["time"] < later - 300 * 24 * 3600 and seen["monotonic"] < later - 300 * 24 * 3600
+    monkeypatch.undo()
+    assert time.time() < later - 300 * 24 * 3600
+

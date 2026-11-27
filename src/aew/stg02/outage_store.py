@@ -313,7 +313,7 @@ class OutageStore:
         contradictions = self.engine.contradictions(self.state, pinned_failures=pin_failures)
         snap = Snapshot(self.engine, self.state, manifest, {}, self.now)
         results = []
-        for item in Projector(snap).attention_items(include_notifier=False, contradictions=contradictions):
+        for item in Projector(snap).attention_items(host=False, contradictions=contradictions):
             subject = item["subject"]
             wid = subject["id"]
             unit = self.state["work"].get(wid)

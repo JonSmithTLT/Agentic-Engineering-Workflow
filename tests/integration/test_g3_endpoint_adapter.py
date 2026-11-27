@@ -9,6 +9,7 @@ import json
 import re
 import threading
 import time
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -126,6 +127,17 @@ def test_an_approval_consumed_raises_the_mode_and_its_record_names_the_consent(s
     origin = record["by"]["principal"]["origin"]
     assert origin["kind"] == "g3" and origin["consent_set_ref"] == steered.fake.consumed[0]["consent_set_ref"]
     assert steered.fake.consumed[0]["operation_ref"].startswith("aew:steering-raise:")
+
+
+def test_a_record_the_endpoint_cannot_write_stops_nothing_and_its_console_says_the_view_will_not_show_it(
+        steered, endpoint, monkeypatch, tmp_path):
+    """A-44 BOY-05.a: the endpoint's G3 path keeps the approval's record as the command does, and says so as the
+    command does when it cannot (#660 review, m2); the raise goes ahead."""
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(g3client, "RECORDS_OVERRIDE", blocker / "requests")
+    assert _raise(steered)["mode"] == MODE
+    assert any("record cannot be written" in line and "will not show this wait" in line for line in endpoint.lines)
 
 
 def test_a_background_endpoint_with_no_terminal_raises_on_an_approval(steered):
@@ -422,7 +434,7 @@ def judged(steered, monkeypatch):
     """The real standing, on the project's real policy: only the host's conditions, 1 and 3, are stood in."""
     monkeypatch.setattr(g3standing, "standing", REAL_STANDING)
     monkeypatch.setattr(g3standing, "installed", lambda platform=None: None)
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: None)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: None)
     return steered
 
 
@@ -464,6 +476,16 @@ def test_a_requester_that_has_gone_ends_the_wait_and_says_so_and_frees_the_endpo
         assert time.monotonic() < deadline, "the wait did not end"
         time.sleep(0.01)
     assert any(approval in line for line in endpoint.lines) and steered.fake.consumed == [] and _mode(steered) != MODE
+    # The endpoint's G3 path keeps the approval's per-host record as every G3 client does (A-44 BOY-05.a), and it
+    # ends with the request: the view says nothing will submit it (BOY-05.b), FYI
+    from aew import g3records
+    from aew.engine import attention
+
+    [found] = [f for f in g3records.read_all() if f.record and f.record["approval_ref"] == approval]
+    assert found.record["exited_at"] and found.record["outcome"] is None
+    assert found.record["project"] == steered.engine.manifest["project"]["id"]
+    at = g3records.parse_time(found.record["expires_at"]) - timedelta(seconds=1)  # the fake service's own clock
+    assert attention.approval_state(found.record, at, alive=True)[0] == "g3_approval.client_gone"
     steered.fake.undecided = False
     assert _raise(steered)["mode"] == MODE, "the endpoint is free again"
 

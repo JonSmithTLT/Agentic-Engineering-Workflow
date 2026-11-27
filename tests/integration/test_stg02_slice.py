@@ -506,7 +506,7 @@ def g3_owner(live: Live, monkeypatch: pytest.MonkeyPatch) -> G3Owner:
     monkeypatch.setattr(C, "consume", consume)
     monkeypatch.setattr(S, "standing", standing)
     monkeypatch.setattr(S, "installed", lambda **_: None)
-    monkeypatch.setattr(S, "no_weaker_context", lambda *_: None)
+    monkeypatch.setattr(S, "no_weaker_context", lambda *_, **__: None)
     # The policy's own words decide, on either platform
     monkeypatch.setattr(containment, "supported", lambda: True)
     monkeypatch.setattr(netns, "mode", lambda policy: netns.settings(policy).get("mode"))
@@ -701,7 +701,7 @@ def test_each_condition_of_the_standing_failing_alone_holds_the_member_and_never
         monkeypatch.setattr(live.s.engine.engine, "execution_policy",
                             lambda: ({"containment": {"mode": "allow_weaker"}}, None))
     else:
-        monkeypatch.setattr(S, "no_weaker_context", lambda *_: ("planted: a weaker context", "end it"))
+        monkeypatch.setattr(S, "no_weaker_context", lambda *_, **__: ("planted: a weaker context", "end it"))
     req = attach_set(cfg, f"standing-{condition}")
     st, h, r = live.post(req)
     receipt_ok(req, st, h, r, T0)
@@ -836,7 +836,7 @@ def test_the_routes_log_says_why_a_member_was_held_and_holds_neither_the_proof_n
     g3_owner.answers[:] = [C.Consumed(None, "planted: the service refused the request: STRUCTURAL")]
     req = attach_set(cfg, "log-no-result")
     live.post(req)
-    monkeypatch.setattr(S, "no_weaker_context", lambda *_: ("planted: a weaker context", "end it"))
+    monkeypatch.setattr(S, "no_weaker_context", lambda *_, **__: ("planted: a weaker context", "end it"))
     live.post(attach_set(cfg, "log-standing"))
     said = caplog.text
     assert "planted: the service refused the request: STRUCTURAL" in said and "planted: a weaker context" in said

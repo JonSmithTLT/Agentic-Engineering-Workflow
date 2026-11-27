@@ -48,7 +48,7 @@ def world(project, tmp_path, monkeypatch):
     confirmer = tmp_path / "aew-g3-confirm"
     confirmer.write_bytes(b"")
     monkeypatch.setattr(g3standing, "CONFIRMER", str(confirmer))
-    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: None)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, sweep=True: None)
     lines: list[str] = []
     ep = operator_endpoint.OperatorEndpoint(Engine.discover(project.root), console=lines.append, dev=True, timeout=30)
     ep.start()

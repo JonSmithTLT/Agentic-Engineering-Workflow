@@ -57,8 +57,19 @@ None.
 ### `aew.g3client`
 
 - `aew.errors`
+- `aew.g3records`
 - `aew.stg02.g3_overlay`
 - `aew.stg02.wire`
+
+### `aew.g3records`
+
+- `aew.engine.base`
+- `aew.errors`
+- `aew.g3client`
+- `aew.harness.procs`
+- `aew.harness.weaker_register`
+- `aew.knowledge.manifest`
+- `aew.util`
 
 ### `aew.g3standing`
 
@@ -270,6 +281,7 @@ None.
 - `aew.cli.work_commands`
 - `aew.doctor`
 - `aew.engine.api`
+- `aew.engine.attention`
 - `aew.engine.dispatch`
 - `aew.engine.first_configuration`
 - `aew.engine.reports`
@@ -329,6 +341,7 @@ None.
 - `aew.engine.custody_ops`
 - `aew.errors`
 - `aew.g3client`
+- `aew.g3records`
 - `aew.g3standing`
 
 ### `aew.cli.history_commands`
@@ -501,6 +514,7 @@ None.
 - `aew.dashboard.reader`
 - `aew.dashboard.reasons`
 - `aew.engine.archive_ops`
+- `aew.engine.attention`
 - `aew.engine.disposition_ops`
 - `aew.engine.freshness`
 - `aew.engine.history_ops`
@@ -508,6 +522,7 @@ None.
 - `aew.engine.recall`
 - `aew.engine.transitions`
 - `aew.errors`
+- `aew.g3standing`
 - `aew.harness.containment`
 - `aew.harness.contract`
 - `aew.harness.notify`
@@ -708,6 +723,17 @@ None.
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
+
+### `aew.engine.attention`
+
+- `aew.errors`
+- `aew.g3client`
+- `aew.g3records`
+- `aew.g3standing`
+- `aew.harness.contract`
+- `aew.harness.notify`
+- `aew.harness.procs`
+- `aew.harness.runlog`
 
 ### `aew.engine.authority`
 
@@ -1332,6 +1358,7 @@ None.
 
 ### `aew.engine.status_ops`
 
+- `aew.engine.attention`
 - `aew.engine.base`
 - `aew.engine.hierarchy`
 - `aew.harness.notify`
@@ -1576,6 +1603,7 @@ None.
 - `aew.capability.status`
 - `aew.capability.store`
 - `aew.errors`
+- `aew.g3client`
 - `aew.harness.containment.client_cert`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.login`
@@ -1711,6 +1739,7 @@ None.
 
 - `aew.errors`
 - `aew.g3client`
+- `aew.g3records`
 - `aew.g3standing`
 - `aew.stg02.wire`
 

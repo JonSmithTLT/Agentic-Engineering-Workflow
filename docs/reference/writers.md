@@ -820,6 +820,9 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.engine.migrate_ops:Migration.discard_unreachable` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.store:ControlStore._remove_temp_files` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.validation_ops:Validation.establish` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.g3records:Writer._write` (direct: Path.mkdir): the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:Writer._write` (direct: atomic_write): the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:prune` (direct: Path.unlink): the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.check_changes:remove_copy.writable` (direct: os.rmdir): `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:remove_copy.writable` (direct: os.unlink): `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:run_copy` (direct: Path.unlink): a loop variable over `changed_paths`, which a call leaves out; a loop variable over `paths`, a list this reading cannot read

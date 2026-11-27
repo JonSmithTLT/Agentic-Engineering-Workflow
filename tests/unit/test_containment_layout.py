@@ -993,6 +993,25 @@ def test_an_operator_root_that_holds_aews_host_state_is_refused(tmp_path, monkey
                           workspaces=str(tmp_path / "workspaces"))
 
 
+def test_an_operator_root_that_holds_the_g3_approval_records_is_refused(tmp_path, monkeypatch, fake_bwrap):
+    """A-44 BOY-05.a: only the G3 clients write the per-host approval records, so a policy root that is, contains or
+    lies under their directory is refused, as AEW's host state is; one beside it is not (#660 review)."""
+    from aew import g3client
+
+    _, ws = repo_with_worktree(tmp_path)
+    state = tmp_path / "state"
+    records = state / "aew" / "g3" / "requests"
+    records.mkdir(parents=True)
+    (tmp_path / "beside").mkdir()
+    monkeypatch.setattr(g3client, "RECORDS_OVERRIDE", records)
+    guarded = L._guarded(ws, project=None, runs=None, bridge_dir=None, masks=(), host=())
+    for root in (state, state / "aew", records):
+        with pytest.raises(ContainmentUnavailable, match="the G3 clients' approval records"):
+            L._refuse_unsafe_root(str(root), L._real(root), guarded, workspaces=str(tmp_path / "workspaces"))
+    L._refuse_unsafe_root(str(tmp_path / "beside"), L._real(tmp_path / "beside"), guarded,
+                          workspaces=str(tmp_path / "workspaces"))
+
+
 def test_a_layout_survives_score_childs_json_round_trip_with_the_same_argv():
     """eval's scoring child rebuilds its layout from JSON (``dataclasses.asdict``, then lists back to tuples): the new
     fields, the exceptions' pairs among them, give the same sandbox."""

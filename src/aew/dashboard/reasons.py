@@ -30,8 +30,9 @@ REASONS: dict[str, str] = {
                            "enable history"),
     "HISTORY_INDEX_UNAVAILABLE": "the history index could not be read or synced",
     "NOT_IN_CONTRACT_0_1_2": "no route of contract 0.1.2 projects this; a later contract version may",
-    "AWAITS_ACTION_PROJECTION": "this dashboard route does not project actions. The typed Lead surface provides its "
-                                "own action projection (register F15.1)",
+    "AWAITS_ACTION_PROJECTION": "this dashboard route does not project actions yet: the dashboard half of the "
+                                "typed-surface projection is not built (register E18). The overview lists what "
+                                "waits on you",
     # raw-history search (register F20.8, S2): the capability, then the coverage of one search
     "FTS5_UNAVAILABLE": "this Python's SQLite has no usable FTS5, which raw-history search needs; nothing else is "
                         "affected",
@@ -63,6 +64,13 @@ REASONS: dict[str, str] = {
     "RUN_LOST": "a harness run's supervisor stopped reporting",
     "RUN_UNREADABLE": "a harness run has a fresh heartbeat but its status could not be read",
     "RUN_CRASHED": "a harness run ended abnormally",
+    # G3 approvals this host's client recorded (A-44 BOY-05.b; register E101): each state's own words are the message
+    "G3_APPROVAL_WAITING": "a G3 approval AEW started on this host waits for your decision in AEW approvals",
+    "G3_APPROVAL_UNKNOWN": "a G3 approval's state cannot be read now",
+    "G3_APPROVAL_CLIENT_GONE": "the client that started this G3 approval has ended, so nothing will submit it",
+    "G3_APPROVAL_DECIDED": "a recent G3 approval's outcome",
+    "G3_APPROVAL_NOT_FOUND": "the G3 service no longer knows this approval",
+    "G3_APPROVAL_EXPIRED_UNKNOWN": "a G3 approval passed its expiry with no outcome recorded",
     "NOTIFY_DELIVERY_FAILED": "the operator endpoint could not deliver a notification through the configured notifier",
     "MANIFEST_PIN_MISMATCH": "project.yaml does not match the hash control state pins",
     "POLICY_PIN_MISMATCH": "a policy file project.yaml names does not match the hash control state pins",

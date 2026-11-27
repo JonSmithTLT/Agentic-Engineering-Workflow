@@ -1442,6 +1442,10 @@ def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os
     # ruling 2 (G3 addendum 7): the register lives outside every sandbox's writable binds (#321 review, F7)
     out.append(("AEW's host state (the capability register and the register of weaker contexts)",
                 _real(hoststate.root())))
+    # the G3 clients' approval records stay outside every sandbox's writable binds too (A-44 BOY-05.a; #660 review)
+    from aew.g3client import approval_records_dir
+
+    out.append(("the G3 clients' approval records", _real(approval_records_dir())))
     # each secret named by what it is, so the refusal says why (CS-4 addendum 8, ruling 1)
     out += [(f"{secret}, a masked secret", p) for p, secret in masks]
     out += [(f"{secret}, a secret path left out of the sandbox whether or not it exists", p) for p, secret in left_out]

@@ -7,9 +7,10 @@ decides every conclusion the frontend shows (counts, blockers, capability states
 
 Capabilities (R18, as the designer decided on 2026-10-05): ``overview``, ``work``, ``runs``, ``evidence``,
 ``knowledge`` and ``activity`` are AVAILABLE; ``history`` and ``integrity`` are AVAILABLE on a v2 project whose index
-syncs; ``queue`` is UNSUPPORTED (no route in 0.1.2); ``action_projection`` is UNSUPPORTED until the typed Lead
-surface's ``ActionProjection`` (F15.1) is its source, so ``/attention`` answers 403 meanwhile, while ``/overview``'s
-bounded ``attention`` list and ``Work.has_attention`` carry the engine facts the backend already provides.
+syncs; ``queue`` is UNSUPPORTED (no route in 0.1.2); ``action_projection`` is UNSUPPORTED until the dashboard half of
+the typed-surface projection is built (register E18), so ``/attention`` answers 403 meanwhile, while ``/overview``'s
+bounded ``attention`` list and ``Work.has_attention`` carry the attention module's items (:mod:`aew.engine.attention`,
+A-44 S1): waiting G3 approvals first, then the engine's alert events.
 ``history_search`` (contract 0.1.3, register F20.8 S2) exists only while the adopted execution policy switches
 raw-history search on; absent, it is "not offered on this project", never UNKNOWN.
 
@@ -44,6 +45,7 @@ from aew.dashboard import mapview as MV
 from aew.dashboard.etag import SNAPSHOT_TIME, canonical_json
 from aew.dashboard.reader import INVALID, NONE, MapsReader, Registry, Snapshot
 from aew.dashboard.reasons import reason
+from aew.engine import attention as AT
 from aew.engine import outbox, recall
 from aew.engine import transitions as T
 from aew.engine.archive_ops import VERIFIER_MASK, held_evidence, is_v2
@@ -261,13 +263,15 @@ class Projector:
     """Every projection of one snapshot. Nothing here writes."""
 
     def __init__(self, snapshot: Snapshot, *, route: str | None = None, maps: MapsReader | None = None,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic,
+                 wall: Callable[[], datetime] = lambda: datetime.now(UTC)) -> None:
         self.s = snapshot
         self.route = route  # the contract route being answered: it decides the envelope's version
         self.maps = maps  # the server's maps reader and its caches (the maps routes; register F20.8)
         # What the history search's deadline is read from and judged by, down to the engine's substrate: the real
         # monotonic clock unless a test drives it (only the server passes it on).
         self.clock = clock
+        self.wall = wall  # the wall clock the approvals' states are judged on (A-44 BOY-05.b): a test may drive it
         self.state = snapshot.state
         self.engine = snapshot.engine
         self.archive = snapshot.engine.archive
@@ -277,6 +281,7 @@ class Projector:
         # to, and the evidence ids each archived unit's bundle records (None: no bundle).
         self._evidence_units: dict[str, str | None] = {}
         self._archived_ids: dict[str, frozenset[str] | None] = {}
+        self._view: dict[str, Any] | None = None
         self._attention: list[dict[str, Any]] | None = None
         self._observed: dict[str, tuple[str, dict[str, Any] | None]] = {}
 
@@ -388,20 +393,10 @@ class Projector:
         return kids
 
     def _updated_at(self, unit: dict[str, Any]) -> str:
-        history = unit.get("history") or []
-        if history and isinstance(history[-1], dict) and history[-1].get("at"):
-            return str(history[-1]["at"])
-        return str(unit.get("created_at") or SNAPSHOT_TIME)
+        return AT.updated_at(unit) or SNAPSHOT_TIME
 
     def _blockers(self, unit: dict[str, Any]) -> list[dict[str, Any]]:
-        out = []
-        for b in unit.get("blocked_by") or []:
-            if not isinstance(b, dict):
-                continue
-            parts = [str(b.get("kind", "blocked"))]
-            parts += [f"{k}={v}" for k, v in sorted(b.items()) if k != "kind" and isinstance(v, (str, int))]
-            out.append(reason("BLOCKED_BY", " ".join(parts)))
-        return _bounded(out)
+        return [reason(b["code"], b["message"]) for b in AT.blockers(unit)]
 
     def _rollup(self, wid: str, unit: dict[str, Any]) -> dict[str, Any] | None:
         if unit["kind"] == "ticket" or wid not in self.state["work"]:
@@ -497,77 +492,50 @@ class Projector:
     def _attention_ids(self) -> set[str]:
         return {item["subject"]["id"] for item in self.attention_items() if item["subject"]["kind"] == "work"}
 
-    def attention_items(self, *, include_notifier: bool = True,
+    def attention_view(self, *, host: bool = True, contradictions: list[str] | None = None) -> dict[str, Any]:
+        """The attention module's view of this snapshot (A-44 BOY-02; register E101): its items, ordered, and each
+        host source's outcome. ``host=False`` reads committed records only (the outage reader's)."""
+        from aew import g3standing
+        from aew.harness import notify
+
+        if host and self._view is not None and contradictions is None:
+            return self._view
+
+        def established() -> bool:  # read only: the weaker register is not swept from here
+            try:
+                policy = self.engine.execution_policy()[0]
+            except AEWError:
+                policy = None
+            return g3standing.standing(policy, sweep=False).counts
+
+        found = AT.view(self.state, project=entity(self.s.project_id, "project", self.s.project_name),
+                        contradictions=self._contradictions() if contradictions is None else contradictions,
+                        observe=lambda run: self._observe(run)[0],
+                        notifier=notify.summary(self.s.aew_root) if host else None, host=host,
+                        established=established, now=self.wall())
+        if host and contradictions is None:
+            self._view = found
+        return found
+
+    def attention_items(self, *, host: bool = True,
                         contradictions: list[str] | None = None) -> list[dict[str, Any]]:
-        """Attention from engine facts: units in a state the Lead must act on, blockers, contradictions, lost or
-        crashed runs. Shown through ``/overview`` (bounded) and ``Work.has_attention``; the ``/attention`` route
-        waits for the canonical action projection (F15.1)."""
-        if include_notifier and self._attention is not None:
+        """The attention module's items as contract 0.1.3's ``Attention`` (unchanged): waiting items first, then the
+        engine's alert events. Shown through ``/overview`` (bounded) and ``Work.has_attention``; the ``/attention``
+        route waits for the dashboard half of the typed-surface projection (register E18)."""
+        memo = host and contradictions is None
+        if memo and self._attention is not None:
             return self._attention
-        items: list[dict[str, Any]] = []
-        for wid, unit in sorted(self.state["work"].items()):
-            st = unit["state"]
-            if st in ("ESCALATED", "REPLAN_REQUIRED"):
-                kind, severity = "decision_required", "high"
-            elif st in ("REVIEW_FAILED", "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE"):
-                kind, severity = "required_finding", "medium"
-            elif st == "BLOCKED" and unit.get("blocked_by"):
-                kind, severity = "blocker", "low"
-            elif st == "INTERRUPTED":
-                kind, severity = "anomaly", "medium"
-            else:
-                continue
-            reasons = ([reason("STATE_REASON", str(unit["state_reason"]))] if unit.get("state_reason") else [])
-            items.append({"id": f"AT-{wid}", "kind": kind, "severity": severity,
-                          "subject": entity(wid, "work", str(unit.get("title") or wid)),
-                          "title": f"{wid} is {st}", "summary": rich(unit.get("state_reason")),
-                          "reasons": _bounded(reasons + self._blockers(unit)), "first_seen_at": self._updated_at(unit)})
-        for n, text in enumerate(self._contradictions() if contradictions is None else contradictions, 1):
-            items.append({"id": f"AT-contradiction-{n}", "kind": "anomaly", "severity": "high",
-                          "subject": entity(self.s.project_id, "project", self.s.project_name),
-                          "title": "Contradiction", "summary": rich(text), "reasons": [reason("CONTRADICTION", text)],
-                          "first_seen_at": SNAPSHOT_TIME})
-        for inv_id, inv in sorted(self.state["invocations"].items()):
-            for run in inv.get("runs") or []:
-                observed, _ = self._observe(run["run"])
-                if observed in (K.LOST, K.CRASHED, K.UNREADABLE):
-                    code = {K.LOST: "RUN_LOST", K.CRASHED: "RUN_CRASHED", K.UNREADABLE: "RUN_UNREADABLE"}[observed]
-                    items.append({"id": f"AT-{run['run']}", "kind": "anomaly", "severity": "medium",
-                                  "subject": entity(inv_id, "invocation"), "title": f"run {run['run']} {observed}",
-                                  "summary": rich(f"{inv['role']} run for {inv['work_unit']} is {observed}"),
-                                  "reasons": [reason(code, f"run {run['run']} of {inv_id}")],
-                                  "first_seen_at": str(run.get("launched_at") or SNAPSHOT_TIME)})
-        if include_notifier:
-            items += self._notifier_attention()
+        items = [{"id": i["id"], "kind": i["kind"], "severity": i["severity"], "subject": i["subject"],
+                  "title": i["title"], "summary": rich(i["summary"]),
+                  "reasons": _bounded([reason(r["code"], r["message"]) for r in i["reasons"]]),
+                  "first_seen_at": i["since"] or SNAPSHOT_TIME}
+                 for i in self.attention_view(host=host, contradictions=contradictions)["items"]]
+        if memo:
             self._attention = items
         return items
 
-    def _notifier_attention(self) -> list[dict[str, Any]]:
-        """The operator notifier's latest delivery failed (M4-E E7a; operator decision 1): attention on the project,
-        with no workflow effect. Read from the endpoint watcher's summary, a local file shown as data."""
-        from aew.harness import notify
-
-        summary = notify.summary(self.s.aew_root)
-        if not summary or not summary["attention"]:
-            return []
-        last = summary.get("last_failure") or {}
-        parts = []
-        if summary["consecutive_failures"]:
-            parts.append(f"{summary['consecutive_failures']} delivery failure(s) in a row; the latest: "
-                         f"{last.get('event')} ({last.get('reason')}"
-                         f"{': ' + last['detail'] if last.get('detail') else ''})")
-        if summary.get("pass_error"):
-            parts.append(f"the watcher cannot read {', '.join(summary['pass_error']['sources'])}: "
-                         f"{summary['pass_error']['error']}")
-        text = "; ".join(parts)
-        return [{"id": "AT-notifier", "kind": "anomaly", "severity": "medium",
-                 "subject": entity(self.s.project_id, "project", self.s.project_name),
-                 "title": "Operator notification failed", "summary": rich(text),
-                 "reasons": [reason("NOTIFY_DELIVERY_FAILED", text)],
-                 "first_seen_at": str(last.get("at") or SNAPSHOT_TIME)}]
-
     def attention_list(self, *, limit: int, cursor: str | None) -> dict[str, Any]:
-        self.require("action_projection")  # UNSUPPORTED until F15.1: never reached today
+        self.require("action_projection")  # UNSUPPORTED until the typed-surface projection's dashboard half (E18)
         raise AssertionError("unreachable")
 
     # ---------------------------------------------------------------- runs
@@ -1116,6 +1084,8 @@ class Projector:
         self.require("overview")
         kids = self._hot_children()
         attention = self.attention_items()
+        view = self.attention_view()
+        counted = len(AT.counted(view["items"]))  # FYI items are in no count (A-44 BOY-03.b)
         hot = sorted(self.state["work"].items(), key=lambda kv: self._updated_at(kv[1]), reverse=True)
         hot.sort(key=lambda kv: kv[0] not in self._attention_ids())  # stable: attention first, then most recent
         work = [self.work_item(wid, unit, kids=kids, with_children=False) for wid, unit in hot[:OVERVIEW_WORK]]
@@ -1134,13 +1104,14 @@ class Projector:
         archived = (self.state.get("cold") or {}).get("archived") or {}
         open_units = sum(1 for u in self.state["work"].values() if u["state"] not in T.TERMINAL)
         summary = (f"{open_units} open unit{'s' if open_units != 1 else ''}, {len(active)} active "
-                   f"invocation{'s' if len(active) != 1 else ''}, {len(attention)} needing attention")
+                   f"invocation{'s' if len(active) != 1 else ''}, {counted} needing attention"
+                   + "".join(f". {src['line']}" for src in view["sources"]))
         return self.envelope({
             "project": self.project()["data"], "health": self.health(), "summary": rich(summary),
             "work": work, "runs": runs, "attention": attention[:OVERVIEW_ATTENTION], "activity": activity,
             "counts": {"work": {"open": open_units, "done": int(archived.get("done", 0)),
                                 "cancelled": int(archived.get("cancelled", 0))},
-                       "runs": len(active), "attention": len(attention)},
+                       "runs": len(active), "attention": counted},
             "capabilities": self.capabilities_data(), "recent": recent,
         })
 

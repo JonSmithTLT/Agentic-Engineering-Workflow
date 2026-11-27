@@ -33,7 +33,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -55,6 +55,10 @@ TIMEOUT_S = 30  # the service's own request timeout
 EXPIRY_CEILING_S = 10 * 60  # G3-02: an approval lives at most 10 minutes (a tripwire the deployment may only shorten)
 GRACE_S = 5  # past expires_at, the service answers EXPIRED; the wait ends here at the latest
 POLL_S = 1.0
+# A-44 BOY-14: how old a live client's last completed read may be before its approval reads unknown. A working client
+# completes a read at least once per request timeout and poll; one more poll is the margin for the write after a slow
+# read. A snapshot of these constants, so it moves when they move.
+STALE_READ_S = TIMEOUT_S + 2 * POLL_S
 PROOF_BYTES = 16  # "proof:" and 32 lowercase hex characters, the wire's shortest (G3-02)
 PROTECTED = "PROTECTED_G3"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
@@ -67,8 +71,14 @@ PROBE_TIMEOUT_S = 5  # the probe's one read: it asks for an approval no one made
 PROBE_REF = "g3:approval:probe"  # a well-formed ref (the wire's Ref) that names no approval: the answer is a 404
 
 
+RECORDS_OVERRIDE: Path | None = None  # tests only: the suite's own directory, so no test writes this host's records
+
+
 def approval_records_dir() -> Path:
-    """The G3 client's per-host approval record directory (A-44 BOY-05.a)."""
+    """The G3 client's per-host approval record directory (A-44 BOY-05.a): ``$XDG_STATE_HOME/aew/g3/requests``, with
+    ``~/.local/state`` as the default state directory (the XDG rule: a relative setting is ignored)."""
+    if RECORDS_OVERRIDE is not None:
+        return RECORDS_OVERRIDE
     setting = os.environ.get("XDG_STATE_HOME", "")
     state = Path(setting) if Path(setting).is_absolute() else Path.home() / ".local" / "state"
     return state / "aew" / "g3" / "requests"
@@ -205,22 +215,59 @@ def expires_at(pending: dict[str, Any]) -> datetime:
 def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
                    now: Callable[[], datetime] = lambda: datetime.now(UTC),
                    clock: Callable[[], float] = time.monotonic,
-                   sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
+                   sleep: Callable[[float], None] = time.sleep,
+                   on_read: Callable[[str], None] | None = None,
+                   say: Callable[[str], None] | None = None, keep_reading: bool = False) -> dict[str, Any]:
     """Step 4: the ``ConsentRecord`` once the operator approves. A decline, an expiry, or an approval lost to a restart
     of the service refuses; the wait ends with the approval's own life, ``expires_at`` and a grace, and never later
     than G3-02's ceiling. The life left is read once from ``now`` (the service's clock); the wait is measured on
     ``clock``, which no clock step moves, and each read of the service's answer is bounded by the time left: an
-    answer sent in pieces can hold the wait longer, by its own length (#286 review F2; its quick check, QC1)."""
+    answer sent in pieces can hold the wait longer, by its own length (#286 review F2; its quick check, QC1).
+
+    With ``keep_reading`` (``aew g3 request``'s wait, A-44 BOY-05.a), while the service does not answer, or answers
+    503, the client keeps reading until that end, and ``say`` is told once that it is not answering, until when the
+    client keeps trying, and that Ctrl+C stops it. Without it, either ends the wait at once, as the operator
+    endpoint's G3 path holds on it (the designer's ruling 1 on G3-C). Each read's result goes to ``on_read``
+    (:data:`aew.g3records.READ_STATES`), which writes the approval's record."""
+    from aew import g3records as R
+
     ref = pending["approval_ref"]
-    life = (expires_at(pending) - now()).total_seconds()
-    deadline = clock() + min(life, EXPIRY_CEILING_S) + GRACE_S
+    read = now()
+    life = min((expires_at(pending) - read).total_seconds(), EXPIRY_CEILING_S)
+    deadline = clock() + life + GRACE_S
+    until = (read + timedelta(seconds=max(life, 0) + GRACE_S)).astimezone(UTC).strftime("%H:%M:%S UTC")
+    told = False
+    unanswered = False
     while True:
         left = deadline - clock()
         if left <= 0:
+            if unanswered:
+                raise OperatorAuthorizationRequired(
+                    "the G3 service did not answer before the approval's expiry, so whether it was decided is unknown; "
+                    "nothing was submitted. Request it again once the service answers (systemctl status "
+                    "aew-g3.service)", reason="unanswered_until_expiry", approval_ref=ref)
             raise OperatorAuthorizationRequired("the approval was still undecided past its expiry; nothing was "
                                                 "submitted. Request it again", reason="expired", approval_ref=ref)
-        status, body = _g3(sock_path, "GET", "/g3/v1/approval-requests/" + ref, timeout=min(TIMEOUT_S, left))
+        try:
+            status, body = _g3(sock_path, "GET", "/g3/v1/approval-requests/" + ref, timeout=min(TIMEOUT_S, left))
+            if status == 503 or (isinstance(body, dict) and body.get("code") == "G3_UNAVAILABLE"):
+                raise _g3_refusal(status, body)
+        except Unavailable as exc:
+            if on_read is not None and (exc.details or {}).get("reason") in ("g3_unreachable", "g3_unavailable"):
+                on_read(R.NO_ANSWER)
+            if not keep_reading or (exc.details or {}).get("reason") not in ("g3_unreachable", "g3_unavailable"):
+                raise
+            unanswered = True
+            if not told and say is not None:
+                say(f"the G3 service is not answering ({exc.message}); AEW keeps trying until {until}. Ctrl+C stops "
+                    "it")
+                told = True
+            sleep(max(0.0, min(POLL_S, deadline - clock())))
+            continue
+        unanswered = False
         if status == 404:
+            if on_read is not None:
+                on_read(R.NOT_FOUND)
             raise OperatorAuthorizationRequired(
                 "the approval is no longer known to the G3 service: it restarted, and a pending approval does not "
                 "survive a restart. Nothing was approved; request it again", reason="approval_lost",
@@ -228,6 +275,8 @@ def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
         if status != 200 or not isinstance(body, dict):
             raise _g3_refusal(status, body)
         state = body.get("state")
+        if on_read is not None and state in R.READ_STATES:
+            on_read(state)
         if state == "APPROVED" and isinstance(body.get("consent_record"), dict):
             return body["consent_record"]
         if state == "DECLINED":

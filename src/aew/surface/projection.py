@@ -136,11 +136,16 @@ def decision_owner(name: str) -> str:
 
 def judgment_inputs(name: str, tool: str | None, arguments: dict[str, Any] | None) -> dict[str, Any] | None:
     """What a decision's call takes from whoever decides it (register E388; the vertical's spec v2): each field its
-    tool's schema requires that the decision's arguments leave out, so that a call with those filled in is the whole
-    call. An enumerated field offers its ``options``: `resolve`'s ``choice`` only the choices that run the decision's
-    primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``, read through ``DECISION_PRIMITIVES``). Any other field is
-    offered as its schema, for the decider to write (a rationale). None when the arguments are whole, or there is no
-    call to fill: a decision never carries a default, so nothing here is a value."""
+    tool's schema requires that the decision's arguments leave out. With those filled in, the call has every field the
+    schema requires; a choice can need more, which only the adapter checks and whose refusal names it (`follow_up`
+    its Ticket; a REPLACE_GATE its ``approval_options`` entry). An enumerated field offers its ``options``:
+    `resolve`'s ``choice`` only the choices that run the decision's primitives (``contract.RESOLVE_CHOICE_PRIMITIVE``,
+    read through ``DECISION_PRIMITIVES``). Any other field is offered as its schema, for the decider to write (a
+    rationale). None when the arguments are whole, or there is no call to fill: a decision never carries a default, so
+    nothing here is a value.
+
+    The limit: every field missing is taken for a judgment, so a decision's arguments must carry every field that is
+    not one (a mechanical fact such as a prepared candidate); one left out would be offered as a judgment input."""
     t = contract.tool(tool) if tool else None
     if t is None or arguments is None:
         return None

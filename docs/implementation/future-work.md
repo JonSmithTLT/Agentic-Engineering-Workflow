@@ -3942,6 +3942,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E394/`, oldest first (`python tools/register.py show E394`).*
 
+### E400
+
+**Work:** Continuing a stage whose killed run has ended with evidence is refused at its launch: after a forced kill mid-stage, the Lead's `resolve` (choice `continue`, the RESOLVE_STAGE decision filled in) of the stage left unfinished commits its rebind and stops at `dispatch.launch` with `HARNESS_LAUNCH_FAILED` ("step 2 recorded R-INV-0001-1, and its run ended (ended_with_evidence)"), counted as a refusal. What a stage whose run has already ended with its evidence should offer instead (for example taking that run's evidence) is not settled here
+
+**Source:** The review of #630 (E388), its m1: V2-forced-mid-stage on #630's branch keeps one refusal, this one (ledger seq 26; on `main` the shell `aew stage continue` met it, seq 31). Neither C7 (E376) nor C16 (E386) covers it, and E374 is the steering loop's running stage, while this case runs with steering off
+
+**When:** **Unscheduled**; the operator places it. Cited from C5 on the V-01 burn-down
+
+**Notes:** Filed by #630. Reproduced by `pytest -p no:xdist --lane vertical tests/acceptance/test_vertical_path.py -k forced_kill_mid_stage` at #630's head: refusals 1, help_calls 1, shell_aew_calls 2
+
+*Later notes: `notes.d/E400/`, oldest first (`python tools/register.py show E400`).*
+
 ### E373
 
 **Work:** An empty project offers the action for the operator's request: the project's projection offers `ticket_draft` as an AVAILABLE action on a project with no open Ticket, naming the inputs its call needs (title, scope, goal, plan), so a Lead asked for a fix starts from an offered action, not a guessed one. Today `_control_part` returns the project's part before any action (`src/aew/surface/projection.py:122`) and `_stage_actions` returns nothing for a non-Ticket (`:341-342`), so `ticket_draft`, a built stage (`src/aew/surface/availability.py:173`), is never projected. With it, the scripted Lead fills those inputs from its own draft (`tests/helpers/vertical/lead.py`, `judged`)

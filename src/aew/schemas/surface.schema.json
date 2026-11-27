@@ -127,7 +127,7 @@
         },
         "stopped": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/kept_stop"}]},
         "judgment_inputs": {
-          "description": "What the decision's call takes from its owner's judgment (register E388): each field the tool's schema requires that the arguments leave out: `resolve`'s choice with its options, and its rationale as its schema, for the decider to write. Absent when the arguments are whole.",
+          "description": "What the decision's call takes from its owner's judgment (register E388): each field the tool's schema requires that the arguments leave out: `resolve`'s choice with its options, and its rationale as its schema, for the decider to write. Filled in, the call has every field the schema requires; a choice can need more (follow_up its Ticket), which its refusal names. Absent when the arguments are whole.",
           "type": "object",
           "minProperties": 1,
           "additionalProperties": false,

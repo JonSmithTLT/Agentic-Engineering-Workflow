@@ -209,7 +209,8 @@ def _next(result: dict[str, Any]) -> str:
 
 def _judgment(inputs: Any) -> str:
     """What the decider adds to the printed call (register E388): each input it names, an enumerated one with its
-    options, so the call as printed plus these is the whole call."""
+    options, which with the printed call make every field the tool's schema requires (a choice can need more, as
+    `follow_up` its Ticket, and its refusal names it)."""
     if not isinstance(inputs, dict) or not inputs:
         return ""
     named = (f"{name} ({' or '.join(map(str, offer['options']))})" if isinstance(offer, dict) and offer.get("options")

@@ -272,7 +272,7 @@ def test_the_next_step_prefers_the_lead_s_decision_then_a_move_then_a_wait_then_
 
 def test_a_decisions_next_step_names_the_judgment_inputs_its_printed_call_leaves_out():
     """Register E388: the readable next step prints the decision's call and what the decider adds to it, each
-    judgment input with its options, so the line, followed, is the whole call."""
+    judgment input with its options, so the line, followed, gives every field the tool's schema requires."""
     from aew.surface import projection as P
 
     arguments = {"expect_rev": 15, "subject": "SI-0002"}

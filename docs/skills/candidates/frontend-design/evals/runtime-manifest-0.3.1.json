@@ -1,0 +1,11 @@
+{
+  "skill": "frontend-design",
+  "version": "0.3.1",
+  "sha256": {
+    "SKILL.md": "a849be59bea23afdd366ebe25e907dba73871de198bcf0035a81219372ff2e08",
+    "references/LICENSE.md": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "references/interaction-states.md": "8138201f4a1b94d68d8c45acceae0e36364c9e5480099c108addabc10013b144",
+    "references/read-heavy-interfaces.md": "e45ff96ecfbe4796164890f0039478012ffb237e3e77e25e583c749aa1638d42",
+    "references/visual-direction.md": "8347b573030026e6e5a55525175c1e668187b297b9b8b8cca81fcbd224a72475"
+  }
+}

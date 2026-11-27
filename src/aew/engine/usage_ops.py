@@ -531,6 +531,7 @@ def _empty_figure() -> dict[str, Any]:
 def empty_totals() -> dict[str, Any]:
     return {"invocations": 0, "invocations_without_runs": 0, "runs": 0, "recorded": 0, "provisional": 0,
             "missing": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "wall_s_sum": Decimal(0), "steps": 0,
+            "requests_unknown_runs": 0, "requests_floor_runs": 0,
             "provider_cost": {"reported_usd": None, "reported": 0, "zero_with_tokens": 0, "absent": 0},
             "estimated_at_record": _empty_figure(), "estimated_under_current_prices": _empty_figure(),
             "by_model": {}}
@@ -566,7 +567,7 @@ def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
 def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]:
     """``into`` += ``other``, field by field (a roll-up is the plain sum of its parts)."""
     for key in ("invocations", "invocations_without_runs", "runs", "recorded", "provisional", "missing",
-                "wall_s_sum", "steps"):
+                "wall_s_sum", "steps", "requests_unknown_runs", "requests_floor_runs"):
         into[key] += other[key]
     for cat in U.CATEGORIES:
         into["tokens"][cat] += other["tokens"][cat]
@@ -604,6 +605,32 @@ def _empty_model() -> dict[str, Any]:
             "at_record_prices_as_of": None, "under_current_prices_as_of": None}
 
 
+# Why a run's requests are unknown (the rate-limit unit's ruling 2), each a state whose ``0`` steps is not a count.
+REQUESTS_USAGE_LOST = "usage_lost"                  # no record (R6 `missing`): the run may have reported, then lost it
+REQUESTS_NOTHING_REPORTED = "nothing_reported"      # no call and no counter: a run whose harness was gone
+REQUESTS_ONLY_UNCOUNTED = "only_uncounted_calls"    # tokens, but no call in its messages: compaction or title calls
+# What ``steps`` leaves out, said wherever a count is printed (#644 review, M1): it is the run's assistant messages, so
+# a compaction or title call (their own message kind or none) and a retried attempt (folded into its message) are not
+# in it. Whether ruling 2's requests include them is the designer's call; counting them needs the record to carry them.
+REQUESTS_NOT_COUNTED = "compaction, title and retried calls not counted"
+
+
+def requests(record: Mapping[str, Any] | None) -> dict[str, Any]:
+    """A run's requests as the rate-limit unit's ruling 2 shows them (designer, 2026-11-06): ``count``, the model calls
+    in the run's messages (the record's ``steps``; ``REQUESTS_NOT_COUNTED`` names what it leaves out), and
+    ``at_least`` when the adapter stopped paging those calls before the end (``truncated``), so the count is a floor.
+    When the count is unknown, ``count`` is None and ``unknown`` says why: no record, nothing reported, or tokens with
+    no call in the run's messages, whose ``0`` would read as an exact count beside non-zero tokens (#644 review, M1)."""
+    if record is None:
+        return {"count": None, "unknown": REQUESTS_USAGE_LOST}
+    if not record.get("steps"):
+        if record.get("tokens_trust") == "absent":
+            return {"count": None, "unknown": REQUESTS_NOTHING_REPORTED}
+        if any((record.get("tokens") or {}).values()):
+            return {"count": None, "unknown": REQUESTS_ONLY_UNCOUNTED}
+    return {"count": int(record.get("steps") or 0), "at_least": bool(record.get("truncated"))}
+
+
 class Reader:
     """What one read of the ledger needs: the AEW root (run directories, snapshots), the table in effect now, and a
     run-record reader (the run directory by default). Snapshots are read once per reader."""
@@ -639,7 +666,8 @@ class Reader:
             run_record = self._read_run(entry["run"])
             if run_record is None:
                 return {"run": entry["run"], "invocation": inv_id, "state": "missing", "usage": None,
-                        "pricing_sha256": None, "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
+                        "requests": requests(None), "pricing_sha256": None,
+                        "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
                         "estimated_under_current_prices": {"unpriced": UNPRICED_USAGE_MISSING},
                         "provider_cost": {"usd": None, "trust": "absent"}, "prices_as_of": {}, "at_record_source": None,
                         "_parts": ([], [])}
@@ -659,7 +687,8 @@ class Reader:
         as_of = {"estimated_at_record": recorded.table["as_of"] if recorded else None,
                  "estimated_under_current_prices": self.current.table["as_of"]
                  if self.current and not self.unusable else None}
-        return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
+        return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record,
+                "requests": requests(record), "pricing_sha256": sha,
                 **({"credential": "plan_login"} if plan_login else {}),
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
@@ -683,6 +712,12 @@ class Reader:
 def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
     totals["runs"] += 1
     totals[row["state"]] += 1
+    # How far ``steps`` (a total's requests counted) covers the runs: an unknown run adds nothing to it and is counted
+    # here, never as zero; a floor run's calls were not all read (the rate-limit unit's ruling 2).
+    if row["requests"]["count"] is None:
+        totals["requests_unknown_runs"] += 1
+    elif row["requests"]["at_least"]:
+        totals["requests_floor_runs"] += 1
     record = row["usage"]
     trust = row["provider_cost"]["trust"]
     totals["provider_cost"][trust if trust in U.PROVIDER_COST_TRUST else "absent"] += 1
@@ -949,6 +984,37 @@ def tokens_text(tokens: Mapping[str, int]) -> str:
     return ", ".join(f"{c} {int(tokens.get(c) or 0):,}" for c in U.CATEGORIES if c != "unknown" or tokens.get(c))
 
 
+def requests_text(totals: Mapping[str, Any]) -> str:
+    """A total's requests (its JSON's ``steps``, ``requests_unknown_runs`` and ``requests_floor_runs``): the model calls
+    in the messages of the runs that counted them, saying what that leaves out, a floor when some run's calls were not
+    all read, and the runs whose requests are unknown counted beside it, never as zero (the rate-limit unit's ruling
+    2). Each row says why its own are unknown."""
+    unknown, floor = totals["requests_unknown_runs"], totals["requests_floor_runs"]
+    counted = totals["runs"] - unknown
+    if not counted:
+        return f"unknown for {unknown} run(s), not counted as zero"
+    text = (f"{'at least ' if floor else ''}{totals['steps']:,} model call(s) in the messages of {counted} run(s) "
+            f"({REQUESTS_NOT_COUNTED}" + (f"; {floor} run(s) not read to the end)" if floor else ")"))
+    if unknown:
+        text += f", and {unknown} run(s) whose requests are unknown, not counted as zero"
+    return text
+
+
+# A row's unknown requests, by why they are unknown (#644 review, m1: a missing run's usage was lost, not unreported).
+_UNKNOWN_REQUESTS_TEXT = {REQUESTS_USAGE_LOST: "unknown (usage lost), not zero",
+                          REQUESTS_NOTHING_REPORTED: "unknown (the run reported nothing), not zero",
+                          REQUESTS_ONLY_UNCOUNTED: ("unknown (tokens, but no call in its messages; "
+                                                    f"{REQUESTS_NOT_COUNTED}), not zero")}
+
+
+def _row_requests(row: Mapping[str, Any]) -> str:
+    found = row["requests"]
+    if found["count"] is None:
+        return _UNKNOWN_REQUESTS_TEXT[found["unknown"]]
+    return (f"{'at least ' if found['at_least'] else ''}{found['count']:,} model call(s) in its messages "
+            f"({REQUESTS_NOT_COUNTED}" + ("; not read to the end)" if found["at_least"] else ")"))
+
+
 def _runs_text(totals: Mapping[str, Any]) -> str:
     text = f"{totals['runs']} run(s): {totals['recorded']} recorded, {totals['provisional']} provisional"
     if totals["missing"]:  # R6: a total never skips a missing run without saying how many
@@ -981,7 +1047,8 @@ def _totals_lines(totals: Mapping[str, Any], indent: str) -> list[str]:
         return lines
     lines += [f"{indent}tokens: {tokens_text(totals['tokens'])}",
               f"{indent}cost at record prices: {figure_text(totals['estimated_at_record'])}",
-              f"{indent}cost under current prices: {figure_text(totals['estimated_under_current_prices'])}"]
+              f"{indent}cost under current prices: {figure_text(totals['estimated_under_current_prices'])}",
+              f"{indent}requests: {requests_text(totals)}"]
     cost = totals["provider_cost"]
     if cost["reported"]:
         lines.append(f"{indent}provider cost as the harness reported it ({OBSERVED}): {money(cost['reported_usd'])} "
@@ -1013,11 +1080,12 @@ def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
     tokens = tokens_text(record.get("tokens") or {}) if record else "none"
     trust = record.get("tokens_trust", "absent") if record else "missing"
     fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    # The requests join the run's own line, so a row keeps its lines (the rate-limit unit's ruling 2).
+    head = f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}; requests {_row_requests(row)}"
     if row.get("credential") == "plan_login":
-        return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
-                f"{indent}  plan login: not billed per token"]
+        return [head, f"{indent}  plan login: not billed per token"]
     as_of = row["prices_as_of"]
-    return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
+    return [head,
             f"{indent}  cost at record prices "
             f"{_row_figure(row['estimated_at_record'], as_of.get('estimated_at_record'))}"
             + (f", source: {row['at_record_source']}" if row["at_record_source"] else "") + "; under current prices "

@@ -322,12 +322,13 @@ def test_authority_prompts_for_the_operator_and_binds_the_directory_record(proje
     subject = engine.authority_candidate(candidate["id"])
     prompts = []
 
-    def authorize(prompt):
-        prompts.append(prompt)
+    def authorize(text, **_):
+        prompts.append("\n".join(text))
         return {"authorized_by": "operator-tty"}
 
-    monkeypatch.setattr(operator, "authorize", authorize)
-    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    # The operator's own decision at their terminal, with no Lead credential (register E331), in-process.
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator, "confirm", authorize)
     args = ["-C", str(project.root), "authority", action, candidate["id"], ]
     if action == "accept":
         args += ["--class", "decisions"]
@@ -381,12 +382,13 @@ def test_reject_of_a_candidate_whose_file_is_gone(project, monkeypatch, capsys, 
         path.mkdir()
     prompts = []
 
-    def confirm(prompt):
-        prompts.append(prompt)
+    def confirm(text, **_):
+        prompts.append("\n".join(text))
         return {"authorized_by": "operator-tty"}
 
-    monkeypatch.setattr(operator, "authorize", confirm)
-    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    # The operator's own decision at their terminal, with no Lead credential (register E331), in-process.
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator, "confirm", confirm)
     argv = ["-C", str(project.root), "authority", "reject", candidate["id"], ]
     assert main(argv) == 0
     import json

@@ -240,3 +240,52 @@ The operator's answers of 2026-11-26 to the questions E136's third batch left, u
 - **The Lead's list gains `ci-evidence-triage`** (the manifest's `lead`, the E161 amendment), by the same answer: attributing a red run is the Lead's act at each merge. The Lead's text names it, derived from the list (`projection.lead_skills_text`).
 - **`frontend-design` stays unserved.** The operator, 2026-11-26: "for 3 we should just track making a front-end focused specialized role card. It'll also align with the mcp servers and utilities we were planning on jnckuding anyway." That card is register E395, unscheduled, its shape the designer's.
 - Tests: `tests/unit/test_skill_delivery.py` (what ships; each card of a batch reaching its skills; every built-in card requesting exactly one foundational skill, or waiting for it on a named row that is open in the register; every built-in card offered exactly its mapped skills and nothing else; the default card's clause saying only what it has) and `tests/unit/test_lead_skills.py` (the Lead's list, its plan, rules, copy and text, with the fourth id).
+
+## Amendment 2026-11-27 — public skill candidates and Frontend Engineer proposal (E136, E395–E398)
+
+On 2026-11-27, the operator asked that “the updates and new skills should be researched as well”
+and to “Keep foundational skills small.” This batch publishes the researched
+entrypoints, linked details and evaluator material for public-text review.
+It records the intended delivery and version changes before the separate
+rehash pull request.
+
+- **Foundational candidates.** E396 proposes `source-research` 0.1.0 as
+  the sole foundation on `researcher` v2 → v3, retaining optional
+  `empirical-evaluation`. E397 proposes `general-implementation` 0.1.0
+  as the sole foundation on `engineer` v5 → v6, returning `test-design`
+  to its optional list. E398 proposes `plan-review` 0.1.0 as the sole
+  foundation on `plan_assessor` v3 → v4, replacing the interim
+  `adversarial-review`. Plan assessment uses read evidence and requires no
+  execution. The always-read entrypoints are 8,879, 8,827, and 8,830 UTF-8
+  bytes respectively.
+- **Security candidates.** E136 proposes `agent-security-review` 0.2.1
+  and `security-control-validation` 0.2.1 as optional on
+  `security_reviewer` v1 → v2. Its sole foundation remains
+  `security-review`. On 2026-11-27, the operator said the skills “should
+  describe method only.” The public text cites the adopted October 19 and October 24
+  scope and reachability decisions and describes defensive evidence methods.
+- **Frontend proposal.** On 2026-11-27, the operator said “Make browser
+  checks optional capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
+  with `frontend-design` 0.3.1 as its sole foundation. The E395 design note
+  holds the proposed card and the browser capability conditions. The designer
+  owns its sign-off. A later installation would measure and record the Lead
+  staffing change against the context pool cap and operator reserve.
+- **Delivery state.** This batch edits candidate and design records. Card
+  versions, shipped entries, and the Lead's context stay at their installed
+  revisions. Worker outcomes for the candidates are unevaluated.
+
+## Amendment 2026-11-27 — public candidate review follow-up (E136 and E395)
+
+The operator's follow-up on #642 said “if a contained agent can't reach
+something on its own, it is not filed.” `security-control-validation`
+0.2.2 states that October 24 rule in its AEW reference before delivery.
+The `agent-security-review` 0.2.1 evaluator record and the 0.2.2 evaluator
+record each describe the four current cases. The register note records
+that #642 cleared the draft-update hold.
+
+On 2026-11-27 the operator also clarified the E395 proposal's current
+environment. Contained workers will report browser checks as “not run”
+until a browser capability, supported execution environment, and preview
+access are provided. The designer still owns E395 sign-off and the
+installation-time license and provenance decision. The proposed card is v1.
+The four proposed delivery version bumps remain recorded above.

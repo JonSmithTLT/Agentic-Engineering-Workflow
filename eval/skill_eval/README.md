@@ -21,7 +21,11 @@ The runner adds no measuring machinery where an owner already has one.
 
 ## What is generic
 
-`walk.py` and `paired.py` import nothing of the skill evaluation: they read a frozen preregistration, the ledger and the run records. `walk.py` is the schedule walked block by block under its budget, with the cap charge, the frozen retries, the lane-error stop, the neutral run names and the resumption. `paired.py` is two arms' runs as pairs, their usage differences, the blind grading packets and the paired grades. They are written to be lifted into `eval/aew_eval` as the shared walker and paired report in a following pull request; a test holds that neither imports a skill-specific module. `run.py` and `report.py` keep what is about a skill: the paired plan's check, the lane's claim, the evaluator's material, the arms, the exposure check, the loads and the selection table.
+`aew_eval.walk` and `aew_eval.paired` read the frozen preregistration, ledger and run records.
+The walker handles block order, the budget and cap charges, retries, lane errors, run names and resumption.
+The paired report handles run pairs, usage differences, blind grading packets and grades. A test checks that
+neither imports a skill-specific module. The skill evaluator's `run.py` and `report.py` handle the plan,
+lane, evaluator material, arms, exposure, recorded skill loads and selection table.
 
 ## The steps
 

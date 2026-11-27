@@ -1,8 +1,8 @@
 ---
 name: security-control-validation
-description: Validate a specific security control with bounded adversarial scenarios and evidence of prevention, detection, or containment. Use for control acceptance and remediation checks; skip broad vulnerability discovery, ordinary test reporting, and incident response.
+description: Assess a named defensive control with static inspection, supplied evidence and ordinary checks. Skip vulnerability discovery and incident response.
 metadata:
-  version: '0.2.0'
+  version: '0.2.2'
   status: candidate
 ---
 
@@ -10,48 +10,106 @@ metadata:
 
 ## Purpose
 
-Determine which claimed defensive outcomes hold for a specific subject and environment. Separate attempted activity, actual execution, protected effects, telemetry, alerts and response; success at one stage does not establish another.
+Determine what evidence supports a particular defensive claim for a named
+subject and environment. Separate enforcement decisions, effect observations,
+telemetry, alert delivery and response. Report a bounded conclusion and any
+independent claims that remain unverified.
 
 ## Task archetypes and target workers
 
-For verifiers and test authors evaluating authorization, isolation, data protection, agent boundaries or detection controls. Helps workers that mistake broken attack fixtures for prevention, missing telemetry for safety, or an alert for containment.
+Use for review of authorization, isolation, data handling, audit and detection
+controls, or a named repair's evidence. Helps workers who confuse an unavailable
+dependency with prevention, an event with a delivered alert, or an alert with
+containment. For AEW, read [AEW validation](references/aew-validation.md).
+For supplied observations involving a model, read
+[model-mediated evidence](references/agent-trials.md).
 
 ## Use and non-use
 
-Use when a named control or remediation has a security claim to test. Discovering unspecified vulnerabilities belongs to security review. Routine test summaries and active incident handling do not need this procedure. For AEW-managed work, read [AEW validation](references/aew-validation.md). For repeated model-mediated trials, read [agent trials](references/agent-trials.md).
+Apply when the assignment names a control and a property to assess. General
+security discovery, ordinary test reporting and live incident response have
+separate procedures. Limit conclusions to the assigned claim and available
+authorized evidence.
 
 ## Inputs and outputs
 
-Inputs: authoritative claim, subject/configuration identity, relevant threat scenario, permitted environment/actions, available observations and budget. Output a claim-to-evidence record through the supplied format: scenario, prerequisites, expected outcomes, observations, supported verdict and limitations. Existing acceptance criteria and decision ownership remain external.
+Read the control claim, adopted scope, subject revision, configuration,
+actor, affected boundary, permitted evidence and observation coverage.
+Return the expected result, evidence identity, observed result, supported
+verdict and limits for each claim. Use the assigned verification format
+and acceptance criteria.
 
 ## Preconditions
 
-Use this procedure within the assignment's scope and permissions; it grants no additional authority. Establish an isolated target, synthetic data, permitted destinations, bounded effects, cleanup ownership and stopping condition before execution. Inspect test dependencies and scripts. If the needed effect is unavailable, use static evidence or propose a check; do not substitute a live target or disable a defense without authorization.
+Establish the evidence scope and comparability before assessing results.
+For any assigned execution, use existing authorized ordinary control checks
+with task-owned benign data, supported interfaces and bounded effects.
+Confirm the relevant environment and observations. Use static analysis
+and supplied results when execution or collection is unavailable.
 
 ## Procedure and decision points
 
-1. **Make the claim observable.** Name the protected action/data, actor, target and boundary. Separate prevention, detection and containment requirements. Bind the scenario to the assigned threat model; distinguish a steered agent using granted tools from an independently malicious host process. Use supplied timing thresholds and conditions; do not invent them. Identify which facts would distinguish an enforced denial from a fixture that never reached the control.
-2. **Bind the experiment.** Pin code/build, configuration, role/principal, environment and relevant tool/model versions. Choose a realistic minimal scenario and record prerequisites. Reuse adequate evidence for the same subject; evidence from another snapshot needs an established equivalence. Define the permitted attempt/time/cost budget and cleanup before running.
-3. **Validate the fixture and observations.** Establish that the operation reaches the intended boundary. Measure legitimate-task completion both without and under injected content. Include a legitimate allowed case and, where permitted, a known vulnerable fixture or controlled ablation that demonstrates the probe can expose failure. Never weaken the real target merely to produce a control. Check observation coverage and collection health. A missing dependency, wrong identity, dead service or disconnected sensor invalidates the dependent inference.
-4. **Observe the whole relevant chain.** Record attempt, execution, protected effect, telemetry, alert and response separately, marking unavailable stages unknown. Correlate observations to the same case, principal, subject and time window. Inspect final effects rather than trusting exit status or a refusal message. Distinguish a sensor event from a delivered alert and a requested response from completed containment. A later alert cannot undo an earlier forbidden effect.
-5. **Challenge the result.** Compare attack and legitimate controls under matched conditions. For a repair, run the same discriminating cases against an isolated baseline and repaired subject when available; report missing baseline evidence. Cover relevant alternate entrypoints and variants of the same failed boundary. Preserve surprises and failed attempts; investigate contradictions before assigning a verdict.
-6. **Conclude and clean up.** Report pass, fail or inconclusive per claim unless the host supplies different terms. An invalid experiment is not a product pass or a demonstrated defect. Complete authorized cleanup and verify residual artifacts/processes; report cleanup failures. Stop at the agreed scope/budget and state remaining coverage. Provide bounded evidence, not a universal security guarantee or a workflow approval.
+1. **Make the claim observable.** Name the protected effect, actor and
+   enforcing boundary. Distinguish prevention, detection and response.
+   Record the expected result and any timing requirement defined by the
+   governing source. Make the environment and scope part of the claim.
+2. **Bind the evidence.** Record the build, relevant policy and configuration,
+   role or principal, environment, and check or observation identity.
+   Inspect the supported control path and locate the final enforcement and
+   effect observation. Where evidence comes from a different configuration,
+   verify the scope of any equivalence before relying on it.
+3. **Check eligibility and collection.** Confirm that the evidence exercised
+   the intended control, including the applicable principal and ordinary allowed
+   behavior. A broken setup, unavailable service, absent collector or unclear
+   identity weakens or invalidates dependent inferences. Identify which relevant
+   observations are missing.
+4. **Assess stages independently.** Correlate available observations to the
+   same check, actor, subject and time window. Read the enforcement decision
+   and effect where each is observable. Assess delivery or completed response
+   separately from emitted telemetry. Keep contradictory and incomplete
+   observations visible.
+5. **Report and stop.** Give a verdict per claim using the assigned criteria.
+   State the exact gap when an observation cannot distinguish an enforced
+   result from an incomplete setup. Preserve the limits of static evidence,
+   earlier results, and fresh checks. Finish the assigned validation when
+   each claim has an outcome and a documented evidence boundary.
 
 ## Verification and evidence
 
-Keep case identity, exact inputs/commands, subject identity, observations and collection gaps reproducible with synthetic data. Separate fresh execution, supplied logs, source analysis and proposed tests. Claims about absence require adequate observation coverage. Report detection latency only with meaningful timestamps and clock assumptions; no timing requirement means no invented timing verdict.
+Capture the check ID, version, relevant setup, expected outcome, actual
+observations and limitations. Mark earlier results and proposed checks
+clearly. State what collection can observe before drawing conclusions from
+absence. Calculate timing only from the available events and clock assumptions.
+Tie any remediation conclusion to evidence from the repaired subject.
 
 ## Failure modes and common mistakes
 
-- Calling an unavailable executable or unreachable endpoint a successful defense.
-- Declaring prevention because the model refuses while a tool already performed the action.
-- Equating no alert with no activity, or a queued response with completed containment.
-- Counting repeated trials as independent systems or hiding failures behind the best run.
+- Giving the control credit when a check never reached it.
+- Treating a missing alert as evidence of no effect.
+- Counting a requested response as completed containment.
+- Citing a successful check from a different revision without comparison.
 
 ## Abstention and escalation
 
-Identify the exact missing prerequisite and affected claim; continue independent checks. If isolation, permissions or observation coverage cannot support the experiment, stop that execution and return a precise proposed check. Do not grant capabilities, publish findings externally, or repair the submitted target unless separately assigned.
+Report the missing prerequisite and dependent claim. Continue independent
+review of available evidence. When the evidence is inconclusive, state
+which control outcome needs observation and who owns the next decision.
+
+## Authority and interfaces
+
+The assigned role and project execution policy govern access and permitted
+checks. Stay with the authorized evidence and existing ordinary control checks.
+Use the assigned handoff and keep sensitive material in its designated channel.
 
 ## Examples
 
-Synthetic good: an unauthorized write succeeds and a correlated alert arrives afterward. Report prevention failed and detection observed; containment remains unknown without response evidence. Synthetic bad: report the defense passed because the dashboard shows an alert, ignoring the persisted unauthorized write.
+Synthetic good example. An existing access test records that a principal with
+the expected policy can read a demo setting. A related audit record is present.
+Report those observations and leave alert delivery unverified because there is
+no delivery receipt. A weak response uses the audit record alone to certify
+every claimed control outcome.
+
+## Evaluation
+
+Evaluator-only cases and rubric cover evidence eligibility, stage-specific
+verdicts and abstention. Worker outcomes remain unevaluated.

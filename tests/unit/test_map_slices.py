@@ -234,7 +234,7 @@ def test_the_slice_is_the_last_evidence_section_and_the_budget_cuts_it_first():
     lines = slices.render(record, CURRENT, [])
     p = inputs("investigator", scope="observation", codebase_map=lines,
                inputs=[{"id": "R-1", "kind": "research_record", "from": "T-0", "freshness": "CURRENT",
-                        "basis": "x", "summary": ["a finding"] * 30}])
+                        "basis": "x", "summary": [{"conclusion": "a finding"}] * 30}])
     parts = ctx.sections(p)
     evidence = [s.name for s in parts if s.tier == ctx.EVIDENCE]
     assert evidence[-1] == "codebase-map" and parts[-1].name == "codebase-map"

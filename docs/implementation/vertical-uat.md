@@ -129,7 +129,12 @@ to a real Python sample, with a real test. **The project's unit check is a real 
 `__pycache__`. The sample declares its pytest caches in `policy/checks.yaml` and has no Git ignore entry for them.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
-installed tool: its variables are not the operator's.
+installed tool: its variables are not the operator's. It has its own provider, a listener on loopback, which a setup
+fixture names as the relay upstream of every provider AEW knows an address for, so a relay probe of the world's
+synthetic login (doctor's and init's `provider-relay` rows) is answered there and never by a real provider host
+(register E387). Its limit: it is an upstream override, so the world's built-in providers take the override's paths.
+No plan login and no stored worker key is relayed in the world, and the refreshing route is not reached; the world's
+one login, an API key, is relayed as in the operator's default configuration.
 
 ## 3. The scenarios
 
@@ -282,7 +287,7 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 | `ambiguous_next_action` | the projection offered several AVAILABLE actions and marked none as next |
 | `revision_args` | any Lead call whose arguments include `expect_rev` or any other revision, **including one the projection supplied** |
 | `stale_retries` | a STALE_REVISION followed by a retry |
-| `refusals` | any refusal, by code and message |
+| `refusals` | any refusal, by code and message, except the call in flight when the test kills the session (as in V2's forced case): the first call that session records after the kill, refused `BROKER_UNREACHABLE` and followed by no other, is the scenario's, recorded and shown, never counted (amended with the operator's approval of 2026-11-27 to build the [V-01 burn-down](v01-burn-down.md)'s C16, replying to the Lead's plan whose step 1 was "the C4 re-measure, and start builders on C16 and C17": "Yes do 1 and 2"; register E386) |
 | `mechanical_calls` | calls that only push a stage or wait, with steering on (a steering-off run records them as its measurement, and only a steering-on run is held to 0) |
 
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:

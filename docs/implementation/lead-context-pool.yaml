@@ -94,6 +94,15 @@ approval:
   ceiling_bytes: 40000
   operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
   date: '2026-11-26'
+# The offered-tool ceiling (TLS-21): the most tools the contained Lead's normal surface may offer, messaging on or off.
+# It is separate from the byte cap and, like it, a guard against bloat. It was 16 until the operator's decision of
+# 2026-11-27, which allowed 18 or 20; the Lead chose 20, because the queued typed tools (F15.8 A2's map read, E158's
+# consult, E12's `evidence show`, the history-search tool) would make 20. The operator and the designer will revisit
+# the figure. A change takes the same shape: the count, the operator's exact words and the date.
+tool_ceiling:
+  count: 20
+  operator: "Id say for now to keep things rolling raise the tool cap to 18 or 20 and the designer and I can reckon woth it after. Just like the byte cap the tool cap was for bloat. So if this is an action commonly used by the lead a tool makes sense."
+  date: '2026-11-27'
 # The approved drop after PR 3 still applies.
 approval_history:
   - ceiling_bytes: 42405
@@ -131,10 +140,13 @@ approval_history:
 # cap. That room is the operator's, so the pull request says so for the operator to accept or to ask for a cut.
 # E157's 56 B per mode are in its measured allocation, so it updates `after` and the net saving without putting
 # those same bytes in the baseline.
+# E331: the core's rule on classifying no longer says to wait for the session's end (the operator classifies with no
+# Lead credential, the seat left to the Lead): 71 B fewer, messaging on and off, in before and after alike, so E231's
+# saving stands. The baseline, the allocations and the 40000 B cap are unchanged; the 71 B is more room under the cap.
 guide_core:
-  measured: '2026-11-26'
-  messaging_on: {before: 17715, after: 9475}
-  messaging_off: {before: 17537, after: 9255}
+  measured: '2026-11-27'
+  messaging_on: {before: 17644, after: 9404}
+  messaging_off: {before: 17466, after: 9184}
   saving_bytes: 8240
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

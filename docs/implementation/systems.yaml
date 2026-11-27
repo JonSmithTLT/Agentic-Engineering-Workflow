@@ -1308,11 +1308,13 @@ systems:
     request. The surface has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07) also shows
-      requests, tokens in the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07,
+      and its requests: F25''s note of 2026-11-27) also shows tokens in the declared rate basis, after provider profiles declare
+      `rate_basis` (STG-14), and the largest request, after the run-usage record carries it (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 2), and, if the designer rules that ruling 2''s requests include them, compaction, title and retried calls, after the record
+      carries them (F25''s note of 2026-11-27); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1 small PR (estimate)
+    estimate: 1-2 small PRs (estimate), the basis after STG-14's rate_basis
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized
@@ -1328,7 +1330,8 @@ systems:
   who: designer (the HOLD-21 match), then operator (release the CLI and status line), then Lead
   reason: The write side runs on every launch and every Lead transaction, and the read side is built over its projections
     (`aew usage show` and the status line, F25's note of 2026-11-07; the price table at init and `/aew-usage`, its note of
-    2026-11-08). Left are ruling 2's fields in `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
+    2026-11-08; requests in `aew usage show`, its note of 2026-11-27). Left are ruling 2's basis and largest request in
+    `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
   evidence:
   - src/aew/harness/usage.py (262 lines), src/aew/engine/usage_ops.py (705), src/aew/harness/usage_live.py (751) (wc -l
     at c11a61ea)
@@ -4705,8 +4708,8 @@ systems:
   - src/aew/errors.py
   depends_on: []
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired: []
     on_by_default: true
     used_in_default_flow: partly
@@ -4715,24 +4718,23 @@ systems:
     "Yup. ill have it removed outright"); open stage intents migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
     staling a Lead mutation, checked at every class A admission boundary and through four direct writers, and exercised
     in a real run.'
-  remaining:
-  - slice: 'The switch-on: bindings required, the project-wide compare dropped, `expect_rev` removed outright, stage intents migrated,
-      and the amendments'
-    row: E329
-    estimate: 1 PR (the designer's ruling of 2026-11-10)
+  remaining: []
   decision: 'decided: finish, so that `expect_rev` goes away entirely (the operator, 2026-11-25: "my goal was expect rev
     goes away entirely. Aew knows what revision is taking place and expect rev doesnt really save us from anything")'
   recommendation: finish
-  who: Lead
+  who: operator (the real run, then the sign-off)
   reason: 'The designer''s decision of 2026-11-10 (design workspace ab975c1), decided by the operator the same day ("Yes,
     all three"), split the replacement into four PRs and seat resume. The specs and guards (E326), the class C bindings
     (E327), the class B bindings with CHANGED_SINCE_READ (E328) and seat resume (E330) are built, all optional beside the
-    project-wide check, which stays in force until the switch-on (E329). Recorded on the board when the operator placed
-    E329 on 2026-11-25; it was partly built and unrecorded before.'
+    project-wide check until the switch-on (E329). Recorded on the board when the operator placed E329 on 2026-11-25;
+    it was partly built and unrecorded before. The switch-on has merged and E329 closed on 2026-11-27 on the vertical
+    re-measure (evidence: the burn-down''s C4). What is left is the finish line''s real run, the operator''s check before
+    the sign-off.'
   evidence:
   - 'src/aew/engine/primitives.py CONTROL_OP_SPECS: a revision class and binding for each checked control operation'
   - 'src/aew/errors.py ChangedSinceRead: code CHANGED_SINCE_READ, the class B and C refusal'
   - 'src/aew/engine/approval.py and src/aew/engine/stage_intents.py: required scoped bindings and refusal before an intent opens'
   - 'tests/integration/test_scoped_binding_cutover.py: class A admission, direct writers and historical stage migration'
+  - 'docs/implementation/v01-burn-down.md: the re-measure at 8c85f377, revision_args and stale_retries 0 in all 8 cases (C4)'
   - 'docs/implementation/adr/0005-authority-credentials-operator.md: the E329 scoped-binding and E330 seat-resume amendments'
-  - 'docs/implementation/future-work.yaml (rows E326, E327, E328, E330): closed; E329 open'
+  - 'docs/implementation/future-work.yaml (rows E326 to E330): closed'

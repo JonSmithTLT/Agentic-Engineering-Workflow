@@ -623,6 +623,14 @@ or `choice` needs, and refuses a mismatch as a transport input error (frozen dec
 [contained Lead context pool](lead-context-pool.yaml) takes over the byte budget and stop line above when its offline
 gate merges. The normal profile retains the 16-tool ceiling. E158 still needs its separate Q-BUDGET proof before its brief.
 
+**2026-11-27 amendment: the offered-tool ceiling (operator decision).** The operator, 2026-11-27: "Id say for now to
+keep things rolling raise the tool cap to 18 or 20 and the designer and I can reckon woth it after. Just like the byte
+cap the tool cap was for bloat. So if this is an action commonly used by the lead a tool makes sense." The Lead chose
+the upper figure, for the queued typed tools (F15.8 A2's map read, E158's consult, E12's `evidence show`, the
+history-search tool). The ceiling is the operator-approved count in [`lead-context-pool.yaml`](lead-context-pool.yaml)
+(`tool_ceiling`), which owns the figure; the byte cap is unchanged, and the operator and the designer will revisit the
+figure.
+
 ### 2.7 Control-state additions (M11)
 
 New hot keys follow the `queue` precedent (M4-D): optional, v2-only (`V2_ONLY_KEYS`), absent meaning empty, schema

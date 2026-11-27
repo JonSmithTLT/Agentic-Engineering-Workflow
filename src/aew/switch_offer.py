@@ -27,7 +27,7 @@ import copy
 import json
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -587,7 +587,7 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
                               reason=f"switch offer: {offer.switch} {opening.held} -> {opening.to}", only=sorted(edits),
                               binding=binding)
     except Exception as exc:  # noqa: BLE001 (rules 3 and 5: whatever failed, nothing stays, and the start goes on)
-        left = _restore(root, edits, kept)
+        left = restore(root, edits, kept)
         message = getattr(exc, "message", None) or f"{type(exc).__name__}: {exc}"
         also = f" {'; '.join(left)}." if left else ""
         _say(out, f"{offer.label} is unchanged: {message}.{also}")
@@ -600,7 +600,7 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
             _say(out, f"{offer.label} is adopted, but its next step failed ({type(exc).__name__}: {exc}).")
 
 
-def _restore(root: Path, edits: dict[str, bytes], kept: dict[str, bytes | None]) -> list[str]:
+def restore(root: Path, edits: Mapping[str, bytes], kept: dict[str, bytes | None]) -> list[str]:
     """Each file back as it was, but only if it still holds what this wrote; a line for each that isn't."""
     left = []
     for rel, wrote in edits.items():

@@ -26,6 +26,7 @@ from aew.engine import approval, transitions
 from aew.engine import freshness as F
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import ref_review as R
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
@@ -263,15 +264,17 @@ class NonMutating:
     def dispatch_observer(self, ctx: TxnContext, work_id: str, *, card: Any, scope: str, commit: str,
                           attempt: int | None = None, subject: dict[str, Any] | None = None,
                           inputs: list[dict[str, Any]] | None = None,
-                          children_digest: str | None = None) -> tuple[str, str, dict[str, Any]]:
-        """A read-only invocation with its own detached observation worktree at ``commit``."""
+                          children_digest: str | None = None,
+                          env: dict[str, str] | None = None) -> tuple[str, str, dict[str, Any]]:
+        """A read-only invocation with its own detached observation worktree at ``commit``; ``env``: the git environment
+        its checkout runs in (a ref review's reads objects only: ``git.OBJECT_ENV``, register E168)."""
         state = ctx.state
         inv_id = format_id("INV", state["counters"].get("invocation", 0) + 1)
         self.prune_observations(state)
         ws = worktrees.allocate_detached(
             repo_root=self.k.repo_root, aew_root=self.k.aew_root, workspaces_root=self.k.workspaces_root(),
             work_id=work_id, name=f"obs/{inv_id}", workspace_id=f"obs-{inv_id}", commit=commit,
-            referenced_paths=self._referenced_paths(state))
+            referenced_paths=self._referenced_paths(state), env=env)
         state["work"][work_id].setdefault("invocations", [])  # parents gain an invocation list on first dispatch
         try:
             snap = self.invocations.snapshot_of(ws["path"], ws["workspace_id"])
@@ -388,6 +391,7 @@ class NonMutating:
     def dispatch_guards(self) -> list[DispatchGuard]:
         return [DispatchGuard("nm.kind", self._g_kind),
                 DispatchGuard("redispatch.state", self._g_redispatch_state),
+                DispatchGuard("ref.pin", self._g_ref_pin),
                 DispatchGuard("plan.binding", self._g_plan_binding),
                 DispatchGuard("dependencies", self._g_dependencies),
                 DispatchGuard("card.executor", self._g_card),
@@ -409,6 +413,21 @@ class NonMutating:
                 f"{work_id} is {unit['state']}; a new attempt starts from ASSIGNED or RUNNING "
                 "(reconcile an INTERRUPTED Ticket first)"))
         return None
+
+    def _g_ref_pin(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
+        """A ref review's attempt is pinned to the commit its ref points at now, with its merge-base against the
+        authoritative commit (``ref_review.pin``; register E168). ``facts["base"]`` stays the authoritative commit,
+        which readiness, dependencies and inputs judge; the observation, and the untrusted-filter guard, read
+        ``observe_at``."""
+        ref = state["work"][work_id].get("review_ref")
+        if not ref:
+            return None
+
+        def resolve() -> None:
+            facts["ref_pin"] = R.pin(self.k.repo_root, ref, authoritative_branch=self.k.authoritative_branch,
+                                     authoritative_commit=facts["base"])
+            facts["observe_at"] = facts["ref_pin"]["commit"]
+        return checked(resolve)
 
     def _g_plan_binding(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         return checked(lambda: self.units.require_plan_binding(state, work_id))
@@ -467,8 +486,10 @@ class NonMutating:
             record = (unit.get("execution") or {}).get("record")
             if not record:
                 raise IllegalTransition(f"{work_id} has no accepted record to {slot}")
-            facts.update(card=chosen, archetype=chosen.archetype, record=record,
-                         evidence=self.inputs.find_unit_evidence(work_id, record["id"]))
+            ev = self.inputs.find_unit_evidence(work_id, record["id"])
+            facts.update(card=chosen, archetype=chosen.archetype, record=record, evidence=ev)
+            if unit.get("review_ref"):  # it observes the pinned commit, which the untrusted-filter guard reads (E168)
+                facts["observe_at"] = ev["evaluated_snapshot"]["base_revision"]
         return checked(check)
 
     # ---- the plan assessor's entrypoint (E160 slice 2; SYS-43): `aew plan assess <W>`, for a Ticket or a parent
@@ -567,14 +588,20 @@ class NonMutating:
         self._end_attempt(state, unit, "a new attempt starts", "superseded")
         attempt = unit.get("attempts", 0) + 1
         unit["attempts"] = attempt
-        inv_id, inv_token, _ = self.dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=commit,
-                                                      attempt=attempt, inputs=inputs)
+        # A ref review observes the commit its attempt pinned, read with objects only (register E168); every other
+        # attempt observes the authoritative commit its dispatch judged.
+        ref_pin = facts.get("ref_pin")
+        observed = ref_pin["commit"] if ref_pin else commit
+        inv_id, inv_token, _ = self.dispatch_observer(ctx, work_id, card=chosen, scope="observation", commit=observed,
+                                                      attempt=attempt, inputs=inputs,
+                                                      env=git.OBJECT_ENV if ref_pin else None)
         unit["execution"] = {
             "attempt": attempt, "invocation": inv_id, "archetype": chosen.archetype,
             "card": {"id": chosen.id, "version": chosen.meta.get("version"), "sha256": chosen.sha256},
-            "expected_kind": E.EXECUTE_KIND[chosen.archetype], "selected_by": selected_by,
-            "observed_commit": commit, "record": None, "started_at": utc_now(),
+            "expected_kind": E.execute_kind(unit, chosen.archetype), "selected_by": selected_by,
+            "observed_commit": observed, "record": None, "started_at": utc_now(),
             "dependencies": effective_edge_set(state, work_id),
+            **({"ref_pin": ref_pin} if ref_pin else {}),
         }
         # The pack states the attempt's output contract, which exists only now: pin the pack that durable state
         # regenerates (M3-D1; a harness launch refuses a drifted pack).
@@ -617,7 +644,7 @@ class NonMutating:
             change = self.units.set_state(unit, "ASSIGNED", f"dispatched {inv_id} ({execution['card']['id']}, attempt "
                                      f"{execution['attempt']}, expects {execution['expected_kind']}, "
                                      f"selected by {execution['selected_by']})", state=state)
-            ctx.summary = f"{work_id} dispatched: {inv_id} observes {commit[:12]}"
+            ctx.summary = f"{work_id} dispatched: {inv_id} observes {execution['observed_commit'][:12]}"
             self.units.before_commit(ctx)
         inv = ctx.state["invocations"][inv_id]
         return {"ok": True, "work_id": work_id, "invocation": inv_id, "invocation_token": inv_token,
@@ -680,12 +707,14 @@ class NonMutating:
         if kind != execution["expected_kind"]:
             raise ValidationFailed(f"attempt {execution['attempt']} of {inv['work_unit']} must produce a "
                                    f"{execution['expected_kind']} (pinned at dispatch), not a {kind}")
-        section = {"discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}[kind]
         result = submitted.get("result", "pass")
         if result not in E.RECORD_RESULTS:
             raise ValidationFailed(f"a record's result is {E.one_of(E.RECORD_RESULTS)}")
-        return {"evaluated_snapshot": inv["snapshot"], "attempt": inv["attempt"], "result": result,
-                section: submitted.get(section) or {}}
+        bound = {"evaluated_snapshot": inv["snapshot"], "attempt": inv["attempt"], "result": result}
+        if kind == E.REF_REVIEW:  # the review, its verdict and the pin it reviewed (register E168)
+            return {**bound, **E.ref_review_binding(execution["ref_pin"], submitted)}
+        section = {"discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}[kind]
+        return {**bound, section: submitted.get(section) or {}}
 
     def _check_execute_record(self, state: dict[str, Any], work_id: str, evidence_id: str) -> dict[str, Any]:
         unit = self.units.unit(state, work_id)
@@ -909,7 +938,8 @@ class NonMutating:
             "decision": decision,
             "plan": {"revision": plan.get("accepted"), "sha256": plan.get("sha256")},
             "execution": {k: execution.get(k) for k in ("attempt", "invocation", "archetype", "card", "expected_kind",
-                                                        "selected_by", "observed_commit")},
+                                                        "selected_by", "observed_commit", "ref_pin")
+                          if k in execution},
             "accepted_record": execution["record"],
             "record_freshness": (gc["gates"].get("execute_record") or {}).get("freshness"),
             "gates": {g: v["status"] for g, v in gc["gates"].items()},

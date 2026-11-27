@@ -8,8 +8,9 @@ authority:
 responsibilities:
   - locate owners and entry points, trace relationships, inspect tests and behavior
   - separate observed facts from hypotheses; list unresolved questions
-engine_operations: [check.run, submit.discovery_record, context.read]
-evidence_kinds: [discovery_record, check_result]
+# A ref review only on a Ticket that names a ref (register E168): its attempt is pinned to that kind.
+engine_operations: [check.run, submit.discovery_record, submit.ref_review, context.read]
+evidence_kinds: [discovery_record, check_result, ref_review]
 authority_capabilities: []
 prohibited:
   - choosing the final design; mutating source, including the observation workspace (a changed observation
@@ -17,6 +18,7 @@ prohibited:
   - changing work state, plans or completion (Lead authority)
 outputs:
   - discovery record
+  - ref review (a Ticket that names a ref)
 context:
   knowledge: [objective, accepted_authority, codebase_map]
   excluded: []

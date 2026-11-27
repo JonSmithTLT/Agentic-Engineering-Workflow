@@ -130,8 +130,9 @@ def effective_edge_set(state: dict[str, Any], work_id: str) -> list[dict[str, st
 def dispatch_binding(unit: dict[str, Any]) -> dict[str, Any] | None:
     """What a started Ticket's current attempt was dispatched with: its source commit and effective edges.
 
-    Mutating: the live workspace (base commit). Non-mutating: the current execution (observed commit).
-    ``dependencies`` is None for an attempt dispatched before bindings were recorded.
+    Mutating: the live workspace (base commit). Non-mutating: the current execution (observed commit), or for a ref
+    review the authoritative commit its dependencies were judged at (``ref_pin``; register E168), since it observes the
+    ref's commit. ``dependencies`` is None for an attempt dispatched before bindings were recorded.
     """
     if unit["kind"] != "ticket" or unit["state"] in UNSTARTED | H.TERMINAL:
         return None
@@ -143,7 +144,8 @@ def dispatch_binding(unit: dict[str, Any]) -> dict[str, Any] | None:
     execution = unit.get("execution") or {}
     if not execution:
         return None
-    return {"commit": execution.get("observed_commit"), "dependencies": execution.get("dependencies")}
+    judged_at = (execution.get("ref_pin") or {}).get("authoritative_commit") or execution.get("observed_commit")
+    return {"commit": judged_at, "dependencies": execution.get("dependencies")}
 
 
 def dispatch_binding_problem(state: dict[str, Any], work_id: str, *, repo_root: Path) -> dict[str, Any] | None:

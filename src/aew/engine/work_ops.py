@@ -13,6 +13,7 @@ from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import operator_decisions as OD
 from aew.engine import priority as PRIORITY
+from aew.engine import ref_review as R
 from aew.engine import scope_ops as SC
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
@@ -510,6 +511,7 @@ class WorkCommands:
         class0_assertions: list[str] | None = None,
         priority: str | None = None,
         priority_reason: str | None = None,
+        review_ref: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         args: dict[str, Any] = {
@@ -519,7 +521,8 @@ class WorkCommands:
             "rationale": rationale, "external_refs": external_refs, "body": body, "card": card,
             "promoted_from": promoted_from, "acceptance_checks": acceptance_checks,
             "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions,
-            "priority": priority, "priority_reason": priority_reason}
+            "priority": priority, "priority_reason": priority_reason,
+            **({"review_ref": review_ref} if review_ref is not None else {})}
         if request_id is None:
             self._check_create_arguments(args)  # preserve the no-ID path's pre-transaction validation
         request = ControlRequest.prepare(request_id, **args)
@@ -615,6 +618,15 @@ class WorkCommands:
                 raise UsageError(f"a {level} priority records why: give its reason (`priority_reason`, or "
                                  f"--priority-reason), the judgment `status` shows beside it; every level but "
                                  f"{PRIORITY.DEFAULT} needs one", priority=level)
+        if a.get("review_ref") is not None:
+            # Register E168: a review of a named ref is a non-mutating Ticket's deliverable; it changes no source.
+            if kind != "ticket" or a.get("mutating") is not False:
+                raise UsageError("a ref review changes no source: create it as a non-mutating Ticket (add "
+                                 "--non-mutating beside --review-ref, or give `non_mutating: true` in ticket_draft)",
+                                 reason="ref_review_mutating", review_ref=a["review_ref"])
+            if not isinstance(a["review_ref"], str) or not a["review_ref"].strip():
+                raise UsageError("a review ref names a branch, tag or remote-tracking ref; it is not blank",
+                                 reason="not_a_ref")
         if a.get("class0_assertions") and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")
@@ -658,6 +670,9 @@ class WorkCommands:
             "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
             "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
         }
+        if a.get("review_ref") is not None:  # its full name, fixed now; its commit is pinned at each dispatch (E168)
+            unit["review_ref"] = R.resolve(self.k.repo_root, a["review_ref"],
+                                           authoritative_branch=self.k.authoritative_branch)
         if kind == "ticket" and a.get("priority") is not None:
             unit["priority"] = {"level": a["priority"], "reason": a.get("priority_reason")}
         if kind == "ticket":

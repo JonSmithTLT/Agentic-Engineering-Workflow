@@ -1763,7 +1763,8 @@ class Engine:
                     promoted_from: str | None = None, acceptance_checks: list[str] | None = None,
                     acceptance_inputs: list[str] | None = None,
                     class0_assertions: list[str] | None = None, priority: str | None = None,
-                    priority_reason: str | None = None, request_id: str | None = None) -> dict[str, Any]:
+                    priority_reason: str | None = None, review_ref: str | None = None,
+                    request_id: str | None = None) -> dict[str, Any]:
         return self._work.work_create(token=token, kind=kind, title=title, risk_class=risk_class,
                                       mutating=mutating, parent=parent, depends_on=depends_on, scope_paths=scope_paths,
                                       goal_backwards=goal_backwards, contract=contract, mandatory_gates=mandatory_gates,
@@ -1771,7 +1772,8 @@ class Engine:
                                       external_refs=external_refs, body=body, card=card, promoted_from=promoted_from,
                                       acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
                                       class0_assertions=class0_assertions, priority=priority,
-                                      priority_reason=priority_reason, request_id=request_id)
+                                      priority_reason=priority_reason, review_ref=review_ref,
+                                      request_id=request_id)
 
     def work_depend(self, *, token: str, work_id: str, add: list[str] | None = None,
                     remove: list[str] | None = None, reason: str) -> dict[str, Any]:

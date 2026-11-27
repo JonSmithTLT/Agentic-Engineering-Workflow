@@ -11,6 +11,11 @@ fingerprint equality with the current workspace), and none is silently equated w
   changes never make it stale, and its currency cannot be established by the engine. It is reported
   as ``UNKNOWN`` with basis ``external`` (as of its date and declared versions) rather than an
   overclaimed CURRENT.
+* ``ref_review`` (register E168; the designer's decision of 2026-11-06, (d)) is **not source-bound** either: it reviews
+  the commit a named ref pointed at when its attempt was pinned, so its freshness compares the ref's current commit
+  with the pinned one. CURRENT while they are the same; otherwise UNKNOWN, with how the ref ``moved`` (``forward``,
+  ``rewritten`` or ``deleted``): "the ref has moved since this review" is shown and never gates. STALE is never used
+  for it, since STALE gates elsewhere; the review stays a review of the commit it names.
 
 Freshness is computed, never written: records stay byte-identical history.
 """
@@ -20,7 +25,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from aew.errors import GitError
+from aew.errors import GitError, UsageError
+from aew.knowledge.evidence import REF_REVIEW
 from aew.workspace import git
 
 CURRENT, STALE, UNKNOWN = "CURRENT", "STALE", "UNKNOWN"
@@ -43,6 +49,8 @@ def record_freshness(repo_root: Path, record: dict[str, Any], authoritative_comm
     and is bounded by it: a git that does not answer raises ``GitError`` with ``reason`` ``timeout``. Without it the
     CLI's calls are unchanged."""
     kind = record["kind"]
+    if kind == REF_REVIEW:
+        return _ref_freshness(repo_root, record, timeout)
     if kind == "research_record":
         research = record.get("research") or {}
         return {"status": UNKNOWN, "basis": "external", "source_bound": False, "as_of": record.get("created_at"),
@@ -70,14 +78,46 @@ def record_freshness(repo_root: Path, record: dict[str, Any], authoritative_comm
     return {**base, "status": CURRENT, "scope": scope}
 
 
+# What a ref review's freshness shows when its ref has moved (the design's words), and how it moved.
+REF_MOVED = "the ref has moved since this review"
+FORWARD, REWRITTEN, DELETED = "forward", "rewritten", "deleted"
+
+
+def _ref_freshness(repo_root: Path, record: dict[str, Any], timeout: float | None) -> dict[str, Any]:
+    """A ref review against its ref as the repository holds it now. Every git call reads objects (``object_git``: no
+    lazy fetch, no window), bounded by ``timeout`` when given."""
+    pin = record.get("reviewed_ref") or {}
+    name, pinned = pin.get("name"), pin.get("commit")
+    bound = {"timeout": timeout} if timeout is not None else {}
+    unreadable = False
+    try:
+        current = git.ref_commit(name, cwd=repo_root, **bound) if name else None
+    except (UsageError, GitError) as exc:  # the ref now holds a non-commit, or an object this repository lacks
+        if (exc.details or {}).get("reason") not in {"not_a_commit", "object_missing"}:
+            raise
+        current, unreadable = exc.details.get("object"), True
+    base = {"basis": "ref", "source_bound": False, "ref": name, "pinned_commit": pinned, "current_commit": current}
+    if pinned and current == pinned and not unreadable:
+        return {**base, "status": CURRENT}
+    if current is None:
+        moved = DELETED
+    elif unreadable or not pinned:
+        moved = REWRITTEN
+    else:
+        moved = FORWARD if git.is_ancestor_object(pinned, current, cwd=repo_root, **bound) else REWRITTEN
+    return {**base, "status": UNKNOWN, "moved": moved, "detail": REF_MOVED}
+
+
+def cached_by_head(record: dict[str, Any]) -> bool:
+    """Whether a record's freshness is a function of the record and the authoritative head alone, so a reader may cache
+    it by them (the dashboard). A ref review's depends on its ref, which moves on its own: never (register E168)."""
+    return record.get("kind") != REF_REVIEW
+
+
 def _is_ancestor(ancestor: str, descendant: str, repo_root: Path, timeout: float | None) -> bool:
     if timeout is None:
         return git.is_ancestor(ancestor, descendant, cwd=repo_root)
-    proc = git.object_git("merge-base", "--is-ancestor", ancestor, descendant, cwd=repo_root, check=False,
-                          timeout=timeout)
-    if proc.returncode not in (0, 1):
-        raise GitError("merge-base --is-ancestor failed", stderr=proc.stderr.decode("utf-8", "replace").strip())
-    return proc.returncode == 0
+    return git.is_ancestor_object(ancestor, descendant, cwd=repo_root, timeout=timeout)
 
 
 def _changed(repo_root: Path, args: list[str], timeout: float | None) -> list[str]:

@@ -356,13 +356,14 @@ class Harness:
         return {"text": text, "sha256": sha256_text(text), "path": self.packs.pack_rel(inv_id)}
 
     def expected_kinds(self, state: dict[str, Any], inv: dict[str, Any]) -> list[str]:
-        unit = state["work"][inv["work_unit"]]
-        pinned = (unit.get("execution") or {}).get("expected_kind")
-        if inv["role"] in E.EXECUTE_KIND and pinned:
+        pinned = E.pinned_kind(state, inv)
+        if pinned:
             return [pinned]
         return sorted(E.kinds_for(inv["role"], inv.get("scope")))  # a plan assessor's run expects its assessment
 
-    def operations_of(self, inv: dict[str, Any]) -> list[str]:
+    def operations_of(self, inv: dict[str, Any], *, expected: str | None = None) -> list[str]:
+        """The engine operations a run of ``inv`` is offered; ``expected``: the kind its attempt was pinned to, for a
+        non-mutating executor (``evidence.pinned_kind``), so it is offered that kind's submission alone (E168)."""
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))
         if inv.get("allowed_operations") is not None:
             ops &= set(inv["allowed_operations"])
@@ -372,7 +373,7 @@ class Harness:
         # The map reads ride context.read (register F15.8): a role that reads context, in a run launched with them on
         if runs and "context.read" in ops and K.run_maps_reads(runs[-1]) == X.MAPS_READS_STRUCTURAL:
             ops |= set(MAP_OPERATIONS)
-        return sorted(E.submit_operations(ops, inv["role"], inv.get("scope")))  # only what it may submit (#581 F1)
+        return sorted(E.submit_operations(ops, inv["role"], inv.get("scope"), expected))  # what it may submit (#581 F1)
 
     def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
         """What a worker's map read answers at (register F15.8): its invocation's workspace and base commit
@@ -460,7 +461,8 @@ class Harness:
             scope=inv.get("scope") or "ticket",
             card={k: card[k] for k in ("id", "version", "sha256")} if card else None,
             execution_profile=inv["execution_profile"], workspace=str(workspace),
-            expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
+            expected_kinds=self.expected_kinds(state, inv),
+            operations=self.operations_of(inv, expected=E.pinned_kind(state, inv)),
             pack_path=str(self.k.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
             continuation=continuation, run_dir=str(runlog.run_dir(self.k.aew_root, run)),
             coordination_text=tuple(message["text"] for message in carried or []),
@@ -504,7 +506,8 @@ class Harness:
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
         return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations.card_ref(inv),
                 "work_unit": inv["work_unit"], "scope": inv.get("scope"), "workspace": inv.get("workspace"),
-                "expected_kinds": self.expected_kinds(state, inv), "operations": self.operations_of(inv),
+                "expected_kinds": self.expected_kinds(state, inv),
+                "operations": self.operations_of(inv, expected=E.pinned_kind(state, inv)),
                 "execution_profile": inv.get("execution_profile")}
 
     def run_evidence(self, work_unit: str, run: str,

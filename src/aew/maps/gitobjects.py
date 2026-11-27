@@ -177,7 +177,7 @@ def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None, deadline: flo
             return {"timeout": _left(deadline)}
         return {} if timeout is None else {"timeout": timeout}
 
-    if git.is_partial_clone(repo, **bound()) and git.version(repo, **bound()) < git.NO_LAZY_FETCH_FROM:
+    if git.lazy_fetch_possible(repo, timeout=lambda: bound().get("timeout", git.OBJECT_TIMEOUT_S)):
         raise MapCurrentnessUnproven(
             "this repository is a partial clone and this git (older than 2.44) cannot be stopped from fetching "
             "missing objects lazily: generate the map in a full clone, or upgrade git", reason="partial_clone")

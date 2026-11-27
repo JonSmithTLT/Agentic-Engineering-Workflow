@@ -9,7 +9,7 @@
     "schema": {"const": "aew/evidence/v1"},
     "id": {"type": "string"},
     "kind": {"enum": ["implementation_report", "review", "verification", "check_result",
-                      "discovery_record", "research_record", "plan_proposal", "plan_assessment"]},
+                      "discovery_record", "research_record", "plan_proposal", "plan_assessment", "ref_review"]},
     "work_unit": {"type": "string"},
     "producer": {
       "type": "object",
@@ -190,6 +190,43 @@
         "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
       }
     },
+    "ref_review": {
+      "type": "object",
+      "description": "E168: a review of a named local ref (the investigator archetype's, for a Ticket that names one): what it found in the diff from the merge-base to the pinned commit, the requirements traced to that diff, and what was and was not checked",
+      "required": ["summary", "findings", "requirement_trace", "checked", "not_checked"],
+      "additionalProperties": false,
+      "properties": {
+        "summary": {"type": "string", "minLength": 1},
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "requirement_trace": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["requirement", "status"], "additionalProperties": false,
+            "properties": {
+              "requirement": {"type": "string", "minLength": 1, "description": "the requirement, by its id where it has one"},
+              "status": {"enum": ["covered", "partial", "missing"], "description": "how far the reviewed change meets it"},
+              "finding": {"type": ["string", "null"], "description": "the finding that records a partial or missing requirement"}
+            }
+          }
+        },
+        "checked": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "not_checked": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "reviewed_ref": {
+      "type": "object",
+      "description": "E168, engine-bound: the ref a ref review reviewed, as its attempt pinned it at dispatch (execution.ref_pin, less what it noticed of uncommitted work)",
+      "required": ["name", "commit", "merge_base", "authoritative_branch", "authoritative_commit"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^refs/(heads|tags|remotes)/"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "merge_base": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "merge_bases": {"type": "integer", "minimum": 1},
+        "authoritative_branch": {"type": "string"},
+        "authoritative_commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"}
+      }
+    },
+    "verdict": {"enum": ["clear", "findings"], "description": "E168, engine-derived: a ref review's verdict, findings when one of its findings is required"},
     "check": {
       "type": "object",
       "required": ["check_id", "exit_code"],
@@ -222,12 +259,18 @@
                "properties": {"producer": {"properties": {"role": {"const": "reviewer"}}},
                               "plan_revision": {"type": "object", "required": ["revision", "sha256"],
                                                 "properties": {"sha256": {"pattern": "^[0-9a-f]{64}$"}}}}}
+    },
+    {
+      "description": "E168: a ref review is the investigator archetype's, carries its review, the ref its attempt pinned and the verdict its findings give",
+      "if": {"properties": {"kind": {"const": "ref_review"}}},
+      "then": {"required": ["ref_review", "reviewed_ref", "verdict", "attempt"],
+               "properties": {"producer": {"properties": {"role": {"const": "investigator"}}}}}
     }
   ],
   "$defs": {
     "finding": {
       "type": "object",
-      "description": "A finding of a review or a plan assessment (E160): one shape for both",
+      "description": "A finding of a review, a plan assessment (E160) or a ref review (E168): one shape for all",
       "required": ["id", "severity", "summary", "required"],
       "properties": {
         "id": {"type": "string"},

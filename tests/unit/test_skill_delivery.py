@@ -264,7 +264,8 @@ def test_the_cards_name_the_shipped_skills_with_their_versions_moved():
 
 
 # Cards whose foundations were assigned or replaced in the E136 batches and E396–E398.
-FOUNDATIONAL = {"engineer": "general-implementation", "investigator": "codebase-investigation",
+FOUNDATIONAL = {"branch_reviewer": "adversarial-review", "engineer": "general-implementation",
+                "investigator": "codebase-investigation",
                 "planner": "engineering-planning", "plan_assessor": "plan-review",
                 "researcher": "source-research", "security_reviewer": "security-review"}
 
@@ -318,8 +319,12 @@ BATCH_4 = {
     "code_reviewer": ["ci-evidence-triage"],
 }
 BATCH_5 = {"security_reviewer": ["agent-security-review", "security-control-validation"]}
+# Register E168 (the designer's decision of 2026-11-06, (d)): the branch reviewer's offered skills, by the Lead's fit
+# check (ADR-0006, amendment of 2026-11-27); its foundational one is `adversarial-review`.
+BATCH_6 = {"branch_reviewer": ["codebase-investigation", "mechanical-enumeration", "python-development",
+                               "c-development"]}
 
-BATCHES = (BATCH_1, BATCH_2, BATCH_3, BATCH_4, BATCH_5)
+BATCHES = (BATCH_1, BATCH_2, BATCH_3, BATCH_4, BATCH_5, BATCH_6)
 # Every built-in card's offered list, whole: E127's language skills on the default implementer, then E136's batches.
 # A card's foundational skill is requested, so it is not in its offered list.
 OFFERED = {card: [name for name in ([] if card != "engineer" else ["python-development", "c-development"])

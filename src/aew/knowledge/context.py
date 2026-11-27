@@ -132,6 +132,30 @@ SCOPE_TEMPLATES = {
 }
 
 
+# A report format chosen by the kind an attempt was pinned to (register E168): a branch reviewer, an investigator card,
+# writes a ref review. ``result`` says the review was done; the engine derives its verdict from the findings.
+KIND_TEMPLATES = {
+    E.REF_REVIEW: (E.REF_REVIEW, {
+        "claim": "<one line: what the review found>",
+        "result": "pass",
+        "producer": {"model": "<model>", "harness": "<harness>"},
+        E.REF_REVIEW: {
+            "summary": "<what the reviewed change does, and your overall judgment of it>",
+            "findings": [{"id": "F1", "severity": "minor", "summary": "<finding>",
+                          "location": "<path:line in the pinned commit>", "required": False}],
+            "requirement_trace": [
+                {"requirement": "<a requirement or acceptance criterion, by its id where it has one>",
+                 "status": "covered"},
+                {"requirement": "<one the change meets in part or not at all>", "status": "partial",
+                 "finding": "F1"},
+            ],
+            "checked": ["<what you checked, and how>"],
+            "not_checked": ["<what you did not check, and why>"],
+        },
+    }),
+}
+
+
 # The pack's title: the heading its text starts with, which a run's own text names when it says what the first message
 # holds (``aew.harness.opencode.projection.system_text``).
 CONTRACT_HEADING = "# AEW launch contract"
@@ -140,9 +164,12 @@ CONTRACT_HEADING = "# AEW launch contract"
 OPERATION_COMMANDS = {"check.run": "`aew check run <check-id>`"}
 
 
-def output_template(role: str, scope: str | None) -> tuple[str, dict[str, Any]] | tuple[None, None]:
-    """The report a role dispatched at ``scope`` writes back, and its format."""
-    return SCOPE_TEMPLATES.get(scope or "") or OUTPUT_TEMPLATES.get(role, (None, None))
+def output_template(role: str, scope: str | None,
+                    expected: str | None = None) -> tuple[str, dict[str, Any]] | tuple[None, None]:
+    """The report a role dispatched at ``scope`` (and pinned to produce ``expected``, for a non-mutating executor)
+    writes back, and its format."""
+    return (KIND_TEMPLATES.get(expected or "") or SCOPE_TEMPLATES.get(scope or "")
+            or OUTPUT_TEMPLATES.get(role, (None, None)))
 
 
 # A role that may not change the tree it evaluates, told what running a check there can do (`check_run` runs inside it;
@@ -205,6 +232,9 @@ class PackInputs:
     subject: dict[str, Any] | None = None
     children: list[dict[str, Any]] = field(default_factory=list)
     aggregate_diffstat: str | None = None
+    # Register E168: a ref review's pin and the diff from its merge-base to its pinned commit
+    # (``ref_review.pack_view``); None for every other pack, and then the pack is exactly what it was.
+    ref_review: dict[str, Any] | None = None
     # ADR-0011: historical records the Lead loaded as reference (``aew history load``), pinned at dispatch.
     history: list[dict[str, Any]] = field(default_factory=list)
     # Register F22.1 (plan §5.4): the structural-map slice, rendered (``aew.maps.slices``); None when the switch is off
@@ -291,12 +321,17 @@ def _card_section(p: PackInputs) -> list[str]:
     ]
 
 
-def _allowed_values(role: str, scope: str | None = None) -> dict[str, dict[str, str | None]]:
-    """The other values each field of the report format of ``role`` dispatched at ``scope`` may take, from what the
-    engine validates against."""
+def _allowed_values(role: str, scope: str | None = None,
+                    expected: str | None = None) -> dict[str, dict[str, str | None]]:
+    """The other values each field of the report format of ``role`` dispatched at ``scope`` (pinned to ``expected``)
+    may take, from what the engine validates against."""
     section = schema("evidence")["properties"]
     review = section["review"]["properties"]
     severity = schema("evidence")["$defs"]["finding"]["properties"]["severity"]
+    if expected == E.REF_REVIEW:
+        trace = section[E.REF_REVIEW]["properties"]["requirement_trace"]["items"]["properties"]
+        return {"result": E.REF_REVIEW_RESULTS, "status": dict.fromkeys(trace["status"]["enum"]),
+                "severity": dict.fromkeys(severity["enum"])}
     if scope == E.ASSESSMENT_SCOPE:
         assessment = section["assessment"]["properties"]
         trace = assessment["requirement_trace"]["items"]["properties"]
@@ -313,7 +348,7 @@ def _allowed_values(role: str, scope: str | None = None) -> dict[str, dict[str, 
 
 def _operations(p: PackInputs) -> list[str]:
     granted = (p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]
-    return E.submit_operations(granted, p.role, p.scope)
+    return E.submit_operations(granted, p.role, p.scope, p.expected_kind)
 
 
 def _on_the_bridge(operations: list[str]) -> list[str]:
@@ -359,7 +394,7 @@ def _scope_duties(p: PackInputs, delivered: set[str]) -> list[str]:
 def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
     """``delivered``: the names of the pack's other sections, so the contract promises only what follows it (most of
     them depend on the scope, a switch or the data)."""
-    kind, template = output_template(p.role, p.scope)
+    kind, template = output_template(p.role, p.scope, p.expected_kind)
     snap = p.snapshot
     card_label = f"{p.card['display_name']} — " if p.card else ""
     lines = [
@@ -378,7 +413,9 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
         f" workspace `{snap['workspace_id']}`",
         "- Accepted plan: " + (f"v{p.plan['accepted']} (sha256 {p.plan['sha256'][:12]}…)" if p.plan else "none"),
         *([f"- Attempt {p.attempt}: you must produce exactly one **{p.expected_kind}**; the workspace is a read-only "
-           "observation of the authoritative source (any change to it refuses your submission)"]
+           + (f"observation of `{p.ref_review['name']}` at the commit this attempt pinned, "
+              f"`{p.ref_review['commit']}`" if p.ref_review else "observation of the authoritative source")
+           + " (any change to it refuses your submission)"]
           if p.expected_kind else []),
         "- Required knowledge (included below): " + ", ".join(
             name for name in p.role_def["context"]["knowledge"] if KNOWLEDGE_SECTIONS.get(name) in delivered),
@@ -416,10 +453,16 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
             "```",
             "",
             "Allowed values: " + "; ".join(f"`{name}` is {E.one_of(values)}"
-                                           for name, values in _allowed_values(p.role, p.scope).items()) + ".",
+                                           for name, values in _allowed_values(p.role, p.scope,
+                                                                               p.expected_kind).items()) + ".",
         ]
     lines += ["", "### Completion criteria", ""]
-    if p.role == "investigator":
+    if p.role == "investigator" and p.expected_kind == E.REF_REVIEW:
+        lines += _bullets(["every finding has a severity and a location in the pinned commit",
+                           "every requirement is traced to the reviewed change, and what was and was not checked is "
+                           "said",
+                           "a ref_review is submitted; you never change the code, the ref or the observation"])
+    elif p.role == "investigator":
         lines += _bullets(["every fact cites concrete evidence; hypotheses are kept separate",
                            "observed_paths name what your findings depend on",
                            "a discovery_record is submitted; you do not choose the design"])
@@ -451,6 +494,38 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
                            else "post-integration checks are re-run on the integrated candidate",
                            "failures are reported with evidence; the Lead decides what happens next"])
     return lines
+
+
+def _ref(p: PackInputs) -> list[str]:
+    """What a ref review reviews (register E168): the ref, the commit its attempt pinned, the merge-base the diff starts
+    from, what they were judged against, and any uncommitted work AEW saw where the branch is checked out."""
+    r = p.ref_review or {}
+    lines = ["## The ref under review (pinned at dispatch)", "",
+             f"- Ref: `{r['name']}`" + (" (a remote-tracking ref: what the operator last fetched; AEW fetches nothing)"
+                                        if r["name"].startswith("refs/remotes/") else ""),
+             f"- Pinned commit: `{r['commit']}`: your observation, and the only commit this review is of",
+             f"- Merge-base with `{r['authoritative_branch']}` (at `{r['authoritative_commit']}`): `{r['merge_base']}`"
+             + (f" (one of {r['merge_bases']} best common ancestors: a criss-cross history; the diff below starts at "
+                "this one)" if r.get("merge_bases", 1) > 1 else "")]
+    uncommitted = r.get("uncommitted")
+    if uncommitted:
+        lines.append(f"- At dispatch, {uncommitted['paths']} tracked path(s) had uncommitted changes where the branch "
+                     "is checked out: they are not in the pinned commit, and this review is not of them")
+    lines.append("- If the ref moves after this, your review stays a review of the pinned commit, and says so")
+    return lines
+
+
+def _ref_diff(p: PackInputs) -> list[str]:
+    """The diff from the merge-base to the pinned commit, whole within its bound; otherwise its stat and its changed
+    paths, with the command that reads the rest in the observation. The diff is the ref's content: data."""
+    r = p.ref_review or {}
+    head = ["## The reviewed change: the diff from the merge-base to the pinned commit", ""]
+    if r.get("diff") is not None:
+        return [*head, *_fenced("diff", r["diff"].rstrip(), "(empty diff)")]
+    return [*head, f"The diff is {r['diff_bytes']} bytes, over the pack's bound of {r['diff_bound']}: its stat and "
+                   "changed paths follow. Read each path's change in your workspace with "
+                   f"`{r['read_rest']}`.", "", *_fenced("text", r["stat"].rstrip(), "(no change)"), "",
+            "Changed paths:", *[f"- {recorded(path)}" for path in r["paths"]]]
 
 
 def _requirement(p: PackInputs) -> list[str]:
@@ -901,6 +976,9 @@ def sections(p: PackInputs) -> list[Section]:
     if p.role != "verifier":
         out.append(_lines_section("accepted-plan", WORK,
                                   ["", "## Accepted plan", "", p.plan_text.strip() or "(no accepted plan)"]))
+    if p.ref_review:
+        out.append(_lines_section("ref", WORK, ["", *_ref(p)]))
+        out.append(_lines_section("ref-diff", EVIDENCE, ["", *_ref_diff(p)], cuttable=True))
     if p.inputs:
         out.append(_lines_section("inputs", EVIDENCE, ["", *_inputs(p)], cuttable=True))
     if p.subject:

@@ -114,6 +114,12 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Acceptance evidence / next action:** An implementer, or the executor of a non-mutating Ticket, that consumes a record holding `unresolved_questions`, `uncertainties` or `constraints` gets an "Open questions and known limits recorded in the consumed inputs" section after its consumed inputs: each field under its schema name, per record, bounded (10 items, 240 characters, each cut counted), every item one quoted line, labelled as what the producing agent recorded and AEW has not verified or answered. A pack whose inputs hold none is unchanged, and no reviewer, verifier or plan assessor gets the section (`tests/integration/test_open_questions_in_packs.py`, `tests/unit/test_pack_truth.py`). Its effect on a worker is not measured; widening it to evaluators is the operator's decision.
 
+### A review of a named local ref (register E168, in part)
+
+**Status:** Implemented (PR 1: the pin, the `ref_review` kind and the `branch_reviewer` card; the Lead-facing read side, PR 2: not built)
+
+**Acceptance evidence / next action:** A non-mutating Ticket created with `--review-ref <ref>` (or `ticket_draft`'s `review_ref`) records the ref's full name; each dispatch pins its commit and merge-base, the executor observes that commit read-only, and the `branch_reviewer` writes a `ref_review` whose freshness is CURRENT or UNKNOWN with how the ref moved, never STALE and never gating; AEW fetches nothing (ADR-0008 and ADR-0006, amendments of 2026-11-27; `tests/unit/test_ref_review.py`, `tests/integration/test_ref_review_flow.py`). A check on a ref review runs only contained until the operator answers E168's Q1. Next: `work show`, `status` and `resume` saying the ref has moved, and the dashboard projection (E168 PR 2)
+
 ### Read-only concurrency
 
 **Status:** Implemented (observation workspaces)

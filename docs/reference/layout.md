@@ -707,7 +707,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.stg02.world`: `Fixture.load` (Path.read_text)
 - `aew.surface.projection`: `_stat` (Path.stat)
 - `aew.switch_offer`: `_mapping` (Path.read_bytes), `_table_edits` (Path.exists), `_table_opening` (Path.exists), `_take` (Path.exists), `_take` (Path.read_bytes), `key_offer.edits` (Path.read_bytes), `restore` (Path.exists), `restore` (Path.read_bytes)
-- `aew.workspace.git`: `_signature` (os.stat), `git` (Path.is_dir), `untrusted_filters` (Path.is_file), `untrusted_filters` (Path.read_text)
+- `aew.workspace.git`: `_signature` (os.stat), `git` (Path.is_dir), `object_git` (Path.is_dir), `uncommitted_on` (Path.is_dir), `untrusted_filters` (Path.is_file), `untrusted_filters` (Path.read_text)
 - `aew.workspace.worktrees`: `inspect` (Path.exists), `remove` (Path.exists)
 
 ## What the reading does not see

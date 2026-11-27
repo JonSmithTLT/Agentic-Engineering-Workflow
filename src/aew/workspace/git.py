@@ -16,12 +16,12 @@ import shutil
 import subprocess
 import tempfile
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 from aew import profile
-from aew.errors import GitError
+from aew.errors import GitError, IllegalTransition, NotFound, UsageError
 from aew.harness.contract import scrub_credentials
 
 AEW_IDENTITY = {"name": "AEW Engine", "email": "aew-engine@invalid"}
@@ -422,6 +422,16 @@ def is_partial_clone(cwd: Path, *, timeout: float = OBJECT_TIMEOUT_S) -> bool:
     return False
 
 
+def lazy_fetch_possible(cwd: Path, *, timeout: float | Callable[[], float] = OBJECT_TIMEOUT_S) -> bool:
+    """Whether a read of this repository's objects could fetch a missing one lazily whatever AEW asks: a partial clone
+    on a git older than 2.44 (``NO_LAZY_FETCH_FROM``), which ignores ``GIT_NO_LAZY_FETCH``. The one owner of the
+    predicate: the maps refuse generation on it, and a ref review's pin refuses dispatch on it (register E168).
+    ``timeout`` bounds each git process; a callable is asked again for each, so a caller with one deadline gives each
+    process only the time left."""
+    left = timeout if callable(timeout) else (lambda: timeout)
+    return is_partial_clone(cwd, timeout=left()) and version(cwd, timeout=left()) < NO_LAZY_FETCH_FROM
+
+
 class CatFileBatch:
     """One ``git cat-file --batch`` process serving every blob of a generation: one process, not one per file.
 
@@ -486,3 +496,133 @@ class CatFileBatch:
         finally:
             if proc.stdout is not None:
                 proc.stdout.close()
+
+
+# --------------------------------------------------------------------------- a named ref to review (register E168)
+#
+# A non-mutating Ticket may name a local ref for review (the designer's decision of 2026-11-06, (d)). What a ref name
+# means to AEW is owned here: the namespaces it accepts, how a given name becomes one full ref name at creation, and
+# what that ref points at when it is pinned. Every call reads through ``object_git``: replace refs off, no lazy fetch,
+# no window. AEW fetches nothing: a ref is what the operator's repository holds now.
+
+REVIEWABLE_REF_PREFIXES = ("refs/heads/", "refs/tags/", "refs/remotes/")
+# What makes a name a revision expression rather than a ref's name (gitrevisions(7)), or not a ref name at all.
+_REVISION_SYNTAX = re.compile(r"[~^:\\?*\[\s]|@\{|\.\.|\A-|\A@\Z")
+_HEX = re.compile(r"\A[0-9a-fA-F]{4,64}\Z")
+
+
+def _refs(cwd: Path) -> list[str]:
+    """Every ref the repository holds, by its full name (one ``for-each-ref``)."""
+    proc = object_git("for-each-ref", "--format=%(refname)", cwd=cwd)
+    return proc.stdout.decode("utf-8", "replace").splitlines()
+
+
+def full_ref_name(name: str, *, cwd: Path) -> str:
+    """The full name of the ref ``name`` gives, in an accepted namespace (``REVIEWABLE_REF_PREFIXES``): a full name as
+    it is, a short one as the one ref it names there, and ``HEAD`` as the branch the checkout at ``cwd`` is on. Never a
+    commit: what the ref points at is read when it is pinned. Refused, with ``reason`` in the details: a revision
+    expression, a commit id or an invalid name (``not_a_ref``), a ref outside the namespaces (``ref_namespace``), a
+    short name two refs share (``ambiguous_ref``, with the ``candidates``), ``HEAD`` detached (``detached_head``) or on
+    a branch with no commit yet (``unborn_ref``), and a name no ref has (``unknown_ref``)."""
+    accepted = ", ".join(f"`{p}`" for p in REVIEWABLE_REF_PREFIXES)
+    if name == "HEAD":
+        proc = object_git("symbolic-ref", "--quiet", "HEAD", cwd=cwd, check=False)
+        branch = proc.stdout.decode("utf-8", "replace").strip()
+        if proc.returncode != 0 or not branch:
+            raise UsageError("HEAD is detached, so it names no branch to review: name the branch (or tag) instead",
+                             reason="detached_head", ref=name)
+        if branch not in _refs(cwd):
+            raise IllegalTransition(f"HEAD is on {branch}, which has no commit yet: commit first, then name it",
+                                    reason="unborn_ref", ref=branch)
+        name = branch
+    if not name or _REVISION_SYNTAX.search(name):
+        raise UsageError(f"{name!r} is not the name of a ref: name a branch, tag or remote-tracking ref (in "
+                         f"{accepted}); to review a bare commit, create a branch at it", reason="not_a_ref", ref=name)
+    refs = _refs(cwd)
+    if name.startswith("refs/"):
+        if not name.startswith(REVIEWABLE_REF_PREFIXES):
+            raise UsageError(f"{name} is outside the refs AEW reviews: name one in {accepted}", reason="ref_namespace",
+                             ref=name, accepted=list(REVIEWABLE_REF_PREFIXES))
+        if name in refs:
+            return name
+        raise NotFound(f"no ref {name} in this repository; AEW fetches nothing: create or fetch it yourself, then "
+                       "name it again", reason="unknown_ref", ref=name)
+    candidates = [prefix + name for prefix in REVIEWABLE_REF_PREFIXES if prefix + name in refs]
+    if len(candidates) == 1:
+        return candidates[0]
+    if candidates:
+        raise UsageError(f"{name!r} names {len(candidates)} refs ({', '.join(candidates)}): give the full name",
+                         reason="ambiguous_ref", ref=name, candidates=candidates)
+    if f"refs/{name}" in refs:
+        raise UsageError(f"refs/{name} is outside the refs AEW reviews: name one in {accepted}",
+                         reason="ref_namespace", ref=f"refs/{name}", accepted=list(REVIEWABLE_REF_PREFIXES))
+    if _HEX.match(name) and object_git("cat-file", "-e", f"{name}^{{commit}}", cwd=cwd, check=False).returncode == 0:
+        raise UsageError(f"{name!r} is a commit, not a ref: a review names a branch, tag or remote-tracking ref; to "
+                         "review a bare commit, create a branch at it", reason="not_a_ref", ref=name)
+    raise NotFound(f"no branch, tag or remote-tracking ref named {name!r} in this repository; AEW fetches nothing: "
+                   "create or fetch it yourself, then name it again", reason="unknown_ref", ref=name)
+
+
+def ref_target(name: str, *, cwd: Path, timeout: float = OBJECT_TIMEOUT_S) -> str | None:
+    """The object the full ref ``name`` holds now, or None when the repository has no such ref (it was deleted). The
+    ref is read, never its object, so a missing object does not hide the ref."""
+    proc = object_git("for-each-ref", "--format=%(refname)%00%(objectname)", name, cwd=cwd, timeout=timeout)
+    for line in proc.stdout.decode("utf-8", "replace").splitlines():
+        ref, _, oid = line.partition("\0")
+        if ref == name:
+            return oid
+    return None
+
+
+def ref_commit(name: str, *, cwd: Path, timeout: float = OBJECT_TIMEOUT_S) -> str | None:
+    """The commit the full ref ``name`` points at now, a tag peeled; None when there is no such ref. Refused: a ref that
+    does not peel to a commit (``USAGE``, ``not_a_commit``), and one whose objects the repository lacks (``GIT_ERROR``,
+    ``object_missing``: AEW fetches nothing)."""
+    oid = ref_target(name, cwd=cwd, timeout=timeout)
+    if oid is None:
+        return None
+    proc = object_git("rev-parse", "--verify", "--quiet", f"{oid}^{{commit}}", cwd=cwd, check=False, timeout=timeout)
+    commit = proc.stdout.decode("ascii", "replace").strip()
+    if proc.returncode == 0 and commit:
+        return commit
+    if object_git("cat-file", "-e", oid, cwd=cwd, check=False, timeout=timeout).returncode != 0:
+        raise GitError(f"{name} points at {oid[:12]}, which this repository does not hold; AEW fetches nothing: fetch "
+                       "it yourself, then dispatch again", reason="object_missing", ref=name, object=oid)
+    raise UsageError(f"{name} points at {oid[:12]}, which is not a commit: name a ref to a commit",
+                     reason="not_a_commit", ref=name, object=oid)
+
+
+def merge_bases(one: str, other: str, *, cwd: Path) -> list[str]:
+    """Every best common ancestor of two commits, in the order ``git merge-base --all`` prints them; empty when they
+    share no history. More than one is a criss-cross history."""
+    proc = object_git("merge-base", "--all", one, other, cwd=cwd, check=False)
+    if proc.returncode not in (0, 1):
+        raise GitError(f"git merge-base {one[:12]} {other[:12]} failed: a commit's objects are missing? AEW fetches "
+                       "nothing", reason="object_missing", stderr=proc.stderr.decode("utf-8", "replace").strip())
+    return proc.stdout.decode("ascii", "replace").split()
+
+
+def is_ancestor_object(ancestor: str, descendant: str, *, cwd: Path, timeout: float = OBJECT_TIMEOUT_S) -> bool:
+    """``is_ancestor`` through ``object_git``: no lazy fetch, bounded."""
+    proc = object_git("merge-base", "--is-ancestor", ancestor, descendant, cwd=cwd, check=False, timeout=timeout)
+    if proc.returncode not in (0, 1):
+        raise GitError("merge-base --is-ancestor failed", stderr=proc.stderr.decode("utf-8", "replace").strip())
+    return proc.returncode == 0
+
+
+def uncommitted_on(branch: str, *, cwd: Path) -> dict[str, Any] | None:
+    """Where the full branch name ``branch`` is checked out with uncommitted changes to tracked files: the worktree
+    and how many paths, or None. Read with ``--no-optional-locks``, so the worktree's index is not refreshed: nothing
+    is written. A tag or a remote-tracking ref is never checked out, so it has none."""
+    if not branch.startswith("refs/heads/"):
+        return None
+    listing = object_git("worktree", "list", "--porcelain", cwd=cwd).stdout.decode("utf-8", "replace")
+    for block in listing.split("\n\n"):  # git 2.31 has no `-z` here; a path holding a newline is not matched
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines() if line)
+        if fields.get("branch") != branch or not fields.get("worktree") or not Path(fields["worktree"]).is_dir():
+            continue
+        proc = object_git("--no-optional-locks", "status", "--porcelain", "-z", "--no-renames",
+                          "--untracked-files=no", cwd=Path(fields["worktree"]), check=False)
+        paths = [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+        return {"worktree": fields["worktree"], "paths": len(paths)} if paths else None
+    return None

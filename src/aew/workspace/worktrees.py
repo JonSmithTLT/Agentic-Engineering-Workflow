@@ -21,9 +21,14 @@ from aew.snapshot import fingerprint
 from aew.util import dump_yaml, utc_now
 from aew.workspace import git
 
+# Every branch AEW makes for a mutating Ticket's workspace starts with this. A ref review never names one (register
+# E168): that Ticket's change is reviewed through its own review, and its unintegrated work stays invisible to other
+# Tickets (ADR-0008).
+BRANCH_PREFIX = "aew/"
+
 
 def branch_name(work_id: str, attempt: int) -> str:
-    return f"aew/{work_id}-{attempt}"
+    return f"{BRANCH_PREFIX}{work_id}-{attempt}"
 
 
 def allocate(
@@ -69,15 +74,17 @@ def allocate_detached(
     workspace_id: str,
     commit: str,
     referenced_paths: set[str],
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """A detached worktree at ``commit`` (used for integration candidates)."""
+    """A detached worktree at ``commit`` (integration candidates and read-only observations). ``env``: the git
+    environment of its checkout (a ref review's is ``git.OBJECT_ENV``, so a partial clone never fetches lazily)."""
     path = (workspaces_root / name).resolve()
     if str(path) in referenced_paths:
         raise GitError(f"workspace path {path} is referenced by committed control state")
     if path.exists():
         remove(repo_root, str(path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    _add(repo_root, path, "--detach", str(path), commit)
+    _add(repo_root, path, "--detach", str(path), commit, env=env)
     (git.git_dir(path) / WORKSPACE_MARKER).write_text(dump_yaml({
         "authoritative_repo_root": str(repo_root),
         "authoritative_aew_root": str(aew_root),
@@ -92,10 +99,10 @@ def allocate_detached(
 LONG_PATH_HINTS = ("too big", "filename too long", "path too long", "name too long")
 
 
-def _add(repo_root: Path, path: Path, *args: str) -> None:
+def _add(repo_root: Path, path: Path, *args: str, env: dict[str, str] | None = None) -> None:
     """``git worktree add``, with a path-length failure reported as one: where, how long, and what to change."""
     try:
-        git.git("worktree", "add", "-q", *args, cwd=repo_root)
+        git.git("worktree", "add", "-q", *args, cwd=repo_root, env=env)
     except GitError as exc:
         stderr = str(exc.details.get("stderr") or "").lower()
         if not any(hint in stderr for hint in LONG_PATH_HINTS):

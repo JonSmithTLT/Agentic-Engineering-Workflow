@@ -764,6 +764,7 @@ None.
 - `aew.engine.gates`
 - `aew.engine.hierarchy`
 - `aew.engine.ports`
+- `aew.engine.ref_review`
 - `aew.engine.scope_ops`
 - `aew.errors`
 - `aew.knowledge.context`
@@ -906,6 +907,7 @@ None.
 ### `aew.engine.freshness`
 
 - `aew.errors`
+- `aew.knowledge.evidence`
 - `aew.workspace.git`
 
 ### `aew.engine.gate_ops`
@@ -1111,6 +1113,7 @@ None.
 - `aew.engine.gates`
 - `aew.engine.hierarchy`
 - `aew.engine.ports`
+- `aew.engine.ref_review`
 - `aew.engine.request_ids`
 - `aew.engine.seams`
 - `aew.engine.transitions`
@@ -1211,6 +1214,12 @@ None.
 - `aew.policy.execution`
 - `aew.util`
 
+### `aew.engine.ref_review`
+
+- `aew.errors`
+- `aew.workspace.git`
+- `aew.workspace.worktrees`
+
 ### `aew.engine.reports`
 
 - `aew.engine.base`
@@ -1268,6 +1277,7 @@ None.
 - `aew.engine.ports`
 - `aew.engine.transitions`
 - `aew.errors`
+- `aew.knowledge.evidence`
 - `aew.operator`
 - `aew.policy.checks`
 - `aew.policy.consistency`
@@ -1430,6 +1440,7 @@ None.
 - `aew.engine.operator_decisions`
 - `aew.engine.ports`
 - `aew.engine.priority`
+- `aew.engine.ref_review`
 - `aew.engine.request_ids`
 - `aew.engine.scope_ops`
 - `aew.engine.seams`

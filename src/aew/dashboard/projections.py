@@ -47,7 +47,7 @@ from aew.dashboard.reasons import reason
 from aew.engine import outbox, recall
 from aew.engine import transitions as T
 from aew.engine.archive_ops import VERIFIER_MASK, held_evidence, is_v2
-from aew.engine.freshness import record_freshness
+from aew.engine.freshness import cached_by_head, record_freshness
 from aew.engine.history_ops import TRUST_LABEL
 from aew.engine.history_ops import _public as public_entry
 from aew.errors import (
@@ -1233,11 +1233,14 @@ class Projector:
 
     def _architecture_freshness(self, record: dict[str, Any], head: str | None) -> dict[str, Any]:
         """``record_freshness`` against ``head``, bounded and cached by ``(evidence, observed commit, head)``: a git
-        that does not answer in time, or a partial clone that could fetch lazily, is UNKNOWN (never cached)."""
+        that does not answer in time, or a partial clone that could fetch lazily, is UNKNOWN (never cached). A record
+        whose freshness depends on more than the head, a ref review's on its ref (register E168), is never cached either
+        (``freshness.cached_by_head``): its ref moves on its own, and a cached answer would hide that."""
         observed = (record.get("evaluated_snapshot") or {}).get("base_revision")
         key = (str(record.get("id")), observed if isinstance(observed, str) else None, head)
         cache = self._maps().architecture
-        known = cache.get(key) if head is not None else None
+        cacheable = head is not None and cached_by_head(record)
+        known = cache.get(key) if cacheable else None
         if known is not None:
             return known
         repo = self.s.engine.repo_root
@@ -1251,7 +1254,7 @@ class Projector:
             LOG.warning("architecture freshness: %s", exc.message)
             return {"status": "UNKNOWN", "detail": "git did not answer within the dashboard's bound; read again later"
                     if (exc.details or {}).get("reason") == "timeout" else "git could not compare the commits"}
-        if head is not None:  # an unresolved head is never cached: the next read resolves it again
+        if cacheable:  # an unresolved head is never cached: the next read resolves it again
             cache.put(key, fresh)
         return fresh
 

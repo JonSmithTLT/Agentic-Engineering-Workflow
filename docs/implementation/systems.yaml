@@ -4112,9 +4112,23 @@ systems:
   - src/aew/cli/history_commands.py
   - src/aew/dashboard/**
   - docs/implementation/surface-map.yaml
-  touches_new:
+  - src/aew/workspace/git.py
+  - src/aew/workspace/worktrees.py
+  - src/aew/engine/assurance_ops.py
+  - src/aew/engine/dispatch.py
+  - src/aew/engine/dependencies.py
+  - src/aew/engine/context_ops.py
+  - src/aew/engine/role_ops.py
+  - src/aew/engine/work_ops.py
+  - src/aew/knowledge/context.py
+  - src/aew/surface/contract.py
+  - src/aew/surface/availability.py
+  - src/aew/schemas/ticket-field-registry.v1.json
   - src/aew/roles/cards/branch_reviewer.yaml
+  - src/aew/engine/ref_review.py
   - tests/unit/test_ref_review.py
+  - tests/integration/test_ref_review_flow.py
+  touches_new: []
   depends_on:
   - SYS-22
   state:
@@ -4135,10 +4149,12 @@ systems:
       notes of 2026-11-26 and 2026-11-27)'
     row: E170
     estimate: 1 small PR, the web developer's (estimate; the designer's reading, skills design (e))
-  - slice: 'a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the
-      archetype''s new kind, the `branch_reviewer` card and its skill-fit check (skills design (d))'
+  - slice: 'a review of a named ref, its Lead-facing read side: `work show`, `status` and `resume` say the ref has moved
+      with the redispatch, the dashboard projection gains `review_ref` and the pin, the Lead guide names `branch_reviewer`
+      (skills design (d)); the pin, the `ref_review` kind, its freshness and the card are built (E168 PR 1, its note of
+      2026-11-27)'
     row: E168
-    estimate: 1-2 PRs (estimate; the designer's reading, skills design (e))
+    estimate: 1 PR (estimate; E168's plan, PR 2)
   decision: 'decided: it holds a slot while it is worked toward testing and sign-off (the operator, 2026-11-26, on its
     move to partly_built: "Sure thats fine as long as its being actively worked towards being ready to be tested and signed
     off on and not just partially built and left in that state."). Before that it waited until the limit''s count was

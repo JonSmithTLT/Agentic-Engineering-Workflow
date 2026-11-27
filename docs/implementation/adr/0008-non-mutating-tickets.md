@@ -80,3 +80,60 @@ Identity, producer, snapshot, plan and attempt are engine-bound; submitters supp
 - Provider mutation declarations and capability resolution (M6).
 - Per-card output-contract payload schemas (ADR-0006).
 - Sharing one observation between read-only invocations (WC §8.1 permits it; AEW chooses isolation).
+
+## Amendment 2026-11-27 — a review of a named local ref (register E168; SYS-45)
+
+The designer's decision of 2026-11-06 (v2), section (d), adopted (placement item 8): a non-mutating Ticket may name a
+local ref, and its deliverable is a review of that ref. This amends the observation and freshness rules above for such
+a Ticket only; every other non-mutating Ticket is unchanged.
+
+- **The Ticket names the ref.** `aew work create ticket --non-mutating --review-ref <ref>` (and `ticket_draft`'s
+  `review_ref`) records `review_ref`: the ref's full name, resolved at creation and never to a commit. Accepted:
+  `refs/heads/`, `refs/tags/`, `refs/remotes/` (`git.REVIEWABLE_REF_PREFIXES`); `HEAD` is recorded as the branch it is
+  on. Refused: a revision expression, a commit id or an invalid name, another namespace, an ambiguous short name, a
+  detached or unborn `HEAD`, an unknown ref, the authoritative branch itself, and an AEW Ticket branch
+  (`PERMISSION_DENIED`, `aew_managed_ref`). The key is in the Ticket field registry's `kind` group: naming another ref
+  is a replacement Ticket. A mutating Ticket never names one.
+- **Each dispatch pins the commit.** The `ref.pin` guard of `work dispatch` and `work redispatch` resolves the ref
+  then, through `git.object_git`, and records `execution.ref_pin`: the commit, its merge-base with the authoritative
+  commit (the first `git merge-base --all` prints, with their count), the authoritative branch and commit it was
+  judged against, and any uncommitted work where the branch is checked out (reported, never refused: the review is of
+  the commit). A redispatch re-pins, so "review the new commit" is `work redispatch`. Refused at dispatch: the ref
+  gone (`NOT_FOUND`), not a commit, its objects missing (`GIT_ERROR`), no merge-base or every commit already in the
+  authoritative branch (`ILLEGAL_TRANSITION`), and a partial clone on a git older than 2.44 (`UNAVAILABLE`).
+- **Observations.** The rule above, "every non-mutating invocation gets its own detached worktree at the authoritative
+  commit", now reads: at the authoritative commit, **except a ref review's executor, whose observation is at its
+  attempt's pinned commit**, and the reviewers and verifiers of a ref review, which observe the commit the record
+  reviewed (as every reviewer of a record observes the commit its executor observed). The worktree is added at the
+  sha, never at the name, so a ref that moves during dispatch cannot change what is observed; its checkout reads
+  objects only (`git.OBJECT_ENV`). The untrusted-filter guard reads the commit checked out. Readiness, dependencies and
+  inputs are still judged at the authoritative commit (`ref_pin.authoritative_commit`). "Another Ticket's unintegrated
+  workspace is never visible" holds by refusing AEW's own Ticket branches.
+- **AEW fetches nothing.** Every git call of the resolution, the pin, the diff, the freshness and the checkout runs
+  with replace refs and lazy fetching off.
+- **The record kind `ref_review`** (the investigator archetype's, beside `discovery_record`; pinned as the attempt's
+  `expected_kind` only for a Ticket that names a ref, so an investigator is never offered it and a branch reviewer
+  never a discovery record). Its section: `summary`, `findings` (the one finding shape), `requirement_trace`,
+  `checked`, `not_checked`. Engine-owned: `reviewed_ref` (the attempt's pin, less the uncommitted notice) and
+  `verdict` (`findings` when a finding is required, a blocker or major always being one; otherwise `clear`). Its
+  `result` says the review was done: findings never fail the record.
+
+| Kind | Content | Freshness |
+|---|---|---|
+| `ref_review` | `summary`, `findings[]`, `requirement_trace[]`, `checked[]`, `not_checked[]`; engine-owned `reviewed_ref`, `verdict` | **Not source-bound** (basis `ref`): CURRENT while the ref still points at the pinned commit; otherwise UNKNOWN with `moved` (`forward`, `rewritten` or `deleted`) and "the ref has moved since this review". Never STALE, never gating: a consumer takes it as it takes external research. The dashboard never caches it by the authoritative head. |
+
+- **The card.** `branch_reviewer` (ADR-0006, amendment of the same date) is the execute slot's default for such a
+  Ticket; a card that does not list `ref_review` among its outputs is refused there (`card_not_a_ref_reviewer`), and
+  `branch_reviewer` on a Ticket without a ref (`no_ref_to_review`).
+- **Checks run only contained (pending the operator).** A check on a ref review runs the ref's code, which may be
+  third-party code the operator fetched. Until the operator decides whether that code is the same trust class as
+  AEW-supervised work (E168's question Q1), a check of any invocation of a ref review runs only inside a contained
+  run's sandbox and is refused otherwise (`PERMISSION_DENIED`, `ref_check_uncontained`); the built-in guardrails check
+  runs no project code and is unaffected. The review is still possible by reading.
+- **A known limit, stated, not new.** An uncontained run (Windows, or a weaker run the policy allows) can write the
+  shared `.git`, for example with `git update-ref`, as any read-only invocation can today. For a ref review that write
+  is indistinguishable from the operator moving their own branch: it is reported as "the ref has moved", and never
+  accepted as the review's subject, since the pin is a sha. Containment is the control.
+- **Invariants** 63 to 65 (`tests/helpers/invariants.py`); 10, 11, 13 and 14 read the pinned kind and the commit
+  dependencies and inputs were judged at.
+- Evidence: `tests/unit/test_ref_review.py`, `tests/integration/test_ref_review_flow.py`.

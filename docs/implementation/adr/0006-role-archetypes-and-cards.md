@@ -331,3 +331,34 @@ skills are deferred. The offline checks exercise packaging, card dispatch
 and skill exposure. A run record must show actual model loading before
 any test or UAT observation is credited with it. E395 remains a proposal
 awaiting designer sign-off.
+
+## Amendment 2026-11-27 — the branch reviewer card (register E168; SYS-45)
+
+The designer's decision of 2026-11-06 (v2), section (d): a review of a named local ref is executed by a
+`branch_reviewer` card on the investigator archetype, whose pack is the requirement and the diff from the merge-base
+to the pinned commit (ADR-0008, amendment of the same date). Its skill is the Lead's fit choice, checked against each
+skill's description.
+
+| Card | Version | Extends | Outputs | Foundational skill | Optional skills |
+| --- | --- | --- | --- | --- | --- |
+| `branch_reviewer` | 1 | `investigator` | `ref_review` | `adversarial-review` 0.6.0 | `codebase-investigation`, `mechanical-enumeration`, `python-development`, `c-development` |
+
+**The fit check.** The design flagged that `adversarial-review` is the gate-review method (11-03 renamed
+`code-review` to it), so whether it fits a review that is itself the product needed checking against its own text.
+Its description is "Review code, plans, or fixes for reachable invariant violations ... Use for an assigned behavioral
+review with concrete artifacts and contracts". Its preconditions are "Pin the actual source/plan revision", "Establish
+the comparison base explicitly" and "Never reset or mutate the review target", which are this card's pin, merge-base and
+read-only observation; and "Map evidence into the host's required finding format; do not introduce a competing
+template" is the `ref_review` section's finding shape. It is a method for finding defects and says nothing about
+gating, so it fits a review that is the deliverable; what a deliverable adds (a requirement trace, what was and was
+not checked) is in the card's own responsibilities and the record's section. The alternative, `codebase-investigation`,
+is a discovery method ("how the existing system works"), so it is offered, not requested. If the Lead chooses
+otherwise, only the card and this table change.
+
+**Sizes** (UTF-8 bytes, as E136 measured): the card is 1,227 B; `adversarial-review`'s `SKILL.md` is 9,451 B and its
+copied bundle 25,219 B, already shipped for `code_reviewer`, so the install grows by the card alone. No budget exists
+for a worker's copy (register E368).
+
+`ROLE_OPERATIONS["investigator"]` and `archetypes/investigator.yaml` gain `submit.ref_review` and the `ref_review`
+evidence kind; what a run is offered is narrowed by its attempt's pinned kind (`evidence.kinds_for`). The archetype's
+prohibition, "mutating source, including the observation workspace", is unchanged and binds the card.

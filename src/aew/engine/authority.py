@@ -37,7 +37,8 @@ ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     # Non-mutating executors (ADR-0008): each submits exactly its own record kind; the investigator may
     # also gather runtime evidence by running project checks in its read-only observation workspace.
     "planner": frozenset({"submit.plan_proposal", "context.read"}),
-    "investigator": frozenset({"check.run", "submit.discovery_record", "context.read"}),
+    # A ref review only on a Ticket that names a ref (E168; ``evidence.kinds_for``).
+    "investigator": frozenset({"check.run", "submit.discovery_record", "submit.ref_review", "context.read"}),
     "researcher": frozenset({"submit.research_record", "context.read"}),
 }
 

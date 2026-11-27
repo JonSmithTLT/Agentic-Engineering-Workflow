@@ -420,7 +420,12 @@ class LeadBroker:
             from aew.harness.wake_queue import clear_serving
 
             self._wakes.join(10)
-            clear_serving(self._wakes_root, self.generation)
+            try:
+                clear_serving(self._wakes_root, self.generation)
+            except OSError as exc:  # the rest of the close still runs: the bridge, the loop and the record's closed_at
+                # A mark left behind posts nothing: the liveness record this close ends says the broker is gone.
+                sys.stderr.write(f"aew: the Lead broker could not remove its wake mark ({exc}); its closed liveness "
+                                 "record says no broker posts wakes\n")
         self.server.close()
         self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)

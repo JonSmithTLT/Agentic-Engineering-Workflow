@@ -177,6 +177,59 @@ def test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_
     assert Q.serving(root) is None and not broker._wakes.is_alive()
 
 
+def _a_broker_posting_wakes(project):
+    from aew.engine.api import Engine
+    from aew.harness.lead_broker import LeadBroker
+
+    broker = LeadBroker(Engine.discover(project.root), project.token)
+    broker.start()
+    try:
+        broker.start_wakes(_Poster())
+    except BaseException:
+        broker.close()
+        raise
+    assert Q.serving(project.root / ".aew") == broker.generation
+    return broker
+
+
+def test_a_broker_close_clears_its_mark_while_a_reader_holds_it(project):
+    """A reader holding the serving mark refuses its removal on Windows (main push run 45941273545, job 140316044983):
+    the close waits it out, and the mark is gone once the close returns."""
+    from windows_sharing import held_by_a_reader
+
+    root = project.root / ".aew"
+    broker = _a_broker_posting_wakes(project)
+    try:
+        with held_by_a_reader(root / Q.SERVING_REL):
+            broker.close()
+    except BaseException:
+        broker.close()  # only on a failure: a second close would clear the mark the test looks at
+        raise
+    assert Q.serving(root) is None and not broker._wakes.is_alive() and broker.server.closed
+
+
+def test_a_reader_that_outlasts_the_wait_never_stops_a_broker_close(project, capsys):
+    """The close finishes all the same, the bridge and the liveness record included, and the mark it leaves posts
+    nothing: the closed record says no broker is there."""
+    from windows_sharing import held_by_a_reader
+
+    from aew.harness import broker_liveness
+
+    root = project.root / ".aew"
+    broker = _a_broker_posting_wakes(project)
+    try:
+        with held_by_a_reader(root / Q.SERVING_REL, release_after=None):
+            broker.close()
+    except BaseException:
+        broker.close()  # only on a failure: a second close would clear the mark the test looks at
+        raise
+    assert broker.server.closed and not broker._wakes.is_alive()
+    assert Q.serving(root) == broker.generation and "could not remove its wake mark" in capsys.readouterr().err
+    record = broker_liveness.read(root)
+    assert isinstance(record, dict) and record.get("closed_at") is not None
+    assert Q.some_broker_posts(root) is False
+
+
 class _CountingPoster(_Poster):
     """A poster that takes every wake and counts it: nothing is ever busy, and each wake lands."""
 

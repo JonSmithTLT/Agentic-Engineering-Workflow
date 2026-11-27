@@ -674,6 +674,26 @@ def test_a_superseded_broker_leaves_the_new_generations_serving_mark(lab: Lab) -
     assert Q.serving(lab.root) == 8
 
 
+def test_clearing_the_serving_mark_waits_out_a_reader_that_holds_it(lab: Lab) -> None:
+    """A reader holding the mark (a Lead's wait, `aew status`, an indexer) refuses its removal on Windows: the clear
+    waits it out as a replace does, never fails on the first refusal (main push run 45941273545, job 140316044983)."""
+    from windows_sharing import held_by_a_reader
+
+    Q.mark_serving(lab.root, 7)
+    with held_by_a_reader(lab.root / Q.SERVING_REL):
+        Q.clear_serving(lab.root, 7)
+    assert Q.serving(lab.root) is None
+
+
+def test_a_reader_that_outlasts_the_wait_leaves_the_mark_and_says_so(lab: Lab) -> None:
+    from windows_sharing import held_by_a_reader
+
+    Q.mark_serving(lab.root, 7)
+    with held_by_a_reader(lab.root / Q.SERVING_REL, release_after=None), pytest.raises(PermissionError):
+        Q.clear_serving(lab.root, 7)
+    assert Q.serving(lab.root) == 7
+
+
 # ---------------------------------------------------------------------------------------------- loop_waiting (CL-R07)
 
 

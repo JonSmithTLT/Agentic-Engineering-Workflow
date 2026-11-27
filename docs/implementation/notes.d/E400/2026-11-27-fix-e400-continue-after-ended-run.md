@@ -65,9 +65,9 @@ steps stand. The message names two next steps; each is tested as the CLI parses 
 2. **The relaunch is not offered as a typed action** (#651 review, m3, recorded as a follow-on). The projection offers
    `harness.launch` only as a primitive action with a CLI fallback, never through a typed tool: no tool in the
    catalog expands to it. Its offer of a relaunch, `relaunchable`, also leaves out an `ended_with_evidence` run.
-   Following the stop's relaunch is therefore a shell call (`shell_aew_calls`), whatever the projection lists. Making
-   it typed needs a tool that expands to `harness.launch`, which is a change to the catalog and the surface map, and
-   so not this follow-on's to make.
+   Following the stop's relaunch is therefore a shell call (`shell_aew_calls`), whatever the projection lists. What
+   fixes it is a typed tool for `harness.launch`, with its surface-map entry: a change to the typed surface's catalog,
+   which is the designer's and the operator's to place, not #651's to make.
 
 3. **Limits.** The named stop is for an implementer at ticket scope. A moved snapshot under any other role (a
    reviewer, a verifier, an integration-scope invocation, a non-mutating executor) still stops as `not_live`, as

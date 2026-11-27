@@ -728,6 +728,32 @@ def test_the_invariants_report_a_continue_over_a_run_that_left_no_evidence(proje
         lab.cleanup()
 
 
+def test_the_invariants_read_back_a_continue_that_took_a_check_whose_name_holds_a_dot(project, tmp_path, monkeypatch):
+    """Quick check of #651, m1: a check's evidence id holds the check's configured name, which can be any string (here
+    `unit.fast`). The continue that takes it records the id whole, and invariant 63 reads it back whole, so a correct
+    continue is never reported as a violation."""
+    from aew.util import dump_yaml, load_yaml
+
+    p = project
+    checks_path = p.root / ".aew/policy/checks.yaml"
+    checks = load_yaml(checks_path.read_text(encoding="utf-8"))
+    checks["checks"]["unit.fast"] = dict(checks["checks"]["unit"])
+    checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    p.pin_policy()
+    steps = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit.fast"},
+             {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
+    lab, wid, sid, run = ended_with_evidence(p, tmp_path, monkeypatch, steps, with_evidence=True)
+    try:
+        taken = run_evidence(p, wid, run)
+        assert any("-check-unit.fast-" in e for e in taken), taken
+        out = resolve(p, sid, "continue")
+        assert out["ok"], out["stopped"]
+        assert Engine.discover(p.root).stage_intent(sid)["status"] == "COMPLETED"
+    finally:
+        lab.cleanup()
+    assert_control_invariants(p)
+
+
 def test_continue_after_a_kill_whose_run_rechecked_after_its_report_stops_as_snapshot_moved(
         project, tmp_path, monkeypatch):
     """#651 review, M1: the implementer submits its report, edits one more file and runs its check again, then

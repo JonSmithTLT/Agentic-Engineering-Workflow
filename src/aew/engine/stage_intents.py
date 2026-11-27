@@ -96,13 +96,31 @@ ACCEPTANCES = frozenset({"accept_review_evidence", "accept_verification"})  # ju
 
 
 # What a continue took from a launching step's ended run (register E400), as its commit's summary records it: the one
-# record of what the continue observed, which invariant 63 reads back (#651 review, m2), so no clock is compared.
-TOOK = re.compile(r"; took (R-[A-Za-z0-9-]+)'s evidence ([A-Za-z0-9_, -]*)")
+# record of what the continue observed, which invariant 63 reads back (#651 review, m2), so no clock is compared. The
+# ids are written as one JSON object ending the summary, so any id reads back whole: a check's evidence id holds the
+# check's configured name, which may hold any character (quick check of #651, m1).
+TOOK_PREFIX = "; took evidence "
 
 
-def took(run: str, ids: list[str]) -> str:
-    """The summary clause of a continue that took ``run``'s evidence ``ids``; ``TOOK`` reads it back."""
-    return f"; took {run}'s evidence {', '.join(ids)}"
+def took(taken: dict[str, list[str]]) -> str:
+    """The summary clause of a continue that took each run's evidence ids (``{run: [ids]}``), or "" when it took none;
+    ``taken_in`` reads it back."""
+    return f"{TOOK_PREFIX}{json.dumps(taken, sort_keys=True)}" if taken else ""
+
+
+def taken_in(summary: str) -> dict[str, list[str]] | None:
+    """What a continue's commit summary says it took (``took``): ``{}`` when it took nothing, None when the clause is
+    there but does not read back as ``{run: [ids]}``."""
+    at = summary.find(TOOK_PREFIX)
+    if at < 0:
+        return {}
+    try:
+        found = json.loads(summary[at + len(TOOK_PREFIX):])
+    except ValueError:
+        return None
+    ok = isinstance(found, dict) and all(isinstance(r, str) and isinstance(ids, list)
+                                         and all(isinstance(i, str) for i in ids) for r, ids in found.items())
+    return found if ok else None
 
 
 def cold_rel(intent_id: str, work_id: str | None) -> str:
@@ -413,7 +431,7 @@ class StageIntents:
             ctx.summary = (f"stage {si['tool']} ({intent}) continued by Lead generation {generation}: "
                            + {ACTIVE: f"from step {done + 1}", COMPLETED: "completed",
                               STOPPED: "its launch failed"}[status]
-                           + "".join(took(run, ids) for run, ids in (launch.get("taken") or {}).items()))
+                           + took(launch.get("taken") or {}))
             ctx.refs.append(intent)
         return {"intent": intent, "status": status, "revision": rev, "next": done + 1, "generation": generation,
                 "launch": launch}

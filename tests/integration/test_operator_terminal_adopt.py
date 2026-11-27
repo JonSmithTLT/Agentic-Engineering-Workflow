@@ -177,11 +177,11 @@ def test_the_operator_decides_authority_with_no_lead_credential_and_the_record_n
     candidate = _candidate(p)
     shown = Engine.discover(p.root).authority_candidate(candidate)
     seat = Engine.discover(p.root).lead_show()["generation"]
-    terminal = Terminal(monkeypatch)
+    terminal = Terminal(monkeypatch, typed_code)  # the register is clear, and the code is asked all the same
     extra = ("--class", "orientation") if action == "accept" else ("--reason", "orientation only")
     out = cli(p, capsys, "authority", action, candidate, *extra)
     assert f"SHA-256 {shown['digest']}" in terminal.prompts[0]
-    assert_the_operators_own(p, out["decision"], "plain")
+    assert_the_operators_own(p, out["decision"], "code")
     status = {c["id"]: c["status"] for c in Engine.discover(p.root).authority_list()["candidates"]}
     assert status[candidate] == ("accepted" if action == "accept" else "rejected")
     assert Engine.discover(p.root).lead_show()["generation"] == seat
@@ -382,13 +382,23 @@ def test_the_plain_prompt_warns_about_the_answer_and_the_code_prompt_about_the_c
         assert shown in terminal.prompts[0] and absent not in terminal.prompts[0]
 
 
-def test_authority_decisions_follow_the_register_until_the_operator_rules_otherwise(project, monkeypatch, clear):
-    """Point 1 awaits the operator: today the register decides for authority decisions too. The ruling is the one
-    constant, and setting it asks the code whatever the register says."""
+@pytest.mark.parametrize("action", ["accept", "reject"])
+def test_an_authority_decision_always_asks_the_typed_back_code_even_while_the_register_is_clear(
+        project, monkeypatch, clear, action):
+    """The operator's ruling of 2026-11-27 on point 1 ("typed back cose or g3 for important authoeity items"): with the
+    register clear, a plain yes is refused and changes nothing; the code is asked, the prompt says why, and the record
+    says it was the code. The adoption keeps the register's plain yes (the first test above)."""
     p = project
-    assert operator_adopt.AUTHORITY_CODE_ALWAYS is None
-    monkeypatch.setattr(operator_adopt, "AUTHORITY_CODE_ALWAYS", "an authority decision always takes the code")
-    terminal = Terminal(monkeypatch, typed_code)
-    operator_adopt.decide_authority(Engine.discover(p.root), action="reject", candidate=_candidate(p))
-    assert "A typed-back code is asked because an authority decision always takes the code." in " ".join(
+    candidate = _candidate(p)
+    klass = {"klass": "orientation"} if action == "accept" else {}
+    before = control_bytes(p)
+    terminal = Terminal(monkeypatch, "yes")
+    with pytest.raises(PermissionDenied) as refused:
+        operator_adopt.decide_authority(Engine.discover(p.root), action=action, candidate=candidate, **klass)
+    assert refused.value.details["reason"] == "not_confirmed" and control_bytes(p) == before
+    assert "confirmation code" in terminal.prompts[0]
+    assert f"A typed-back code is asked because {operator_adopt.AUTHORITY_CODE_ALWAYS}." in " ".join(
         terminal.prompts[0].split("\n"))
+    Terminal(monkeypatch, typed_code)
+    out = operator_adopt.decide_authority(Engine.discover(p.root), action=action, candidate=candidate, **klass)
+    assert_the_operators_own(p, out["decision"], "code")

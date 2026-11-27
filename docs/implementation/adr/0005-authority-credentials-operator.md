@@ -308,9 +308,12 @@ they write).
   before and now; the commit compares the digests shown (a class C binding, as E327 built). The pinned bytes are kept
   content-addressed under `.aew/local/pinned/` when a pin is written, read back only when they hash to their name, and
   otherwise looked for in the file's recent git history; a display aid, never authority.
-- **The code is the register of weaker contexts'.** While it is clear on this host the operator confirms plainly (types
-  `yes`); while a weaker context is live or recent, or the register cannot say, the typed-back code is asked and the
-  prompt names the weaker run.
+- **The adoption's code is the register of weaker contexts'.** While it is clear on this host the operator confirms the
+  diff plainly (types `yes`); while a weaker context is live or recent, or the register cannot say, the typed-back code
+  is asked and the prompt names the weaker run.
+- **An authority decision always takes the typed-back code**, whatever the register says. The operator, 2026-11-27:
+  "Yup id say typed back cose or g3 for important authoeity items." A G3 approval replaces the code when the wire
+  track adds one for authority decisions; none is built.
 - **The record is the operator's own:** `kind: operator`, `authorized_by: operator-tty` and the form of confirmation,
   with no Lead actor, generation or `recorded_by_lead`. A running Lead keeps its seat, and its next step bound to policy
   that moved meets STALE_POLICY.

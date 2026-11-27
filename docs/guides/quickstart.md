@@ -105,7 +105,8 @@ diff against its pinned version and the digests the commit is bound to; type `ye
 context is live on this host, or was in the last few minutes, it asks for a one-time code instead and names that
 context; it asks for the code too while the register of weaker contexts cannot say (for example, before `aew doctor`
 has created it on this host), and names why. Authority candidates can wait while the Lead works, and you classify
-them the same way: replace the example candidate ID with one from `aew authority list`.
+them the same way, except that a classification always asks for the one-time code: replace the example candidate ID
+with one from `aew authority list`.
 
 ```bash
 aew manifest adopt --reason "updated the pinned settings"

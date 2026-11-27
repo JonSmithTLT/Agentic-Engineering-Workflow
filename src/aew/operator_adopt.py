@@ -14,9 +14,11 @@ operator's own transaction (``Kernel.operator_txn``).
 2. **What is shown.** Each file's diff against the version its pin holds (:func:`diff_lines`, the pinned bytes from
    ``engine.pinned_copies``), and the digest of each, before and now. The commit compares the digests shown: a class C
    binding (E327), so a file changed after it was shown commits nothing (``CHANGED_SINCE_READ``).
-3. **The code is the register of weaker contexts' to decide** (the operator, 2026-11-10). While it is clear on this
-   host the operator confirms plainly; while a weaker context is live or recent, or the register cannot say, the
-   typed-back code is asked and the prompt names the weaker run (``g3standing.no_weaker_context``, its one reader).
+3. **The adoption's code is the register of weaker contexts' to decide** (the operator, 2026-11-10). While it is clear
+   on this host the operator confirms the diff plainly; while a weaker context is live or recent, or the register
+   cannot say, the typed-back code is asked and the prompt names the weaker run (``g3standing.no_weaker_context``, its
+   one reader). An authority decision always asks the code (:data:`AUTHORITY_CODE_ALWAYS`, the operator's ruling of
+   2026-11-27).
 4. **The record is the operator's own:** kind operator, ``authorized_by: operator-tty``, no Lead actor. A running Lead
    keeps its seat, and its next step bound to policy that moved meets STALE_POLICY.
 """
@@ -35,10 +37,11 @@ DIFF_LINES = 200  # per file: a longer diff is cut, and the prompt says to read 
 SEAT_LINE = ("No Lead credential is used, and the Lead seat stays with its holder: a stage open now stops as "
              "STALE_POLICY at its next step when a setting it is bound to changed.")
 NO_TERMINAL = "no_terminal"
-# Whether an authority decision always asks the typed-back code, whatever the register says: None lets the register
-# decide, as for the adoption's diff (this PR's reading of the row); a reason, which the prompt shows, asks it always.
-# The operator rules on it (review of #641, point 1), and the ruling is this one line.
-AUTHORITY_CODE_ALWAYS: str | None = None
+# An authority decision always asks the typed-back code, whatever the register says; the prompt shows this reason. The
+# operator's ruling of 2026-11-27 (review of #641, point 1): "Yup id say typed back cose or g3 for important authoeity
+# items." A G3 approval replaces the code when the wire track adds one for authority decisions; none exists today.
+AUTHORITY_CODE_ALWAYS = ("an authority decision always takes the typed-back code (the operator's ruling of "
+                         "2026-11-27)")
 
 
 def problem(command: str) -> PermissionDenied | None:
@@ -171,7 +174,8 @@ def adopt(engine: Any, *, reason: str, command: str = MANIFEST_COMMAND, edits: M
 def decide_authority(engine: Any, *, action: str, candidate: str, klass: str | None = None, reason: str | None = None,
                      binding: str | None = None) -> dict[str, Any]:
     """`aew authority accept` or `reject` as the operator's own decision at their terminal (rules 1, 3 and 4): the
-    candidate's path, kind and digest are shown, and the commit compares the digest shown (E327)."""
+    candidate's path, kind and digest are shown, the typed-back code is always asked, and the commit compares the
+    digest shown (E327)."""
     from aew import operator
     from aew.errors import NotFound
 
@@ -188,7 +192,7 @@ def decide_authority(engine: Any, *, action: str, candidate: str, klass: str | N
             *([f"  reason : {reason}"] if reason else []),
             "No Lead credential is used, and the Lead seat stays with its holder."]
     authorization = operator.confirm(text, purpose="the project's authority sources",
-                                     code_because=AUTHORITY_CODE_ALWAYS or code_because())
+                                     code_because=AUTHORITY_CODE_ALWAYS)
     args: dict[str, Any] = {"candidate_id": candidate, "decided_by": "operator", "reason": reason,
                             "binding": binding if binding is not None else subject["digest"],
                             "authorization": authorization}

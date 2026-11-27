@@ -274,7 +274,7 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     """PR #103 re-review, N3: through the real CLI handlers, a record attributed to the operator is confirmed at the
     terminal and carries `authorized_by: operator-tty`; the Lead's own record never prompts. (The terminal itself is
     substituted in-process: no terminal exists here.)"""
-    from aew import operator, operator_adopt
+    from aew import operator
     from aew.cli.main import main
     from aew.engine.api import Engine
 
@@ -283,7 +283,6 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     monkeypatch.setattr(operator, "authorize", lambda text, **_: asked.append(text) or confirmed)
     # The operator's own authority decision asks through `operator.confirm` (register E331), its first line naming it.
     monkeypatch.setattr(operator, "has_terminal", lambda: True)
-    monkeypatch.setattr(operator_adopt, "code_because", lambda: None)
     monkeypatch.setattr(operator, "confirm",
                         lambda text, **_: asked.append(text[0].split("': ", 1)[1]) or dict(confirmed))
     monkeypatch.delenv("AEW_LEAD_BROKER", raising=False)

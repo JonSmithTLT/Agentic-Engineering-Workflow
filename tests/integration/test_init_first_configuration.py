@@ -177,7 +177,7 @@ def test_the_classification_route_needs_no_seat_and_leaves_a_held_one_with_its_l
     """Register E331 (replacing review of #329, F2's way back): the classification the action names is the operator's
     own decision at their terminal, with no Lead credential, so the action names no seat step, and a Lead holding the
     seat keeps it, its generation unchanged."""
-    from aew import operator, operator_adopt
+    from aew import operator
     from aew.cli.main import main
 
     root = repo(tmp_path)
@@ -189,8 +189,8 @@ def test_the_classification_route_needs_no_seat_and_leaves_a_held_one_with_its_l
     generation = run_aew("-C", str(root), "lead", "show").json["generation"]
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
     monkeypatch.setattr(operator, "has_terminal", lambda: True)
-    monkeypatch.setattr(operator_adopt, "code_because", lambda: None)
-    monkeypatch.setattr(operator, "ask", lambda prompt, **_: "yes")
+    # a classification always asks the code (the operator's ruling of 2026-11-27)
+    monkeypatch.setattr(operator, "ask", lambda prompt, **_: re.search(r"confirmation code ([0-9A-F]{6})", prompt)[1])
     assert main(["-C", str(root), "authority", "accept", "C-001", "--class", "orientation"]) in (0, None)
     lead = run_aew("-C", str(root), "lead", "show").json
     assert (lead["status"], lead["generation"]) == ("active", generation)

@@ -8,6 +8,7 @@ credential here is a synthetic value. Every socket has a timeout and is closed i
 
 from __future__ import annotations
 
+import gzip
 import http.client
 import json
 import socket
@@ -889,8 +890,6 @@ def test_a_placeholder_this_relay_does_not_hold_is_refused_and_nothing_connects(
 
 
 def _gzip(data: bytes) -> bytes:
-    import gzip
-
     return gzip.compress(data)
 
 
@@ -2305,6 +2304,77 @@ def test_a_successful_streamed_answer_is_relayed_byte_for_byte_as_before():
         upstream.close()
         got += read_all(client)
     assert got == relay._close_head(CHUNKED) + b"%x\r\n%s\r\n" % (len(events[0]), events[0]) + rest
+
+
+@pytest.mark.parametrize(("lines", "forwarded"), [
+    ([], "identity"),  # none at all would accept any coding
+    (["identity"], "identity"),
+    (["gzip, deflate, br, zstd"], "gzip, deflate"),
+    (["br;q=1.0, gzip;q=0.8, *;q=0.1"], "gzip;q=0.8"),
+    (["deflate;q=0.5, x-gzip, GZIP;q=0.9"], "deflate;q=0.5, x-gzip, GZIP;q=0.9"),  # the client's order and weights
+    (["br", "gzip, zstd"], "gzip"),  # two lines read as one list
+    (["br, zstd, gzip, br"], "gzip"),
+    (["br, zstd"], "identity"),
+    (["*"], "identity")])
+def test_the_relay_asks_the_upstream_only_for_codings_it_can_read(lines, forwarded):
+    """The upstream is asked only for codings the relay reads when it cleans a failed answer (gzip, deflate and
+    identity): the client's own of those keep their order and weights, and with none left the relay asks for
+    identity."""
+    request = b"GET /v1/models HTTP/1.1\r\n" + b"".join(b"Accept-Encoding: %s\r\n" % v.encode() for v in lines)
+    upstream_got, answer, _ = exchange(Seam(), request + b"\r\n")
+    sent = headers(upstream_got.split(b"\r\n\r\n")[0])
+    assert [v for n, v in sent if n == "accept-encoding"] == [forwarded]
+    assert answer.endswith(b"ok")
+
+
+def test_a_successful_answer_in_a_coding_the_client_asked_for_reaches_it_byte_for_byte():
+    """Narrowing what the upstream is asked for changes only the coding it picks: a 2xx answer in one of them goes to
+    the client exactly as the upstream sent it."""
+    body = _gzip(b'{"data": [{"id": "m"}]}')
+    sent = b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: %d\r\n\r\n" % len(body) + body
+    _, answer, _ = exchange(Seam(), b"GET /v1/models HTTP/1.1\r\nAccept-Encoding: gzip, br\r\n\r\n", sent)
+    assert answer == relay._close_head(sent.partition(b"\r\n\r\n")[0] + b"\r\n\r\n") + body
+
+
+ECHOED = f'Bearer realm="api", error="invalid_token", error_description="key {SECRET} refused"'.encode()
+
+
+@pytest.mark.parametrize("framing", ["length", "chunked", "gzip", "close", "slow", "no-body"])
+@pytest.mark.parametrize("message", [FAILED, b'{"error": "no"}'], ids=["body-holds-one", "body-holds-none"])
+def test_a_failed_answers_head_reaches_the_sandbox_without_a_held_credential(framing, message, monkeypatch):
+    """A failed answer's head is cleaned of the request's credential values like its body, in its reason phrase and
+    each field value, whatever the body's framing, and the client still reads the body to its end: the other headers
+    go on as the upstream sent them."""
+    monkeypatch.setattr(relay, "EXCERPT_DRAIN_S", 0.2)
+    status = b"401 Unauthorized " + SECRET.encode()
+    if framing == "no-body":
+        parts = [b"HTTP/1.1 304 " + SECRET.encode() + b"\r\nContent-Type: application/json\r\n\r\n"]
+    else:
+        parts = _failed(framing, message, status)
+    extra = b"WWW-Authenticate: " + ECHOED + b"\r\nX-Echo: " + SECRET.encode() + b"\r\nX-Request-Id: req-1\r\n"
+    parts[0] = parts[0].replace(b"\r\n", b"\r\n" + extra, 1)
+    answer, entries, _ = answered(parts, pause=0.5 if framing == "slow" else 0.0)
+    assert SECRET.encode() not in answer
+    code, fields, body = parsed(answer)
+    assert code == (304 if framing == "no-body" else 401) and fields["X-Request-Id"] == "req-1"
+    assert fields["WWW-Authenticate"] == ECHOED.replace(SECRET.encode(), relay.REDACTED).decode()
+    assert fields["X-Echo"] == relay.REDACTED.decode() and fields["Content-Type"] == "application/json"
+    assert answer.split(b"\r\n", 1)[0].endswith(b" " + relay.REDACTED)
+    if fields.get("Content-Encoding") == "gzip":  # a body that held none goes on as it came, in its coding
+        body = gzip.decompress(body)
+    assert body == (b"" if framing == "no-body" else message.replace(SECRET.encode(), relay.REDACTED))
+    assert entries[0]["ended"] == "complete"
+
+
+def test_a_failed_answers_head_keeps_its_framing_and_coding_as_they_came():
+    """Only a field's value outside the response's framing and coding is cleaned: the body is read by the framing the
+    upstream gave it. A head that holds no credential value is returned byte for byte."""
+    head = (b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 1234\r\nTransfer-Encoding: chunked\r\n"
+            b"Content-Encoding: gzip\r\nX-Trace: a1234z\r\n\r\n")
+    assert relay._scrub_head(head, ["1234", "gzip"]) == head.replace(b"a1234z", b"a" + relay.REDACTED + b"z")
+    assert relay._scrub_head(head, ["absent-value"]) == head and relay._scrub_head(head, []) == head
+    for line in (b"HTTP/1.1 401", b"HTTP/1.1", b"garbage"):  # a status line short of its parts, as it came
+        assert relay._scrub_head(line + b"\r\nX: y\r\n\r\n", ["abcd"]) == line + b"\r\nX: y\r\n\r\n"
 
 
 @pytest.mark.parametrize("value", [SECRET, "abcd", "aaaa"])

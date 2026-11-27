@@ -28,6 +28,7 @@ OFF_CLI_SHA = "50bf3eabeb703eb5c9e9fff2cd5ec1a8cb2ea52f2f2cd7255c01b96addff4c94"
 # The off surface these pins hold is every switch off: `maps.reads` offers the Lead's typed `map` tool (register F15.8,
 # PR A2), so a world that compares against them has it off too.
 MAPS_OFF = "off"
+MAPS_ON = "structural"  # where a test compares a snapshot with every switch on (ALL_SWITCHES), it sets this itself
 
 
 def digest(value):
@@ -251,7 +252,7 @@ def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp
 
 
 def test_broker_snapshot_does_not_follow_an_adoption_mid_session(tmp_path):
-    w = world(tmp_path, messaging=None)
+    w = world(tmp_path, messaging=None, maps_reads=MAPS_ON)
     with broker(w) as b:
         set_messaging(w.root, "enabled")
         w.e.manifest_adopt(token=w.token, reason="enable messaging", authorization=OPERATOR,
@@ -270,7 +271,7 @@ def test_with_messaging_off_the_lead_session_environment_is_byte_identical(tmp_p
 
 
 def test_an_on_broker_cannot_record_after_the_operator_disables_messaging(tmp_path):
-    w = world(tmp_path)
+    w = world(tmp_path, maps_reads=MAPS_ON)
     with broker(w) as b:
         set_messaging(w.root, "disabled")
         w.e.manifest_adopt(token=w.token, reason="disable messaging", authorization=OPERATOR,

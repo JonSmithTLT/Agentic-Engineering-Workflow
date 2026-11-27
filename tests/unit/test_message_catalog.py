@@ -130,6 +130,10 @@ OFF_READERS = {
         {"test_o_cmd_checks_typed_tool_names_against_the_contract": 1,
          "test_a_typed_tool_behind_a_switch_is_a_known_tool_name_never_an_o_cmd_finding": 1,
          "test_o_secret_reads_the_typed_tools_arguments": 2}),
+    "tests/unit/test_lead_map_catalog.py": (
+        "A planted `map` row without its switch, to show the off-surface comparison fails when the row leaks; the "
+        "switched rows are read through catalog(MAPS_ON).",
+        {"test_a_map_row_or_line_offered_without_the_switch_fails_the_comparison": 1}),
     "tests/unit/test_lead_reachability.py": (
         "Send has no operator-only primitive, pinned by the on catalog contract.",
         {"test_no_typed_tool_reaches_an_operator_only_command": 2}),

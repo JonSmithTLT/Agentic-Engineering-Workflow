@@ -4,7 +4,6 @@ the Lead's tool list, guide and system text are byte for byte what they were bef
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
@@ -14,34 +13,18 @@ from aew.harness import bridge
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.maps import query, reads, structural
-from aew.surface import contract, lead_text, mcp
+from aew.surface import contract, lead_text, mcp, presentation
 from aew.surface.context import NORMAL, RECOVERY, switches_for
 from aew.surface.validate import AdapterInputError, check_call
 
 MAPS_ON = frozenset({contract.MAPS})
-
-
-def digest(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-# The Lead's surface at main c9d99d16, before the `map` row: each listing (compact JSON, ASCII escapes), the guide's
-# core and the whole system text, with messaging off and on. Pinned, so the row cannot change any of it while
-# `maps.reads` is off (F15.8: switched off, the Lead's surface is byte-identical).
-OFF_SURFACE = {
-    "off": {"normal": "35b81b3d22b127f12a7d3a2b91141caaaed1e8265636d34772b3a65b981c72ec",
-            "recovery": "070fa4140745bb4bb1855dbea336e9e6ceafba919cae1627bd42cd0abc1b01c6",
-            "guide": "2963a5f3695b5bac1cbd163aab85b5a9cbafa35c702576bedaef313db9751ba5",
-            "system": "686288a830267e02d08f70211abb45ef7278e03b1c6c2fa6b4c9ef697f40b3f2"},
-    "messaging": {"normal": "3dd3126b62ea727a64b7f2157be446751a24b3f7513fe098a7e886e6dea78706",
-                  "recovery": "72793a4b64715c8ce6babeba8cb3eb788a0f6876833eb77f7f3facdb2d401d3e",
-                  "guide": "a2e442102857beabf69142bdd0d775edf8bb96c8a6247ee177fe451fc5de5869",
-                  "system": "5f6fc8dffd8a2ec82bf2f791897b17ad57d373d661f600c51ce180fb1369ee24"},
-}
 SWITCHES = {"off": frozenset(), "messaging": frozenset({contract.MESSAGING})}
+PARTS = (NORMAL, RECOVERY, "guide", "system")
 
 
 def surface(switches: frozenset[str]) -> dict[str, str]:
+    """The Lead's surface for ``switches``: each listing (compact JSON, ASCII escapes), the guide's core and the whole
+    system text, as the pool gate renders them."""
     listings = {p: json.dumps(mcp.tools_list(p, switches), separators=(",", ":"), ensure_ascii=True)
                 for p in (NORMAL, RECOVERY)}
     guide = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
@@ -49,18 +32,56 @@ def surface(switches: frozenset[str]) -> dict[str, str]:
     return {**listings, "guide": guide, "system": system}
 
 
-@pytest.mark.parametrize("mode", sorted(OFF_SURFACE))
-def test_the_leads_map_tool_is_absent_and_the_surface_byte_identical_when_maps_reads_is_off(mode, monkeypatch):
+def before_the_row(switches: frozenset[str]) -> dict[str, str]:
+    """The same surface with the `map` row gone from the catalog, with its compact description and the core's line
+    for it: the Lead's surface as it was before this row existed, rendered from today's code. So the comparison holds
+    whatever else changes in the Lead's text (a pinned digest of one day's text broke on every later change to it: the
+    merge with main at #592's `.env` line, CI of #654 at 85c362ff)."""
+    with pytest.MonkeyPatch.context() as m:
+        m.delitem(contract._SWITCH_TOOLS, "map")
+        m.delitem(lead_text.WHEN, "map")
+        m.delitem(presentation.DESCRIPTIONS, "map")
+        return surface(switches)
+
+
+@pytest.fixture
+def placement(monkeypatch):
     monkeypatch.setattr(capability_store, "read", lambda directory=None: capability_store.empty())
-    off = surface(SWITCHES[mode])
-    assert {part: digest(text) for part, text in off.items()} == OFF_SURFACE[mode]
-    assert "`map`" not in off["guide"] and '"name":"map"' not in off["normal"]
+
+
+@pytest.mark.parametrize("mode", sorted(SWITCHES))
+def test_the_leads_map_tool_is_absent_and_the_surface_byte_identical_when_maps_reads_is_off(mode, placement):
+    """F15.8: switched off, the Lead's tool lists, guide and system text are byte for byte what they are without the
+    row, with messaging off and on; even with `maps.reads` on, the row is the only change. (The off listings' bytes
+    are also pinned as they stand, in `test_message_send`'s `OFF_LIST_SHA`.)"""
+    off, before = surface(SWITCHES[mode]), before_the_row(SWITCHES[mode])
+    assert {part: off[part] for part in PARTS} == {part: before[part] for part in PARTS}
+    assert before_the_row(SWITCHES[mode] | MAPS_ON) == before  # without the row, the switch offers nothing
+    assert "`map`" not in off["guide"] and '"name":"map"' not in off[NORMAL]
     on = surface(SWITCHES[mode] | MAPS_ON)
-    assert "`map`" in on["guide"] and '"name":"map"' in on["normal"]
+    assert "`map`" in on["guide"] and '"name":"map"' in on[NORMAL] and on != before
     # On, the row and the core's line for it are all that change: the listing is the off one plus the row.
-    rows = json.loads(on["normal"])["tools"]
-    assert [r["name"] for r in rows] == [*[r["name"] for r in json.loads(off["normal"])["tools"]], "map"]
-    assert json.dumps({"tools": rows[:-1]}, separators=(",", ":"), ensure_ascii=True) == off["normal"]
+    rows = json.loads(on[NORMAL])["tools"]
+    assert [r["name"] for r in rows] == [*[r["name"] for r in json.loads(off[NORMAL])["tools"]], "map"]
+    assert json.dumps({"tools": rows[:-1]}, separators=(",", ":"), ensure_ascii=True) == off[NORMAL]
+    assert on["system"].removesuffix(on["guide"]) == off["system"].removesuffix(off["guide"])
+
+
+@pytest.mark.parametrize("leak", ["unswitched_row", "unswitched_line"])
+def test_a_map_row_or_line_offered_without_the_switch_fails_the_comparison(leak, placement, monkeypatch):
+    """The comparison can fail: a `map` row registered without its switch, or a core line shown without the row,
+    changes the off surface, and the off surface no longer equals the one without the row."""
+    before = before_the_row(frozenset())
+    if leak == "unswitched_row":
+        monkeypatch.setitem(contract.TOOLS, "map", contract.catalog(MAPS_ON)["map"]._replace(switch=None))
+    else:
+        shown = lead_text.uses
+
+        def uses(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tuple:
+            return (*shown(profile, switches), lead_text.guide.ToolUse("map", lead_text.WHEN["map"]))
+
+        monkeypatch.setattr(lead_text, "uses", uses)
+    assert surface(frozenset()) != before
 
 
 def test_the_map_tools_arguments_are_the_bridge_rows_bounded_strings():

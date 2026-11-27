@@ -3882,42 +3882,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E395/`, oldest first (`python tools/register.py show E395`).*
 
-### E396
-
-**Work:** A source-research skill, the `researcher` card's one foundational skill. The Lead suggests it cover: finding and preferring primary sources; naming the subject, its version and the source for every conclusion; provenance, so a reader can find the source again; and stated uncertainty where the sources are silent or disagree. `researcher` holds no skill in `skills:` until it exists, and takes it there when it ships. The operator has it created ("so I can have them created"), and it reaches the repository as a candidate with its public-text check
-
-**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." What the skill should cover is the Lead's suggestion, not the operator's requirement
-
-**When:** **Unscheduled.** When the operator has had the skill created
-
-**Notes:** Filed by E136's fourth batch
-
-*Later notes: `notes.d/E396/`, oldest first (`python tools/register.py show E396`).*
-
-### E397
-
-**Work:** A general implementation skill, the `engineer` card's one foundational skill, replacing `test-design`, which it holds in the interim. The Lead suggests it cover how an implementer proceeds whatever the language: reading the Ticket, the plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally and running the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan. When it ships, `engineer` requests it and offers `test-design` again. The operator has it created ("so I can have them created")
-
-**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a general implementation skill and a standalone plan-review skill, so those two cards aren't left on borrowed ones? I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should cover is the Lead's suggestion, not the operator's requirement
-
-**When:** **Unscheduled.** When the operator has had the skill created
-
-**Notes:** Filed by E136's fourth batch
-
-*Later notes: `notes.d/E397/`, oldest first (`python tools/register.py show E397`).*
-
-### E398
-
-**Work:** A standalone plan-review skill, the `plan_assessor` card's one foundational skill, replacing `adversarial-review`, which it holds in the interim. It is split from `adversarial-review`'s plan-review reference, so an assessor does not load the code-review procedure to reach it. The Lead suggests it cover judging a plan before the work starts: whether the plan meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers, and whether its tests and verification can show the work done. When it ships, `plan_assessor` requests it. The interim has a known gap: `adversarial-review`'s core steps 5 and 6 need execution a plan assessor lacks, and no run has checked how an assessor behaves with it. The operator has it created ("so I can have them created")
-
-**Source:** The operator, 2026-11-26, on the table of one foundational skill per card: "Yup the table is good we just need to track the missing skills so I can have them created." On tracking this skill: the Lead asked "Should I track a general implementation skill and a standalone plan-review skill, so those two cards aren't left on borrowed ones? I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". What the skill should cover is the Lead's suggestion, not the operator's requirement
-
-**When:** **Unscheduled.** When the operator has had the skill created
-
-**Notes:** Filed by E136's fourth batch
-
-*Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
-
 ### E394
 
 **Work:** A second `ProcessTree.spawn()` on POSIX fails with `PermissionError`: the first member is started in a new session (`start_new_session`), so its group is in another session, and `setpgid` cannot move a later child of the supervisor into it (`_spawn` in `src/aew/harness/procs.py`). It fails closed, since nothing starts and nothing leaves the tree, and no caller in `src` spawns twice in one tree today. Either make a later member join the group, or have the tree say it holds one command
@@ -5465,6 +5429,36 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** Closed into F19 as F19's feature-cell backlog, where its work continues (the operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the second of the Lead's seven questions was "E389: close it into F19 as F19's feature-cell backlog, or keep the row? I recommend closing it into F19, which matches what you said about not having two systems.", so the yes is to the Lead's stated recommendation). Delivered: [the F19 refinement proposal](../research/f19-refinement-proposal-2026-11-26.md) (research, not adopted; ledger FRP), filed and answered in part, not adopted. What the operator decided and what stays open are in F19's note of 2026-11-26
 
 *Later notes: `notes.d/E389/`, oldest first (`python tools/register.py show E389`).*
+
+### E396
+
+**Was:** A source-research skill, the `researcher` card's one foundational skill. The Lead suggests it cover: finding and preferring primary sources; naming the subject, its version and the source for every conclusion; provenance, so a reader can find the source again; and stated uncertainty where the sources are silent or disagree. `researcher` holds no skill in `skills:` until it exists, and takes it there when it ships. The operator has it created ("so I can have them created"), and it reaches the repository as a candidate with its public-text check
+
+**Closed:** 2026-11-27
+
+**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `source-research` 0.1.0 ships as the `researcher` v3 foundation, from the public text reviewed in #642. The card retains optional `empirical-evaluation`.
+
+*Later notes: `notes.d/E396/`, oldest first (`python tools/register.py show E396`).*
+
+### E397
+
+**Was:** A general implementation skill, the `engineer` card's one foundational skill, replacing `test-design`, which it holds in the interim. The Lead suggests it cover how an implementer proceeds whatever the language: reading the Ticket, the plan and the scope before editing; specifying the behaviour with an executable check; changing incrementally and running the cheapest relevant check; stopping on a new failure; and self-review of the diff against the plan. When it ships, `engineer` requests it and offers `test-design` again. The operator has it created ("so I can have them created")
+
+**Closed:** 2026-11-27
+
+**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `general-implementation` 0.1.0 ships as the `engineer` v6 foundation, from the public text reviewed in #642. `test-design` returns to the optional list.
+
+*Later notes: `notes.d/E397/`, oldest first (`python tools/register.py show E397`).*
+
+### E398
+
+**Was:** A standalone plan-review skill, the `plan_assessor` card's one foundational skill, replacing `adversarial-review`, which it holds in the interim. It is split from `adversarial-review`'s plan-review reference, so an assessor does not load the code-review procedure to reach it. The Lead suggests it cover judging a plan before the work starts: whether the plan meets the requirement, its interfaces, dependencies and order, its risks and escalation triggers, and whether its tests and verification can show the work done. When it ships, `plan_assessor` requests it. The interim has a known gap: `adversarial-review`'s core steps 5 and 6 need execution a plan assessor lacks, and no run has checked how an assessor behaves with it. The operator has it created ("so I can have them created")
+
+**Closed:** 2026-11-27
+
+**By:** The foundational skill delivery in ADR-0006's 2026-11-27 delivery amendment. `plan-review` 0.1.0 ships as the `plan_assessor` v4 foundation, from the public text reviewed in #642. The assessor uses its existing read-only operations and needs no execution.
+
+*Later notes: `notes.d/E398/`, oldest first (`python tools/register.py show E398`).*
 
 ### F1
 

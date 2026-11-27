@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import os
 import subprocess
 import sys
@@ -29,6 +30,13 @@ GITLEAKS_URL = f"https://github.com/gitleaks/gitleaks/releases/download/v{GITLEA
 # step's run time. Only the download is retried: a checksum mismatch is never a reason to try again.
 SCANNER_ATTEMPTS = 3
 SCANNER_BACKOFF_S = (2.0, 4.0)
+# On 2026-11-27 all three attempts of one Linux lane got HTTP 403 from the release host within 6 s (run 46048405164,
+# register E3), and `main` went red with every test passed. So the verified archive is kept in the Actions cache, keyed
+# on the platform, the archive (which names the version) and the pinned digest, and the lane action restores it before
+# this installer runs and saves it after a miss: a warm job downloads nothing. A cached archive is trusted no more than
+# a downloaded one: its bytes are checked against the pinned digest on every install, and a mismatch is discarded and
+# downloaded afresh, so the cache can save a download but never supply a scanner the pin does not name.
+SCANNER_CACHE = "evidence-scanner"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -54,25 +62,50 @@ PYSPY = {
 }
 
 
+def scanner_cache() -> tuple[Path, str]:
+    """The Actions cache entry for the pinned archive: its directory and its key, which the lane action reads from
+    `--cache-entry` rather than restating either."""
+    archive, digest = GITLEAKS[sys.platform]
+    return Path(os.environ["RUNNER_TEMP"]) / SCANNER_CACHE, f"{SCANNER_CACHE}-{sys.platform}-{archive}-{digest}"
+
+
+def scanner_archive(archive: str, digest: str) -> bytes:
+    """The pinned archive's bytes, verified: from the cache when they match the digest, else downloaded."""
+    cache = scanner_cache()[0]
+    cache.mkdir(parents=True, exist_ok=True)
+    cached = cache / archive
+    if cached.is_file():
+        data = cached.read_bytes()
+        if hashlib.sha256(data).hexdigest() == digest:
+            return data
+        print("evidence scanner cache does not match the pinned digest; downloading", flush=True)
+        cached.unlink()
+    with tempfile.TemporaryDirectory() as temporary:
+        path = Path(temporary) / archive
+        download_scanner(archive, path)
+        data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError("evidence scanner checksum mismatch")
+    cached.write_bytes(data)
+    return data
+
+
 def install_scanner(target: Path) -> None:
     archive, digest = GITLEAKS[sys.platform]
     binary = "gitleaks.exe" if sys.platform == "win32" else "gitleaks"
     if not (target / binary).exists():
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / archive
-            download_scanner(archive, path)
-            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-                raise ValueError("evidence scanner checksum mismatch")
-            if sys.platform == "win32":
-                with zipfile.ZipFile(path) as bundle:
-                    (target / binary).write_bytes(bundle.read(binary))
-            else:
-                with tarfile.open(path) as bundle:
-                    stream = bundle.extractfile(binary)
-                    if stream is None:
-                        raise ValueError("evidence scanner binary missing")
-                    (target / binary).write_bytes(stream.read())
-                (target / binary).chmod(0o755)
+        # The bytes extracted are the bytes verified: nothing is read back from disk after the check.
+        data = io.BytesIO(scanner_archive(archive, digest))
+        if sys.platform == "win32":
+            with zipfile.ZipFile(data) as bundle:
+                (target / binary).write_bytes(bundle.read(binary))
+        else:
+            with tarfile.open(fileobj=data) as bundle:
+                stream = bundle.extractfile(binary)
+                if stream is None:
+                    raise ValueError("evidence scanner binary missing")
+                (target / binary).write_bytes(stream.read())
+            (target / binary).chmod(0o755)
 
 
 def install_spy(target: Path) -> None:
@@ -85,6 +118,12 @@ def install_spy(target: Path) -> None:
         subprocess.run([sys.executable, "-m", "pip", "install", "--require-hashes", "--only-binary=:all:",
                         "-r", str(requirements)], check=True, timeout=60, creationflags=_NO_WINDOW)
     stamp.touch()
+
+
+def cache_entry() -> None:
+    path, key = scanner_cache()
+    with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+        output.write(f"path={path}\nkey={key}\n")
 
 
 def main(*, scanner_only: bool = False) -> None:
@@ -109,4 +148,9 @@ def main(*, scanner_only: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scanner-only", action="store_true", help="prepare a standalone evidence publication")
-    main(scanner_only=parser.parse_args().scanner_only)
+    parser.add_argument("--cache-entry", action="store_true", help="name the scanner's Actions cache path and key")
+    arguments = parser.parse_args()
+    if arguments.cache_entry:
+        cache_entry()
+    else:
+        main(scanner_only=arguments.scanner_only)

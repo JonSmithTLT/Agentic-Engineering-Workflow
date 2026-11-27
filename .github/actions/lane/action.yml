@@ -26,12 +26,39 @@ outputs:
 runs:
   using: composite
   steps:
+    # The pinned scanner's archive comes from the Actions cache when it can, so one refused download from the release
+    # host does not leave a passing lane without a scanner and its report withheld (run 46048405164, register E3). The
+    # installer names the path and key and checks the cached bytes against the pinned digest before it uses them.
+    - name: Name the evidence scanner's cache entry
+      id: scanner-cache
+      if: always()
+      continue-on-error: true
+      shell: bash
+      run: python tools/ci/install_evidence.py --cache-entry
+    - name: The evidence scanner from the cache
+      id: scanner-restore
+      if: always() && steps.scanner-cache.outcome == 'success'
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.scanner-cache.outputs.path }}
+        key: ${{ steps.scanner-cache.outputs.key }}
     - name: Install evidence tools
       id: tools
       if: always()
       continue-on-error: true
       shell: bash
       run: python tools/ci/install_evidence.py
+    - name: "Cache miss: keep the verified scanner for the next jobs"
+      if: >-
+        always() && steps.scanner-cache.outcome == 'success' && steps.scanner-restore.outputs.cache-hit != 'true' &&
+        steps.tools.outputs.scanner == 'true'
+      # Another job of the same run may save the same key first; that is no failure of this one.
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.scanner-cache.outputs.path }}
+        key: ${{ steps.scanner-cache.outputs.key }}
     - name: Probe hosted attachment
       id: probe
       if: env.AEW_EVIDENCE_PROBE == 'true'

@@ -41,7 +41,7 @@ def g3_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return sock
 
 
-def _start(ref: str, *, life_s: float = 300, project: str | None = "calc") -> R.Writer:
+def _start(ref: str, *, life_s: float = 300, project: str | None = None) -> R.Writer:
     pending = {"approval_ref": ref, "state": "PENDING",
                "expires_at": R._iso(datetime.now(UTC) + timedelta(seconds=life_s)),
                "rendering": [{"template_id": "g3:action:SET_STEERING_MODE", "values": {},
@@ -63,8 +63,9 @@ def test_a_waiting_approval_is_first_in_the_overview_and_status_lists_the_same_i
         project: Any, g3_host: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     """BOY-Q06, BOY-Q16, BOY-Q18, BOY-Q19, BOY-Q01's runtime spy."""
     _escalate(project, OVERVIEW_ATTENTION + 1)
-    _start("g3:approval:waiting")
-    finished = _start("g3:approval:done")
+    here = str(Engine.discover(project.root).manifest["project"]["id"])  # this project's: `aew status` shows them
+    _start("g3:approval:waiting", project=here)
+    finished = _start("g3:approval:done", project=here)
     finished.finish("declined")
     connects: list[Any] = []
     real = socket.socket.connect
@@ -89,13 +90,38 @@ def test_a_waiting_approval_is_first_in_the_overview_and_status_lists_the_same_i
     status = json.loads(capsys.readouterr().out)["attention"]
     site = projector.attention_view()
     assert [(i["key"], i["tier"], i["id"]) for i in status["items"]] == [
-        (i["key"], i["tier"], i["id"]) for i in site["items"]]
+        (i["key"], i["tier"], i["id"]) for i in site["items"]]  # this project's approvals only, so the same set
     assert [i["id"] for i in status["items"]][:OVERVIEW_ATTENTION] == [a["id"] for a in shown]
     assert status["items"][-1]["key"] == "g3:approval:done" and status["items"][-1]["tier"] == "fyi"
     assert main(["-C", str(project.root), "status"]) == 0
     text = capsys.readouterr().out
     assert "[blocked-on-you] G3 approval: SET_STEERING_MODE" in text and "Decide in AEW approvals" in text
     assert str(g3_host) not in map(str, connects), connects  # request.sock is only checked, never connected to
+
+
+def test_status_shows_only_this_projects_approvals_and_the_dashboard_every_projects(
+        project: Any, g3_host: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """The operator, 2026-11-27, asked whether `aew status`, and so the Lead's relayed read, should show only the
+    current project's G3 approvals, with the dashboard keeping the host-wide view: "For approvals yes that makes
+    sense". A record of another project, or of none, never appears in status or its --json; the overview shows it."""
+    engine = Engine.discover(project.root)
+    here = str(engine.manifest["project"]["id"])
+    _start("g3:approval:here", project=here)
+    _start("g3:approval:elsewhere-planted", project="another-project")
+    _start("g3:approval:nowhere-planted", project=None)
+    site = Projector(StateReader(engine).snapshot(), route="/overview").attention_view()
+    assert {i["key"] for i in site["items"]} >= {"g3:approval:here", "g3:approval:elsewhere-planted",
+                                                  "g3:approval:nowhere-planted"}
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    for argv in (["status", "--json"], ["status"]):
+        assert main(["-C", str(project.root), *argv]) == 0
+        out = capsys.readouterr().out
+        assert "g3:approval:here" in out
+        assert "elsewhere-planted" not in out and "another-project" not in out and "nowhere-planted" not in out
+    assert main(["-C", str(project.root), "status", "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)["attention"]
+    assert [i["key"] for i in status["items"] if i["source"].startswith("g3_approval")] == ["g3:approval:here"]
+    assert status["sources"][0]["line"] == AT.COVERAGE_HERE
 
 
 def test_on_a_host_without_g3_the_overview_says_so_and_counts_nothing_for_it(

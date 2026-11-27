@@ -82,6 +82,11 @@ NOTHING_WAITING = ("No approval that AEW started on this host is waiting. AEW ap
                    "client.")
 COVERAGE = ("Approvals that AEW started on this host, from any project. AEW approvals lists every approval, from any "
             "client.")
+# ``aew status``'s view, one project's approvals only (the operator, 2026-11-27: "For approvals yes that makes sense")
+NOTHING_WAITING_HERE = ("No approval that AEW started on this host for this project is waiting. AEW approvals lists "
+                        "every approval, from any client.")
+COVERAGE_HERE = ("Approvals that AEW started on this host for this project; the dashboard shows those of every "
+                 "project. AEW approvals lists every approval, from any client.")
 HELD = "The action stays held until you decide."
 NOT_ESTABLISHED = "G3 is not established here: approving admits nothing yet."
 CLAIM = "started by the {role} (the client's own claim)"
@@ -290,12 +295,15 @@ class Source:
 
 def approval_items(now: datetime, *, platform: str | None = None, sock: str | None = None,
                    directory: Path | None = None, alive: Callable[[Any], bool] = client_alive,
-                   established: Callable[[], bool] | None = None) -> tuple[list[dict[str, Any]], Source]:
+                   established: Callable[[], bool] | None = None,
+                   project: str | None = None) -> tuple[list[dict[str, Any]], Source]:
     """The G3 approvals this host's client recorded, and the source's outcome. On Windows, or with no
     ``request.sock`` (``g3client.REQUEST_SOCK``, whose path is only checked, never connected to), the source is
     ``unsupported`` and no record is read. A record stays until its expiry plus G3-06's window (BOY-05.c).
     ``established`` says whether G3 is established for this reader (``g3standing``); while it is not, each item says
-    approving admits nothing yet (BOY-05.d)."""
+    approving admits nothing yet (BOY-05.d). With ``project`` (``aew status``, and so the Lead's relayed read), only
+    the records :func:`aew.g3records.of_project` matches are shown; without it (the dashboard), every project's. A
+    record that cannot be read names no project, so it shows in both, as unknown (BOY-04)."""
     from aew import g3client
     from aew import g3records as R
 
@@ -316,6 +324,8 @@ def approval_items(now: datetime, *, platform: str | None = None, sock: str | No
                             reasons=[reason("G3_APPROVAL_UNKNOWN", UNREADABLE)],
                             where="aew_approvals", record=f"host record: g3/requests/{found.name}", state="?"))
             continue
+        if project is not None and not R.of_project(rec, project):
+            continue  # another project's, or started outside any: the dashboard shows it, status does not
         expiry = R.parse_time(rec["expires_at"])
         if expiry is not None and now > expiry + window:
             continue  # out of view; its client's next write prunes it
@@ -326,6 +336,8 @@ def approval_items(now: datetime, *, platform: str | None = None, sock: str | No
             i["summary"] = f"{i['summary']} {NOT_ESTABLISHED}"
     waiting = any(i["tier"] == BLOCKED_ON_YOU for i in out)
     out.sort(key=lambda i: i["since"] or "")
+    if project is not None:
+        return out, Source("g3_approvals", "available", COVERAGE_HERE if waiting else NOTHING_WAITING_HERE)
     return out, Source("g3_approvals", "available", COVERAGE if waiting else NOTHING_WAITING)
 
 
@@ -364,14 +376,17 @@ def _approval(rec: dict[str, Any], name: str, source: str, words: str) -> dict[s
 def view(state: dict[str, Any], *, project: dict[str, Any], contradictions: list[str],
          observe: Callable[[str], str], notifier: dict[str, Any] | None, now: datetime | None = None,
          host: bool = True, established: Callable[[], bool] | None = None,
-         approvals: Callable[..., tuple[list[dict[str, Any]], Source]] | None = None) -> dict[str, Any]:
+         approvals: Callable[..., tuple[list[dict[str, Any]], Source]] | None = None,
+         this_project_only: bool = False) -> dict[str, Any]:
     """Every item, ordered, and each host source's outcome. ``host=False`` reads committed records only: no notifier
-    summary and no approval record (the outage reader's, BOY-05.e)."""
+    summary and no approval record (the outage reader's, BOY-05.e). ``this_project_only`` shows only ``project``'s
+    approvals (``aew status``); the dashboard shows every project's."""
     now = now or datetime.now(UTC)
     items = engine_items(state, project=project, contradictions=contradictions, observe=observe)
     sources: list[Source] = []
     if host:
-        found, source = (approvals or approval_items)(now, established=established)
+        found, source = (approvals or approval_items)(
+            now, established=established, project=str(project["id"]) if this_project_only else None)
         items = found + items + notifier_items(notifier, project=project)
         sources.append(source)
     return {"items": ordered(items), "sources": [s.as_dict() for s in sources]}
@@ -379,7 +394,10 @@ def view(state: dict[str, Any], *, project: dict[str, Any], contradictions: list
 
 def for_engine(engine: Any, *, contradictions: list[str], now: datetime | None = None) -> dict[str, Any]:
     """:func:`view` for ``aew status``, from the engine with the dashboard stopped (BOY-02.a): the same items the
-    overview shows, from the same table."""
+    overview shows, from the same table, except other projects' approvals. ``aew status`` is relayed to the Lead, so
+    it shows this project's approvals only, while the operator's dashboard keeps the host-wide view (the operator,
+    2026-11-27, asked whether status should show only the current project's approvals: "For approvals yes that makes
+    sense")."""
     from aew import g3standing
     from aew.errors import AEWError
     from aew.harness import notify, runlog
@@ -397,7 +415,7 @@ def for_engine(engine: Any, *, contradictions: list[str], now: datetime | None =
     return view(state, project={"id": str(meta["id"]), "kind": "project", "title": str(meta["name"])},
                 contradictions=contradictions,
                 observe=lambda run: runlog.observed_status(runlog.run_dir(engine.aew_root, run))[0],
-                notifier=notify.summary(engine.aew_root), now=now, established=established)
+                notifier=notify.summary(engine.aew_root), now=now, established=established, this_project_only=True)
 
 
 def render(view: dict[str, Any], now: datetime | None = None) -> list[str]:

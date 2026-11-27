@@ -2,11 +2,11 @@
 
 One JSON file per approval that a G3 client starts (``aew g3 request``, and the operator endpoint's G3 path), in
 :func:`aew.g3client.approval_records_dir`, outside every project's store. A contained launch's layout refuses an
-operator's writable root that is, contains or lies under it (``containment.layout._guarded``). Only the client that started an approval writes
-its record (:class:`Writer`): at the start, after each of its reads of G3, and at its exit; and each of its writes
-prunes every record whose display window has passed (:func:`prune`). Every other reader (the attention module, so the
-dashboard and ``aew status``) only reads (:func:`read_all`). The record grants nothing: it is a display source, and
-the decision stays in AEW approvals, with the PIN (BOY-00).
+operator's writable root that is, contains or lies under it (``containment.layout._guarded``). Only the client that
+started an approval writes its record (:class:`Writer`): at the start, after each of its reads of G3, and at its exit;
+and each of its writes prunes every record whose display window has passed (:func:`prune`). Every other reader (the
+attention module, so the dashboard and ``aew status``) only reads (:func:`read_all`). The record grants nothing: it is
+a display source, and the decision stays in AEW approvals, with the PIN (BOY-00).
 
 A record holds :data:`FIELDS` and nothing else: never a rendering line, a typed value or a consent record (G3-03).
 Its action names are the ``g3:action:`` TEMPLATE lines of G3's own reply, never the client's words.
@@ -230,6 +230,12 @@ def read_all(directory: Path | None = None) -> list[Found]:
             data = None
         out.append(Found(path.name, data if valid(data) else None))
     return out
+
+
+def of_project(record: dict[str, Any], project_id: str) -> bool:
+    """Whether a record is the project's: its own ``project`` field, the label :func:`project_label` wrote, is that
+    project's id. A record started outside any project is no project's."""
+    return record.get("project") is not None and record.get("project") == project_id
 
 
 def parse_time(value: Any) -> datetime | None:

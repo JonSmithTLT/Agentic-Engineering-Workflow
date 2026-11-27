@@ -225,3 +225,19 @@ def test_status_renders_each_item_with_its_tier_time_left_and_where_and_each_sou
     assert lines[1] == "  [blocked-on-you] G3 approval: SET_STEERING_MODE, since 2026-11-27T12:00:00Z, 4m50s left"
     assert lines[3] == "    " + AT.WHERE["aew_approvals"]
     assert lines[-1] == "  g3_approvals: available: " + AT.COVERAGE  # no clock time: one state, one text (#660, B1-6)
+
+
+def test_with_a_project_only_its_records_show_and_the_coverage_says_so(tmp_path: Path) -> None:
+    """The operator, 2026-11-27 ("For approvals yes that makes sense"): status's view is one project's; the record's
+    own project field decides (``g3records.of_project``), and one started outside any project is no project's."""
+    plant(tmp_path / "r", "g3:approval:one", project="calc")
+    plant(tmp_path / "r", "g3:approval:two", project="other")
+    plant(tmp_path / "r", "g3:approval:three", project=None)
+    sock = tmp_path / "request.sock"
+    sock.touch()
+    items, source = AT.approval_items(at(10), platform="linux", sock=str(sock), directory=tmp_path / "r",
+                                      alive=lambda c: True, project="calc")
+    assert [i["key"] for i in items] == ["g3:approval:one"] and source.line == AT.COVERAGE_HERE
+    items, source = AT.approval_items(at(10), platform="linux", sock=str(sock), directory=tmp_path / "r",
+                                      alive=lambda c: True, project="none-of-these")
+    assert items == [] and source.line == AT.NOTHING_WAITING_HERE

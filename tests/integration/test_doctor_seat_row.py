@@ -9,8 +9,8 @@ import re
 import pytest
 from aewflow import sample_project
 
-from aew.engine import api, lead_ops, resume_ops
 from aew import process_kind
+from aew.engine import api, lead_ops, resume_ops
 from aew.engine.api import Engine
 from aew.harness import procs, seat
 

@@ -153,7 +153,9 @@ the checks by being labelled diagnostic? No, by construction):
     - `aew init`, with messaging and recall search switched on and adopted, so their commands exist;
     - a Lead;
     - one Ticket with a body and an accepted plan, assigned without a launch, so its invocation `INV-0001`, its
-      workspace and its pack exist.
+      workspace and its pack exist;
+    - a second Ticket that depends on it, so the dependency change is a decision with a body (`D-0003`, for
+      `record body`).
 
     It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface. The
     settling may remove only the spent redo records under `.aew/state/txn/`; anything else fails.

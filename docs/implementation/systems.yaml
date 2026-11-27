@@ -4149,7 +4149,8 @@ systems:
     with a document the operator reads.
   remaining:
   - slice: 'the site''s half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its
-      surface-map entry (E170''s note of 2026-11-26)'
+      surface-map entry, for a work unit''s record, an evidence record, a plan revision and a decision record (E170''s
+      notes of 2026-11-26 and 2026-11-27)'
     row: E170
     estimate: 1 small PR, the web developer's (estimate; the designer's reading, skills design (e))
   - slice: 'a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the

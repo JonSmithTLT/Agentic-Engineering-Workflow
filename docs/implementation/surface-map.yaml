@@ -1423,15 +1423,24 @@ commands:
     probe:
       - [record, body, "{ticket}"]
       - [record, body, "{ticket}", --json]
+      - [record, body, "{ticket}", --plan, "1"]
+      - [record, body, "{ticket}", --plan, "1", --json]
+      - [record, body, D-0003]
+      - [record, body, D-0003, --json]
     refusals: [INTEGRITY_ERROR, NOT_FOUND, PROJECT_NOT_FOUND, USAGE]
-    note: "E170 (SYS-45), the CLI half. The body of a work unit's record or of an evidence record, current or
+    note: "E170 (SYS-45), the CLI half. The body of a work unit's record, of one of its plan revisions (--plan N, the
+      number `plan accept --revision` takes), of an evidence record or of a decision record (D-n), current or
       archived, as recorded; printed for a person, what could steer a terminal is shown as an escape
-       (aew.util.escape_display_controls; invisible characters that steer nothing are not), and --json has the exact text.
-      NOT_FOUND carries reason unknown_record or no_body; INTEGRITY_ERROR a record that is not what was recorded
+       (aew.util.escape_display_controls; invisible characters that steer nothing are not), and --json has the exact text,
+      with, for a plan revision, its number, status, whether it is the accepted one and what it supersedes, and for
+      a decision its type and summary. NOT_FOUND carries reason unknown_record, unknown_revision (with the unit's
+      revisions) or no_body; INTEGRITY_ERROR a record that is not what was recorded
       (a current one with reason not_text, not_sealed, unreadable, not_this_units, not_pinned,
-      listed_twice or pinned_elsewhere), and says what to do. No typed
-      tool yet: the structured, bounded Evidence read for the typed surface (the designer's decision of 2026-10-06,
-      `aew evidence show`) is E170's follow-on"
+      listed_twice or pinned_elsewhere; a plan revision held to the hash its unit pins, a decision to the hash the
+      transition that wrote it recorded), and says what to do. The operator's ruling of 2026-11-27 added the plan
+      revision and the decision. A Lead session runs it in its own shell (lead_broker.CONTAINED_LOCAL), every form
+      alike. No typed tool yet: the structured, bounded Evidence read for the typed surface (the designer's decision
+      of 2026-10-06, `aew evidence show`) is E170's follow-on"
   - name: history show
     home: diagnostic
     users: [operator, lead]

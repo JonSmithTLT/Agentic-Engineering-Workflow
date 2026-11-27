@@ -21,7 +21,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `decisions`
 
-- `decisions` (kept in git); read by `aew.dashboard.projections`: `Projector.knowledge`, `Projector.knowledge_list`; `aew.engine.coordination_ops`: `Coordination._ref_decision`; `aew.knowledge.records`: `read_record`
+- `decisions` (kept in git); read by `aew.dashboard.projections`: `Projector.knowledge`, `Projector.knowledge_list`; `aew.engine.coordination_ops`: `Coordination._ref_decision`; `aew.engine.history_ops`: `HistoryCommands._decision_body`, `HistoryCommands.record_body`; `aew.knowledge.records`: `read_record`
   - Written by
     - `aew.engine.base:Kernel.new_decision`
 
@@ -639,7 +639,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.evidence_ops`: `EvidenceCommands.check_run` (Path.exists), `Gates._gates_at` (sha256_file), `Gates.plan_gate_status` (sha256_file)
 - `aew.engine.faults`: `pause` (os.path.exists)
 - `aew.engine.harness_ops`: `Harness._control_identity` (os.stat)
-- `aew.engine.history_ops`: `HistoryCommands._current_evidence_body` (Path.read_bytes), `HistoryCommands._unit_body` (Path.read_bytes)
+- `aew.engine.history_ops`: `HistoryCommands._current_evidence_body` (Path.read_bytes), `HistoryCommands._plan_body` (Path.read_bytes), `HistoryCommands._unit_body` (Path.read_bytes)
 - `aew.engine.integration_ops`: `Integration._build_candidate` (Path.is_dir), `Integration._post_integration_ok` (Path.is_dir), `Integration._prune_retired_candidates` (Path.exists), `Integration._require_integrable` (Path.is_dir)
 - `aew.engine.lock`: `FileLock._is_path` (os.stat)
 - `aew.engine.migrate_ops`: `Migration.discard_unreachable` (Path.is_file)

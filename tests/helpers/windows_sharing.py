@@ -71,3 +71,62 @@ def blocked_read(path: Path, *, release: bool = True, replace_gap: bool = False,
                 assert released, "the reader did not retry the held handle"
     finally:
         publish()
+
+
+@contextmanager
+def held_by_a_reader(path: Path, *, release_after: int | None = 1) -> Iterator[None]:
+    """``path`` held open by a reader the way Python's own ``open`` holds it (no ``FILE_SHARE_DELETE``), so a removal
+    is refused with a sharing violation until the reader lets go: on Windows a real handle, elsewhere (where an open
+    file can be removed) the same refusal injected into ``Path.unlink`` for this path alone, with ``aew.util`` told it
+    runs on Windows. The ``release_after``-th retry pause of the thread that entered releases it, independent of
+    scheduling; ``None`` holds it to the end and models a reader that outlasts the wait."""
+    from aew import util
+
+    owner = threading.get_ident()
+    target = Path(path)
+    windows = util.IS_WINDOWS
+    reader = open(target, "rb") if windows else None  # held across the yield, closed in publish()
+    held = True
+    sleeps = 0
+    skipped = 0.0  # the owner's pauses advance its clock without sleeping: a hold that outlasts the wait costs no time
+
+    def publish() -> None:
+        nonlocal held
+        if held and reader is not None:
+            reader.close()
+        held = False
+
+    def pause(delay: float) -> None:
+        nonlocal sleeps, skipped
+        if threading.get_ident() != owner:
+            time.sleep(delay)
+            return
+        sleeps += 1
+        if sleeps == release_after:
+            publish()
+        skipped += delay
+
+    real_unlink = Path.unlink
+
+    def unlink(self: Path, missing_ok: bool = False) -> None:
+        if held and self == target:
+            error = PermissionError(13, "The process cannot access the file because it is being used by another "
+                                        "process", str(self))
+            error.winerror = 32  # type: ignore[attr-defined]
+            raise error
+        real_unlink(self, missing_ok=missing_ok)
+
+    clock = SimpleNamespace(monotonic=lambda: time.monotonic() + skipped, sleep=pause)
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            if not windows:
+                patch.setattr(util, "IS_WINDOWS", True)
+                patch.setattr(Path, "unlink", unlink)
+            with pytest.raises(PermissionError):
+                target.unlink()  # the hold is real: an unguarded removal is refused
+            patch.setattr(util, "time", clock)
+            yield
+            if release_after is not None:
+                assert not held, "the removal did not retry the held file"
+    finally:
+        publish()

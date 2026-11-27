@@ -599,6 +599,10 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
             priced_rows = [r[name]["usd"] for r in rows if "usd" in r[name]]
             assert fig["usd"] == (sum(priced_rows, Decimal(0)) if priced_rows else None)  # never a zero (#368, M1)
         assert total["invocations"] == len(invs)
+        # Requests (the rate-limit unit's ruling 2): the unknown runs are the rows with none, and `steps` is the sum
+        # of the rows that have them.
+        assert total["steps_unknown_runs"] == sum(1 for r in rows if r["requests"] is None)
+        assert total["steps"] == sum(r["requests"]["count"] for r in rows if r["requests"] is not None)
         assert total["invocations_without_runs"] == sum(1 for _, _, runs in invs if not runs)
         priced += total["estimated_under_current_prices"]["priced"] + total["estimated_at_record"]["priced"]
         for name in ("estimated_at_record", "estimated_under_current_prices"):
@@ -686,6 +690,52 @@ def test_the_status_line_prints_the_exact_sum_never_its_json_number(tmp_path):
     exact = Decimal(123456789) * Decimal(987654321) / Decimal(1_000_000)  # 18 significant digits
     assert f"${exact} USAGE_OBSERVED_COOPERATIVE" in summary["line"]
     assert str(float(exact)) != str(exact)  # its JSON number is not the exact sum
+
+
+def test_a_run_that_reported_nothing_shows_its_requests_as_unknown_never_zero(tmp_path):
+    """The rate-limit unit's ruling 2 (designer, 2026-11-06): `aew usage show` gives each run's requests and their sum.
+    A run that reported nothing (its harness gone) and a run with no record at all have unknown requests, counted beside
+    the sum and never as a zero in it, in the JSON and the text alike."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), U.normalize({"tokens": {"input": 10}}, [{}, {}, {}], [GPT], U.DISJOINT,
+                                                            source="harness:opencode"))
+    run_record(runlog.run_dir(tmp_path, "R-2"), U.absent_record(source="harness:opencode"))
+    state = hand_state(("I-1", "T-0001", ["R-1", "R-2", "R-3"]))  # R-3: no run directory
+    projected = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])
+    assert [r["requests"] for r in projected["rows"]] == [{"count": 3, "at_least": False}, None, None]
+    t = json.loads(json.dumps(O.to_json(projected["totals"])))
+    assert (t["steps"], t["steps_unknown_runs"], t["steps_floor_runs"]) == (3, 2, 0)
+    text = "\n".join(O._invocation_lines(projected, ""))
+    assert "; requests 3 model call(s)\n" in text  # R-1's row
+    assert text.count("; requests unknown (the run reported nothing), not zero") == 2
+    assert ("requests: 3 model call(s) over 1 run(s), and 2 run(s) unknown (they reported nothing), not counted as "
+            "zero") in text
+    alone = O.Reader(tmp_path, PRICES).invocation("I-2", {"runs": [{"run": "R-2", "harness": "opencode"}]})
+    assert O.requests_text(alone["totals"]) == "unknown for 1 run(s) (they reported nothing), not counted as zero"
+
+
+def test_a_run_whose_calls_were_not_all_read_shows_its_requests_as_a_floor(tmp_path):
+    """The rate-limit unit's ruling 2: when the adapter stopped paging a run's calls (``truncated``), its count is a
+    floor, and so is every sum it goes into."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10, truncated=True))
+    run_record(runlog.run_dir(tmp_path, "R-2"), record(input=10))
+    state = hand_state(("I-1", "T-0001", ["R-1", "R-2"]))
+    projected = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])
+    assert projected["rows"][0]["requests"] == {"count": 1, "at_least": True}
+    assert (projected["totals"]["steps_floor_runs"], projected["totals"]["steps_unknown_runs"]) == (1, 0)
+    assert O.requests_text(projected["totals"]) == ("at least 2 model call(s) over 2 run(s) (1 run(s) not read to "
+                                                     "the end)")
+    head = O._row_lines(projected["rows"][0], "")[0]
+    assert head.endswith("; requests at least 1 model call(s) (not read to the end)")
+
+
+def test_requests_leave_the_status_summary_and_its_existing_keys_as_they_were(tmp_path):
+    """UAT care for the rate-limit unit's ruling 2: the request fields are added beside the totals; `aew status`'s
+    summary keys, and `steps`'s meaning (the calls counted), are unchanged."""
+    assert "steps_unknown_runs" not in O.SUMMARY_KEYS and "steps_floor_runs" not in O.SUMMARY_KEYS
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    summary = O.status_summary(state, O.Reader(tmp_path, PRICES))
+    assert "steps_unknown_runs" not in summary and "requests" not in summary["line"]
 
 
 def test_a_window_says_what_it_counts_and_only_the_bounds_given():

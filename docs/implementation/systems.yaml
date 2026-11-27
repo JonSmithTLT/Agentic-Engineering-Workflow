@@ -1308,11 +1308,12 @@ systems:
     request. The surface has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07) also shows
-      requests, tokens in the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md,
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07,
+      and its requests: F25''s note of 2026-11-27) also shows tokens in the declared rate basis, after provider profiles declare
+      `rate_basis` (STG-14), and the largest request, after the run-usage record carries it (designer-decisions-2026-11-06-rate-limit-unit.md,
       ruling 2); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1 small PR (estimate)
+    estimate: 1-2 small PRs (estimate), the basis after STG-14's rate_basis
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized
@@ -1328,7 +1329,8 @@ systems:
   who: designer (the HOLD-21 match), then operator (release the CLI and status line), then Lead
   reason: The write side runs on every launch and every Lead transaction, and the read side is built over its projections
     (`aew usage show` and the status line, F25's note of 2026-11-07; the price table at init and `/aew-usage`, its note of
-    2026-11-08). Left are ruling 2's fields in `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
+    2026-11-08; requests in `aew usage show`, its note of 2026-11-27). Left are ruling 2's basis and largest request in
+    `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
   evidence:
   - src/aew/harness/usage.py (262 lines), src/aew/engine/usage_ops.py (705), src/aew/harness/usage_live.py (751) (wc -l
     at c11a61ea)

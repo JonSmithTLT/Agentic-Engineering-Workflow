@@ -1799,7 +1799,9 @@ commands:
     relayed: contained-lead
     refusals: [INTEGRITY_ERROR, NOT_FOUND, PROJECT_NOT_FOUND, USAGE, VALIDATION_FAILED]
     note: "F25 R9; a provisional run is read from its run directory under .aew/local, so the contained Lead's read is
-      relayed to the host"
+      relayed to the host. Each run and total also shows its requests (the record's steps; the rate-limit unit's
+      ruling 2), unknown for a run that reported nothing and a floor for one not read to the end, never a zero; tokens
+      in a declared rate basis and the largest request are not shown yet"
   - name: g3 request
     home: operator-admin
     users: [operator]

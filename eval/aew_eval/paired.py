@@ -2,8 +2,8 @@
 report that knows no skill.
 
 Nothing here imports the skill evaluation: it reads a frozen ``aew/eval-prereg/v1`` record, F19's ledger and its run
-records, and measures nothing again. It is written to be lifted into ``eval/aew_eval`` as the shared paired report
-(the operator, 2026-11-26); :mod:`skill_eval.report` adds what a skill evaluation reads from the same pairs.
+records, and measures nothing again. The operator approved sharing the paired report across feature cells
+on 2026-11-26.
 
 * A cell's counted attempt is its latest. A **pair** is one block's two counted runs, named by the caller's two
   ``sides`` (``{name: arm id}``, the reference side first). It is *complete* when both runs are valid and neither
@@ -26,8 +26,7 @@ from typing import Any
 from aew_eval import fixture
 from aew_eval.ledger import AttemptLedger
 from aew_eval.schemas import Invalid
-
-from skill_eval.walk import blocks, caps, charged, of_cell, record_of
+from aew_eval.walk import blocks, caps, charged, of_cell, record_of
 
 PACKET = "aew/eval-packet/v1"
 Problem = Callable[[dict[str, Any], dict[str, Any]], str | None]   # (record, arm) -> why a valid run cannot count

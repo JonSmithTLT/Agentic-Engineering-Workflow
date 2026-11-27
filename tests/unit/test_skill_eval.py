@@ -24,11 +24,11 @@ from aew.harness.opencode import projection
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 from aew_eval import arms as f19_arms  # noqa: E402
-from aew_eval import fixture, prereg, raw  # noqa: E402
+from aew_eval import fixture, paired, prereg, raw, walk  # noqa: E402  # noqa: E402
 from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid  # noqa: E402
 from skill_eval import __main__ as cli  # noqa: E402
-from skill_eval import arms, cases, paired, plan, report, walk  # noqa: E402
+from skill_eval import arms, cases, plan, report  # noqa: E402
 from skill_eval import run as lane_run  # noqa: E402
 
 CANDIDATE, OTHER, THIRD = sorted(skills.shipped())[:3]  # any three shipped skills: the runner knows none by name
@@ -616,7 +616,7 @@ def test_what_an_arm_is_told_is_appended_to_the_task_verbatim_and_only_when_the_
 
 def test_the_walk_and_the_paired_report_know_no_skill(lane, observed):
     """The walk and the paired report read a frozen preregistration, the ledger and the run records alone, so they can
-    be lifted into the instrument as they are: neither module imports a skill-specific one, and the pairs they give
+    serve other feature cells: neither module imports a skill-specific one, and the pairs they give
     for two named arms carry no skill fact. The import check reads absolute ``import`` and ``from`` statements; it
     does not see a relative import (``from . import arms``) or one made through ``importlib``, of which there is
     none (review of #607, 11)."""
@@ -626,7 +626,7 @@ def test_the_walk_and_the_paired_report_know_no_skill(lane, observed):
         imported |= {f"{node.module}.{alias.name}" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
                      for alias in node.names}
         ours = {name for name in imported if name.split(".")[0] in ("aew", "skill_eval")}
-        assert all(name.startswith("skill_eval.walk.") for name in ours), ours  # the walk, and nothing else of ours
+        assert not ours, ours
     sides = {"reference": "baseline", "treatment": "candidate"}
     found = paired.pairs(observed, lane["lane"] / "ledger", sides)
     assert [p["complete"] for p in found] == [True, True, True]

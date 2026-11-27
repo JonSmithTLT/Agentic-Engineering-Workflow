@@ -20,7 +20,7 @@ The registry is a package JSON document, `src/aew/schemas/ticket-field-registry.
 - the record's provenance fields (`schema`, `id`, `created_at`, `created_by`), which are not inputs, and every control-state key that is engine bookkeeping, changed only by its own governed path;
 - `moves`, empty in version 1 (§1.4).
 
-The classification is the plan's §3.3 table. Two keys it does not name are classified here: a unit's `policy` (record and control) is in `gate_set`, because it holds the obligations a Story or Epic imposes on its descendants (a Ticket's is always absent or null), and `integration_frontier` is bookkeeping. E88 removed F4's nine reserved bookkeeping keys on 2026-11-27. Each F4 slice classifies its keys when it introduces their writers, as checked by invariant 50. Coordination messages retain their independent required `ticket_revision` field. `carried_obligations` (written from S2b.2) is classified as an input hashed only through the derived values it feeds (V5). E6b's `authorization_envelope` stamp is not listed: the slice that adds it classifies it in `gate_set` (plan §9.2, §1.5).
+The classification is the plan's §3.3 table. Two keys it does not name are classified here: a unit's `policy` (record and control) is in `gate_set`, because it holds the obligations a Story or Epic imposes on its descendants (a Ticket's is always absent or null), and `integration_frontier` is bookkeeping. F4's own later keys (`hierarchy_baseline`, `recorded_digests`, `revision_events` and the rest of the table's F4 row) are listed as bookkeeping now, and `carried_obligations` (written from S2b.2) is classified as an input hashed only through the derived values it feeds (V5). E6b's `authorization_envelope` stamp is not listed: the slice that adds it classifies it in `gate_set` (plan §9.2, §1.5).
 
 Its identity is `aew/ticket-field-registry/v<version>@<sha256>`, the SHA-256 of the document's canonical JSON (§1.2), not of the file's bytes, so a checkout's line endings or formatting never change it. Every binding cites the identity.
 
@@ -72,3 +72,13 @@ Once S3 binds evidence to a registry identity, changing version 1 in place would
 - The digests are platform independent by construction (canonical JSON, NFC, LF), pinned by fixed vectors (`test_digests_are_platform_independent`), including a record stored with CRLF line endings.
 - The engine cannot tell mechanically whether free text carries acceptance meaning, so the body and external references are in `acceptance`, and the title's misuse is found by review or confirmation (register F4's build note; S7's override).
 - A group's digest changes when a field is added to it, even an absent one (it joins the payload as `null`). That is why the registry is versioned once bindings exist.
+
+## Amendment 2026-11-27 — the reserved keys leave the registry (register E88)
+
+E88 removes the nine reserved F4 bookkeeping keys from the current registry
+before their writers land. The coordination-message schema retains its own
+required `ticket_revision` field, which stays null on dormant projects.
+
+The F4 plan's §3.3 table governs each key's classification when its slice
+introduces a writer. That slice adds the registry entry in the same pull
+request, as checked by invariant 50 and the schema classification test.

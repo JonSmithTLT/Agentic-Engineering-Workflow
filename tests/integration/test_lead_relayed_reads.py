@@ -336,7 +336,8 @@ def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab,
     here = direct(lab, "status", "--json")
     with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
         via = relayed(lab, broker, "status", "--json")
-    assert (via.returncode, via.stdout) == (here.returncode, here.stdout), via.stderr
+    assert (via.returncode, CLOCK.sub("AGE", via.stdout)) == (here.returncode, CLOCK.sub("AGE", here.stdout)), \
+        via.stderr
 
 
 def test_no_relayed_read_carries_a_runs_password_bridge_key_or_token(lab, broker, tmp_path):

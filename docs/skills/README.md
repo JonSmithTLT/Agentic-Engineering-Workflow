@@ -122,14 +122,14 @@ material and cannot establish unseen-case performance.
 
 ### Further candidates
 
-More candidates are public as text, from the operator's local drafts, one per
-row of the table below. Each is **unevaluated**. Being in this directory does
+More candidates are public as text, one per row of the table below. Each is **unevaluated**. Being in this directory does
 not ship a skill or offer it on a card: whether and where each is served is a
 separate fit decision, made in the register's pull requests (E136, and E161 for
 the Lead's own list). What ships is what AEW's skill manifest lists
 (`src/aew/skills/manifest.json`), and what each card offers is on the card. They follow the layout
-above, except that none has an `examples/` directory yet, and their `evals/`
-also hold authoring notes, sources and, for some, runtime manifests.
+above, except that none has an `examples/` directory yet. Their `evals/`
+hold cases and rubrics. Some also have authoring notes, source records,
+or runtime manifests.
 
 | Candidate | Review entrypoints |
 |---|---|

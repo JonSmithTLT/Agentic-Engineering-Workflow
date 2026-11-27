@@ -151,3 +151,19 @@ def test_the_sessions_snapshot_holds_maps_reads_exactly_when_the_adopted_policy_
     for messaging in (False, True):
         got = switches_for(_Engine(policy, messaging=messaging))
         assert (contract.MAPS in got) == on and (contract.MESSAGING in got) == messaging
+
+
+def test_aew_map_search_takes_its_kinds_and_limits_from_the_map_reads_owner(monkeypatch):
+    """#654's review, m2: the CLI's `--kind` choices and its `--limit` help are derived from ``aew.maps.reads``, so a
+    changed bound reaches the parser and its help as it reaches the tool's schema and the query module."""
+    from aew.cli.main import build_parser
+
+    monkeypatch.setattr(reads, "KINDS", ("path", "any", "planted"))
+    monkeypatch.setattr(reads, "SEARCH_LIMIT", 7)
+    monkeypatch.setattr(reads, "SEARCH_LIMIT_MAX", 9)
+    parser = build_parser()
+    search = parser._subparsers._group_actions[0].choices["map"]._subparsers._group_actions[0].choices["search"]
+    options = {a.dest: a for a in search._actions}
+    assert tuple(options["kind"].choices) == ("path", "any", "planted") and options["kind"].default == "path"
+    assert "(default: path)" in options["kind"].help
+    assert "(default 7, at most 9)" in options["limit"].help

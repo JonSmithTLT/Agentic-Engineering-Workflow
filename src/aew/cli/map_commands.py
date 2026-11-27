@@ -16,6 +16,7 @@ from typing import Any
 
 from aew.cli.commands import _add_json, _engine, _lead_token, add_token
 from aew.errors import UsageError
+from aew.maps import reads
 
 
 def _text(result: dict[str, Any], as_json: bool) -> Any:
@@ -168,9 +169,12 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = msub.add_parser("search", help="find a path at a commit, exact first, then a lexical search of the workspace "
                                        "when no path matches; every hit is a candidate (read-only)")
     q.add_argument("text", metavar="TEXT", help="a path, a path's last components, or text")
-    q.add_argument("--kind", choices=("any", "path"), default="any",
-                   help="path: tracked paths only, never the lexical fallback (default: any)")
-    q.add_argument("--limit", type=int, metavar="N", help="at most N hits (default 20, at most 100)")
+    # The choices and bounds are the map reads' owner's (aew.maps.reads; #654's review, m2), as the Lead's tool
+    # takes them.
+    q.add_argument("--kind", choices=reads.KINDS, default=reads.KINDS[0],
+                   help=f"path: tracked paths only, never the lexical fallback (default: {reads.KINDS[0]})")
+    q.add_argument("--limit", type=int, metavar="N",
+                   help=f"at most N hits (default {reads.SEARCH_LIMIT}, at most {reads.SEARCH_LIMIT_MAX})")
     q.add_argument("--commit", metavar="H", help="the commit paths are resolved at (default: the authoritative "
                                                   "branch's head; a worker's is its invocation's base)")
     _add_json(q)

@@ -225,7 +225,8 @@ def _map(c: Call) -> Any:
     from aew.maps import query, service
 
     row = contract.MAP_PREFIX + c.a["read"]
-    ctx = service.read_context(c.engine, work=c.a.get("work_id"), recipient=query.TOOL_RECIPIENT)
+    ctx = service.read_context(c.engine, work=c.a.get("work_id"), recipient=query.TOOL_RECIPIENT,
+                               arguments=query.NAMES)  # a refusal names `limit`, never a flag it cannot pass
     return query.serve(ctx, row, {name: c.a.get(name, "") for name in contract.MAP_OPERATIONS[row]})
 
 

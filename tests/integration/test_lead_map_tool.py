@@ -119,3 +119,27 @@ def test_the_leads_map_tool_is_offered_exactly_while_maps_reads_is_on(tmp_path):
     refused = project.aew("lead", "tool", "map", "--arguments", json.dumps({"read": "search", "text": "core.py"}))
     assert refused.returncode != 0 and refused.error["code"] == "UNKNOWN_TOOL"
     assert project.ok("map", "search", "core.py", "--json")["schema"] == query.SCHEMA
+
+
+def stopped(project: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+    """A call the query refuses: a StageResult with `ok: false`, which the CLI transport exits nonzero on."""
+    res = project.aew("lead", "tool", "map", "--arguments", json.dumps(arguments))
+    assert res.returncode != 0, res.stdout
+    return json.loads(res.stdout)
+
+
+def test_a_refused_map_read_names_the_routes_own_argument_never_a_flag_the_lead_cannot_pass(tmp_path):
+    """#654's review, m3: the query's refusals take the reader's route's spelling (``query.argument``). On the tool a
+    `limit` of 0, or a section beside `scope: ticket`, is refused naming `limit` and `section`; the CLI keeps
+    naming its flags."""
+    project = sample_project(tmp_path)
+    wid = create_investigation(project, tmp_path)
+    refused = stopped(project, {"read": "search", "text": "core", "limit": "0"})
+    error = refused["stopped"]["error"]
+    assert not refused["ok"] and error["code"] == "USAGE"
+    assert error["message"].startswith("limit must be a whole number") and "--limit" not in error["message"]
+    scoped = stopped(project, {"read": "show", "scope": "ticket", "work_id": wid,
+                               "section": "languages"})["stopped"]["error"]["message"]
+    assert "takes no other section" in scoped and "--" not in scoped
+    cli = project.aew("map", "search", "core", "--limit", "0", "--json")
+    assert cli.returncode != 0 and "--limit must be a whole number" in cli.error["message"]

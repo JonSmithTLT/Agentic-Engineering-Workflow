@@ -22,9 +22,18 @@ they were, for the operator and for `--commit`.
 - With `maps.reads` off, the tool lists, the guide's core and the system text are byte for byte what they were (pinned
   digests in `tests/unit/test_lead_map_catalog.py`).
 
-**A limit.** A map read runs inside the broker's serialized section, like `status`. So a search that falls back to the
-lexical provider holds the Lead's other typed calls for at most its bounds: the listing's and the 2 s lexical bound.
-An answer of up to 64 KiB is over OpenCode's 50 KiB output cut, which the readable text already handles.
+**A limit.** A map read runs inside the broker's serialized section, like `status`. It holds the Lead's other typed
+calls for as long as it runs, and in the worst case that is about 17 s, not a couple of seconds (#654's review, m4). A
+search makes three git calls, each bounded at 5 s (`query.LISTING_S`): the basis's `resolve`, the freshness check and
+the listing. It then runs the 2 s lexical search (`LEXICAL_S`). Resolving the authoritative head first
+(`service._default_commit`) adds a little more. In normal use these calls take milliseconds, and a worker's map read
+never holds a Lead call, since the supervisor serves it cooperatively. An answer of up to 64 KiB is over OpenCode's
+50 KiB output cut, which the readable text already handles.
+
+**A follow-on, if UAT shows contention:** move the read out of the broker's lock. The context
+(`service.read_context`: the head, the Ticket's scope) would be built under the lock, and `query.serve` would run
+outside it, as `harness_wait` runs. That is a design change, not a fix (#654's review, m4), so it is recorded here
+and not made in #654.
 
 **What remains:** `map.symbol`, `map.callers` and `map.callees` over F22.4's facts (PR C). At Internal alpha:
 `map.tests_for`, `map.constraints`, `map.changed`, `evidence.show`, `check.suggest`, `tools.presentation`, and the

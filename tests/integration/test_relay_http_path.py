@@ -3,7 +3,8 @@ the shim's loopback port inside, the shim's relay leg (built from the run's own 
 provider relay on its socket file (``netns.listen``), and a local fake upstream on 127.0.0.1. The relay's unit tests
 drive ``ProviderRelay.handle`` on socket pairs; this drives the whole path over real sockets: streaming, a rate
 limit, a provider's errors, ``100 Continue``, a large chunked body, a refused HTTP/2 preface, a failed answer's body
-with the request's credential out of it, and the shim's answer when the relay is gone.
+with the request's credential out of it, a failed answer's head cleaned the same way, the codings the provider is
+asked for, and the shim's answer when the relay is gone.
 
 Nothing leaves the host and the credential is synthetic. Linux: the legs' far ends are socket files (AF_UNIX), and the
 relay serves contained runs there.
@@ -94,6 +95,13 @@ class Upstream:
             if scenario == "echo":  # a failed answer that quotes what the request carried
                 answer = json.dumps({"error": "refused", "request": fields}).encode()
                 conn.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n"
+                             b"Content-Length: %d\r\n\r\n" % len(answer) + answer)
+                return
+            if scenario == "echo-head":  # a failed answer that quotes the request's credential header in its own
+                answer = b'{"error": "refused"}'
+                quoted = fields.get("authorization", "").encode("latin-1")
+                conn.sendall(b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer error=\"invalid_token\"\r\n"
+                             b"X-Echo-Authorization: " + quoted + b"\r\nContent-Type: application/json\r\n"
                              b"Content-Length: %d\r\n\r\n" % len(answer) + answer)
                 return
             status, extra = 200, b""
@@ -249,6 +257,24 @@ def test_a_credential_the_upstream_reflects_never_reaches_the_sandbox_through_th
     assert json.loads(body)["request"]["authorization"] == "Bearer " + relay.REDACTED.decode()
     assert int(fields["content-length"]) == len(body)
     assert path.upstream.seen[-1][1]["authorization"] == f"Bearer {SECRET}"
+
+
+def test_a_failed_answers_head_reaches_the_sandbox_without_a_held_credential_through_the_shim(path):
+    """The relay cleans a failed answer's head of the request's credential like its body: the harness gets the
+    header with it taken out, the others and the body's framing as the provider sent them."""
+    answer = path.call("echo-head")
+    line, fields, body = _head(answer)
+    assert line.startswith("HTTP/1.1 401") and SECRET.encode() not in answer
+    assert fields["x-echo-authorization"] == "Bearer " + relay.REDACTED.decode()
+    assert fields["www-authenticate"] == 'Bearer error="invalid_token"'
+    assert int(fields["content-length"]) == len(body) and body == b'{"error": "refused"}'
+
+
+def test_the_relay_asks_the_provider_only_for_codings_it_can_read_through_the_shim(path):
+    """The harness's ``Accept-Encoding`` reaches the provider narrowed to the codings the relay reads, in its order."""
+    line, _, _ = _head(path.call("ok", extra="Accept-Encoding: br, gzip;q=0.9, zstd, deflate;q=0.5\r\n"))
+    assert line.startswith("HTTP/1.1 200")
+    assert path.upstream.seen[-1][1]["accept-encoding"] == "gzip;q=0.9, deflate;q=0.5"
 
 
 def test_a_relay_that_is_gone_is_answered_502_naming_the_cause_and_never_a_bare_reset(path):

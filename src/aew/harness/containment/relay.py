@@ -25,7 +25,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
    or 503 for a busy or locked store, with the resolver's message (:class:`Unavailable`), and nothing is connected;
-3. drops the hop-by-hop headers, sets ``Host`` to the upstream's and asks for ``Connection: close``. A header the
+3. drops the hop-by-hop headers, sets ``Host`` to the upstream's, asks only for the codings it reads
+   (``Accept-Encoding``, narrowed: :func:`_accept_encoding`) and asks for ``Connection: close``. A header the
    login's grant sets (``login_headers``, such as ChatGPT's account id) is the grant's alone: the client's, which holds
    a placeholder, is dropped whether or not the grant has a value for it.
    **Placeholders:** a sentinel this relay did not issue, anywhere in the request line or the headers (a credential
@@ -44,7 +45,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    that much later, and the grant's credential values in its body are taken out by the record's own redaction
    (:class:`_Scrub`). One whole within the hold that holds none goes on exactly as it came; one whole that holds one
    goes on without it, framed by its new length; any other goes on cleaned as it comes, unencoded and re-framed
-   (:meth:`ProviderRelay._failed_answer`). A 2xx answer streams as it comes, untouched.
+   (:meth:`ProviderRelay._failed_answer`). A failed answer's head is cleaned of them like its body, its framing and
+   coding left as they came (:func:`_scrub_head`). A 2xx answer streams as it comes, untouched.
 
 **Bounds:** the relay bounds request size, the model-call bodies it holds, concurrency and stream time, each an
 implementation bound below, set by the host-side code that starts the relay and never by a request or the sandbox. A
@@ -281,6 +283,34 @@ class Proxy:
         if parts.username is not None:
             raw = f"{urllib.parse.unquote(parts.username)}:{urllib.parse.unquote(parts.password or '')}"
             self.auth = "Basic " + base64.b64encode(raw.encode()).decode()
+
+
+_CODING_ALIAS = {"x-gzip": "gzip"}
+
+
+def _accept_encoding(values: Collection[str]) -> str:
+    """The ``Accept-Encoding`` the relay sends upstream for the client's ``values`` (its ``Accept-Encoding`` lines):
+    only the codings the relay reads (:data:`READABLE_CODINGS`), each with its weight and in the order the client gave
+    them, so a failed answer always comes in one the relay can clean (:meth:`ProviderRelay._failed_answer`). A ``*``
+    stands, with its weight, for each of them the client does not name (RFC 9110 §12.5.3), so what the client accepted
+    among them is still accepted. With none of them left, or no such line (which would accept any coding), it is
+    ``identity``."""
+    elements = [element.strip() for value in values for element in value.split(",") if element.strip()]
+    # x-gzip is gzip's alias (RFC 9110 §8.4.1.3): naming either names both, so a ``*`` never offers one the client
+    # weighed under the other's name (#657's quick check, m1).
+    named = {_CODING_ALIAS.get(name, name) for name in
+             (element.split(";", 1)[0].strip().lower() for element in elements)}
+    kept: list[str] = []
+    for element in elements:
+        coding, semicolon, weight = element.partition(";")
+        coding = coding.strip().lower()
+        if coding in READABLE_CODINGS:
+            kept.append(element)
+        elif coding == "*":
+            kept += [other + semicolon + weight for other in sorted(READABLE_CODINGS)
+                     if _CODING_ALIAS.get(other, other) not in named]
+            named |= {_CODING_ALIAS.get(other, other) for other in READABLE_CODINGS}
+    return ", ".join(kept) or "identity"
 
 
 def _connect(host: str, port: int, timeout: float) -> socket.socket:
@@ -906,9 +936,10 @@ class ProviderRelay(Service):
             failed = status is None or not 200 <= status < 300
             if failed:
                 excerpt = _Excerpt(response)
-            # On a route whose grant holds a credential, a failed answer's body is held, and the grant's credential
-            # values taken out, before it goes on (:meth:`_failed_answer`); a 2xx answer, and any answer on a route
-            # that holds none, streams as it came
+                response = _scrub_head(response, held)  # read for its framing and coding first (tracked, excerpt)
+            # A failed answer's head goes on with the grant's credential values taken out (:func:`_scrub_head`) and,
+            # on a route whose grant holds one, its body too, held first (:meth:`_failed_answer`); a 2xx answer, and
+            # any answer on a route that holds none, streams as it came
             holding = failed and bool(_Scrub(held).values) and tracked.kind != "none"
             ended: str | None = None
             clean: _Clean | None = None
@@ -1017,16 +1048,22 @@ class ProviderRelay(Service):
                  extra: Mapping[str, str]) -> tuple[list[tuple[str, str]], set[str]]:
         """Hop-by-hop headers (and any the client's ``Connection`` names) out; ``Host`` the upstream's; the
         credential in for its sentinel, in a credential header only; the grant's headers in place of any of the same
-        name, and the client's of a name in ``login_headers`` dropped; ``Connection: close``. A sentinel this relay did
-        not issue, in any header kept, is refused (:func:`_placeholders`). Returns the headers and the
-        logical sources swapped into them."""
+        name, and the client's of a name in ``login_headers`` dropped; ``Accept-Encoding`` narrowed to the codings the
+        relay reads (:func:`_accept_encoding`); ``Connection: close``. A sentinel this relay did not issue, in any
+        header kept, is refused (:func:`_placeholders`). Returns the headers and the logical sources swapped into
+        them."""
         named = {t.strip().lower() for k, v in headers if k.lower() == "connection" for t in v.split(",")}
         replaced = {k.lower() for k in extra} | self.login_headers
         out = [("Host", self.upstream.authority)]
         swapped: set[str] = set()
+        accepted: list[str] = []
         for name, value in headers:
             low = name.lower()
             if low in HOP_BY_HOP or low in named or low == "host" or low in replaced:
+                continue
+            if low == "accept-encoding":
+                _placeholders(value, credentials, self.foreign)
+                accepted.append(value)
                 continue
             if low in CREDENTIAL_HEADERS:
                 value, one = _credential(value, credentials, self.foreign)
@@ -1035,6 +1072,7 @@ class ProviderRelay(Service):
             else:
                 _placeholders(value, credentials, self.foreign)
             out.append((name, value))
+        out.append(("Accept-Encoding", _accept_encoding(accepted)))
         out += list(extra.items())
         out.append(("Connection", "close"))
         return out, swapped
@@ -1442,6 +1480,25 @@ def scrub(data: bytes, held: Collection[str]) -> bytes:
     """``data`` with each of ``held`` taken out (:class:`_Scrub`)."""
     scrubbed = _Scrub(held)
     return scrubbed.feed(data) + scrubbed.end()
+
+
+# A response's framing and coding, which the relay and its client read the body by: a head's scrub leaves them as they
+# came (:func:`_scrub_head`), so the body it goes with is read as the upstream framed it.
+_FRAMING_FIELDS = frozenset({b"content-length", b"transfer-encoding", b"content-encoding"})
+
+
+def _scrub_head(head: bytes, held: Collection[str]) -> bytes:
+    """A failed answer's ``head`` with each of ``held`` taken out of its reason phrase and its field values, as its
+    body's are (:class:`_Scrub`): its names, its framing and its coding (:data:`_FRAMING_FIELDS`) as they came. A head
+    that holds none is returned as it came, byte for byte."""
+    lines = head[:-4].split(b"\r\n")
+    version, gap, rest = lines[0].partition(b" ")
+    code, space, phrase = rest.partition(b" ")
+    out = [version + gap + code + space + scrub(phrase, held)]
+    for raw in lines[1:]:
+        name, colon, value = raw.partition(b":")
+        out.append(raw if not colon or name.strip().lower() in _FRAMING_FIELDS else name + colon + scrub(value, held))
+    return b"\r\n".join(out) + b"\r\n\r\n"
 
 
 class _Clean:

@@ -808,6 +808,14 @@ skipped:
       the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
       its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
       every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_failed_answers_head_reaches_the_sandbox_without_a_held_credential_through_the_shim: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_the_relay_asks_the_provider_only_for_codings_it_can_read_through_the_shim: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
     tests/integration/test_network_shim.py::test_a_relay_leg_whose_relay_is_gone_answers_its_fixed_502_and_any_other_leg_closes_as_before: >-
       the shim's legs are AF_UNIX socket files, and it runs only in a Linux run's network of its own (STG-05 CS-3b);
       Windows has no network containment. Covered on Linux.

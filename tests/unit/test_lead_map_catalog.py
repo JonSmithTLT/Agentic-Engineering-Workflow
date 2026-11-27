@@ -37,10 +37,9 @@ def before_the_row(switches: frozenset[str]) -> dict[str, str]:
     for it: the Lead's surface as it was before this row existed, rendered from today's code. So the comparison holds
     whatever else changes in the Lead's text (a pinned digest of one day's text broke on every later change to it: the
     merge with main at #592's `.env` line, CI of #654 at 85c362ff)."""
-    with pytest.MonkeyPatch.context() as m:
-        m.delitem(contract._SWITCH_TOOLS, "map")
-        m.delitem(lead_text.WHEN, "map")
-        m.delitem(presentation.DESCRIPTIONS, "map")
+    with pytest.MonkeyPatch.context() as m:  # copies without the entry: a table's own order is never disturbed
+        for module, name in ((contract, "_SWITCH_TOOLS"), (lead_text, "WHEN"), (presentation, "DESCRIPTIONS")):
+            m.setattr(module, name, {k: v for k, v in getattr(module, name).items() if k != "map"})
         return surface(switches)
 
 

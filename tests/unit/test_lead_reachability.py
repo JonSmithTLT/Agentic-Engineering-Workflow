@@ -344,7 +344,8 @@ def _messages(tree):
 
 # Machine-readable fields that hold a command and nothing else; the message beside each names the operator.
 # MigrationRequired's next_action (base.py, coordination_ops.py): f"aew migrate", read without its field.
-BARE_COMMAND_FIELDS = {"aew migrate"}
+# operator_adopt.MANIFEST_COMMAND: the command a refusal names as the one refused, each refusal naming the operator.
+BARE_COMMAND_FIELDS = {"aew migrate", "aew manifest adopt"}
 
 
 def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():

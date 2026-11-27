@@ -21,7 +21,7 @@ SOURCE = ENGINE.parent
 UNCHECKED = {"anomaly.record", "steering.raise", "custody.register", "integrate.route",
              "harness.stop", "harness.send", "harness.interrupt"}
 FORWARDERS = {("api.py", "lead_txn"), ("validation_ops.py", "txn")}
-TRANSACTION_COMMITS = {("base.py", "lead_txn"), ("base.py", "custody_txn")}
+TRANSACTION_COMMITS = {("base.py", "lead_txn"), ("base.py", "custody_txn"), ("base.py", "operator_txn")}
 
 
 def _strings(node, bindings, seen=frozenset()):
@@ -68,7 +68,7 @@ class EntryScan(ast.NodeVisitor):
     def visit_Call(self, node):
         if isinstance(node.func, ast.Attribute):
             name = node.func.attr
-            if name in {"lead_txn", "txn", "custody_txn"}:
+            if name in {"lead_txn", "txn", "custody_txn", "operator_txn"}:
                 location = self.file, self.function
                 position = 1
                 expr = node.args[position] if len(node.args) > position else next(
@@ -234,9 +234,14 @@ TRANSACTION_HANDLERS = {
 }
 
 HANDLER_CASES = {
-    "authority_accept": [{"klass": "contracts", "decided_by": "lead"}],
-    "authority_reject": [{"decided_by": "lead"}],
-    "manifest_adopt": [{"authorization": {"authorized_by": "operator-tty"}}],
+    # Each with the Lead's credential, and as the operator's own transaction with none (register E331).
+    "authority_accept": [{"klass": "contracts", "decided_by": "lead", "token": "synthetic"},
+                         {"klass": "contracts", "decided_by": "operator", "token": None,
+                          "authorization": {"authorized_by": "operator-tty"}}],
+    "authority_reject": [{"decided_by": "lead", "token": "synthetic"},
+                         {"decided_by": "operator", "token": None, "authorization": {"authorized_by": "operator-tty"}}],
+    "manifest_adopt": [{"authorization": {"authorized_by": "operator-tty"}, "token": "synthetic"},
+                       {"authorization": {"authorized_by": "operator-tty"}, "token": None}],
     "dispose": [{"choice": "accept_risk", "follow_up": None}],
     "waive": [{"gate": "gate"}],
     "work_depend": [{"add": ["T-0002"]}],
@@ -287,7 +292,8 @@ def test_control_op_specs_match_runtime_transaction_entries(monkeypatch, tmp_pat
     }
     session = SimpleNamespace(state=state, revision=1)
     store = SimpleNamespace(current=lambda: state, session=lambda: nullcontext(session))
-    k = SimpleNamespace(lead_txn=record, store=store, aew_root=tmp_path, archived_credential=None)
+    k = SimpleNamespace(lead_txn=record, operator_txn=record, store=store, aew_root=tmp_path,
+                        archived_credential=None)
     monkeypatch.setattr(history_ops, "require_lead", lambda *a, **kw: None)
     monkeypatch.setattr(migrate_ops, "require_lead", lambda *a, **kw: None)
     for (module, owner), methods in TRANSACTION_HANDLERS.items():

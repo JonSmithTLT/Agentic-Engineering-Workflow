@@ -274,13 +274,18 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     """PR #103 re-review, N3: through the real CLI handlers, a record attributed to the operator is confirmed at the
     terminal and carries `authorized_by: operator-tty`; the Lead's own record never prompts. (The terminal itself is
     substituted in-process: no terminal exists here.)"""
-    from aew import operator
+    from aew import operator, operator_adopt
     from aew.cli.main import main
     from aew.engine.api import Engine
 
     asked: list[str] = []
     confirmed = {"authorized_by": "operator-tty", "challenge_code": "X"}
     monkeypatch.setattr(operator, "authorize", lambda text, **_: asked.append(text) or confirmed)
+    # The operator's own authority decision asks through `operator.confirm` (register E331), its first line naming it.
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator_adopt, "code_because", lambda: None)
+    monkeypatch.setattr(operator, "confirm",
+                        lambda text, **_: asked.append(text[0].split("': ", 1)[1]) or dict(confirmed))
     monkeypatch.delenv("AEW_LEAD_BROKER", raising=False)
     monkeypatch.chdir(project.root)
     cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
@@ -464,8 +469,10 @@ def test_pending_handoff_freezes_outgoing_lead(project, monkeypatch, capsys):
     cands = project.ok("authority", "list")["candidates"]
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
     monkeypatch.setattr(operator, "authorize", lambda _: {"authorized_by": "operator-tty"})
-    assert main(["-C", str(project.root), "authority", "reject", cands[0]["id"],
-                 ]) == 4
+    # A decision recorded as the Lead's takes its credential, which the pending handoff freezes; the operator's own
+    # decision takes none (register E331), so it is not frozen.
+    assert main(["-C", str(project.root), "authority", "accept", cands[0]["id"], "--class", "orientation",
+                 "--decided-by", "lead"]) == 4
     assert "a Lead handoff is pending" in capsys.readouterr().err
     project.lead("lead", "handoff", "cancel")
     project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")

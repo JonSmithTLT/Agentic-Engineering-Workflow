@@ -76,6 +76,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
     - `aew.engine.lock:FileLock._open`
     - `aew.engine.operator_decisions:_write`
     - `aew.engine.outbox:bump_wake`
+    - `aew.engine.pinned_copies:keep`
     - `aew.engine.queue_ops:Queue._checkout_sync_lock`
     - `aew.engine.recall:Substrate._connect`
     - `aew.harness.broker_liveness:write`
@@ -248,7 +249,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`; `aew.workspace.git`: `git`
+- `local/harness/runs/doctor-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`; `aew.harness.containment.probe`: `_row5`, `_self_test`; `aew.harness.model_list`: `read`
   - Written by
     - `aew.capability.bind:place`
     - `aew.harness.containment:establish`
@@ -280,7 +281,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.capability.bind:_write_entry`
     - `aew.capability.bind:place`
-- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`; `aew.workspace.git`: `git`
+- `local/harness/runs/doctor-{}-{}/workspace` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `_git_metadata`
   - Written by
     - None
 - `local/harness/runs/lead-{}-{}` (git-ignored, masked by containment); read by `aew.harness.containment.layout`: `for_run`
@@ -449,6 +450,9 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.engine.context_ops:ContextPacks.build_pack`
     - `aew.engine.context_ops:ContextPacks.context_pack`
+- `local/pinned` (git-ignored, masked by containment); named by `aew.engine.pinned_copies`: `DIR`; read by `aew.engine.pinned_copies`: `_kept`, `keep`
+  - Written by
+    - `aew.engine.pinned_copies:keep`
 - `local/recall` (git-ignored, masked by containment); read by `aew.engine.recall`: `Substrate._open`
   - Written by
     - `aew.engine.recall:Substrate._connect`
@@ -504,7 +508,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `project.yaml`
 
-- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin._manifest_subject`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
+- `project.yaml` (kept in git); named by `aew.knowledge.manifest`: `MANIFEST`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.api`: `ProjectAdmin._manifest_subject`; `aew.engine.base`: `Kernel._authority_files_identity`, `Kernel.locate`, `Kernel.manifest_pin_ok`; `aew.engine.coordination_ops`: `messaging_switch`; `aew.engine.pinned_copies`: `keep_files`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `read_lock_free`; `aew.knowledge.manifest`: `load_manifest`; `aew.surface.projection`: `_stat`; `aew.switch_offer`: `_mapping`, `_table_edits`
   - Written by
     - `aew.engine.api:ProjectAdmin._rewrite_manifest`
     - `aew.engine.store:ControlStore.create`
@@ -645,6 +649,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.migrate_ops`: `Migration.discard_unreachable` (Path.is_file)
 - `aew.engine.nonmutating_ops`: `NonMutating.plan_adopt` (Path.read_text), `NonMutating.prune_observations` (Path.exists), `NonMutating.require_observation_intact` (Path.exists)
 - `aew.engine.outbox`: `read_optional` (Path.read_bytes)
+- `aew.engine.pinned_copies`: `keep_files` (Path.read_bytes)
 - `aew.engine.recall`: `_evidence` (Path.read_bytes), `search_enabled` (Path.read_bytes)
 - `aew.engine.resume_ops`: `Resume._freshness` (Path.exists), `Resume._freshness` (Path.read_text), `Resume._plan_brief` (Path.read_text), `Resume.resume` (Path.exists), `Resume.resume` (Path.read_text)
 - `aew.engine.role_ops`: `Roles.role_validate` (Path.read_bytes)
@@ -688,6 +693,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.maps.query`: `_lexical` (Path.is_dir)
 - `aew.maps.rules`: `load` (Path.read_bytes)
 - `aew.maps.store`: `find_structural` (Path.stat)
+- `aew.operator_adopt`: `adopt` (Path.exists), `adopt` (Path.is_file), `adopt` (Path.read_bytes)
 - `aew.policy.execution`: `load` (Path.exists), `load` (Path.read_bytes)
 - `aew.roles`: `archetype` (Path.read_text), `builtin_cards` (Path.iterdir), `builtin_cards` (Path.read_text), `load_catalog` (Path.glob), `load_catalog` (Path.is_dir), `load_catalog` (Path.read_bytes)
 - `aew.schemas`: `_load` (Path.read_text)
@@ -700,7 +706,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.stg02.server`: `_main` (Path.read_text)
 - `aew.stg02.world`: `Fixture.load` (Path.read_text)
 - `aew.surface.projection`: `_stat` (Path.stat)
-- `aew.switch_offer`: `_mapping` (Path.read_bytes), `_restore` (Path.exists), `_restore` (Path.read_bytes), `_table_edits` (Path.exists), `_table_opening` (Path.exists), `_take` (Path.exists), `_take` (Path.read_bytes), `key_offer.edits` (Path.read_bytes)
+- `aew.switch_offer`: `_mapping` (Path.read_bytes), `_table_edits` (Path.exists), `_table_opening` (Path.exists), `_take` (Path.exists), `_take` (Path.read_bytes), `key_offer.edits` (Path.read_bytes), `restore` (Path.exists), `restore` (Path.read_bytes)
 - `aew.workspace.git`: `_signature` (os.stat), `git` (Path.is_dir), `untrusted_filters` (Path.is_file), `untrusted_filters` (Path.read_text)
 - `aew.workspace.worktrees`: `inspect` (Path.exists), `remove` (Path.exists)
 

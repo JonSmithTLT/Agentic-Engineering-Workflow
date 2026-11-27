@@ -159,6 +159,33 @@ def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str
     return got.authorization
 
 
+PLAIN_YES = "yes"
+
+
+def confirm(text: list[str], *, purpose: str, code_because: str | None,
+            timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
+    """The operator's confirmation at their own terminal where the caller decides whether a code is asked (register
+    E331: the register of weaker contexts decides it). With ``code_because`` None the operator confirms plainly, by
+    typing ``yes``; otherwise they type back a one-time code, and the prompt says why (``code_because`` names the weaker
+    run). Input already queued is dropped first, so nothing typed before the prompt answers it. Raises
+    ``PermissionDenied`` on any other answer, a timeout or a closed terminal, and ``OperatorAuthorizationRequired``
+    with no terminal. Either way the authorization is the operator's terminal (``authorized_by: operator-tty``), and
+    ``confirmation`` says which form it took."""
+    discard_typed_ahead()
+    if code_because is None:
+        instruction = f"Type {PLAIN_YES} and press Enter to confirm; anything else refuses."
+        reply = ask(challenge("", text, instruction=instruction, purpose=purpose) + "> ", timeout=timeout).strip()
+        if reply.lower() != PLAIN_YES:
+            raise PermissionDenied("the operator did not confirm (they did not type yes)", reason="not_confirmed")
+        return {"authorized_by": "operator-tty", "confirmation": "plain"}
+    code = _code()
+    lines = [*text, f"A typed-back code is asked because {code_because}."]
+    reply = ask(challenge(code, lines, purpose=purpose) + "> ", timeout=timeout).strip()
+    if reply.upper() != code:
+        raise PermissionDenied("operator refused or mistyped the confirmation code", reason="not_confirmed")
+    return {"authorized_by": "operator-tty", "challenge_code": code, "confirmation": "code"}
+
+
 def discard_typed_ahead() -> None:
     """Drop what is queued at the controlling terminal. With no terminal there is nothing to drop, and nothing is taken
     from a terminal this process is in the background of: what is queued there isn't for it, and the flush would stop

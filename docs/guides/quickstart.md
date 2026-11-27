@@ -87,8 +87,8 @@ A certificate-only provider skips key setup.
 - **Project maps are on for a new project.** Each worker's pack carries a bounded slice of that map, as navigation and
   never authority, and a dispatch whose map is out of date for its work makes a new one first. To turn them off, set
   `maps.pack_slices` to `"off"` (with the quotes) in `.aew/policy/execution.yaml`, then adopt it as in
-  [Edit pinned settings](#edit-pinned-settings-or-classify-authority-candidates): that needs the Lead credential, with
-  the Lead session ended first. A project initialized before maps were on keeps them off: `aew opencode` asks once at
+  [Edit pinned settings](#edit-pinned-settings-or-classify-authority-candidates), at your own terminal with no Lead
+  credential, while the Lead session runs or not. A project initialized before maps were on keeps them off: `aew opencode` asks once at
   its start, where Enter alone keeps them off, and `aew doctor` shows the answer. To be asked again instead, delete
   that switch's row from `.aew/local/switch-offers.json`: the next `aew opencode` start asks, with no seat needed.
 - **On an initialized project** `aew init` is refused, flags or not. One interrupted before it initialized the project
@@ -98,22 +98,18 @@ A certificate-only provider skips key setup.
 
 ### Edit pinned settings or classify authority candidates
 
-After the Lead session exits and releases the seat, acquire it at your terminal and keep the credential it shows.
-For a pinned edit, review the changes
-under `.aew/` and give a reason. Adopt asks for the credential and a one-time code. Authority candidates can wait
-while the Lead works. Replace the example candidate ID with one from `aew authority list`. Run the middle command
-or commands you need, then release the seat.
+Review the changes under `.aew/` and adopt them at your own terminal, outside any AEW session, with a reason. Adopt
+needs no Lead credential and leaves the Lead seat with its holder, so you can adopt while the Lead works: a stage it
+has open stops as STALE_POLICY at its next step when a setting it is bound to changed. The prompt shows each file's
+diff against its pinned version and the digests the commit is bound to; type `yes` to adopt. While a weaker agent
+context is live on this host, or was in the last few minutes, it asks for a one-time code instead and names that
+context. Authority candidates can wait while the Lead works, and you classify them the same way: replace the example
+candidate ID with one from `aew authority list`.
 
 ```bash
-aew lead acquire --session-label lead-1
 aew manifest adopt --reason "updated the pinned settings"
 aew authority accept C-001 --class decisions
-aew lead release
 ```
-
-The terminal holds the seat until `aew lead release`. Once the seat is vacant, start the Lead again with
-plain `aew opencode` if your shell has no exported Lead credential, or use `--acquire` to take the seat
-explicitly. If the old session kept the seat, see [Losing the session](#losing-the-session).
 
 ### Declare project CI coverage
 
@@ -374,8 +370,8 @@ endpoint tells you what stops it. A project starts in crawl. Run needs four thin
   (provisional, bounding only runs started under Run). Without it, the raise is refused and names the profiles.
 - **the operator endpoint, up the whole time.** Each Run activation pings it, and so does doctor.
 
-Changing `notify.command` or a profile is an edit of `.aew/policy/execution.yaml`, a pinned file: end the Lead session
-first, then follow "Edit pinned settings or classify authority candidates" above, start the Lead again and raise again.
+Changing `notify.command` or a profile is an edit of `.aew/policy/execution.yaml`, a pinned file: follow "Edit pinned
+settings or classify authority candidates" above, with the Lead session running or not, then raise again.
 
 Then, in three terminals:
 

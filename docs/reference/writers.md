@@ -564,6 +564,10 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/packs/{}/pack.md`
   - `aew.engine.context_ops:ContextPacks.build_pack` (direct: atomic_write)
   - `aew.engine.context_ops:ContextPacks.context_pack` (direct: atomic_write)
+- `local/pinned`, named by `aew.engine.pinned_copies:DIR`
+  - `aew.engine.pinned_copies:keep` (direct: Path.mkdir)
+- `local/pinned/{}`
+  - `aew.engine.pinned_copies:keep` (direct: atomic_write)
 - `local/recall`
   - `aew.engine.recall:Substrate._connect` (direct: Path.mkdir)
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`
@@ -778,7 +782,7 @@ The parser cut reports registrations of a command this reading cannot read: none
 
 Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the reading takes one of two arms, named on each line: a marked item (the reason is on the unresolved write, or the writer carries the no-chain item, or the registration counts as run by every role), or, where what the cap bounds can carry no mark, `check` and `render` fail with an error that names the cap. A tree test doubles every cap and holds this page and the rendered index unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut at a number of lines and says how many it left out, and an expression quoted in a reason is cut with `...`: those are not caps on what the reading follows.
 
-- `writers_flow.DEPTH` = 32: the calls and parameters one value is followed through; source: measured over the whole render, held to twice the deepest question; past it (a marked item): the value is unknown, with the reason `resolution depth limit` and this cap; the keys of a mapping a callback returns are unknown with the same reason. The largest in this render: 15.
+- `writers_flow.DEPTH` = 32: the calls and parameters one value is followed through; source: measured over the whole render, held to twice the deepest question; past it (a marked item): the value is unknown, with the reason `resolution depth limit` and this cap; the keys of a mapping a callback returns are unknown with the same reason. The largest in this render: 12.
 - `writers_flow.CALLERS` = 64: the call sites of one function whose parameter, mapping keys or callback is read; source: chosen; past it (a marked item): the parameter is unknown, with a reason that says `more than N call sites` and names this cap (the roles reader counts the registration as run by every role).
 - `writers_flow.VALUES` = 128: the distinct values one expression may take; source: measured over the whole render, held to twice the largest; past it (a marked item): the expression is unknown, with a reason that says `more than N possible values` and names this cap. The largest in this render: 35.
 - `writers_flow.TYPING_DEPTH` = 24: the receivers typed through receivers (`self.a.b.run()`); source: measured over the whole render, held to twice the deepest typing; past it (fails check): a dropped call edge would read as an unknown receiver and can carry no mark, so the reading stops: `check` and `render` fail with an error that names this cap, its source and its bound. The largest in this render: 11.
@@ -872,13 +876,14 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.kit.receipt:write_receipt` (direct: atomic_write): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit:prepare` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit:prepare` (direct: Path.write_text): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.operator_adopt:adopt` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main` (direct: Path.write_text): `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
-- `aew.switch_offer:_restore` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
-- `aew.switch_offer:_restore` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.switch_offer:_take` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove` (direct: shutil.rmtree): `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

@@ -161,7 +161,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p = sub.add_parser("manifest", help="project manifest maintenance")
     msub = p.add_subparsers(dest="manifest_cmd", required=True)
     q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml or of the policy files it names "
-                                         "(the operator, confirmed at their own terminal)")
+                                         "(the operator, confirmed at their own terminal after its diff; no Lead "
+                                         "credential, and the Lead seat stays with its holder)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
     q.set_defaults(handler=_manifest_adopt)
@@ -371,8 +372,8 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
     q.add_argument("--decided-by", choices=["lead", "operator"], default="operator",
-                   help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
-                        "typed back)")
+                   help="operator (the default): the operator's own decision, confirmed at their own terminal "
+                        "with no Lead credential; lead: recorded as the Lead's, with the Lead credential")
     q.add_argument("--reason")
     _add_lead(q)
     q.add_argument("--approval-digest", help="the authority candidate digest shown in the last result")
@@ -385,20 +386,23 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
 
 
 def _manifest_adopt(a: argparse.Namespace) -> Any:
-    engine = _engine(a)
-    token = _lead_token(a)
-    binding = engine.manifest_approval()
-    files = "\n".join(f"  {rel}@{sha if sha is not None else 'missing'}" for rel, sha in sorted(binding.items()))
-    authorization = operator_attribution("operator", f"ADOPT as YOUR decision: project settings\n{files}")
-    return engine.manifest_adopt(token=token, reason=a.reason,
-                                 authorization=authorization, binding=binding)
+    """The operator's own adoption at their terminal, with no Lead credential (register E331): ``operator_adopt``."""
+    from aew import operator_adopt
+
+    return operator_adopt.adopt(_engine(a), reason=a.reason)
 
 
 def _authority_decide(a: argparse.Namespace) -> Any:
     engine = _engine(a)
+    action = a.authority_cmd
+    binding = getattr(a, "approval_digest", None)
+    if a.decided_by == "operator":  # the operator's own decision, with no Lead credential (register E331)
+        from aew import operator_adopt
+
+        return operator_adopt.decide_authority(engine, action=action, candidate=a.candidate,
+                                               klass=getattr(a, "klass", None), reason=a.reason, binding=binding)
     token = _lead_token(a)
     subject = engine.authority_candidate(a.candidate)
-    action = a.authority_cmd
     digest = subject["digest"]
     if action == "accept" and subject["kind"] == "file, missing":
         from aew.errors import NotFound
@@ -409,18 +413,12 @@ def _authority_decide(a: argparse.Namespace) -> Any:
     summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
     if action == "accept":
         summary += f" as {a.klass} authority"
-    authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
-    binding = getattr(a, "approval_digest", None)
-    if a.decided_by == "lead":
-        if _approval_terminal(a):
-            print(summary, file=sys.stderr, flush=True)
-            if binding is None:
-                binding = digest
-    elif binding is None:
-        binding = digest
+    if _approval_terminal(a):
+        print(summary, file=sys.stderr, flush=True)
+        if binding is None:
+            binding = digest
     args: dict[str, Any] = {"token": token, "candidate_id": a.candidate,
-                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
-                            "authorization": authorization}
+                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding}
     if action == "accept":
         return engine.authority_accept(klass=a.klass, **args)
     return engine.authority_reject(**args)
@@ -444,7 +442,6 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
-    from aew.harness import contract as K
     from aew.harness import doctor_relay
     from aew.harness.containment import netns
     from aew.policy import execution
@@ -469,7 +466,7 @@ def _init(args: argparse.Namespace) -> Any:
         "next": configuration.next_step() if configuration is not None
         else (f"this project still has no check command or model. To set both, "
               f"{first_configuration.post_pin_route(first_configuration.CHECKS_REL, execution.REL_PATH)}. "
-              f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`"),
+              "Then start the Lead with `aew opencode --acquire`"),
         "provider_key": netns.FIRST_USE_LINE,
         "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }

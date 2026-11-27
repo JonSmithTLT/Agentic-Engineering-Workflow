@@ -64,7 +64,7 @@ EXEMPT = {
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/cli/capability_commands.py:145": "the command word comes from a value: "
                                               "test_each_capability_change_names_a_capability_command",
-    "src/aew/harness/contract.py:400": "the command words come from bridge.MAP_OPERATIONS: "
+    "src/aew/harness/contract.py:398": "the command words come from bridge.MAP_OPERATIONS: "
                                        "test_the_worker_map_reads_line_names_real_commands",
 }
 
@@ -78,7 +78,6 @@ LEGACY_BARE_SPANS = {
     ("engine/evidence_ops.py", "aew work redispatch"): 1,
     ("engine/guide.py", "aew authority accept"): 1,
     ("engine/guide.py", "aew evidence ingest"): 1,
-    ("engine/guide.py", "aew lead takeover"): 1,
     ("engine/guide.py", "aew work transition"): 1,
     ("engine/integration_ops.py", "aew integrate requeue"): 1,
     ("engine/lead_ops.py", "aew lead handoff accept"): 1,

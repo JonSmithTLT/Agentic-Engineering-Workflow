@@ -43,6 +43,7 @@ from aew.harness import agentenv
 from aew.harness.containment import client_cert, egress, relay
 from aew.harness.containment.layout import ISOLATED, NET_SHIM, NETWORK_MODES, PROXY_ONLY, SHARED, Layout
 from aew.harness.opencode import login
+from aew.http_close import REFUSAL_DRAIN_S
 
 NOT_PROVIDED = "not_provided"  # AEW cannot characterize a run's network on this platform
 # Loopback ports inside the sandbox. A fresh network namespace holds nothing else, so any port is free there; they are
@@ -414,13 +415,21 @@ def relay_tls(provider: str | None,
 def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | None = None,
               egress_sock: str | None = None, server_port: int = SERVER_PORT) -> dict[str, Any]:
     """The shim's legs for a run whose network sockets are in ``directory``: the server in, and the relay and the
-    egress proxy out where the run has them."""
+    egress proxy out where the run has them. A relay leg carries the answer the shim gives when its relay takes no
+    connection (:func:`relay_leg`)."""
     out = []
     if relay_sock:
-        out.append({"port": PROVIDER_PORT, "unix": os.path.join(directory, relay_sock)})
+        out.append(relay_leg(PROVIDER_PORT, os.path.join(directory, relay_sock)))
     if egress_sock:
         out.append({"port": EGRESS_PORT, "unix": os.path.join(directory, egress_sock)})
     return {"in": [{"unix": os.path.join(directory, server), "port": server_port}] if server else [], "out": out}
+
+
+def relay_leg(port: int, path: str) -> dict[str, Any]:
+    """A shim out-leg to a provider relay's socket file, with the relay's fixed answer for when it takes no connection
+    (``relay.unreachable_answer``) and how long the shim then waits for the request it did not read
+    (``http_close.REFUSAL_DRAIN_S``), so the answer is not lost to a reset."""
+    return {"port": port, "unix": path, "unreachable": relay.unreachable_answer(), "drain_s": REFUSAL_DRAIN_S}
 
 
 def _relay_sock(provider: str) -> str:
@@ -684,8 +693,7 @@ class RunNetwork:
         assert self.dir is not None
         spec = shim_spec(self.dir, server=SERVER if self.server_leg else None, relay_sock=RELAY if self.relay else None,
                          egress_sock=EGRESS if self.egress else None)
-        spec["out"] += [{"port": port, "unix": os.path.join(self.dir, _relay_sock(p))}
-                        for p, (port, _) in self.relays.items()]
+        spec["out"] += [relay_leg(port, os.path.join(self.dir, _relay_sock(p))) for p, (port, _) in self.relays.items()]
         return spec
 
     def shim_argv(self, argv: list[str]) -> list[str]:

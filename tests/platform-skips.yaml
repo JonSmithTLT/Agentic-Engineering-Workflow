@@ -756,6 +756,61 @@ skipped:
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.
+    tests/integration/test_relay_http_path.py::test_a_streamed_answer_reaches_the_sandbox_event_by_event_through_the_shim: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_rate_limit_reaches_the_sandbox_as_the_provider_sent_it_with_its_retry_after: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[400]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[404]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[500]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[502]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[503]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_providers_error_reaches_the_sandbox_with_its_body_and_no_refusal_of_the_relays[529]: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_large_body_sent_after_100_continue_reaches_the_provider_whole: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_large_chunked_model_call_reaches_the_provider_whole_framed_by_its_length: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_an_http_2_preface_is_refused_and_nothing_reaches_the_provider: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_credential_the_upstream_reflects_never_reaches_the_sandbox_through_the_shim: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_relay_http_path.py::test_a_relay_that_is_gone_is_answered_502_naming_the_cause_and_never_a_bare_reset: >-
+      the provider relay and the shim's legs listen on AF_UNIX socket files, and serve only a Linux run's network of
+      its own (STG-05 CS-3b); Windows has no network containment. Covered on Linux; the relay itself is tested on
+      every platform in tests/unit/test_provider_relay.py.
+    tests/integration/test_network_shim.py::test_a_relay_leg_whose_relay_is_gone_answers_its_fixed_502_and_any_other_leg_closes_as_before: >-
+      the shim's legs are AF_UNIX socket files, and it runs only in a Linux run's network of its own (STG-05 CS-3b);
+      Windows has no network containment. Covered on Linux.
     tests/integration/test_containment.py::test_an_ordinary_planted_socket_is_reported_on_the_label_and_the_run_starts: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the socket classes are tested on every platform in tests/unit/test_containment_sockets.py.

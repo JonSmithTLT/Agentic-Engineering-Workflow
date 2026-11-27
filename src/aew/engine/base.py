@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import process_kind
-from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.authority import CUSTODY_PUBLISH, OPERATOR_OPS, require_custodian, require_lead
 from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
 from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
@@ -21,6 +21,7 @@ from aew.errors import (
     IllegalTransition,
     IntegrityError,
     MigrationRequired,
+    PermissionDenied,
     ProjectNotFound,
     WorkspaceNotAuthority,
 )
@@ -524,6 +525,10 @@ class Kernel:
         the v1 rule and every finalizer are a Lead transaction's."""
         from aew.operator import require_operator_attribution
 
+        if op not in OPERATOR_OPS:  # a closed family, as custody's (review of #641, point 4)
+            raise PermissionDenied(f"`{op}` is not one of the operator's own decisions at their terminal "
+                                   f"({', '.join(sorted(OPERATOR_OPS))}): it needs the Lead credential",
+                                   reason="not_operator_op", op=op)
         require_operator_attribution(True, authorization, f"`{op}` without a Lead credential")
         assert authorization is not None  # narrowed by the check above
         actor = {"kind": "operator", "authorized_by": authorization["authorized_by"],

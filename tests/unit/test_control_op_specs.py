@@ -434,3 +434,18 @@ def test_journal_labels_follow_the_spec_of_the_entered_operation():
     assert actual_covers == covers
     for entries in covers.values():
         assert entries <= P.CONTROL_OP_SPECS.keys()
+
+
+def test_the_operators_family_is_exactly_the_ops_its_transaction_is_opened_with():
+    """Review of #641, point 4: `authority.OPERATOR_OPS` owns the operator's closed family (register E331), and the
+    engine opens `operator_txn` with those ops and no other, each a declared control op."""
+    from aew.engine.authority import OPERATOR_OPS
+
+    opened = set()
+    for path in SOURCE.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "operator_txn":
+                op = node.args[1] if len(node.args) > 1 else None
+                assert isinstance(op, ast.Constant), f"{path.name}:{node.lineno}: an operator_txn op is a literal"
+                opened.add(op.value)
+    assert opened == OPERATOR_OPS and OPERATOR_OPS <= P.CONTROL_OP_SPECS.keys()

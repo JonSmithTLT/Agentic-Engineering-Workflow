@@ -103,8 +103,9 @@ needs no Lead credential and leaves the Lead seat with its holder, so you can ad
 has open stops as STALE_POLICY at its next step when a setting it is bound to changed. The prompt shows each file's
 diff against its pinned version and the digests the commit is bound to; type `yes` to adopt. While a weaker agent
 context is live on this host, or was in the last few minutes, it asks for a one-time code instead and names that
-context. Authority candidates can wait while the Lead works, and you classify them the same way: replace the example
-candidate ID with one from `aew authority list`.
+context; it asks for the code too while the register of weaker contexts cannot say (for example, before `aew doctor`
+has created it on this host), and names why. Authority candidates can wait while the Lead works, and you classify
+them the same way: replace the example candidate ID with one from `aew authority list`.
 
 ```bash
 aew manifest adopt --reason "updated the pinned settings"

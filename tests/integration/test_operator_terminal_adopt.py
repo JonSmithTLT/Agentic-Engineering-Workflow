@@ -260,3 +260,135 @@ def test_a_command_that_writes_its_own_change_adopts_exactly_it_and_leaves_nothi
     assert "route  : a test" in terminal.prompts[0] and "+# written by the command" in terminal.prompts[0]
     assert out["adopted"] == ["policy/gates.yaml"] and gates.read_bytes() == new
     assert read_yaml(p.root / ".aew/policy/gates.yaml") is not None
+
+
+# ---------------------------------------------------------------------------------------------- review of #641
+
+
+def test_a_missing_copy_falls_back_to_the_committed_bytes_and_with_neither_the_file_is_shown_whole(
+        project, monkeypatch, clear):
+    """Point 2: the pinned bytes come from the file's git history when no kept copy holds them; with neither, the
+    prompt says so and shows the file whole, never other bytes as the pinned version."""
+    from conftest import git
+
+    p = project
+    git("add", "-A", cwd=p.root)
+    git("commit", "-q", "-m", "the pinned settings", cwd=p.root)
+    pinned = load_control(p.root)["policy_sha256"]["policy/gates.yaml"]
+    assert sha256_bytes((p.root / ".aew/policy/gates.yaml").read_bytes()) == pinned  # the commit holds the pin
+    (p.root / ".aew" / pinned_copies.DIR / pinned).unlink(missing_ok=True)
+    edit_gates(p, "# after the commit")
+    terminal = Terminal(monkeypatch, "no")
+    with pytest.raises(PermissionDenied):
+        operator_adopt.adopt(Engine.discover(p.root), reason="r")
+    shown = terminal.prompts[0]
+    assert "+# after the commit" in shown and "not on this host" not in shown
+    added = [line for line in shown.splitlines() if line.startswith("    +") and not line.startswith("    +++")]
+    assert added == ["    +# after the commit"]  # a diff against the committed bytes, not the file whole
+    Terminal(monkeypatch)
+    operator_adopt.adopt(Engine.discover(p.root), reason="r")  # a new pin, its bytes in no commit
+    pinned = load_control(p.root)["policy_sha256"]["policy/gates.yaml"]
+    (p.root / ".aew" / pinned_copies.DIR / pinned).unlink()
+    edit_gates(p, "# with neither")
+    terminal = Terminal(monkeypatch, "no")
+    with pytest.raises(PermissionDenied):
+        operator_adopt.adopt(Engine.discover(p.root), reason="r")
+    shown = " ".join(terminal.prompts[0].split())
+    assert "the pinned version's bytes are not on this host" in shown and "the file is shown whole" in shown
+    assert "+# after the commit" in shown and "+# with neither" in shown  # whole: every line is shown as added
+
+
+def test_the_hook_puts_its_files_back_when_the_adoption_fails_after_writing_them(project, monkeypatch, clear):
+    """Point 3: the bytes are written once confirmed; the adoption then refuses them (they do not validate), and every
+    file is back as it was, with nothing committed."""
+    p = project
+    gates = p.root / ".aew/policy/gates.yaml"
+    original = gates.read_bytes()
+    before = control_bytes(p)
+    Terminal(monkeypatch)
+    with pytest.raises(Exception) as refused:
+        operator_adopt.adopt(Engine.discover(p.root), reason="r", command="aew policy route",
+                             edits={"policy/gates.yaml": b"mutating_concurrency: not a number\n"})
+    assert getattr(refused.value, "code", None) == "VALIDATION_FAILED", refused.value
+    assert gates.read_bytes() == original and control_bytes(p) == before
+
+
+def test_the_hook_refuses_a_project_whose_files_were_never_pinned_and_says_so(project, monkeypatch, clear):
+    """Point 8: nothing to diff against, and `only=` never makes a first pin: the refusal says the files were never
+    pinned, and what pins them."""
+    from aew.engine.store import serialize_control
+
+    p = project
+    state = load_control(p.root)
+    del state["policy_sha256"]
+    (p.root / ".aew/state/control.yaml").write_bytes(serialize_control(state))
+    gates = p.root / ".aew/policy/gates.yaml"
+    original = gates.read_bytes()
+    terminal = Terminal(monkeypatch)
+    with pytest.raises(IllegalTransition) as refused:
+        operator_adopt.adopt(Engine.discover(p.root), reason="r", command="aew policy route",
+                             edits={"policy/gates.yaml": original + b"# x\n"})
+    assert refused.value.details["reason"] == "never_pinned" and "never pinned" in refused.value.message
+    assert "aew manifest adopt --reason <reason>" in refused.value.message
+    assert terminal.prompts == [] and gates.read_bytes() == original
+
+
+def test_the_operators_transaction_admits_only_the_operators_confirmation_and_its_own_family(project):
+    """Point 4: `operator_txn` itself refuses no authorization and one that is not the operator's terminal, and any op
+    outside its closed family, committing nothing."""
+    from aew.engine.authority import OPERATOR_OPS
+    from aew.errors import OperatorAuthorizationRequired
+
+    p = project
+    k = Engine.discover(p.root)._k
+    before = control_bytes(p)
+    for authorization in (None, {"authorized_by": "lead"}, {}):
+        with pytest.raises(OperatorAuthorizationRequired), k.operator_txn(authorization, "manifest.adopt"):
+            pytest.fail("admitted")
+    with pytest.raises(PermissionDenied) as refused, k.operator_txn({"authorized_by": "operator-tty"}, "checkpoint"):
+        pytest.fail("admitted")
+    assert refused.value.details["reason"] == "not_operator_op" and refused.value.code == "PERMISSION_DENIED"
+    assert control_bytes(p) == before and OPERATOR_OPS == {"manifest.adopt", "authority.accept", "authority.reject"}
+
+
+@pytest.mark.parametrize(("weaker", "answer", "says"), [
+    (None, "no", "type yes to confirm"),
+    ((WEAKER, "end it"), "no", "type back the code it shows"),
+])
+def test_a_refused_confirmation_says_nothing_changed_and_how_to_try_again(project, monkeypatch, weaker, answer, says):
+    """Point 6: both forms' refusals say what happened, that nothing changed, and what to do."""
+    p = project
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: weaker)
+    edit_gates(p, "# edited")
+    before = control_bytes(p)
+    Terminal(monkeypatch, answer)
+    with pytest.raises(PermissionDenied) as refused:
+        operator_adopt.adopt(Engine.discover(p.root), reason="r")
+    assert refused.value.details["reason"] == "not_confirmed"
+    assert "nothing is changed" in refused.value.message and says in refused.value.message
+    assert control_bytes(p) == before
+
+
+def test_the_plain_prompt_warns_about_the_answer_and_the_code_prompt_about_the_code(project, monkeypatch):
+    """Point 7: the plain form has no code to give away, so its warning is about who answers."""
+    p = project
+    edit_gates(p, "# edited")
+    for weaker, shown, absent in ((None, operator.PLAIN_WARNING, operator.RELAY_WARNING),
+                                  ((WEAKER, "end it"), operator.RELAY_WARNING, operator.PLAIN_WARNING)):
+        monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None, w=weaker: w)
+        terminal = Terminal(monkeypatch, "no")
+        with pytest.raises(PermissionDenied):
+            operator_adopt.adopt(Engine.discover(p.root), reason="r")
+        assert shown in terminal.prompts[0] and absent not in terminal.prompts[0]
+
+
+def test_authority_decisions_follow_the_register_until_the_operator_rules_otherwise(project, monkeypatch, clear):
+    """Point 1 awaits the operator: today the register decides for authority decisions too. The ruling is the one
+    constant, and setting it asks the code whatever the register says."""
+    p = project
+    assert operator_adopt.AUTHORITY_CODE_ALWAYS is None
+    monkeypatch.setattr(operator_adopt, "AUTHORITY_CODE_ALWAYS", "an authority decision always takes the code")
+    terminal = Terminal(monkeypatch, typed_code)
+    operator_adopt.decide_authority(Engine.discover(p.root), action="reject", candidate=_candidate(p))
+    assert "A typed-back code is asked because an authority decision always takes the code." in " ".join(
+        terminal.prompts[0].split("\n"))

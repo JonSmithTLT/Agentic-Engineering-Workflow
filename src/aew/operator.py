@@ -54,12 +54,14 @@ def render_requester(requested_by: str | None = None) -> str:
 
 
 def challenge(code: str, text: str | list[str], *, requested_by: str | None = None, destination: str | None = None,
-              instruction: str | None = None, purpose: str | None = None, requester_reported: bool = False) -> str:
+              instruction: str | None = None, purpose: str | None = None, requester_reported: bool = False,
+              warning: str | None = None) -> str:
     """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
     back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
     (F20.3), naming the requester that process reported and where the code is to be typed. ``purpose`` is for a prompt
-    that releases no credential: it names what changes, in place of the credential's destination. Pass preview
-    lines separately when a field within a line can itself contain a newline."""
+    that releases no credential: it names what changes, in place of the credential's destination. ``warning`` replaces
+    :data:`RELAY_WARNING` for a prompt that asks no code (:data:`PLAIN_WARNING`). Pass preview lines separately when a
+    field within a line can itself contain a newline."""
     from aew.harness.desktop_notifier import clean
 
     lines = text.split("\n") if isinstance(text, str) else text
@@ -78,13 +80,16 @@ def challenge(code: str, text: str | list[str], *, requested_by: str | None = No
         f"  {label}  : {target}\n"
         "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
         f"{clean(typed, escape='visible')}\n"
-        f"{RELAY_WARNING}\n"
+        f"{warning if warning is not None else RELAY_WARNING}\n"
     )
 
 
 # The code is the authorization; a model that can run `aew dashboard open` from a shell with a terminal could ask the
 # human for it in chat (lead developer's review of F20.3). The prompt says so, every time.
 RELAY_WARNING = "Type it only into a terminal you opened yourself. Never give it to an agent or paste it into a chat."
+# The plain confirmation's form of it (register E331; review of #641, point 7): no code to give away, but the answer is
+# the authorization all the same.
+PLAIN_WARNING = "Answer only in a terminal you opened yourself. Never let an agent answer it for you."
 
 
 def has_terminal() -> bool:
@@ -174,15 +179,18 @@ def confirm(text: list[str], *, purpose: str, code_because: str | None,
     discard_typed_ahead()
     if code_because is None:
         instruction = f"Type {PLAIN_YES} and press Enter to confirm; anything else refuses."
-        reply = ask(challenge("", text, instruction=instruction, purpose=purpose) + "> ", timeout=timeout).strip()
+        reply = ask(challenge("", text, instruction=instruction, purpose=purpose, warning=PLAIN_WARNING) + "> ",
+                    timeout=timeout).strip()
         if reply.lower() != PLAIN_YES:
-            raise PermissionDenied("the operator did not confirm (they did not type yes)", reason="not_confirmed")
+            raise PermissionDenied("the operator did not confirm (they did not type yes): nothing is changed. Run the "
+                                   f"command again and type {PLAIN_YES} to confirm", reason="not_confirmed")
         return {"authorized_by": "operator-tty", "confirmation": "plain"}
     code = _code()
     lines = [*text, f"A typed-back code is asked because {code_because}."]
     reply = ask(challenge(code, lines, purpose=purpose) + "> ", timeout=timeout).strip()
     if reply.upper() != code:
-        raise PermissionDenied("operator refused or mistyped the confirmation code", reason="not_confirmed")
+        raise PermissionDenied("the operator refused or mistyped the confirmation code: nothing is changed. Run the "
+                               "command again and type back the code it shows", reason="not_confirmed")
     return {"authorized_by": "operator-tty", "challenge_code": code, "confirmation": "code"}
 
 

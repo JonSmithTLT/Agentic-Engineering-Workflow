@@ -35,6 +35,10 @@ DIFF_LINES = 200  # per file: a longer diff is cut, and the prompt says to read 
 SEAT_LINE = ("No Lead credential is used, and the Lead seat stays with its holder: a stage open now stops as "
              "STALE_POLICY at its next step when a setting it is bound to changed.")
 NO_TERMINAL = "no_terminal"
+# Whether an authority decision always asks the typed-back code, whatever the register says: None lets the register
+# decide, as for the adoption's diff (this PR's reading of the row); a reason, which the prompt shows, asks it always.
+# The operator rules on it (review of #641, point 1), and the ruling is this one line.
+AUTHORITY_CODE_ALWAYS: str | None = None
 
 
 def problem(command: str) -> PermissionDenied | None:
@@ -122,6 +126,11 @@ def adopt(engine: Any, *, reason: str, command: str = MANIFEST_COMMAND, edits: M
     offer = engine.manifest_offer()
     files: dict[str, dict[str, Any]] = offer["files"]
     if edits is not None:
+        if offer["first_pin"]:  # nothing to diff against, and `only=` never pins a project's files for the first time
+            raise IllegalTransition(
+                f"this project's policy files were never pinned, so `{command}` cannot adopt its change alone. Review "
+                f"them and run `{MANIFEST_COMMAND} --reason <reason>` first, which pins them; then run `{command}` "
+                "again", reason="never_pinned", files=sorted(files))
         if files:  # `only=` adopts the command's files alone, so anything else that drifted is the operator's first
             raise IllegalTransition(
                 f"{', '.join(f'.aew/{rel}' for rel in files)} differ from their pins: `{command}` adopts only the "
@@ -178,7 +187,8 @@ def decide_authority(engine: Any, *, action: str, candidate: str, klass: str | N
     text = [f"Project '{engine.project_id}': RECORD as YOUR decision: {summary}",
             *([f"  reason : {reason}"] if reason else []),
             "No Lead credential is used, and the Lead seat stays with its holder."]
-    authorization = operator.confirm(text, purpose="the project's authority sources", code_because=code_because())
+    authorization = operator.confirm(text, purpose="the project's authority sources",
+                                     code_because=AUTHORITY_CODE_ALWAYS or code_because())
     args: dict[str, Any] = {"candidate_id": candidate, "decided_by": "operator", "reason": reason,
                             "binding": binding if binding is not None else subject["digest"],
                             "authorization": authorization}

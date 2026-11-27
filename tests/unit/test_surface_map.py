@@ -1463,6 +1463,8 @@ def build_sample(base: Path) -> Sample:
         assert code == 0, (argv, err)
         if argv[:2] == ["work", "depend"]:
             assert json.loads(out)["decision"] == "D-0003", "the probe of `record body` names D-0003"
+        if argv[:2] == ["plan", "accept"]:  # and D-0002, a decision without a body: its fields are printed
+            assert json.loads(out)["decision"] == "D-0002", "the probe of `record body` names D-0002"
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"
     engine = Engine.discover(root)

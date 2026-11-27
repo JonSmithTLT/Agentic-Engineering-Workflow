@@ -155,7 +155,7 @@ the checks by being labelled diagnostic? No, by construction):
     - one Ticket with a body and an accepted plan, assigned without a launch, so its invocation `INV-0001`, its
       workspace and its pack exist;
     - a second Ticket that depends on it, so the dependency change is a decision with a body (`D-0003`, for
-      `record body`).
+      `record body`; the plan's acceptance, `D-0002`, is one without).
 
     It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface. The
     settling may remove only the spent redo records under `.aew/state/txn/`; anything else fails.

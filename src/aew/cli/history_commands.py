@@ -27,8 +27,9 @@ BODY_HELP = ("Print the body of a work unit's record, of one of its plan revisio
              "characters, direction marks, line and paragraph separators, tag characters. --json shows every one of "
              "them as an escape: it gives the recorded text exactly, with the record's kind and unit; for a plan "
              "revision, its number, its status, whether it is the accepted one and what it supersedes; for a "
-             "decision, its type and summary. Each is checked against what AEW recorded for it, and a record "
-             "that does not match is refused, not printed. A read: it takes no credential.")
+             "decision, its type and summary. A decision without a body prints its record itself, its fields as "
+             "written (--json: `record`, with the parsed `fields`). Each is checked against what AEW recorded for "
+             "it, and a record that does not match is refused, not printed. A read: it takes no credential.")
 
 
 def _body(a: argparse.Namespace) -> Any:
@@ -36,7 +37,8 @@ def _body(a: argparse.Namespace) -> Any:
     from aew.util import escape_display_controls
 
     found = _engine(a).record_body(a.record_id, plan=a.plan)
-    return found if a.json else escape_display_controls(found["body"])
+    # A decision without a body answers with its record itself, its fields as written (E170).
+    return found if a.json else escape_display_controls(found["body"] if "body" in found else found["record"])
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:

@@ -355,7 +355,8 @@ class HistoryCommands:
         """A decision record (``Kernel.new_decision``), held to the hash the transition that wrote it recorded in its
         writes (``state/log``, hash-chained to the committed head: ``outbox.newest_transitions``). Control state pins
         no decision by itself, so that log entry is its pin. A decision's body is the engine's account of what it
-        decided, with the values it was given; most have none, and their fields are the record."""
+        decided, with the values it was given; most have none, and then the record itself, its fields as written, is
+        what is printed (``record``, with the parsed ``fields`` beside it)."""
         rel = f"decisions/{decision_id}.md"
         try:
             raw = (self.k.aew_root / rel).read_bytes()
@@ -383,13 +384,15 @@ class HistoryCommands:
         except UnicodeDecodeError as exc:
             raise self._damaged(f"decision record {decision_id} ({rel}) is not UTF-8 text", reason="not_text",
                                 path=rel) from exc
+        out = {"id": decision_id, "kind": "decision", "work_unit": meta.get("work_unit"), "archived": False,
+               "decision_type": meta.get("type"), "summary": meta.get("summary")}
         if not body.strip():
-            raise NotFound(f"decision record {decision_id} has no body: a `{meta.get('type')}` decision holds what was "
-                           "decided in its fields (its type, summary, reason, who decided and when), so there is "
-                           f"nothing to print. The dashboard's knowledge view (`/knowledge/{decision_id}`) gives them, "
-                           f"and its file is `.aew/{rel}`", reason="no_body", kind="decision")
-        return {"id": decision_id, "kind": "decision", "work_unit": meta.get("work_unit"), "archived": False,
-                "decision_type": meta.get("type"), "summary": meta.get("summary"), "body": body}
+            # Most decisions hold what was decided in their fields alone (type, summary, reason, who decided and
+            # when), and the Lead has no dashboard to read them on: such a decision answers with its record itself,
+            # its fields in the file's own order and format, under the same pin (the coordinator's change of
+            # 2026-11-27 to the operator's ruling: "a lead being able to view decision records").
+            return {**out, "fields": meta, "record": raw.decode("utf-8")}
+        return {**out, "body": body}
 
     def _decision_pin(self, state: dict[str, Any], rel: str, claimed: int | None) -> tuple[str | None, int | None]:
         """The hash the transition that wrote ``rel`` recorded for it, newest first, and where the log begins. The

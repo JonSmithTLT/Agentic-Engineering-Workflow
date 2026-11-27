@@ -409,14 +409,25 @@ def test_record_body_prints_a_decision_record_as_written(tmp_path):
     assert_control_invariants(p)
 
 
-def test_a_decision_without_a_body_is_refused_and_names_where_its_fields_are(tmp_path):
+def test_record_body_prints_a_decision_without_a_body_as_its_recorded_fields(tmp_path):
+    """Most decisions hold what was decided in their fields alone, and the Lead has no dashboard: such a decision
+    answers with its record as written, under the same pin."""
     p = sample_project(tmp_path)
     wid = create_investigation(p, tmp_path)
-    decision = next(d for d in sorted((p.root / ".aew" / "decisions").glob("D-*.md"))
-                    if "plan_acceptance" in d.read_text(encoding="utf-8") and wid in d.read_text(encoding="utf-8")).stem
-    error = refusal_of(p, decision)
-    assert (error["code"], error["details"]) == ("NOT_FOUND", {"reason": "no_body", "kind": "decision"})
-    assert f"/knowledge/{decision}" in error["message"] and f".aew/decisions/{decision}.md" in error["message"]
+    path = next(d for d in sorted((p.root / ".aew" / "decisions").glob("D-*.md"))
+                if "plan_acceptance" in d.read_text(encoding="utf-8") and wid in d.read_text(encoding="utf-8"))
+    decision, recorded = path.stem, path.read_text(encoding="utf-8")
+    assert recorded.startswith("---\n") and recorded.endswith("---\n")  # fields only: no body after them
+    assert body_of(p, decision) == recorded  # its fields in the file's own order and format
+    found = p.ok("record", "body", decision, "--json")
+    assert {k: found[k] for k in ("id", "kind", "work_unit", "archived", "decision_type", "record")} == {
+        "id": decision, "kind": "decision", "work_unit": wid, "archived": False, "decision_type": "plan_acceptance",
+        "record": recorded}
+    assert found["fields"]["id"] == decision and found["fields"]["summary"] == found["summary"]
+    assert "body" not in found
+    # And it is held to its pin like any other: changed, it is refused.
+    path.write_text(recorded.replace("plan_acceptance", "operator_override"), encoding="utf-8", newline="\n")
+    assert damaged(p, decision, "not_pinned")["details"]["path"] == f"decisions/{decision}.md"
 
 
 def test_a_decision_that_is_not_what_its_transition_recorded_is_refused(tmp_path):

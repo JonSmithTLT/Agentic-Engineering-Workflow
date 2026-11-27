@@ -2068,19 +2068,6 @@ sections:
     Notes: 'Filed by the Lead after #274 merged. The plan''s design is its starting point, not its authority: F4 is an Unscheduled
       row again (restored from HOLD-08 by the hold match, 2026-11-06)'
 
-  - '#': E88
-    Work: 'Remove nine reserved keys from `src/aew/schemas/ticket-field-registry.v1.json`''s bookkeeping list, as one change:
-      FLAG-08''s seven (`recorded_digests`, `revisions`, `revision_events`, `revision_impact_holds`, `revision_pending`,
-      `revision_refusals`, `ticket_revision`) and FLAG-11''s two (`hierarchy_baseline`, `coverage_obligations`). Check first
-      that `coordination-message.schema.json`''s required `ticket_revision` field, which `coordination_ops` writes as null,
-      does not rely on the registry''s entry'
-    Source: 'The operator''s decisions on S12-4''s flags: the first batch with its correction (design workspace `fb1fabe`)
-      and the second batch (`ca01a32`)'
-    When: '**Internal alpha**, one of the trace''s removals (S12-6)'
-    Notes: 'Removing the reserved keys leaves F4, an Unscheduled row since the hold match of 2026-11-06, in place: removing
-      the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry''s meta-test
-      (invariant 50) makes each later F4 slice add its key back before writing it'
-
   - '#': E89
     Work: Re-point `spec_set` at the published contracts once D-A's first publication lands (FLAG-09). Retiring it instead
       would need a schema change, since `control.schema.json` requires it, and a read-as for old state
@@ -6168,6 +6155,16 @@ sections:
     By: '#279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of
       its direct edge, as ADR-0003''s amendment of 2026-10-25 states. The class by any route is E96, and E85''s named outcome
       closes only when E96 lands (designer, 2026-10-25)'
+
+  - '#': E88
+    Was: 'Remove nine reserved keys from `src/aew/schemas/ticket-field-registry.v1.json`''s bookkeeping list, as one change:
+      FLAG-08''s seven (`recorded_digests`, `revisions`, `revision_events`, `revision_impact_holds`, `revision_pending`,
+      `revision_refusals`, `ticket_revision`) and FLAG-11''s two (`hierarchy_baseline`, `coverage_obligations`). Check first
+      that `coordination-message.schema.json`''s required `ticket_revision` field, which `coordination_ops` writes as null,
+      does not rely on the registry''s entry'
+    Closed: '2026-11-27'
+    By: Removed the nine reserved bookkeeping keys. Coordination messages still carry the independent required `ticket_revision`
+      field, null while F4 is dormant. F4 restores registry entries when it introduces writers.
 
   - '#': E92
     Was: Forward plain `http://` requests through the contained egress under the same R-6 host check, instead of refusing

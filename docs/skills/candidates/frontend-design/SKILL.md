@@ -1,15 +1,17 @@
 ---
 name: frontend-design
 description: Design, implement, or refine web interfaces with purposeful visual direction, coherent interaction states, and rendered verification. Use for pages and components; skip backend-only work and exact editorial substitutions.
-license: Complete terms in LICENSE.txt
+license: Apache-2.0
 metadata:
-  version: '0.3.0'
+  version: '0.3.1'
   status: candidate
 ---
 
 # Frontend design
 
 ## Purpose
+
+See the [Apache 2.0 license](references/LICENSE.md) for the complete terms.
 
 Make the interface recognizable, useful, and finished for its actual audience. Deliver working UI with a coherent visual idea; scale design effort to the requested surface.
 
@@ -27,7 +29,7 @@ Inputs: audience and task, content, existing UI/code, brand or reference assets,
 
 ## Preconditions
 
-Use this procedure within the assignment's scope and permissions; it grants no additional authority. Inspect relevant components, tokens, neighboring screens, project guidance, and available previews before editing. Defer to maintained project design, behavior, and domain/API contracts; observed UI drift does not override them. Surface unresolved contract conflicts instead of rewriting a contract to justify the implementation. Missing design documentation does not mean the product lacks an established identity. Ask only when an unresolved fact materially changes the result; proceed on ordinary reversible choices. Early in implementation, locate the project-supported runtime, build/test commands, native dependencies and browser/preview route. Typechecking availability does not establish build or browser capability. Check a requested port's availability and owner before launching; do not displace another service.
+Use this procedure within the assignment's scope and permissions; it grants no additional authority. Inspect relevant components, tokens, neighboring screens, project guidance, and available previews before editing. Defer to maintained project design, behavior, and domain/API contracts; observed UI drift does not override them. Surface unresolved contract conflicts instead of rewriting a contract to justify the implementation. Missing design documentation does not mean the product lacks an established identity. Ask only when an unresolved fact materially changes the result; proceed on ordinary reversible choices. Early in implementation, locate the project-supported runtime, build/test commands, native dependencies and browser/preview route. Browser checks depend on project execution policy, an available display or headless driver, and permitted access to the preview. Typechecking availability does not establish browser capability. Check a requested port's availability and owner before launching; do not displace another service.
 
 ## Procedure and decision points
 
@@ -36,12 +38,12 @@ Use this procedure within the assignment's scope and permissions; it grants no a
 3. **Design the content and flow.** Put the primary task and its prerequisite information in a clear order. Use accurate supplied content and specific action labels. Do not invent testimonials, metrics, customers, or product capabilities. Preserve supplied data meaning and uncertainty: distinguish unknown, zero, estimated, stale, partial, and failed results where the contract does. Retain relevant units, provenance, and freshness; never imply certainty or completion the data does not support. Label demo data when needed. Map each visible control to an implemented action, destination, or explicitly scoped prototype behavior. For forms, asynchronous data, dialogs, destructive actions, or multi-step flows, read [interaction states](references/interaction-states.md). For read-heavy inspectors or data views with changing sources/scopes, read [read-heavy interfaces](references/read-heavy-interfaces.md).
 4. **Build within the project.** Reuse the stack, components, tokens, and layout conventions. Choose structure before decoration: meaningful sections, content-driven grids, deliberate density, and consistent alignment. Use semantic elements and native controls before custom widgets; name controls and preserve visible keyboard focus. Apply shared fixes at the appropriate component/token owner, check affected siblings, and report any expansion beyond scope. Avoid adding libraries for effects the existing tools can express simply.
 5. **Make the design survive variation.** Check narrow and wide layouts, long text, missing content, and relevant themes/locales. Let essential content wrap or reflow; do not hide overflow merely to conceal a broken layout. Preserve zoom, readable contrast, and access without hover or color alone. Reserve media space, use suitable asset sizes, and avoid delaying the primary task with decorative loading. Motion should explain a transition or support the brief, remain interruptible, and respect reduced-motion preferences.
-6. **Inspect the rendered result.** Run the permitted app/preview and inspect representative wide and narrow viewports plus the states changed. For shared components or tokens, enumerate affected consumers and check representative sibling screens, themes, and zoom against their contracts. Use screenshots to judge hierarchy, spacing, crop, wrapping, and consistency; exercise the primary flow, keyboard navigation, and recovery separately. For a visual bug, reproduce its trigger before checking the repair. Automated checks supplement this inspection. A compile pass cannot establish visual or interaction quality.
+6. **Inspect the rendered result when available.** Use the project-authorized app or preview and inspect representative wide and narrow viewports plus the states changed. For shared components or tokens, enumerate affected consumers and check representative sibling screens, themes, and zoom against their contracts. Use screenshots to judge hierarchy, spacing, crop, wrapping, and consistency; exercise the primary flow, keyboard navigation, and recovery separately. For a visual bug, reproduce its trigger before checking the repair. Automated checks supplement this inspection. A compile pass cannot establish visual or interaction quality.
 7. **Correct and hand back.** Fix observed defects, verify the affected states again, and account for required project checks. Stop when the brief and applicable checks are satisfied; avoid repeated cosmetic changes without a concrete defect. Report the implemented result, evidence, and missing capabilities in the existing handoff format. Do not claim deployment, backend integration, or a successful interaction that was not performed.
 
 ## Verification and evidence
 
-Identify the inspected revision/local changes, route, viewport, state, and action behind each material observation. Separate screenshot inspection, interaction checks, automated results, and static reasoning. For accessibility, verify semantics and keyboard behavior as well as appearance; a screenshot or scanner alone does not prove conformance. Preserve useful captures where the project expects them. If rendering is unavailable, complete supported static work and mark visual verification outstanding.
+Identify the inspected revision/local changes, route, viewport, state, and action behind each material observation. Separate screenshot inspection, interaction checks, automated results, and static reasoning. For accessibility, verify semantics and keyboard behavior as well as appearance; a screenshot or scanner alone does not prove conformance. Preserve useful captures where the project expects them. If rendering is unavailable, complete supported static work and report browser and visual checks as “not run” with the missing capability or preview access.
 
 ## Failure modes and common mistakes
 

@@ -1,0 +1,97 @@
+format: aew-skill-cases/v1
+skill: source-research
+cases:
+- id: SR-01
+  split: development
+  purpose: Does the Print API v3.1 promise stable ordering?
+  worker:
+    task: Does the Print API v3.1 promise stable ordering?
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      print-3.1-spec.md: Print API v3.1 §Lists. Items have no defined order unless a sort key is
+        supplied.
+      live-guide.md: Current Print API guide, observed 2026-11-27. Default lists are sorted oldest
+        first.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: use
+    required_findings:
+    - Report undefined order in v3.1 without a sort key. Treat the guide as a claim about current
+      behavior.
+    forbidden_findings:
+    - Apply the guide to v3.1 or assume the documented default is a guarantee for all releases.
+    evidence_requirements:
+    - Cite print-3.1-spec.md §Lists and give the access date for the live guide.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: SR-02
+  split: development
+  purpose: Determine whether v1.3 guarantees rotating identifiers.
+  worker:
+    task: Determine whether v1.3 guarantees rotating identifiers.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      index.md: Digest of a 1.4 draft says identifiers rotate. Its source is unavailable. The 1.3
+        policy is missing.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: abstain
+    required_findings:
+    - Name the unresolved guarantee and the missing adopted v1.3 policy.
+    forbidden_findings:
+    - Treat the digest as a v1.3 guarantee or claim the underlying source was read.
+    evidence_requirements:
+    - Point to index.md and explain its version and access limits.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: SR-03
+  split: holdout-candidate
+  purpose: Fix punctuation in the supplied quote without adding facts.
+  worker:
+    task: Fix punctuation in the supplied quote without adding facts.
+    context: Synthetic isolated evaluator fixture.
+    artifacts:
+      quote.txt: A blue chair a red table.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only supplied artifacts. Report execution only when observed.
+  oracle:
+    activation: skip
+    required_findings:
+    - Return the edit within the supplied text.
+    forbidden_findings:
+    - Invent publication or source provenance or expand the assignment.
+    evidence_requirements:
+    - Use only quote.txt.
+    allowed_alternatives:
+    - Equivalent reasoning with the same evidence and authority limits.
+- id: SR-04
+  split: development
+  purpose: Compare the independence of the source reports.
+  worker:
+    task: Compare the independence of the source reports.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      primary.md: 'Widget v3 release note: setting is configurable.'
+      summaries.md: Two digests repeat and cite the same release note.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: use
+    required_findings:
+    - Cite the release note and recognize one primary lineage.
+    forbidden_findings:
+    - Claim three independent observations of runtime behavior.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

@@ -1,0 +1,8 @@
+{
+  "skill": "source-research",
+  "version": "0.1.0",
+  "sha256": {
+    "SKILL.md": "203f4b8273f7c5b1c9c6c6983e0a4fc0f113f54406d0e94fe62478498776424d",
+    "references/provenance.md": "8058a85ced0182266fb56bc60212ecb10f6d62975aaf799728e8ed3c943bd7f5"
+  }
+}

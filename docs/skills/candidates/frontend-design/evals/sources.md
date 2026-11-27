@@ -13,3 +13,18 @@ Evaluator-only; inspected 2026-10-12. This is an original synthesis of selected 
 | [W3C reflow guidance](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) | Content remains usable under narrow/reflow conditions, with meaningful exceptions for two-dimensional data. | Hiding essential overflowing content to make a screenshot appear clean. |
 
 The worker-facing core and references are newly authored. The former Anthropic entrypoint is replaced at the same candidate path; the existing Apache license is retained. Source provenance stays here rather than expanding worker context. This replacement is not a production-loader migration.
+
+## Public revision 0.3.1
+
+Consulted 2026-11-27. [WCAG 2.2, W3C Recommendation](https://www.w3.org/TR/WCAG22/)
+supports verification of keyboard operation, focus, reflow and contrast.
+The [Playwright writing-tests guide](https://playwright.dev/docs/writing-tests),
+live on the consultation date, illustrates observable interaction evidence.
+The [Anthropic frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md)
+and [Agent Skills specification](https://agentskills.io/specification), live
+on the consultation date, support intentional visual direction and progressive
+disclosure. Keep both visual inspection and behavior evidence where the
+project can supply a browser. Use the project's own approved test stack,
+preview route and access. Record unavailable verification as “not run.”
+The runtime bundle includes the complete Apache 2.0 terms retained from
+the candidate's upstream source.

@@ -1,0 +1,8 @@
+{
+  "skill": "plan-review",
+  "version": "0.1.0",
+  "sha256": {
+    "SKILL.md": "ffcf5f83ac3aa01c35abf97b988cff134618e9f72d528b0425cc90a2b8203033",
+    "references/review-questions.md": "a01fd6c039009a2d1b15115f7f15ff97df430d48f9e77cbf6214d0716b6db55b"
+  }
+}

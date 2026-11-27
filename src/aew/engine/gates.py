@@ -301,10 +301,15 @@ def effective_obligations(
     }
 
 
+def bound_to(e: dict[str, Any], fingerprint: str | None) -> bool:
+    """Whether evidence ``e`` was evaluated on the snapshot whose fingerprint is ``fingerprint``: the one test of a
+    record's snapshot binding, which the gates and a stage's continue over an ended run both use (register E400)."""
+    return fingerprint is not None and e["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fingerprint
+
+
 def _matches(e: dict[str, Any], fingerprint: str | None, plan_rev: int | None) -> bool:
-    snap = e["evaluated_snapshot"]["relevant_inputs_fingerprint"]
     rev = (e.get("plan_revision") or {}).get("revision")
-    return fingerprint is not None and snap == fingerprint and rev == plan_rev
+    return bound_to(e, fingerprint) and rev == plan_rev
 
 
 def _latest_status(

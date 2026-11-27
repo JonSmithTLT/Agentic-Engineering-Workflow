@@ -344,6 +344,32 @@ class Invocations:
                 current=ws.get("id"), current_status=ws.get("status"))
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
 
+    def run_evidence_binding(self, state: dict[str, Any], run: str) -> dict[str, Any] | None:
+        """What a run that ended with its evidence left, for a stage's continue over it (register E400): the run's
+        invocation, role and scope, the ids of the evidence it produced (from the sealed store, as ``harness_resume``
+        selects them), and whether the last of them is bound to the snapshot its invocation evaluates now
+        (``gates.bound_to``). None when that cannot be told: no such invocation, no record of the run, a seal the store
+        refuses (``find_evidence``'s rule: any integrity problem), or a workspace that is retired or gone. A caller
+        then takes nothing."""
+        inv_id = K.invocation_of_run(run)
+        inv = state["invocations"].get(inv_id) if inv_id else None
+        if inv is None or inv["work_unit"] not in state["work"]:
+            return None
+        records, problems = E.scan(self.k.aew_root, inv["work_unit"])
+        produced = [e for e in records if e["producer"].get("run") == run]
+        if problems or not produced:
+            return None
+        try:
+            path, ws_id, _ = self.invocation_workspace(state, inv)
+        except PermissionDenied:
+            return None
+        if not path.exists():
+            return None
+        now = self.snapshot_of(path, ws_id)["relevant_inputs_fingerprint"]
+        return {"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
+                "scope": inv.get("scope") or "ticket", "evidence": [e["id"] for e in produced],
+                "bound": G.bound_to(produced[-1], now)}  # the scan is in recording order: the report it ended on
+
     @staticmethod
     def execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:
         """Engine-owned producer fields (ADR-0010), taken from control state and never from the submission:

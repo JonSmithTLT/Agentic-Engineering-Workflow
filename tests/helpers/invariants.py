@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -428,7 +429,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
         note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
-    51: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
+    51: its resolutions (E3c), hot and cold: see ``resolutions`` below.
+    63: a continue over a launching step's run that has ended (E400): see ``taken_or_moved`` below."""
     from aew.engine import primitives as P
     from aew.engine import stage_intents as S
     from aew.schemas import validate
@@ -488,6 +490,36 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
             if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
                 problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
+        taken_or_moved(si, where)
+
+    def taken_or_moved(si: dict[str, Any], where: str) -> None:
+        """63 (register E400): a continue completes a stage over its launching step's run only while the run's
+        supervisor holds it, or once it ended with its evidence in the sealed store: a run whose record says it had
+        already ended when the continue committed, as anything else, never ends in COMPLETED. A ``snapshot_moved`` stop
+        is only ever over a run that ended with its evidence."""
+        resolution, closed, stop = si["resolution"], si["closed"], si.get("stopped")
+        last = si["steps"][-1] if si["steps"] else None
+        runs = ((last or {}).get("outputs") or {}).get("runs") or []
+        if not runs or not resolution or resolution["choice"] != "continue":
+            return
+        moved = bool(stop and stop["error"].get("reason") == "snapshot_moved")
+        completed_by_it = si["status"] == S.COMPLETED and closed and closed["rev"] == resolution["rev"]
+        if not (moved or completed_by_it):
+            return
+        at = datetime.fromisoformat(resolution["at"].replace("Z", "+00:00"))
+        wid = si["subject"]["id"]
+        produced = {e["producer"].get("run") for e in E.scan(aew, wid)[0]} if wid else set()
+        for run in runs:
+            record = runlog.read_record(runlog.run_dir(aew, run)) or {}
+            ended = record.get("ended_at")
+            with_evidence = record.get("status") == "ended_with_evidence" and run in produced
+            if moved and not with_evidence:
+                problems.append(f"63: {where}: stopped as snapshot_moved over {run}, which left no evidence")
+            # The continue's time is to the second: a run ended within that second counts as ended at it.
+            if completed_by_it and ended and not with_evidence and (
+                    datetime.fromisoformat(ended.replace("Z", "+00:00")).replace(microsecond=0) <= at):
+                problems.append(f"63: {where}: a continue completed it over {run}, which had ended "
+                                f"({record.get('status')}) without evidence in the store")
 
     def resolutions(si: dict[str, Any], where: str) -> None:
         """51 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held

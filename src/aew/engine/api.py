@@ -623,7 +623,7 @@ class Engine:
         self._dispositions = dispositions = Dispositions(k, gates=gates, archive=archive, views=views)
         self._stages = stages = StageIntents(
             k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"],
-            automation_guard=check_stage_admission)
+            automation_guard=check_stage_admission, run_evidence=invocations.run_evidence_binding)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])

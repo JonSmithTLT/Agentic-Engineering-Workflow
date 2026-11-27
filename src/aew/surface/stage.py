@@ -713,8 +713,10 @@ def resolve_stage(c: Call) -> dict[str, Any]:
       commits only that, the designed path: a moved head's one rebuild, plan v3 §2.3; PR #171 review), and has the
       engine recheck the rest and rebind the intent to the current generation in one commit (F18 §14). It then runs
       the remaining steps from the first uncommitted one, under the same rules as a new stage (§3.4 rules 3 to 7).
-      With every step committed, that commit ends the stage itself: completed, or stopped as ``launch_failed`` when
-      a launching step's run never started or has ended. A continue never relaunches a run: that is `aew harness
+      With every step committed, that commit ends the stage itself: completed (also over a run that ended with its
+      evidence, sealed and bound to the current snapshot: register E400), or stopped as ``launch_failed`` when a
+      launching step's run never started or has otherwise ended (reason ``snapshot_moved`` when an implementer's
+      evidence is on a snapshot its workspace has moved from). A continue never relaunches a run: that is `aew harness
       launch`, which rotates the credential (#142 review)."""
     from aew.surface.run import _error
 
@@ -748,7 +750,7 @@ def resolve_stage(c: Call) -> dict[str, Any]:
     out = c.engine.stage_continue(token=c.token(), intent=sid,
                                   contract_digest=digest_now, plan=plan_now, rationale=a["rationale"],
                                   binding=a.get("approval_digest"))
-    if out["status"] == SI.STOPPED:  # the launching step's run never started, or has ended: never completed
+    if out["status"] == SI.STOPPED:  # the launching step's run never started, or ended with nothing to take
         launch = out["launch"]
         failed = errors.HarnessLaunchFailed(launch["message"], run=launch["run"], committed=True,
                                             observed=launch["observed"], reason=launch["status"])

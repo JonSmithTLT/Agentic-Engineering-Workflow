@@ -1,4 +1,4 @@
-**Built in part, by #PR-E400 (placeholder: the pull request's number once it is opened): a continue over a stage's run
+**Built in part, by #651 (placeholder: the pull request's number once it is opened): a continue over a stage's run
 that ended with its evidence.** The operator's ruling of 2026-11-27, on the Lead's recommendation (if the ended run's
 evidence is still sealed and bound to the current snapshot, `continue` takes it and moves the stage on; if the snapshot
 has changed, a fresh attempt; never relaunch a run that has already ended), which the operator accepted:

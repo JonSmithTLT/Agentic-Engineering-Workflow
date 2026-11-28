@@ -57,7 +57,7 @@ tasks:
   - id: UAT-7
     item: 7
     oracle: UAT-7
-    title: the allowed_schemes allow-list (eight requirements)
+    title: the allowed_schemes allow-list (six lettered requirements, and the review's findings)
     depends_on: [UAT-6]
     shares: [UAT-1, UAT-2, UAT-3, UAT-4]
     exercises: [long task, requirement loss, the review's findings feed the work, same-file integration,

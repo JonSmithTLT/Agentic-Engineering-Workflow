@@ -244,12 +244,15 @@ def test_the_command_reads_through_silence_to_the_expiry_says_so_once_and_record
 
     for var in LEAD_SESSION_VARS:
         monkeypatch.delenv(var, raising=False)
-    expires = datetime.now(UTC) + timedelta(seconds=1)
 
     def g3(sock_path: Any, method: str, path: str, body: Any = None, *, timeout: float = 0) -> Any:
         if path.endswith("/" + C.PROBE_REF):
             return 404, None
         if method == "POST":
+            # The approval's life starts when the service grants it, as a real one does: an expiry fixed before the
+            # command ran could pass during its set-up on a loaded runner, and the wait would end `expired` before
+            # its first read of the silence (#663's CI, run 46092184648).
+            expires = datetime.now(UTC) + timedelta(seconds=1)
             return 201, {"approval_ref": "g3:approval:silent", "state": "PENDING", "expires_at": W.utc(expires),
                          "rendering": [{"template_id": "g3:action:SET_STEERING_MODE", "values": {},
                                         "source": {"kind": "TEMPLATE"}}]}
@@ -260,6 +263,11 @@ def test_the_command_reads_through_silence_to_the_expiry_says_so_once_and_record
     monkeypatch.setattr(C, "submit", lambda *a: submitted.append(a))
     monkeypatch.setattr(C, "POLL_S", 0.05)
     monkeypatch.setattr(C, "GRACE_S", 0)
+    # The wait's whole second starts when the wait does: the command's own work between the grant and the wait (the
+    # record's writer, the project's label) is real time a loaded runner can stretch past the second (#664 review, M1).
+    wait = C.await_decision
+    monkeypatch.setattr(C, "await_decision", lambda p, *a, **k: wait(
+        p, *a, now=lambda: C.expires_at(p) - timedelta(seconds=1), **k))
     cset = copy.deepcopy(G.base_set())
     cset["consent_set_ref"] = None
     for i in cset["intents"]:

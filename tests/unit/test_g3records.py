@@ -263,6 +263,11 @@ def test_the_command_reads_through_silence_to_the_expiry_says_so_once_and_record
     monkeypatch.setattr(C, "submit", lambda *a: submitted.append(a))
     monkeypatch.setattr(C, "POLL_S", 0.05)
     monkeypatch.setattr(C, "GRACE_S", 0)
+    # The wait's whole second starts when the wait does: the command's own work between the grant and the wait (the
+    # record's writer, the project's label) is real time a loaded runner can stretch past the second (#664 review, M1).
+    wait = C.await_decision
+    monkeypatch.setattr(C, "await_decision", lambda p, *a, **k: wait(
+        p, *a, now=lambda: C.expires_at(p) - timedelta(seconds=1), **k))
     cset = copy.deepcopy(G.base_set())
     cset["consent_set_ref"] = None
     for i in cset["intents"]:

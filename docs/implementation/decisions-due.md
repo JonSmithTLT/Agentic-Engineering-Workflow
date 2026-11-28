@@ -137,6 +137,30 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E402
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** How O-WORDS is enforced once the refusal schema (DX3, under F47.6) exists, settled in the operator's discussion with the designer after the UAT
+
+**Blocks:** -
+
+### E403
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Which approvals that need security move to G3, and what becomes of the revision, digest and candidate bindings the operator types today (kept, filled by AEW, or dropped)
+
+**Blocks:** -
+
+### E405
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** design
+
+**What:** The shape of the operator-only unsafe mode for weaker contexts (an unsafe toggle, a G3 PIN or a typed-back code, the operator's three options), with whether it is time-boxed or per run and whether each use is recorded in SYS-37
+
+**Blocks:** -
+
 ### STG-15
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** decision

@@ -8,9 +8,10 @@ state them:
 - **R2:** a placeholder that lists its values (`<a|b>`, none of them a placeholder) is §8.2's "slot whose values the
   text lists" (`rules.listed_values`), each value judged as a value of its slot. One that lists a placeholder
   (`<implementer|N>`) stays a placeholder; before, only its first alternative was read.
-- **R3:** a Ticket's slot is read from the parser (`rules.is_work_action`: a work unit named in the argument's dest or
-  metavar), replacing the hand-kept `WORK_DESTS`, which missed `--from`. The CLI's Ticket options that named no work
-  unit now carry the metavar `WORK-ID`.
+- **R3:** on a line that parses, a Ticket's slot is read from the parser (`rules.is_work_action`: a work unit named in
+  the argument's dest or metavar), replacing the hand-kept `WORK_DESTS`, which missed `--from`. The CLI's Ticket options that named no work
+  unit now carry the metavar `WORK-ID`. A line the parser refuses gives no position, so its fallback still exempts the
+  spellings `<T>`, `<S>` and `<E>` by hand, as it did before.
 
 **Measured** as the triage measured: its 119 tests that reach O-IDS keys, run at `129bbaf4` (Linux) with every
 judged output recorded, then judged with the rules before and after. 131 O-IDS runtime keys observed before, 112
@@ -23,4 +24,8 @@ removals are the triage's row 5. Not covered: Windows, and outputs of tests outs
 
 **What remains** (2026-11-28): the triage's rows 2 to 6 for O-IDS (the authority-candidate next action, free text to
 the elision, values the engine knows, the stale removals and residuals with the operator, then the flip), and
-O-WORDS, which stays in shadow until DX3.
+O-WORDS, which stays in shadow until DX3. Two limits of R2 stay (review of #665, m1), neither new here: a placeholder
+is known by its shape alone, so a bare word in a list counts as a listed value, and at runtime a bare word in an id
+slot as a filled one; and O-IDS reads only the first alternative of a bar between options (`--assurance
+none|--review <card>`). The live instance, `<card|default>` in `role_ops`' refusal and the quickstart, goes to row 4
+(S3), which lists the role plan's cards in that text.

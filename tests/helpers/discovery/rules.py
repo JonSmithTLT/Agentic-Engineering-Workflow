@@ -37,7 +37,8 @@ REFUSAL_SCHEMA = ("cause", "remedy", "owner")
 ID_KINDS = frozenset({"rev", "revision", "generation", "inv", "invocation", "run", "intent", "candidate"})
 # A Ticket's slot is exempt (§2.2): a work unit is a product concept the operator names. An argument is one when a word
 # of its name or its metavar is this (``is_work_action``: ``work_id``, ``--work``, ``--from WORK-ID``), read from the
-# parser as the id kinds are. It replaced a hand-kept list of dests, which missed `--from` (E188 triage, R3).
+# parser as the id kinds are, on a line that parses. It replaced a hand-kept list of dests, which missed `--from`
+# (E188 triage, R3).
 WORK_KIND = "work"
 
 ANGLE = re.compile(r"^<[^<>]+>$|^\{[^{}]+\}$")
@@ -139,7 +140,13 @@ def is_placeholder(token: str) -> bool:
 def listed_values(token: str) -> list[str] | None:
     """The values a bracketed placeholder lists (``<a|b|c>``), or ``None`` when it lists none: §8.2's "a slot whose
     values the text lists" (E188 triage, R2). An alternative that is itself a placeholder (``<implementer|N>``) is
-    still to be found, so such a token lists nothing and stays a placeholder."""
+    still to be found, so such a token lists nothing and stays a placeholder.
+
+    Its limits (review of #665, m1): a placeholder is known by its shape alone (``N``, ``<…>``, ``{…}``, the elision),
+    so a bare word in a list counts as a listed value: ``<card|default>`` (``role_ops``' refusal, the quickstart) is
+    exempt though ``card`` is to be looked up, as it was before R2; at runtime a bare word in an id slot
+    (``--revision REV``) counts as a filled value. And O-IDS reads only the first alternative of a bar between options
+    (``--assurance none|--review <card>``), so the later ones are not judged."""
     if not ANGLE.match(token) or "|" not in token:
         return None
     values = token[1:-1].split("|")
@@ -585,6 +592,8 @@ def o_ids(s: Suggestion, *, runtime: bool = False) -> list[str]:
         try:
             ns = parse(variant, complete=False)
         except ParseFail:
+            # A line the parser refuses gives no position to read a Ticket's slot from (``is_work_action``), so this
+            # fallback exempts the Ticket spellings by hand. It predates R3 (review of #665, n1).
             if any(t == "N" or (ANGLE.match(t) and t not in ("<T>", "<S>", "<E>")) for t in variant):
                 problems.append("placeholder in an unparsed line")
             break

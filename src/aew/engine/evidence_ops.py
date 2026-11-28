@@ -988,11 +988,14 @@ class EvidenceCommands:
             shown["pack"] = slices.for_lead(shown["pack"])
         return shown
 
-    def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
+    def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any], *,
+                          contained_only: bool = False) -> dict[str, Any]:
         """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,
         with an allow-listed environment. Under ``required`` a sandbox that cannot be established refuses, naming
         ``allow_weaker``, on every platform (E100); where the policy allows a weaker run (and, with the mode unset, off
-        Linux) it runs labelled so, and is entered in the register of weaker contexts while it runs (G3 addendum 7)."""
+        Linux) it runs labelled so, and is entered in the register of weaker contexts while it runs (G3 addendum 7).
+        ``contained_only``: a check of a ref review's code, which runs only in a sandbox
+        (``refuse_uncontained_ref``)."""
         import secrets
         import shutil
         import time
@@ -1016,6 +1019,9 @@ class EvidenceCommands:
             raise ContainmentUnavailable(
                 f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
                 f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None
+        if layout is None and contained_only:
+            shutil.rmtree(run_dir, ignore_errors=True)  # nothing ran in it
+            self.refuse_uncontained_ref(inv)
         if layout is not None and layout.net_dir:  # a check never uses a run's routes out (F28 §3.8)
             shutil.rmtree(layout.net_dir, ignore_errors=True)
         (run_dir / "label.json").write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1047,6 +1053,18 @@ class EvidenceCommands:
                 shutil.rmtree(run_dir, ignore_errors=True)
         return {**run, "containment": label}
 
+    @staticmethod
+    def refuse_uncontained_ref(inv: dict[str, Any]) -> None:
+        """A check of a ref review runs the ref's code, which may be third-party code the operator fetched (a fork's
+        branch), so it runs only inside a sandbox (register E168; the operator's ruling of 2026-11-27 on its question
+        Q1: a weaker context is not allowed by default to run tests or code); refused otherwise. Reading the code needs
+        no check."""
+        raise PermissionDenied(
+            f"{inv['work_unit']} reviews a named ref, and a check would run that ref's code outside a sandbox: on "
+            "a ref review a check runs only contained. Review by reading the observation instead, or run in a "
+            "contained run (a Linux host with the sandbox available)", reason="ref_check_uncontained",
+            work_unit=inv["work_unit"])
+
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
                   layout: Any = None, trees: Any = None, ending: Any = None,
                   label: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1077,6 +1095,7 @@ class EvidenceCommands:
             scope_paths = (meta.get("scope") or {}).get("paths", [])
             acceptance_inputs = (meta.get("acceptance") or {}).get("inputs")
             plan = unit.get("plan") or {}
+            reviews_ref = bool(unit.get("review_ref"))
         if not workspace.exists():
             raise NotFound(f"workspace {workspace} is missing")
         if inv["role"] in SHARED_WORKSPACE_READERS and inv.get("scope") in {"ticket", "integration"}:
@@ -1099,8 +1118,12 @@ class EvidenceCommands:
         else:
             verdict = None
             if label is None:  # the operator's own `aew check run`: contained here, or refused (DV-4)
-                run = self._check_run_direct(cfg, workspace, inv)
+                run = self._check_run_direct(cfg, workspace, inv, contained_only=reviews_ref)
             else:
+                from aew.harness.containment import CONTAINED
+
+                if reviews_ref and (layout is None or label.get("filesystem") != CONTAINED):
+                    self.refuse_uncontained_ref(inv)
                 run = C.run(cfg, workspace, policy=self.k.execution_policy()[0], env=env, layout=layout, trees=trees)
             if ending is not None and ending.is_set():
                 raise StaleAuthority(f"the run ended while check {check_id} ran; nothing was recorded")
@@ -1179,7 +1202,8 @@ class EvidenceCommands:
             state = s.state
             inv_id, inv, actor = require_invocation(state, invocation_token, f"submit.{kind}",
                                                     archived=self.archive.archived_credential)
-            E.check_submission(inv["role"], kind, submitted, scope=inv.get("scope"))
+            E.check_submission(inv["role"], kind, submitted, scope=inv.get("scope"),
+                               expected=E.pinned_kind(state, inv))
             # Any report — implementation, review or verification — is written only while the invocation's
             # own workspace/candidate is still live (review M2, re-review M2).
             workspace, ws_id, _ = self.invocations.invocation_workspace(state, inv)
@@ -1220,9 +1244,7 @@ class EvidenceCommands:
                 review.setdefault("specialty", inv.get("specialty"))
                 if (review.get("specialty") or None) != (inv.get("specialty") or None):
                     raise ValidationFailed("review specialty must match the dispatched specialty")
-                for f in review.get("findings", []):
-                    if f.get("severity") in {"blocker", "major"}:
-                        f["required"] = True
+                E.mark_required(review.get("findings", []))
                 if review.get("disposition") == "pass" and any(f.get("required") for f in review.get("findings", [])):
                     raise ValidationFailed("disposition pass is inconsistent with required findings")
                 # Checked here, while the reviewer can still correct it, not only at the Lead's ingest (M3 step 8).

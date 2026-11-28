@@ -11,10 +11,14 @@ _REVISION = "expect_rev"
 
 # Digest pairs pin the recognized predecessor and E329 successor. A later catalog edit still has to pass the normal
 # contract and exact-plan checks, and an older unrecognized contract never gains permission from this migration.
+# `ticket_draft`'s successor is its contract with E168's optional `review_ref` input (was bc561f82…, E329's): the
+# input is new, so no predecessor intent's arguments or plan can hold it, and the rebinding proved for E329's contract
+# is the same proof for this one. An intent opened under bc561f82… itself meets the normal contract check, as after any
+# catalog edit.
 _CONTRACTS = {
     "ticket_draft": (
         "40a8459709d9776e3f250d5e451bcae39c231801c03a239c41feda6185ae460c",
-        "bc561f82e2a0c7a325fab80470864c29b97252417fb16fd00c1b63d25cf094bb"),
+        "7d319c044063e0a2d0e9a584274aacb849b8c5478b6fe3f8a259b69f02bcd6e2"),
     "ticket_start": (
         "748ac3a327b24f655b7a333eaa4aee71261d16dc97f40ef0d3b2922d0f75230f",
         "fc9ce4a8ae2e59ae133a13b849513110b81653e72dacea1c046b2810d0627203"),

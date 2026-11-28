@@ -301,6 +301,80 @@ def control_violations(root: Path) -> list[str]:
     problems += scope_correction_violations(root, hot, state)
     # 64. Register E87: obligations a promotion carried (63 is the StageIntent continue's, above).
     problems += carried_obligation_violations(root, state)
+    # 65-67. Register E168: ref reviews, their pins and who observes what.
+    problems += ref_review_violations(root, state)
+    return problems
+
+
+def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """65. A unit that names a ref (``review_ref``) is a non-mutating Ticket; every attempt of it (current and in
+        ``execution_history``) that started has a ``ref_pin`` whose ``name`` is the unit's ref, whose ``merge_base`` is
+        an ancestor of both its ``commit`` and its ``authoritative_commit`` (checked with git), whose executor's
+        observation is at ``commit``, and whose ``expected_kind`` is ``ref_review``. No unit without one has a pin or
+        expects a ref review.
+    66. Every ``ref_review`` record was produced by its unit's attempt executor (an investigator, at scope
+        ``observation``), its ``reviewed_ref`` equals that attempt's pin less what it noticed of uncommitted work, and
+        its ``evaluated_snapshot.base_revision`` is the pin's ``commit``.
+    67. Every reviewer or verifier of a ``ref_review`` record observes the pin's ``commit``."""
+    problems: list[str] = []
+    invocations = state["invocations"]
+
+    def held(commit: str) -> bool:
+        return _git("cat-file", "-e", f"{commit}^{{commit}}", cwd=root).returncode == 0
+
+    def ancestor(a: str, b: str) -> bool | None:
+        """None only when git cannot say because gc dropped the descendant after its ref was rewritten (review of #661,
+        M2) while the merge-base is a commit the repository holds; any other unreadable pair is a violation (#661's
+        quick check, m5)."""
+        code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode
+        if code in (0, 1):
+            return code == 0
+        return None if held(a) and not held(b) else False
+
+    for wid, u in sorted(state["work"].items()):
+        attempts = [x for x in [u.get("execution") or {}, *u.get("execution_history", [])] if x]
+        ref = u.get("review_ref")
+        if not ref:
+            if any(x.get("ref_pin") or x.get("expected_kind") == E.REF_REVIEW for x in attempts):
+                problems.append(f"65: {wid} names no ref, yet an attempt of it is pinned to one or expects a ref "
+                                "review")
+            continue
+        if u["kind"] != "ticket" or u.get("mutating"):
+            problems.append(f"65: {wid} names a ref to review and is not a non-mutating Ticket")
+        by_attempt = {}
+        for x in attempts:
+            pin = x.get("ref_pin")
+            by_attempt[x.get("attempt")] = pin
+            if not pin or pin.get("name") != ref or x.get("expected_kind") != E.REF_REVIEW:
+                problems.append(f"65: {wid} attempt {x.get('attempt')} is not pinned to {ref} or does not expect a "
+                                "ref review")
+                continue
+            if False in (ancestor(pin["merge_base"], pin["commit"]),
+                         ancestor(pin["merge_base"], pin["authoritative_commit"])):
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s merge-base is not an ancestor of both commits")
+            obs = (invocations.get(x.get("invocation") or "") or {}).get("observation") or {}
+            if obs and obs.get("commit") != pin["commit"]:
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s executor observes {obs.get('commit')}, not "
+                                f"the pinned {pin['commit']}")
+        records = _evidence(root, wid)
+        for ev in records.values():
+            if ev["kind"] != E.REF_REVIEW:
+                continue
+            inv = invocations.get(ev["producer"]["invocation"], {})
+            pin = by_attempt.get(ev.get("attempt")) or {}
+            if inv.get("role") != "investigator" or inv.get("scope") != "observation" or \
+                    inv.get("attempt") != ev.get("attempt"):
+                problems.append(f"66: {ev['id']} was not produced by its attempt's executor")
+            if ev.get("reviewed_ref") != {k: v for k, v in pin.items() if k != "uncommitted"}:
+                problems.append(f"66: {ev['id']} reviewed {ev.get('reviewed_ref')}, not its attempt's pin")
+            if ev["evaluated_snapshot"].get("base_revision") != pin.get("commit"):
+                problems.append(f"66: {ev['id']} was evaluated at another commit than its attempt's pin")
+        for ev in records.values():
+            subject = records.get((ev.get("subject") or {}).get("id") or "")
+            if ev["kind"] in {"review", "verification"} and subject and subject["kind"] == E.REF_REVIEW:
+                obs = (invocations.get(ev["producer"]["invocation"], {}).get("observation") or {})
+                if obs.get("commit") != subject["reviewed_ref"]["commit"]:
+                    problems.append(f"67: {ev['id']} observed {obs.get('commit')}, not the reviewed commit")
     return problems
 
 
@@ -1051,7 +1125,8 @@ def _dispatch_binding_violations(root: Path, state: dict[str, Any]) -> list[str]
             attempt = u.get("execution") or {}
             if not attempt:
                 continue
-            base = attempt.get("observed_commit")
+            # a ref review observes its ref's commit; its dependencies were judged at the authoritative one (E168)
+            base = (attempt.get("ref_pin") or {}).get("authoritative_commit") or attempt.get("observed_commit")
         edges, anc = list(u.get("depends_on", [])), u.get("parent")
         while anc:
             edges += work[anc].get("depends_on", [])
@@ -1172,19 +1247,23 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
                     or ev.get("attempt") != execution.get("attempt")):
                 problems.append(f"{wid}: accepted record {rec['id']} is not the pinned output of attempt "
                                 f"{execution.get('attempt')}")
-            elif execution.get("expected_kind") != EXECUTE_KIND.get(execution.get("archetype")):
-                problems.append(f"{wid}: expected_kind does not match the executor archetype")
+            elif execution.get("expected_kind") != (E.REF_REVIEW if u.get("review_ref")
+                                                    else EXECUTE_KIND.get(execution.get("archetype"))):
+                problems.append(f"{wid}: expected_kind does not match the executor archetype (or the ref it reviews)")
         if u["state"] == "DONE":
             if not rec:
                 problems.append(f"{wid} is DONE without an accepted record")
             if not (root / ".aew" / (u.get("completion_record") or "missing")).exists():
                 problems.append(f"{wid} is DONE without a completion record")
-    # 11. Execute records come only from the matching archetype, on an observation snapshot.
+    # 11. Execute records come only from the matching archetype, on an observation snapshot (a ref review from an
+    #     investigator, E168).
     for wid in work:
         for ev in _evidence(root, wid).values():
-            if ev["kind"] in EXECUTE_KIND.values():
+            if ev["kind"] in E.EXECUTE_KINDS:
                 inv = invocations.get(ev["producer"]["invocation"], {})
-                if EXECUTE_KIND.get(inv.get("role")) != ev["kind"] or inv.get("scope") != "observation":
+                producer = "investigator" if ev["kind"] == E.REF_REVIEW else next(
+                    r for r, k in EXECUTE_KIND.items() if k == ev["kind"])
+                if inv.get("role") != producer or inv.get("scope") != "observation":
                     problems.append(f"{ev['id']} ({ev['kind']}) was produced by {inv.get('role')}/{inv.get('scope')}")
     # 11a. A plan assessment comes only from a plan assessor (a reviewer dispatched at scope plan_assessment, never a
     #      reviewer of a change), bound to the plan revision that assessor was pinned to (E160 slice 2).
@@ -1206,12 +1285,19 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
             problems.append(f"{inv_id} ended ({inv['status']}) but its observation is still marked active")
         if inv["status"] == "active" and obs and tokens.get(inv["token_id"], {}).get("revoked_at"):
             problems.append(f"{inv_id} observation invocation is active with a revoked credential")
-        # 13. Consumed inputs were CURRENT, external, or acknowledged by a recorded decision for exactly the
-        #     commit this invocation was dispatched against (dependency satisfied != input acceptable).
-        dispatched_at = obs.get("commit") or (inv.get("snapshot") or {}).get("base_revision")
-        acks = work.get(inv["work_unit"], {}).get("input_acknowledgements", [])
+        # 13. Consumed inputs were CURRENT, not source-bound (external research, a ref review: E168), or acknowledged
+        #     by a recorded decision for exactly the commit this invocation was dispatched against (dependency
+        #     satisfied != input acceptable). A ref review's inputs were judged at the authoritative commit its attempt
+        #     pinned, not at the ref's commit it observes.
+        unit_of = work.get(inv["work_unit"], {})
+        pins = {x.get("attempt"): x.get("ref_pin") for x in [unit_of.get("execution") or {},
+                                                             *unit_of.get("execution_history", [])]}
+        pin = pins.get(inv.get("attempt")) if inv.get("attempt") is not None else None
+        dispatched_at = (pin or {}).get("authoritative_commit") or obs.get("commit") or (
+            inv.get("snapshot") or {}).get("base_revision")
+        acks = unit_of.get("input_acknowledgements", [])
         for i in inv.get("inputs") or []:
-            if i.get("freshness") == "CURRENT" or i.get("basis") == "external":
+            if i.get("freshness") == "CURRENT" or i.get("basis") in {"external", "ref"}:
                 continue
             ack = next((a for a in acks if a["decision"] == i.get("acknowledgement")), None)
             if not ack or (ack["evidence"], ack["sha256"], ack["commit"]) != (i["id"], i["sha256"], dispatched_at):

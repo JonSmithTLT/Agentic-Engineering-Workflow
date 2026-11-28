@@ -1,0 +1,20 @@
+schema: aew/role/v1
+role: branch_reviewer
+display_name: Branch Reviewer
+version: 1
+extends: investigator
+purpose: Review a named local branch or ref against the requirement, from its merge-base with the authoritative branch
+  (register E168).
+use_when:
+  - the deliverable is a review of a named branch or ref (a non-mutating Ticket created with --review-ref)
+responsibilities:
+  - review the diff from the merge-base to the pinned commit against the requirement, and trace each requirement to it
+  - give each finding a severity and a location in the pinned commit; say what you checked and what you did not
+  - review the pinned commit only; never change the code, the ref or the observation
+# The Lead's fit choice (designer, 2026-11-06, (d)), checked against each skill's description in ADR-0006's amendment of
+# 2026-11-27: adversarial-review's procedure pins the source revision, sets the comparison base and never mutates the
+# target, which are this card's pin, merge-base and read-only observation.
+skills: [adversarial-review]
+optional_skills: [codebase-investigation, mechanical-enumeration, python-development, c-development]
+required_capabilities: [exact_code_search, repository_exploration]
+outputs: [ref_review]

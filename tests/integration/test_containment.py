@@ -441,6 +441,24 @@ def test_the_role_packs_git_commands_work_on_the_private_index_and_store(lab):
     assert git("status", "--porcelain", cwd=lab.ws).returncode == 0
 
 
+def test_git_diff_from_the_merge_base_works_inside_a_contained_observation(lab):
+    """Register E168: a branch reviewer reads its change with `git diff <merge-base> <pinned commit>` in its read-only
+    observation, inside the investigator's sandbox; the shared git metadata stays read-only there, so the ref it
+    reviews cannot be moved from inside."""
+    base = git("rev-parse", "HEAD", cwd=lab.ws).stdout.strip()
+    (lab.ws / "f.txt").write_text("base\nreviewed line\n")
+    assert git("commit", "-q", "-am", "the reviewed change", cwd=lab.ws).returncode == 0
+    pinned = git("rev-parse", "HEAD", cwd=lab.ws).stdout.strip()
+    layout = lab.layout("investigator", scope="observation")
+    before = lab.fingerprint()
+    done = lab.sh(layout, f"git diff --no-ext-diff --no-textconv {base} {pinned}")
+    assert done.returncode == 0, done.stderr
+    assert "+reviewed line" in done.stdout
+    moved = lab.sh(layout, f"git update-ref refs/heads/w {base}")
+    assert moved.returncode != 0
+    assert git("rev-parse", "w", cwd=lab.repo).stdout.strip() == pinned and lab.fingerprint() == before
+
+
 # ------------------------------------------------------------------ the launch self-test
 
 @pytest.mark.parametrize("host", ["this_host", "runner_like"])

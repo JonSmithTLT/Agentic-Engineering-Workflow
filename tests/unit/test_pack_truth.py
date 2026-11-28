@@ -58,7 +58,7 @@ DISPATCHABLE = [name for name in roles.ARCHETYPES if roles.archetype(name).get("
 PROMISE = "- Required knowledge (included below): "
 SECTION = {"implementation_report": "implementation", "review": "review", "verification": "verification",
            "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
-           E.PLAN_ASSESSMENT: "assessment"}
+           E.PLAN_ASSESSMENT: "assessment", E.REF_REVIEW: E.REF_REVIEW}
 CARDS = sorted(roles.builtin_cards().items())
 
 
@@ -80,6 +80,8 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
             "request": [{"id": "S-1", "kind": "story", "title": "t", "body": "the request",
                          "acceptance": {"goal_backwards": ["g"]}}],
         }
+    if E.REF_REVIEW in ((card or {}).get("outputs") or []):  # a ref reviewer's attempt is pinned to one (E168)
+        optional |= {"expected_kind": E.REF_REVIEW, "attempt": 1, "ref_review": REF_VIEW}
     return ctx.PackInputs(
         invocation_id="INV-1", role=role, role_def=role_def or roles.archetype(role), work_id="T-1", title="a title",
         scope=scope, specialty=None, workspace="/ws/T-1",
@@ -90,11 +92,19 @@ def inputs(role: str, scope: str, *, full: bool, role_def: dict[str, Any] | None
         checks={"unit": {"configured": True, "description": "unit tests"}}, authority=[], card=card, **optional)
 
 
+# A ref review's pin and its diff, as ``ref_review.pack_view`` gives them (E168).
+REF_VIEW = {"name": "refs/heads/feature/x", "commit": "1" * 40, "merge_base": "2" * 40, "merge_bases": 1,
+            "authoritative_branch": "main", "authoritative_commit": "3" * 40, "uncommitted": None,
+            "diff_bytes": 7, "diff_bound": 262144, "read_rest": "git diff 2 1 -- <path>", "diff": "+a line"}
+
+
 def card_scopes(card: roles.Card) -> list[str]:
     """The scopes a card is dispatched at: those whose report it writes (a plan assessor's card only at the assessor's
-    scope, a code reviewer's never there; ``evidence.kinds_for``)."""
+    scope, a code reviewer's never there; a ref reviewer's where an attempt is pinned to a ref review: E168;
+    ``evidence.kinds_for``)."""
     outputs = set(card.meta.get("outputs") or roles.archetype(card.archetype)["evidence_kinds"])
-    return [s for s in SCOPES[card.archetype] if outputs & E.kinds_for(card.archetype, s)]
+    return [s for s in SCOPES[card.archetype]
+            if outputs & E.kinds_for(card.archetype, s) or any(k in E.kinds_for(card.archetype, s, k) for k in outputs)]
 
 
 def matrix() -> list[tuple[str, str, bool, dict[str, Any] | None]]:
@@ -147,7 +157,8 @@ def false_promises(p: ctx.PackInputs) -> list[str]:
     return [n for n in names if ctx.KNOWLEDGE_SECTIONS.get(n) not in delivered]
 
 
-def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | None = "ticket") -> list[str]:
+def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | None = "ticket",
+                              expected: str | None = None) -> list[str]:
     """Operations in the pack's allowed list, and `aew` commands in ``text``, that the bridge lacks, and each
     `submit.<kind>` listed for a kind the engine refuses this role at this scope (``evidence.kinds_for``; #581 review,
     F1). A prohibition may name what only the Lead runs (the planner's `aew plan adopt`): it tells the worker not to, so
@@ -158,7 +169,7 @@ def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | No
         key = "submit" if op.startswith("submit.") else op
         if key not in bridge.OPERATIONS and op != "(none)":
             missing.append(op)
-        elif key == "submit" and op.removeprefix("submit.") not in E.kinds_for(role, scope):
+        elif key == "submit" and op.removeprefix("submit.") not in E.kinds_for(role, scope, expected):
             missing.append(op)
     offered = re.sub(r"^(?:### Prohibited|Additional prohibitions:)\n+(?:- .*\n?)+", "", text, flags=re.M)
     for suggestion in rules.suggestions(rules.Output(site="unit", plane=rules.MODEL, text=offered)):
@@ -178,14 +189,14 @@ def says_there_is_none(text: str) -> bool:
     return "no credential" in text.lower()
 
 
-def report_format_problems(pack: str, role: str, scope: str | None = None) -> list[str]:
+def report_format_problems(pack: str, role: str, scope: str | None = None, expected: str | None = None) -> list[str]:
     """Why the pack's report format is not what the engine accepts as it stands (a `<...>` placeholder is a string to
     the schema, so filling those in is all a copy needs), or does not list a field's other values."""
     fence = re.search(r"^```markdown\n---\n(.*?)\n---\n", pack, re.S | re.M)
     if fence is None:
         return ["no report format"]
     meta = load_yaml(fence.group(1))
-    kind = ctx.output_template(role, scope)[0]
+    kind = ctx.output_template(role, scope, expected)[0]
     assert kind is not None
     problems = []
 
@@ -204,12 +215,12 @@ def report_format_problems(pack: str, role: str, scope: str | None = None) -> li
     if "scope" in section:
         problems.append("names a scope")
     try:
-        E.check_submission(role, kind, meta, scope=scope)
+        E.check_submission(role, kind, meta, scope=scope, expected=expected)
         filled = {"scope": "ticket", **section} if kind == "verification" else section  # as the engine fills it
         validate_property("evidence", SECTION[kind], filled, source="the template")
     except AEWError as exc:
         problems.append(exc.message)
-    allowed = ctx._allowed_values(role, scope)
+    allowed = ctx._allowed_values(role, scope, expected)
     if "result" in meta and meta["result"] not in allowed["result"]:
         problems.append(f"result {meta['result']!r} is refused")
     listed = next((ln for ln in pack.splitlines() if ln.startswith("Allowed values: ")), "")
@@ -347,8 +358,8 @@ def test_a_section_that_is_absent_is_not_promised_and_one_that_is_present_is():
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_every_operation_a_workers_text_names_is_on_its_bridge(role, scope, full, card):
-    text = prompt(ctx.render(inputs(role, scope, full=full, card=card)), role, scope)
-    assert operations_off_the_bridge(text, role, scope) == []
+    p = inputs(role, scope, full=full, card=card)
+    assert operations_off_the_bridge(prompt(ctx.render(p), role, scope), role, scope, p.expected_kind) == []
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
@@ -371,7 +382,8 @@ def test_context_read_is_the_only_operation_left_off_the_list(role):
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_a_report_format_is_what_the_engine_accepts_and_lists_the_other_values(role, scope, full, card):
-    assert report_format_problems(ctx.render(inputs(role, scope, full=full, card=card)), role, scope) == []
+    p = inputs(role, scope, full=full, card=card)
+    assert report_format_problems(ctx.render(p), role, scope, p.expected_kind) == []
 
 
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())

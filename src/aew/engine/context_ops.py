@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import process_kind, roles
+from aew.engine import ref_review as R
 from aew.engine import scope_ops as SC
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
@@ -111,16 +112,24 @@ class ContextPacks:
         if inv["role"] in {"investigator", "researcher", "planner"}:
             extras["expected_kind"] = execution.get("expected_kind")
             extras["attempt"] = inv.get("attempt")
+            # Register E168: the pin of this invocation's own attempt (current or history), never a later one's.
+            attempt = next((x for x in [execution, *unit.get("execution_history", [])]
+                            if x.get("attempt") == inv.get("attempt")), {})
+            if attempt.get("ref_pin"):
+                extras["ref_review"] = R.pack_view(self.k.repo_root, attempt["ref_pin"])
         if inv.get("subject"):
             s = inv["subject"]
             ev = next((e for e in E.scan(self.k.aew_root, wid)[0] if e["id"] == s["id"]), None)
             if ev:
-                content = {k: ev[k] for k in ("claim", "result", "discovery", "research", "proposal") if k in ev}
+                content = {k: ev[k] for k in ("claim", "result", "discovery", "research", "proposal", E.REF_REVIEW,
+                                              "reviewed_ref", "verdict") if k in ev}
                 _, body = parse_frontmatter((self.k.aew_root / ev["_path"]).read_text(encoding="utf-8"))
                 from aew.util import dump_yaml
                 extras["subject"] = {"id": s["id"], "sha256": s["sha256"], "kind": ev["kind"],
                                      "content": dump_yaml(content),
                                      "body": body, "observed_commit": ev["evaluated_snapshot"]["base_revision"]}
+                if ev.get("reviewed_ref"):  # a ref review's reviewer reads the change it reviewed (E168)
+                    extras["ref_review"] = R.pack_view(self.k.repo_root, ev["reviewed_ref"])
         if inv.get("scope") == E.ASSESSMENT_SCOPE:  # the preserved request beyond the unit's own record (E160)
             extras["request"] = [{k: a[k] for k in ("id", "kind", "title", "body", "acceptance")} for a in chain]
         if inv.get("scope") == "parent":

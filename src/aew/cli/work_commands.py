@@ -135,6 +135,10 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--parent")
     q.add_argument("--depends-on", action="append", default=[], metavar="ID[:mutating|evidence]")
     q.add_argument("--non-mutating", action="store_true", help="Ticket changes no source (evidence only)")
+    q.add_argument("--review-ref", metavar="REF",
+                   help="with --non-mutating: the deliverable is a review of this local branch, tag or remote-tracking "
+                        "ref (its full name is recorded now; its commit is pinned at each dispatch; AEW fetches "
+                        "nothing)")
     q.add_argument("--scope", action="append", default=[], metavar="GLOB",
                    help="an allowed change path glob, no wider than the change needs: Tickets run at once only "
                         "when their scopes cannot name the same file; repeat --scope for each "
@@ -171,7 +175,7 @@ def register(sub: argparse._SubParsersAction) -> None:
         min_descendant_class=a.min_descendant_class, rationale=a.rationale, external_refs=a.external_ref,
         body=_read_text_arg(a.body_file), card=a.card, acceptance_checks=a.acceptance_check,
         acceptance_inputs=a.acceptance_input, class0_assertions=a.class0_assert,
-        priority=a.priority, priority_reason=a.priority_reason))
+        priority=a.priority, priority_reason=a.priority_reason, review_ref=a.review_ref))
 
     q = wsub.add_parser("show")
     q.add_argument("work_id")
@@ -451,7 +455,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = sub.add_parser("submit", help="submit role evidence (implementation report, review, verification)")
     q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
                                                      "discovery_record", "research_record", "plan_proposal",
-                                                     "plan_assessment"])
+                                                     "plan_assessment", "ref_review"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
     q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=_submit)

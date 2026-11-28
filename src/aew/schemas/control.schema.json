@@ -1076,6 +1076,11 @@
         "mutating": {
           "type": "boolean"
         },
+        "review_ref": {
+          "description": "Register E168: the full name of the local ref a non-mutating Ticket reviews, fixed at creation (refs/heads/, refs/tags/ or refs/remotes/); each attempt pins its commit (execution.ref_pin).",
+          "type": "string",
+          "pattern": "^refs/(heads|tags|remotes)/."
+        },
         "depends_on": {
           "type": "array",
           "items": {

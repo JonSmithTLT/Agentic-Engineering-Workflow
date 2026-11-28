@@ -501,7 +501,8 @@ commands:
     primitive: work.create
     lead_disposition: typed
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    refusals: [ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    note: "--review-ref (register E168): a non-mutating Ticket that reviews a named local ref, recorded by its full name; an unknown ref is NOT_FOUND, an unborn HEAD ILLEGAL_TRANSITION, an AEW Ticket branch PERMISSION_DENIED"
   - name: work show
     home: product
     users: [operator, lead]
@@ -647,7 +648,7 @@ commands:
           - "option --profile"
           - "option work_id"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    refusals: [GIT_ERROR, ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, UNAVAILABLE, USAGE]
   - name: work redispatch
     home: recovery
     users: [lead]
@@ -675,7 +676,7 @@ commands:
           - "option --reason"
           - "option work_id"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, USAGE]
+    refusals: [GIT_ERROR, ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, UNAVAILABLE, USAGE]
     note: "named by V2's redispatch fallback for a non-mutating Ticket; V2's Ticket is mutating"
   - name: work accept
     home: product
@@ -2062,7 +2063,7 @@ tools:
     mutates: "yes"
     mutates_basis: contract.Tool.mutates
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, STALE_AUTHORITY]
+    refusals: [ILLEGAL_TRANSITION, NOT_FOUND, PERMISSION_DENIED, STALE_AUTHORITY]
   - name: ticket_start
     home: product
     users: [lead]

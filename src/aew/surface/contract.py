@@ -351,7 +351,9 @@ TOOLS: dict[str, Tool] = _catalog(
                "parent": WORK_ID, "depends_on": _strings("ID or ID:mutating|evidence"),
                "rationale": TEXT, "body": TEXT, "card": {"type": "string", "minLength": 1},
                "plan": PLAN, "priority": {"enum": PRIORITY_LEVELS},
-               "priority_reason": {"type": "string", "description": "why; needed unless normal"}},
+               "priority_reason": {"type": "string", "description": "why; needed unless normal"},
+               "review_ref": {"type": "string", "minLength": 1, "description":
+                              "with non_mutating: a local branch, tag or remote-tracking ref to review"}},
               ("title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
          mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),

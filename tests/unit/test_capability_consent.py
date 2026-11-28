@@ -837,9 +837,7 @@ def test_the_pack_splits_a_cards_capabilities_by_whether_a_tool_serves_them(monk
         object.__setattr__(inputs, name, value)
     lines = ctxmod._card_section(inputs)
     assert not any("workbench resolution pending" in x for x in lines)
-    start = next(i for i, x in enumerate(lines) if x.startswith("Authority-sensitive")) + 1
-    end = next(i for i, x in enumerate(lines) if x.startswith("Expected outputs"))
-    assert lines[start:end] == said
+    assert [x for x in lines if x.startswith(("Capabilities ", "Other capabilities"))] == said
     monkeypatch.setattr(records, "shipped", lambda: {})
     assert ctxmod._card_section(inputs) == lines
 

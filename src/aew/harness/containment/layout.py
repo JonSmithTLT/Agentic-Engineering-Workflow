@@ -1846,7 +1846,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
             runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None,
             network: str = SHARED, net_dir: str | None = None,
             state_dir: str | os.PathLike[str] | None = None, tools: tuple[Any, ...] | None = None,
-            skills_dir: str | os.PathLike[str] | None = None) -> Layout:
+            skills_dir: str | os.PathLike[str] | None = None,
+            pack: str | os.PathLike[str] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
@@ -1859,7 +1860,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     made here and bound back writable like the run's own directories. ``tools`` is what the context gets of the
     capability register (``aew.capability.bind.plan``; default: this host's, as every launch's). ``skills_dir`` is the
     run's copy of its skills, made before the layout (``aew.skills.deliver``): bound read-only and protected when it
-    exists, and not bound at all when it does not, so a missing skill never refuses a launch."""
+    exists, and not bound at all when it does not, so a missing skill never refuses a launch. ``pack`` is the run's own
+    pinned pack, its launch contract, under the project's `.aew/local`: bound read-only, alone, over that mask, and
+    protected, so the run reads its own contract again (`aew context show`) and no other invocation's (register
+    E368)."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
@@ -1972,6 +1976,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     hide_runs = [_real(local)] if local.is_dir() else []  # no .aew: not an AEW root, so no lock to hide
     if runs is not None and os.path.isdir(runs) and not any(_within(_real(runs), h) for h in hide_runs):
         hide_runs.append(_real(runs))
+    if pack is not None and os.path.isfile(pack) and not os.path.islink(pack):  # its own path, never a link's target
+        own_pack = _real(pack)
+        readonly += [own_pack] if own_pack not in readonly else []
+        protected += [own_pack] if own_pack not in protected else []
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                     visible=tuple(visible), hide_runs=tuple(hide_runs),
                     **_env_fields(plan.fields(), scan, writable), mask_file=str(mask),

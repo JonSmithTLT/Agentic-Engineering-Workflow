@@ -309,7 +309,9 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
     lock = p.root / ".aew" / LOCK_REL
     lock.unlink()  # a locked read or a session would create it again
     packs = p.root / ".aew" / "local" / "packs"
-    shutil.rmtree(packs)  # as a sandbox sees them, under the mask: `context show` renders without writing one
+    for other in packs.iterdir():  # as a sandbox sees them: the run's own pack alone, bound over the mask (E368)
+        if other.name != "INV-0001":
+            shutil.rmtree(other)
     env = worker_env(p.root)
     before = worker_surface.snapshot(p.root / ".aew")
     for args in (["status", "--json"], ["resume", "--json"], ["invoke", "show", "INV-0001"],
@@ -324,6 +326,53 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
     whoami = run_aew("-C", str(p.root), "whoami", env=env)  # to the bridge, which is not there: never the store
     assert whoami.error["code"] == "STALE_AUTHORITY", whoami.stderr
     assert not lock.exists()
+
+
+def own_and_other(tmp_path: Path):
+    """A project with two dispatched invocations, INV-0001 (the run's own) and INV-0002, its packs as a run's sandbox
+    shows them (``layout.for_run``): the run's own alone over the `.aew/local` mask."""
+    from aewflow import assign, create_planned_ticket, sample_project
+
+    p = sample_project(tmp_path)
+    for title, scope in (("Add subtract()", ("calc/**",)), ("Add a test", ("tests/**",))):
+        assign(p, create_planned_ticket(p, tmp_path, title=title, scope=scope))
+    packs = p.root / ".aew" / "local" / "packs"
+    assert sorted(d.name for d in packs.iterdir()) == ["INV-0001", "INV-0002"]
+    shutil.rmtree(packs / "INV-0002")
+    return p, packs
+
+
+def test_a_run_reads_its_own_launch_contract_and_a_section_of_it(tmp_path):
+    """Register E368: the pointer a run is given, `aew context show <its invocation> --section <heading>`, prints
+    that section of the run's own pinned pack, from its heading to the next; without `--section`, all of it."""
+    p, packs = own_and_other(tmp_path)
+    env = worker_env(p.root)
+    whole = run_aew("-C", str(p.root), "context", "show", "INV-0001", env=env)
+    assert whole.returncode == 0, whole.stderr
+    assert whole.stdout.rstrip("\n") == (packs / "INV-0001" / "pack.md").read_text(encoding="utf-8").rstrip("\n")
+    part = run_aew("-C", str(p.root), "context", "show", "INV-0001", "--section", "open review", env=env)
+    assert part.returncode == 0, part.stderr
+    assert part.stdout.startswith("## Open review findings\n") and "\n## " not in part.stdout, part.stdout
+    missing = run_aew("-C", str(p.root), "context", "show", "INV-0001", "--section", "no such heading", env=env)
+    assert missing.error["code"] == "USAGE" and missing.error["details"]["reason"] == "no_such_section"
+    assert "Open review findings" in missing.error["details"]["sections"]
+
+
+@pytest.mark.parametrize("env_of", ["worker", "lead_contained"])
+def test_a_run_asking_for_another_invocations_contract_is_refused(tmp_path, env_of):
+    """Register E368: in a run, `aew context show` reads only the pack the launch bound, so another invocation's id is
+    refused before anything of it is read, with what to read instead. Which pack is the run's own is what the sandbox
+    shows, never a variable: with the contained Lead's variable in place of the run's, the refusal is the same."""
+    p, _ = own_and_other(tmp_path)
+    env = worker_env(p.root) if env_of == "worker" else {process_kind.LEAD_CONTAINED_ENV: "1"}
+    before = worker_surface.snapshot(p.root / ".aew")
+    for other in ("INV-0002", "INV-9999"):
+        res = run_aew("-C", str(p.root), "context", "show", other, "--section", "Contract", env=env)
+        assert res.error["code"] == "PERMISSION_DENIED", res.stderr
+        assert res.error["details"] == {"reason": "not_own_invocation", "invocation": other, "own": ["INV-0001"]}
+        message = res.error["message"]
+        assert "`aew context show INV-0001`" in message and "nothing of it was read" in message
+    assert worker_surface.changes(before, worker_surface.snapshot(p.root / ".aew")) == []
 
 
 def test_the_cli_inside_the_contained_lead_reads_lock_free_and_refuses_a_lock_taking_command_before_the_lock(tmp_path):

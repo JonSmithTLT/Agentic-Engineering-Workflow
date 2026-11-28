@@ -218,17 +218,20 @@ def test_a_consistent_policy_reports_nothing(tmp_path):
 
 
 def test_a_role_is_told_only_the_aew_commands_it_may_use():
-    from aew.harness.contract import LaunchContract, preamble
+    """A run's own texts (its first message's heading and its rules) name no command its role may not use; the pack
+    names each one it may (``context._launch_contract``: `aew check run` only with ``check.run``, held over every role
+    by ``tests/unit/test_pack_truth.py``), and the run's texts do not name them again (register E368)."""
+    from aew.harness.contract import LaunchContract, preamble, run_rules
 
     base = dict(run="R-INV-0007-1", invocation="INV-0007", work_unit="T-0005", scope="observation", card=None,
                 execution_profile={}, workspace="/w", pack_path="/p", pack_sha256="0" * 64, pack_text="",
                 continuation=None, run_dir="/r")
-    reviewer = preamble(LaunchContract(role="reviewer", expected_kinds=["review"],
-                                       operations=["context.read", "submit.review"], **base))
-    verifier = preamble(LaunchContract(role="verifier", expected_kinds=["verification"],
-                                       operations=["check.run", "submit.verification", "context.read"], **base))
-    assert "aew check run" not in reviewer and "`aew submit --kind <kind> --file <file>`" in reviewer, reviewer
-    assert "`aew check run <check-id>`" in verifier, verifier
+    for role, kind, operations in (("reviewer", "review", ["context.read", "submit.review"]),
+                                   ("verifier", "verification", ["check.run", "submit.verification", "context.read"])):
+        c = LaunchContract(role=role, expected_kinds=[kind], operations=operations, **base)
+        text = "\n".join([preamble(c), *run_rules(c)])
+        assert "aew check run" not in text and "aew submit" not in text, text
+        assert "`aew context show INV-0007 --section <heading>`" in text, text
 
 
 def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab, tmp_path):

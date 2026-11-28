@@ -102,13 +102,13 @@ def test_lead_projection_messaging_golden():
     ("linux", "opencode", True), ("win32", "opencode", False), ("linux", "codex", False)])
 def test_worker_preamble_offers_wait_only_on_the_qualified_harness_platform(monkeypatch, platform, harness, supported):
     from aew.harness import wait_binding
-    from aew.harness.contract import preamble
+    from aew.harness.contract import run_rules
 
     monkeypatch.setattr(wait_binding.sys, "platform", platform)
     c = contract()
     c.extra["coordination"] = {"messaging": "enabled"}
     c.execution_profile["harness"] = harness
-    text = preamble(c)
+    text = "\n".join(run_rules(c))
     assert ("`aew message wait`" in text) == supported
     if not supported:
         assert "Reply and end your turn." in text and "--timeout" not in text and "WAIT_UNSUPPORTED" not in text

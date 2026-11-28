@@ -112,6 +112,7 @@ def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
 
 
 OUTAGE_READER = cli_entry_point(["read"], {})
+WORKER_RUN = cli_entry_point([], {AGENT_ENDPOINT_ENV: "-"})  # the CLI inside a worker's harness run
 
 
 def declared() -> str | None:

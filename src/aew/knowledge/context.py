@@ -161,7 +161,17 @@ KIND_TEMPLATES = {
 CONTRACT_HEADING = "# AEW launch contract"
 # The command a pack prints for an engine operation, wherever it names one, as printed: in its backticks, so the
 # printed-command finder reads it here (the write-back's is built from the kind).
-OPERATION_COMMANDS = {"check.run": "`aew check run <check-id>`"}
+OPERATION_COMMANDS = {"check.run": "`aew check run <check-id>`",
+                      # a local read, never a bridge request: a run reads its own pinned pack (``context_show``)
+                      "context.read": "`aew context show <invocation> --section <heading>`"}
+# The bytes a harness run is sent whatever its data (register E368; E224: pack prose has a budget): its system text and
+# first message with every switch on, and its pack with none of its optional inputs, for every built-in card at every
+# scope it is dispatched at (``tests/unit/test_pack_truth.py``). An anti-bloat guard, as the Lead's pool cap is (E231):
+# raised by measured amounts when a line earns its place, never to make room for a restated one.
+ALWAYS_SENT_PROSE_BUDGET = 8_100  # bytes; the largest on 2026-11-28 is 8,025 (a ref reviewer's)
+# The contract's own section's heading, which every pack has: the pointer's example section, so it always resolves.
+CONTRACT_SECTION = "Contract"
+READ_SECTION_EXAMPLE = CONTRACT_SECTION
 
 
 def output_template(role: str, scope: str | None,
@@ -259,6 +269,13 @@ def _bullets(items: list[str]) -> list[str]:
     return [f"- {i}" for i in items] or ["- (none)"]
 
 
+# How a worker chooses among the optional skills: each one by its own fit (ADR-0006, amendment 2026-11-05: "skills by
+# fit"). The one owner of that instruction, which the pack's optional-skills line and a run's system text both take, so
+# neither reads as "at most one" beside the other's "each" (register E368, the worker-pack audit's item 5).
+SKILL_FIT = "load each one whose description matches your task"
+OPTIONAL_SKILLS_LINE = f"Optional skills (where the `skill` tool lists them, {SKILL_FIT}): "
+
+
 def _optional_skills(card: dict[str, Any]) -> list[str]:
     """A card's ``optional_skills`` beyond its ``skills:``, in its order (a name in both counts as ``skills:``)."""
     skills = set(card.get("skills") or [])
@@ -306,18 +323,20 @@ def _card_section(p: PackInputs) -> list[str]:
         "Skills to load (how the work is done): " + (", ".join(card.get("skills", [])) or "none"),
         # Only for a card with optional skills beyond `skills:` (the 2026-11-04 ruling, §1): conditional in its own
         # words, since the pack never states what is shipped, so a re-hash between dispatch and relaunch moves nothing
-        *(["Optional skills (load one only if the `skill` tool lists it and your task matches): "
-           + ", ".join(optional)] if (optional := _optional_skills(card)) else []),
-        "Required knowledge: " + (", ".join(card.get("required_knowledge", [])) or "none beyond this package"),
-        "Authority-sensitive capabilities (within the archetype envelope): " + (", ".join(sensitive) or "none"),
+        *([OPTIONAL_SKILLS_LINE + ", ".join(optional)] if (optional := _optional_skills(card)) else []),
+        # Each line below says something the contract does not (register E368): an empty list, the outputs the
+        # write-back line already names, and the Lead's selection guidance (`use_when`, which the Lead reads in `role
+        # show`) are not sent.
+        *(["Required knowledge: " + ", ".join(card["required_knowledge"])] if card.get("required_knowledge") else []),
+        *(["Authority-sensitive capabilities (within the archetype envelope): " + ", ".join(sensitive)]
+          if sensitive else []),
         *_capability_lines(ordinary, _operations(p)),
-        "Expected outputs: " + (", ".join(card.get("outputs", [])) or "the archetype's standard output"),
+        *(["Expected outputs: " + ", ".join(outputs)]
+          if (outputs := card.get("outputs") or []) and outputs != [output_template(p.role, p.scope,
+                                                                                    p.expected_kind)[0]] else []),
         *(["Restricted to operations: " + ", ".join(restrict["operations"])] if restrict.get("operations") else []),
         *(["Restricted to checks: " + ", ".join(restrict["checks"])] if restrict.get("checks") else []),
         *(["Additional prohibitions:", *_bullets(card["prohibited"])] if card.get("prohibited") else []),
-        "",
-        "Selection guidance (advisory, used by the Lead when choosing this card): "
-        + ("; ".join(card.get("use_when", [])) or "none"),
     ]
 
 
@@ -385,7 +404,9 @@ def _scope_duties(p: PackInputs, delivered: set[str]) -> list[str]:
         checks = " and the check results on its snapshot" if "check-results" in delivered else ""
         duties += [f"evaluate the change below{checks}; {look}"]
     if "children" in delivered and child_diffs(p):  # a parent's: each child's integrated diff, and no check results
-        duties += [f"evaluate each child's integrated change below; {look}"]
+        # the list once: a pack that carries both says the same of the second (register E368)
+        duties += ["evaluate each child's integrated change below" + (" in the same way" if "change" in delivered
+                                                                         else f"; {look}")]
     if "open-findings" in delivered:
         duties += ["when re-reviewing, state which of the open findings below are resolved"]
     return duties
@@ -400,10 +421,9 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
     lines = [
         f"{CONTRACT_HEADING} — {p.invocation_id} ({card_label}{p.role}{'/' + p.specialty if p.specialty else ''})",
         "",
-        "This package is your complete, bounded context. It was assembled from durable project artifacts;",
-        "you do not need, and must not rely on, anyone's conversation history.",
+        "Your bounded context, assembled from durable project artifacts: never rely on anyone's conversation history.",
         "",
-        "## Contract",
+        f"## {CONTRACT_SECTION}",
         "",
         f"- Role: **{p.role}** — authority: " + "; ".join(p.role_def["authority"]),
         f"- Work unit: **{p.work_id}** — {p.title}",
@@ -419,7 +439,8 @@ def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
           if p.expected_kind else []),
         "- Required knowledge (included below): " + ", ".join(
             name for name in p.role_def["context"]["knowledge"] if KNOWLEDGE_SECTIONS.get(name) in delivered),
-        "- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none"),
+        # A card's own capability lines say what it asked for and what serves each (register E368)
+        *([] if p.card else ["- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none")]),
         "",
         "### Responsibilities",
         *_bullets([*p.role_def["responsibilities"], *_scope_duties(p, delivered)]),
@@ -1067,16 +1088,19 @@ _FENCE = re.compile(r"^(`{3,})")
 
 
 def _open_fence(lines: list[str]) -> str | None:
-    """The fence still open at the end of ``lines`` (a closing fence is a bare run at least as long)."""
+    """The fence still open at the end of ``lines``."""
     opened: str | None = None
     for line in lines:
-        m = _FENCE.match(line)
-        if opened is None:
-            if m:
-                opened = m.group(1)
-        elif m and line.strip("`") == "" and len(m.group(1)) >= len(opened):
-            opened = None
+        opened = _fence_after(opened, line)
     return opened
+
+
+def _fence_after(opened: str | None, line: str) -> str | None:
+    """The fence open after ``line``, when ``opened`` was before it (a closing fence is a bare run at least as long)."""
+    m = _FENCE.match(line)
+    if opened is None:
+        return m.group(1) if m else None
+    return None if m and line.strip("`") == "" and len(m.group(1)) >= len(opened) else opened
 
 
 def _cut_marker(section: Section, omitted: int) -> str:
@@ -1199,3 +1223,39 @@ def assemble(p: PackInputs, budget: int | None = None) -> Pack:
 
 def render(p: PackInputs, budget: int | None = None) -> str:
     return assemble(p, budget).text
+
+
+# ------------------------------------------------------------------------------------------- reading a pack's sections
+
+SECTION_MARK = "## "  # a section of a pack starts with a level-two heading, outside any fence
+
+
+def section_headings(pack: str) -> list[str]:
+    """The headings of ``pack``'s sections, in order, without their marks. A line inside a fence is data, never a
+    heading (``_open_fence``). Its limit: a document the pack prints whole as Markdown (a requirement's body, an
+    ancestor's, the accepted plan: register E401) can hold a heading of its own, which reads as one here."""
+    return [h for h, _ in _split(pack)]
+
+
+def section_text(pack: str, heading: str) -> str | None:
+    """The sections of ``pack`` whose heading starts with ``heading`` (case and surrounding space ignored), each from
+    its heading to the next section's, joined; None when none does (register E368: a worker reads its contract's
+    sections again after a compaction, by the headings it was given)."""
+    want = heading.strip().casefold()
+    found = ["\n".join(lines).rstrip("\n") for h, lines in _split(pack) if want and h.casefold().startswith(want)]
+    return "\n\n".join(found) + "\n" if found else None
+
+
+def _split(pack: str) -> list[tuple[str, list[str]]]:
+    """``pack`` as (heading, lines) per section; what precedes the first section is not one. A fence opens and closes
+    by ``_open_fence``'s rule, followed line by line."""
+    out: list[tuple[str, list[str]]] = []
+    opened: str | None = None
+    for line in pack.split("\n"):
+        if opened is None and line.startswith(SECTION_MARK):
+            out.append((line[len(SECTION_MARK):].strip(), [line]))
+            continue
+        opened = _fence_after(opened, line)
+        if out:
+            out[-1][1].append(line)
+    return out

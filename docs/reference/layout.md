@@ -66,7 +66,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `local`
 
-- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `control_lock_visible`, `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
+- `local` (git-ignored, masked by containment); read by `aew.dashboard.reader`: `MapsReader._registry_read`; `aew.engine.archive_ops`: `Archive._index_stat`; `aew.engine.context_ops`: `ContextPacks._stored_packs`; `aew.engine.disposition_ops`: `Dispositions.finalize`; `aew.engine.lock`: `FileLock._is_path`; `aew.engine.outbox`: `wake_mark`; `aew.engine.queue_ops`: `Queue._lock_holder`; `aew.engine.store`: `control_lock_visible`, `replace_pending`; `aew.harness.containment.layout`: `for_run`; `aew.harness.event_spool`: `Reader.writers`; `aew.harness.wake_queue`: `serving`; `aew.history.index`: `HistoryIndex._use_private_copy`; `aew.switch_offer`: `_declined`
   - Written by
     - `aew.dashboard.service:Service._write_endpoint`
     - `aew.engine.custody_ops:spawn_worker`
@@ -443,10 +443,10 @@ Both lists are lower bounds. The writes the writers family could not place, and 
   - Written by
     - `aew.harness.operator_client:name_session`
     - `aew.harness.operator_client:unname_session`
-- `local/packs` (git-ignored, masked by containment); read by none
+- `local/packs` (git-ignored, masked by containment); read by `aew.engine.context_ops`: `ContextPacks._stored_packs`
   - Written by
     - None
-- `local/packs/{}` (git-ignored, masked by containment); read by `aew.engine.context_ops`: `ContextPacks.context_show`
+- `local/packs/{}` (git-ignored, masked by containment); read by `aew.engine.context_ops`: `ContextPacks._stored_packs`, `ContextPacks.context_show`
   - Written by
     - `aew.engine.context_ops:ContextPacks.build_pack`
     - `aew.engine.context_ops:ContextPacks.context_pack`
@@ -668,7 +668,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.g3records`: `Writer._write` (Path.is_dir), `prune` (Path.glob), `prune` (Path.is_dir), `prune` (Path.read_text), `prune` (Path.stat), `read_all` (Path.exists), `read_all` (Path.is_dir), `read_all` (Path.read_text), `read_all` (os.listdir)
 - `aew.harness.check_changes`: `remove_copy.writable` (os.path.isdir), `run_copy` (Path.is_dir), `run_copy` (Path.is_file), `run_copy` (shutil.copyfile)
 - `aew.harness.containment.client_cert`: `_not_after` (open), `inspect` (open), `public_snapshot` (open)
-- `aew.harness.containment.layout`: `_env_link` (os.stat), `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolution` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `_unchecked` (os.lstat), `_walk` (Path.stat), `_walk` (os.scandir), `display_files` (os.path.isfile), `for_run` (Path.exists), `for_run` (os.path.isdir), `for_run` (os.path.islink), `interpreter_binds` (os.path.isdir), `lead_trusted_code_exposed` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2), `trusted_code` (Path.is_dir), `trusted_code` (Path.is_symlink), `trusted_code` (os.path.exists), `trusted_code` (os.scandir)
+- `aew.harness.containment.layout`: `_env_link` (os.stat), `_first_absent` (os.path.isdir), `_git_metadata` (Path.exists), `_git_metadata` (Path.is_file), `_git_metadata` (os.path.exists), `_left_out` (os.path.isdir), `_left_out` (os.path.islink), `_linked` (os.path.isdir), `_links_in` (Path.is_dir), `_links_in` (Path.is_symlink), `_links_in` (os.scandir), `_mask_plan` (Path.is_symlink), `_mask_plan` (os.path.isdir), `_mask_plan` (os.path.islink), `_mask_plan` (os.scandir), `_mask_plan.named` (os.path.isdir), `_mask_plan.named` (os.path.islink), `_narrower` (Path.is_dir), `_narrower` (os.scandir), `_prefixed_files` (os.path.isfile), `_prefixed_files` (os.scandir), `_refuse_store_binds` (os.path.islink), `_resolution` (os.path.islink), `_resolv_exception` (os.path.isfile), `_resolv_exception` (os.path.islink), `_tool_fields` (os.path.isdir), `_unchecked` (os.lstat), `_walk` (Path.stat), `_walk` (os.scandir), `display_files` (os.path.isfile), `for_run` (Path.exists), `for_run` (os.path.isdir), `for_run` (os.path.isfile), `for_run` (os.path.islink), `interpreter_binds` (os.path.isdir), `lead_trusted_code_exposed` (os.path.isdir), `private_git` (Path.exists), `private_git` (shutil.copy2), `trusted_code` (Path.is_dir), `trusted_code` (Path.is_symlink), `trusted_code` (os.path.exists), `trusted_code` (os.scandir)
 - `aew.harness.containment.netns`: `_shim_source` (open)
 - `aew.harness.containment.probe`: `_row5` (Path.exists), `_row5` (Path.read_bytes), `_self_test` (Path.exists), `_self_test` (Path.is_dir), `_self_test` (Path.read_bytes), `_stores` (os.path.isdir)
 - `aew.harness.containment.sockets`: `_comm` (open), `_fds` (os.listdir), `_lines` (open), `_owner` (os.stat), `_socket_files` (Path.stat), `_socket_files` (os.scandir), `_stat` (os.lstat)
@@ -684,6 +684,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.harness.procs`: `_start_ticks` (Path.read_bytes), `process_chain.describe` (Path.read_bytes)
 - `aew.harness.runlog`: `_open_append` (os.lstat), `_open_regular` (os.lstat), `_open_regular` (os.open), `_read_text.known` (Path.exists), `_walk` (Path.stat), `_walk` (os.scandir), `credential_scan` (os.lstat), `heartbeat_time` (os.lstat)
 - `aew.harness.seat`: `read_leftovers` (read_replaced)
+- `aew.harness.supervisor`: `own_pack` (Path.is_file), `own_pack` (Path.read_text)
 - `aew.harness.weaker_register`: `_ensure_created` (Path.exists), `_entries` (Path.glob), `_entries` (Path.read_bytes), `read` (Path.exists)
 - `aew.history.store`: `History._check` (Path.read_bytes), `History.unreferenced` (Path.is_file)
 - `aew.kit`: `prepare` (Path.exists), `prepare` (Path.read_bytes)

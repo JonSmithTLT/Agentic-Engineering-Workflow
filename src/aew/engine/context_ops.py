@@ -12,7 +12,7 @@ from aew.engine import ref_review as R
 from aew.engine import scope_ops as SC
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
-from aew.errors import IntegrityError, NotFound
+from aew.errors import IntegrityError, NotFound, PermissionDenied, UsageError
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
@@ -443,8 +443,10 @@ class ContextPacks:
         ]
         return inputs, sources
 
+    PACKS_REL = "local/packs"  # under the AEW root: each invocation's pack in a directory of its own
+
     def pack_rel(self, inv_id: str) -> str:
-        return f"local/packs/{inv_id}/pack.md"
+        return f"{self.PACKS_REL}/{inv_id}/pack.md"
 
     def build_pack(self, ctx: TxnContext, inv_id: str) -> None:
         inv = ctx.state["invocations"][inv_id]
@@ -487,13 +489,50 @@ class ContextPacks:
         return {"ok": True, "invocation": inv_id, "path": str(self.k.aew_root / rel), "sha256": sha256_text(text),
                 "matches_recorded": recorded == sha256_text(text)}
 
-    def context_show(self, inv_id: str) -> str:
-        """The pack's text. A missing pack is regenerated, and kept, by a store writer; a non-writer (a worker's
-        sandbox, where `.aew/local` is a read-only mask) renders it without writing (STG-05 CB-09, CBF-1)."""
+    def context_show(self, inv_id: str, section: str | None = None) -> str:
+        """The pack's text, or with ``section`` the sections whose heading starts with it (``context.section_text``;
+        register E368: a worker reads its contract again after a compaction). A missing pack is regenerated, and kept,
+        by a store writer; the contained Lead, a non-writer whose `.aew/local` is a read-only mask, renders it without
+        writing (STG-05 CB-09, CBF-1).
+
+        A worker's run reads only a pack that is stored, and a contained run's sandbox shows it one: its own, which the
+        layout binds read-only alone over the masked `.aew/local` (``layout.for_run``). So in a run, the run's own
+        pack is the one it reads, by what the launch bound and never by a variable the run could change; any other id
+        is refused, as it is in any non-writer that sees a stored pack but not that one, before anything of it is
+        read."""
+        if not inv_id or Path(inv_id).name != inv_id or inv_id in {".", ".."}:
+            raise NotFound(f"no invocation {inv_id}")
         path = self.k.aew_root / self.pack_rel(inv_id)
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-        if process_kind.kind() == process_kind.NON_WRITER:
-            return self._rendered(inv_id)[0]
-        self.context_pack(inv_id)
-        return path.read_text(encoding="utf-8")
+        if path.is_file():
+            text = path.read_text(encoding="utf-8")
+        elif process_kind.kind() == process_kind.NON_WRITER:
+            stored = self._stored_packs()
+            if process_kind.declared() == process_kind.WORKER_RUN or stored:
+                own = ", ".join(f"`aew context show {i}`" for i in stored)
+                raise PermissionDenied(
+                    f"`aew context show` in a run reads only that run's own launch contract, which its launch pinned, "
+                    f"and {inv_id} is not it: nothing of it was read. "
+                    + (f"Read yours with {own}" if own else "This run has no stored contract to read")
+                    + "; another invocation's contract is the Lead's or the operator's to read.",
+                    reason="not_own_invocation", invocation=inv_id, own=stored)
+            text = self._rendered(inv_id)[0]
+        else:
+            self.context_pack(inv_id)
+            text = path.read_text(encoding="utf-8")
+        if section is None:
+            return text
+        found = ctxmod.section_text(text, section)
+        if found is None:
+            raise UsageError(f"no section of {inv_id}'s launch contract has a heading that starts with {section!r}; "
+                             "its sections: " + "; ".join(ctxmod.section_headings(text)),
+                             reason="no_such_section", section=section,
+                             sections=ctxmod.section_headings(text))
+        return found
+
+    def _stored_packs(self) -> list[str]:
+        """The invocations whose pack this process can see stored (``pack_rel``), by name."""
+        root = self.k.aew_root / self.PACKS_REL
+        try:
+            return sorted(d.name for d in root.iterdir() if (d / "pack.md").is_file())
+        except OSError:
+            return []

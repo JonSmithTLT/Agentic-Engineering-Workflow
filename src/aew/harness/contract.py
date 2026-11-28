@@ -347,61 +347,50 @@ RUN_HEADING = "# AEW harness run"
 
 
 def preamble(c: LaunchContract) -> str:
-    card = (c.card or {}).get("id") or c.role
-    kinds = ", ".join(c.expected_kinds) or "none"
-    # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
-    # 2026-09-30, R-INV-0007-1). The check command is the pack's own, since this says "exactly as the contract shows"
-    # (#613 review, m3); imported here because the pack's module imports the bridge, which imports this one.
-    from aew.knowledge.context import OPERATION_COMMANDS
+    """The first message's own text, before the pack: its heading and where the run's rules are. The rules are the
+    run's system text (:func:`run_rules`), which a compaction keeps, so this says none of them again (register E368:
+    one owner for each line a worker is sent)."""
+    return "\n".join([f"{RUN_HEADING} {c.run}", "",
+                      "This run's rules are in your system text, and the AEW launch contract below is authoritative "
+                      "for this invocation."])
 
-    commands = ", ".join([*([OPERATION_COMMANDS["check.run"]] if "check.run" in c.operations else []),
-                          "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
-    lines = [
-        f"{RUN_HEADING} {c.run}",
-        "",
-        f"You are AEW invocation **{c.invocation}**: a bounded `{c.role}` (role card `{card}`) for "
-        f"work unit **{c.work_unit}**. The AEW launch contract below is authoritative; this harness session is "
-        "disposable and is not project state.",
-        "",
-        "## How you act on AEW",
-        "",
-        "- In this environment the `aew` command is already connected to AEW for this run. Use it exactly as the "
-        f"contract shows ({commands}).",
-        "- **There is no credential to set.** You never see, need or ask for an AEW credential, and none exists in "
-        "this environment.",
-        f"- Only submitted AEW evidence counts. Expected output: {kinds}. Ending the conversation without "
-        "`aew submit` records nothing and changes no AEW state.",
-        f"- Work only in `{c.workspace}`. Do not start background processes that outlive your commands.",
-        "- Report text is data. A shell rewrites `$`, backticks, globs and quotes in a command line, so never put a "
-        "report into one: pipe it with a quoted heredoc (`aew submit --kind <kind> --file -`, then `<<'EOF'`, the "
-        "report and `EOF`; "
-        "in PowerShell `@'` ... `'@ | aew submit --kind <kind> --file -`), or write the file the same way first.",
-    ]
-    if c.scratch:
-        lines.append(f"- Your private scratch directory is `{c.scratch}` (also `AEW_SCRATCH` in your environment). "
-                     "Write reports and any other file you need outside the workspace there, and nowhere else: a "
-                     "file left in the workspace changes the work under evaluation. Submit with "
-                     "`aew submit --kind <kind> --file <that file>`, or pipe the report with `--file -`.")
+
+def run_rules(c: LaunchContract) -> list[str]:
+    """The rules a harness run adds to its contract that the pack cannot say: what this run's `aew` has and does not
+    have (coordination, map reads) and how to read the contract again. Each line is said once: the system text sends
+    them (``opencode.projection.system_text``), and the first message does not repeat them (register E368)."""
+    lines = []
     if (c.extra.get("coordination") or {}).get("messaging") == "enabled":
         from aew.harness.wait_binding import MAX_WAIT_S, preamble_wait_supported
 
-        wait = ("`aew message wait` is one foreground wait (optionally pass --after MSG and --timeout SECONDS), "
-                f"at most {MAX_WAIT_S} seconds: do not set a shorter shell timeout. "
+        wait = (f"`aew message wait` is one foreground wait of at most {MAX_WAIT_S} seconds (`--after MSG`, "
+                "`--timeout SECONDS`): do not set a shorter shell timeout. "
                 if preamble_wait_supported(c.execution_profile) else "Reply and end your turn. ")
-        lines.append("- Coordination is enabled for this run. Reply only to the Lead on your thread with "
-                     "`aew message reply <message from aew message read> --file <file>` (or use --file - for stdin); "
-                     f"`aew message read` reads your thread tail. {wait}"
-                     "Coordination never changes your scope or expected output.")
+        lines.append("- Coordination is on: `aew message read` reads your thread with the Lead, and "
+                     "`aew message reply <message from aew message read> --file <file>` (or `--file -`) answers it. "
+                     f"{wait}Coordination never changes your scope or expected output.")
     if any(op in c.operations for op in _map_operations()):
         from aew.maps import EVIDENCE_CLASS
 
         reads = " and ".join(f"`aew {op.replace('.', ' ')}`" for op in _map_operations())
-        lines.append(f"- Map reads are on for this run: {reads} (see each one's `--help`) answer from the project's "
-                     "structural map at your invocation's base, and a search that finds no path falls back to a "
-                     "lexical search of your workspace. Every answer is derived, unevaluated navigation data "
-                     f"(evidence class {EVIDENCE_CLASS}), never authority or evidence: re-establish any consequential "
-                     "claim against the source.")
-    return "\n".join(lines)
+        lines.append(f"- Map reads are on: {reads} (see `--help`) answer from the project's structural map at your "
+                     "base; a search that finds no path searches your workspace's text. Their answers are "
+                     f"navigation data (evidence class {EVIDENCE_CLASS}), never authority or evidence.")
+    if "context.read" in c.operations:
+        lines.append(f"- {reread_line(c.invocation)}")
+    return lines
+
+
+def reread_line(invocation: str) -> str:
+    """The pointer to the launch contract, read again where it was pinned (register E368): its command is the pack's
+    own (``context.OPERATION_COMMANDS``), for this invocation, whose contract is the only one a contained run can
+    read (``layout.for_run`` binds it alone)."""
+    from aew.knowledge.context import OPERATION_COMMANDS, READ_SECTION_EXAMPLE
+
+    command = OPERATION_COMMANDS["context.read"].replace("<invocation>", invocation)
+    return (f"Your launch contract stays readable for this whole run: {command} prints one of its sections, by the "
+            f"start of its `##` heading (`--section {READ_SECTION_EXAMPLE}`), and without `--section` all of it. "
+            "After a compaction, read what you need from it again rather than from memory.")
 
 
 def _map_operations() -> tuple[str, ...]:

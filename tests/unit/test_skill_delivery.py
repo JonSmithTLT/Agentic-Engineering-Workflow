@@ -666,8 +666,7 @@ def test_the_pack_offers_optional_skills_conditionally_and_renders_nothing_from_
     engineer = roles.builtin_cards()["engineer"].meta
     before = card_lines(engineer)
     assert "Skills to load (how the work is done): " + ", ".join(engineer["skills"]) in before
-    assert ("Optional skills (load one only if the `skill` tool lists it and your task matches): "
-            + ", ".join(engineer["optional_skills"])) in before  # the card's own list, in its order
+    assert (ctxmod.OPTIONAL_SKILLS_LINE + ", ".join(engineer["optional_skills"])) in before  # the card's own list
     monkeypatch.setattr(skills, "entries", lambda: {})
     monkeypatch.setattr(skills, "check", lambda name: (skills.NOT_SHIPPED, {}))
     assert card_lines(engineer) == before

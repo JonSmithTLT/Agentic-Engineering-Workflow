@@ -883,8 +883,8 @@ class Engine:
     def context_pack(self, inv_id: str) -> dict[str, Any]:
         return self._packs.context_pack(inv_id)
 
-    def context_show(self, inv_id: str) -> str:
-        return self._packs.context_show(inv_id)
+    def context_show(self, inv_id: str, section: str | None = None) -> str:
+        return self._packs.context_show(inv_id, section)
 
     def dispatch_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.dispatch_binding_problem(state, work_id)

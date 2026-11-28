@@ -128,7 +128,7 @@ def contain(monkeypatch, provider_env: list[str], provider: str = "openai", rela
                                bridge=SimpleNamespace(private_dir=None, address=None),
                                record={"execution_profile": {"provider": provider}}, run_dir=None)
     contract = SimpleNamespace(extra={"provider_env": provider_env}, role="implementer", scope="ticket",
-                               workspace="/w", scratch="/s")
+                               workspace="/w", scratch="/s", pack_path="", pack_text="")
     adapter_cls = SimpleNamespace(PROVIDER_RELAY=relay, EGRESS=())
     supervisor.Supervisor._contain(stand_in, contract, adapter_cls)  # type: ignore[arg-type]
 
@@ -179,7 +179,7 @@ def test_a_launch_whose_provider_needs_a_client_certificate_is_refused_off_the_r
                                    bridge=SimpleNamespace(private_dir=None, address=None), record=record,
                                    run_dir=None, _event=lambda kind, **fields: events.append((kind, fields)))
         contract = SimpleNamespace(extra={"provider_env": []}, role="implementer", scope="ticket", workspace="/w",
-                                   scratch="/s")
+                                   scratch="/s", pack_path="", pack_text="")
         supervisor.Supervisor._contain(stand_in, contract,  # type: ignore[arg-type]
                                        SimpleNamespace(PROVIDER_RELAY=True, EGRESS=()))
 

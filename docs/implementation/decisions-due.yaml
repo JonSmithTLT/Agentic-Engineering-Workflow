@@ -122,6 +122,27 @@ items:
     into the contract (managed key custody opt in per provider, today's path custody the default; credential operations
     operator-only, activation a G3 action), with the persistence a host without a TPM may claim
 
+- row: E402
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: How O-WORDS is enforced once the refusal schema (DX3, under F47.6) exists, settled in the operator's discussion
+    with the designer after the UAT
+
+- row: E403
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: Which approvals that need security move to G3, and what becomes of the revision, digest and candidate bindings the
+    operator types today (kept, filled by AEW, or dropped)
+
+- row: E405
+  needs: design
+  owner: designer
+  due: Unscheduled
+  what: The shape of the operator-only unsafe mode for weaker contexts (an unsafe toggle, a G3 PIN or a typed-back code,
+    the operator's three options), with whether it is time-boxed or per run and whether each use is recorded in SYS-37
+
 - row: STG-15
   needs: decision
   owner: designer

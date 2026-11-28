@@ -85,6 +85,8 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **The limit on half-built work** (the operator, 2026-11-06): N = 12. A system counts when it is partly built, built but off, built but not wired, or staged, and its recommendation is finish or switch on (the designer's ruling of 2026-11-10). Systems marked keep, cut or freeze don't count, since no work is owed on them. `tools/systems.py` computes the count and `systems.py check` enforces it. No new system starts while the count is above N, or would be with it added, unless an allowance in the operator's own dated words covers it.
 
+**The feature freeze** (the operator, 2026-11-27): "Well yeah I can mostly agree with that we can freeze new features after we get everything in thr queue clear. Then we can work on a plan for cleanup, optimization, efficiency, etc. Makes sense?" *The coordinator's reading of the operator's words, not a quote:* the queue is the set of pull requests in flight when they said it: #658 (E87), #660 (E101), #661 (E168's first PR) and #662 (E185), all merged by `129bbaf4` on 2026-11-28, when the freeze began. #562 and #632 are drafts the operator holds, outside that set. From the freeze, Now items that add features (E168's second PR, E185's follow-ons and the like) wait; fixes, cleanup, efficiency, the runbook and a rehearsal for the personal alpha's gate run (E117), and E188's O-IDS work, which the operator asked to finish ("finish ids", 2026-11-28), continue. The freeze lasts until the operator lifts it; the plan for cleanup, optimization and efficiency comes next.
+
 **The systems generator** (item 39; the operator, 2026-11-06, "Now, PR 1 first"): its PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use.
 
 **Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26, 37 and 38 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121 and E122 (both closed), then E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
@@ -2012,11 +2014,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E188
 
-**Work:** The discovery layer's O-WORDS and O-IDS backlog: 70 keys new against the allow-list at `01380632`. Each is reworded, or listed with its reason. Shadow only: neither rule enforces, and the backlog doesn't hold E140's flip. Done when neither rule reports a key that is new against the allow-list
+**Work:** The discovery layer's O-IDS backlog: each key new against the allow-list is reworded, cleared by a product change, or listed with its reason, and then O-IDS is switched on. O-WORDS stays in shadow (report-only) and is E402's. Done when O-IDS reports no key that is new against the allow-list
 
-**Source:** The Lead's count of the shadow rules at `01380632`, 2026-11-06; the operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 7
+**Source:** The Lead's count of the shadow rules at `01380632`, 2026-11-06; the operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 7; the operator's decision of 2026-11-28, which narrows it to O-IDS and separates O-WORDS (E402)
 
-**When:** **Unscheduled**, after first use: the operator keeps the four rules other than O-CMD and O-SECRET in shadow through first use
+**When:** **Unscheduled**, the Lead places it: the operator lifted the hold through first use for O-IDS on 2026-11-28 ("for now get ids in", "finish ids"), so O-IDS is finished now, inside the feature freeze (§1), and switched to enforce once the triage's pull requests land. O-WORDS keeps the hold, and is E402's
 
 **Notes:** Filed by the Lead
 
@@ -4025,6 +4027,54 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the E198 quoting pass
 
 *Later notes: `notes.d/E401/`, oldest first (`python tools/register.py show E401`).*
+
+### E402
+
+**Work:** The discovery layer's O-WORDS enforcement, separated from E188: O-WORDS fires on every refusal without the refusal schema (`cause`, `remedy`, `owner`), and no product refusal carries it, so no finding can be cleared by changing a refusal's text. Until it is switched on it stays in shadow, reporting and failing nothing. Done when the product's refusals carry the schema (DX3, part of F47.6), the designer and the operator have settled how O-WORDS is enforced, and O-WORDS reports no key that is new against the allow-list
+
+**Source:** The operator's decision of 2026-11-28 on E188's triage: "So for now get ids in and words stays report onky until i can talk with the designer. Track words seperatly and finish ids", and "Yup this is a designer and inissue for after jat."
+
+**When:** **Unscheduled**, blocked on DX3 (the refusal schema, under F47.6) and on the operator's discussion with the designer after the UAT, read as the personal alpha's gate run (§1; E117's first real-model receipt)
+
+**Notes:** Filed by the register PR of 2026-11-28. SYS-12 (the discovery layer, D2)
+
+*Later notes: `notes.d/E402/`, oldest first (`python tools/register.py show E402`).*
+
+### E403
+
+**Work:** Approvals that need security are authorized by G3, not by ceremony (design): decide which approvals move to G3 codes and which need no binding the operator types. A design consideration, not a ruling: the digest and revision binding (`plan accept` and `work accept` with `--revision` and `--approval-digest`, `integrate publish --candidate`) still detects approving a revision other than the one read, which is staleness and not authority; AEW could fill that binding itself rather than make it the operator's step. Done when the designer's decision on which approvals take G3 and what becomes of the bindings is recorded
+
+**Source:** The operator's decision of 2026-11-28 on E188's triage, answering S6 (the operator's "r2" is the second question put to them, S6, not the triage's rule-precision R2): "For r2 funny enough thats exactly what i didnt like about the above. I dont see that as security that looks like ceremony. Like shown candidate hash can literally just be competed by the lead and they can approve it themselves. Real security isng3 approval otherwise this is obfuscation and ceremony and not security.  For now their fine. But eventually things that need security should probably just all be switched to g3 codes l, informal lead asked me for approval or just do it."
+
+**When:** **Unscheduled**, after the UAT, read as the personal alpha's gate run (§1; E117's first real-model receipt); the designer designs it before anything is built
+
+**Notes:** Filed by the register PR of 2026-11-28. Until then the bindings stay, and E188 lists their placeholders as residuals
+
+*Later notes: `notes.d/E403/`, oldest first (`python tools/register.py show E403`).*
+
+### E404
+
+**Work:** UX, stretch: where AEW knows every step of a lookup chain the operator would otherwise follow by hand (run x, read a value, plug it into y, then z, to get an output), and no step has a side effect, AEW collapses the chain and gives the output, or the whole command with the value filled in. Done when the operator's known chains of that shape are collapsed
+
+**Source:** The operator, 2026-11-28: "Only additionall stretch ux item is dome ask me to.do step x -> y -> z -> output if aew knows each step and to get that ojtput I have to follow that path and it doesn't do any side effects. For example that is fixed now but tucked before. I had to do lead show to get the expected rev just to plug that value into another shell command."
+
+**When:** **Unscheduled**, a stretch item after the UAT, read as the personal alpha's gate run (§1; E117's first real-model receipt)
+
+**Notes:** Filed by the register PR of 2026-11-28. The example the operator gives, the expected revision, went with E329
+
+*Later notes: `notes.d/E404/`, oldest first (`python tools/register.py show E404`).*
+
+### E405
+
+**Work:** An operator-only unsafe mode for weaker contexts: a way for the operator to let a context with less than full containment run tests or code, which is refused by default. The operator named three ways to switch it on: an unsafe toggle, a G3 PIN, or a typed-back code. Whichever the designer picks, it is on the operator's out-of-band channel, never a flag or a reason string a model can produce. Its first user is E168's ref review, whose checks on an uncontained host are refused (`ref_check_uncontained`). Open questions for the designer, not the operator's words: whether the mode is time-boxed or per run, and whether each use is recorded in the register of weaker contexts (SYS-37). Done when the designer's shape is built and a ref review's check runs uncontained only under it
+
+**Source:** The operator's ruling of 2026-11-27 on E168's Q1: "Im happy with following weaker context not allowed by default to run tests or code. Id like if we have time to add the unsafe toggle or a g3 pin or typed back code for unsafe mode for things like this."
+
+**When:** **Unscheduled**, once the operator lifts the feature freeze (§1); the designer shapes it before anything is built
+
+**Notes:** Filed by the register PR of 2026-11-28, as E168's note of 2026-11-27 asked
+
+*Later notes: `notes.d/E405/`, oldest first (`python tools/register.py show E405`).*
 
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 

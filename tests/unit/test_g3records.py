@@ -244,12 +244,15 @@ def test_the_command_reads_through_silence_to_the_expiry_says_so_once_and_record
 
     for var in LEAD_SESSION_VARS:
         monkeypatch.delenv(var, raising=False)
-    expires = datetime.now(UTC) + timedelta(seconds=1)
 
     def g3(sock_path: Any, method: str, path: str, body: Any = None, *, timeout: float = 0) -> Any:
         if path.endswith("/" + C.PROBE_REF):
             return 404, None
         if method == "POST":
+            # The approval's life starts when the service grants it, as a real one does: an expiry fixed before the
+            # command ran could pass during its set-up on a loaded runner, and the wait would end `expired` before
+            # its first read of the silence (#663's CI, run 46092184648).
+            expires = datetime.now(UTC) + timedelta(seconds=1)
             return 201, {"approval_ref": "g3:approval:silent", "state": "PENDING", "expires_at": W.utc(expires),
                          "rendering": [{"template_id": "g3:action:SET_STEERING_MODE", "values": {},
                                         "source": {"kind": "TEMPLATE"}}]}

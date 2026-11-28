@@ -317,7 +317,9 @@ Inputs, not governing. Where a research note once carried a designer decision, t
 
 Measurements and probes, kept beside the documents that cite them: the M3 dogfood, live trials and performance runs
 (`eval/m3/`), the ADR-0011 baselines and acceptance measurements (`eval/adr-0011/perf/`), and every independent review's
-probes and result files ([`eval/reviews/README.md`](../eval/reviews/README.md)).
+probes and result files ([`eval/reviews/README.md`](../eval/reviews/README.md)). The operator's UAT story workload,
+run through AEW and through OpenCode alone for a manual comparison (E117), is
+[`eval/experiments/uat-story/`](../eval/experiments/uat-story/README.md).
 
 ## Archive ([`archive/`](archive/))
 

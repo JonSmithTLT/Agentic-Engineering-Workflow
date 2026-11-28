@@ -2753,11 +2753,12 @@ sections:
       on E97 and STG-14)
 
   - '#': E188
-    Work: 'The discovery layer''s O-WORDS and O-IDS backlog: 70 keys new against the allow-list at `01380632`. Each is reworded,
-      or listed with its reason. Shadow only: neither rule enforces, and the backlog doesn''t hold E140''s flip. Done when
-      neither rule reports a key that is new against the allow-list'
+    Work: 'The discovery layer''s O-IDS backlog: each key new against the allow-list is reworded, cleared by a product change,
+      or listed with its reason, and then O-IDS is switched on. O-WORDS stays in shadow (report-only) and is E402''s. Done
+      when O-IDS reports no key that is new against the allow-list'
     Source: The Lead's count of the shadow rules at `01380632`, 2026-11-06; the operator's decision of 2026-11-06 on the
-      build board's open decisions (design workspace `e8fde77`), item 7
+      build board's open decisions (design workspace `e8fde77`), item 7; the operator's decision of 2026-11-28, which narrows
+      it to O-IDS and separates O-WORDS (E402)
     When: '**Unscheduled**, after first use: the operator keeps the four rules other than O-CMD and O-SECRET in shadow through
       first use'
     Notes: Filed by the Lead
@@ -5483,6 +5484,58 @@ sections:
     Source: 'E198''s quoting pass (`fix/pack-recorded-text-quoting`, #639), which checked these sections and left them'
     When: '**Unscheduled**, any idle slot; compatible with E368''s rewrite, which may move these sections'
     Notes: Filed by the E198 quoting pass
+
+  - '#': E402
+    Work: 'The discovery layer''s O-WORDS enforcement, separated from E188: O-WORDS fires on every refusal without the refusal
+      schema (`cause`, `remedy`, `owner`), and no product refusal carries it, so no finding can be cleared by changing a
+      refusal''s text. Until it is switched on it stays in shadow, reporting and failing nothing. Done when the product''s
+      refusals carry the schema (DX3, part of F47.6), the designer and the operator have settled how O-WORDS is enforced,
+      and O-WORDS reports no key that is new against the allow-list'
+    Source: 'The operator''s decision of 2026-11-28 on E188''s triage: "So for now get ids in and words stays report onky
+      until i can talk with the designer. Track words seperatly and finish ids"'
+    When: '**Unscheduled**, blocked on DX3 (the refusal schema, under F47.6) and on the operator''s discussion with the
+      designer after the UAT'
+    Notes: Filed by the register PR of 2026-11-28. SYS-12 (the discovery layer, D2)
+
+  - '#': E403
+    Work: 'Approvals that need security are authorized by G3, not by ceremony (design): decide which approvals move to G3
+      codes and which need no binding the operator types. A design consideration, not a ruling: the digest and revision
+      binding (`plan accept` and `work accept` with `--revision` and `--approval-digest`, `integrate publish --candidate`)
+      still detects approving a revision other than the one read, which is staleness and not authority; AEW could fill that
+      binding itself rather than make it the operator''s step. Done when the designer''s decision on which approvals take
+      G3 and what becomes of the bindings is recorded'
+    Source: 'The operator''s decision of 2026-11-28 on E188''s triage (S6): "For r2 funny enough thats exactly what i didnt
+      like about the above. I dont see that as security that looks like ceremony. Like shown candidate hash can literally
+      just be competed by the lead and they can approve it themselves. Real security isng3 approval otherwise this is obfuscation
+      and ceremony and not security. For now their fine. But eventually things that need security should probably just all
+      be switched to g3 codes l, informal lead asked me for approval or just do it."'
+    When: '**Unscheduled**, after the UAT; the designer designs it before anything is built'
+    Notes: Filed by the register PR of 2026-11-28. Until then the bindings stay, and E188 lists their placeholders as residuals
+
+  - '#': E404
+    Work: 'UX, stretch: where AEW knows every step of a lookup chain the operator would otherwise follow by hand (run x,
+      read a value, plug it into y, then z, to get an output), and no step has a side effect, AEW collapses the chain and
+      gives the output, or the whole command with the value filled in. Done when the operator''s known chains of that shape
+      are collapsed'
+    Source: 'The operator, 2026-11-28: "Only additionall stretch ux item is dome ask me to.do step x -> y -> z -> output
+      if aew knows each step and to get that ojtput I have to follow that path and it doesn''t do any side effects. For
+      example that is fixed now but tucked before. I had to do lead show to get the expected rev just to plug that value
+      into another shell command."'
+    When: '**Unscheduled**, a stretch item after the UAT'
+    Notes: Filed by the register PR of 2026-11-28. The example the operator gives, the expected revision, went with E329
+
+  - '#': E405
+    Work: 'An operator-only unsafe mode for weaker contexts: a way for the operator to let a context with less than full
+      containment run tests or code, which is refused by default. It is authorized by G3 (a PIN or a typed code), never
+      by a flag or a reason string a model can produce; it is time-boxed or per run; and each use is recorded in the register
+      of weaker contexts (SYS-37). Its first user is E168''s ref review, whose checks on an uncontained host are refused
+      (`ref_check_uncontained`). Done when the designer''s shape is built and a ref review''s check runs uncontained only
+      under it'
+    Source: 'The operator''s ruling of 2026-11-27 on E168''s Q1: "Im happy with following weaker context not allowed by
+      default to run tests or code. Id like if we have time to add the unsafe toggle or a g3 pin or typed back code for
+      unsafe mode for things like this."'
+    When: '**Unscheduled**, after the feature freeze; the designer shapes it before anything is built'
+    Notes: Filed by the register PR of 2026-11-28, as E168's note of 2026-11-27 asked
 
 - number: 7
   title: Operator acceptance session (UAT, 2026-09-30)

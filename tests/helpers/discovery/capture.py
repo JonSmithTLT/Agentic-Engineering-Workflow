@@ -136,14 +136,14 @@ def cli_outputs(argv: list[str], stdout: str, stderr: str, stdin: str = "") -> l
     out: list[rules.Output] = []
     refusal = rules.refusal_of(stderr)
     if refusal is not None:
-        out.append(rules.Output(site=f"cli:{words}|{refusal.get('code')}", refusal=refusal, echo=echo))
+        out.append(rules.Output(site=f"cli:{words}|{refusal.get('code')}", refusal=refusal, echo=echo, runtime=True))
     if stdout.strip():
         try:
             payload = json.loads(stdout)
             text = ""
         except ValueError:
             payload, text = None, stdout
-        out.append(rules.Output(site=f"cli:{words}|result", payload=payload, text=text, echo=echo))
+        out.append(rules.Output(site=f"cli:{words}|result", payload=payload, text=text, echo=echo, runtime=True))
     return out
 
 
@@ -152,7 +152,7 @@ def tool_output(name: Any, arguments: Any, result: Any) -> rules.Output:
     refusal = stopped.get("error") if isinstance(stopped, dict) else None
     code = (refusal or {}).get("code") or "result"
     return rules.Output(site=f"tool:{name}|{code}", plane=rules.MODEL, payload=result, refusal=refusal,
-                        echo=(json.dumps(arguments, default=str),))
+                        echo=(json.dumps(arguments, default=str),), runtime=True)
 
 
 class _Tee(io.TextIOBase):

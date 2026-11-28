@@ -132,8 +132,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("kind", choices=["ticket", "story", "epic"])
     q.add_argument("--title", required=True)
     q.add_argument("--class", dest="risk_class", type=int, required=True, choices=range(0, 5))
-    q.add_argument("--parent")
-    q.add_argument("--depends-on", action="append", default=[], metavar="ID[:mutating|evidence]")
+    q.add_argument("--parent", metavar="WORK-ID")
+    q.add_argument("--depends-on", action="append", default=[], metavar="WORK-ID[:mutating|evidence]")
     q.add_argument("--non-mutating", action="store_true", help="Ticket changes no source (evidence only)")
     q.add_argument("--review-ref", metavar="REF",
                    help="with --non-mutating: the deliverable is a review of this local branch, tag or remote-tracking "
@@ -262,7 +262,7 @@ def register(sub: argparse._SubParsersAction) -> None:
                                                reason=a.reason))
     q = wsub.add_parser("move", help="move a unit under another parent (or none); recorded decision (Lead)")
     q.add_argument("work_id")
-    q.add_argument("--parent", required=True, help="new parent id, or `none`")
+    q.add_argument("--parent", required=True, metavar="WORK-ID", help="new parent id, or `none`")
     q.add_argument("--reason", required=True)
     _add_prior(q, "parent ID or none")
     q.set_defaults(handler=lambda a: _bound_prior(a, "work_move",
@@ -285,8 +285,8 @@ def register(sub: argparse._SubParsersAction) -> None:
         token=_lead_token(a), work_id=a.work_id, risk_class=a.risk_class, reason=a.reason))
     q = wsub.add_parser("depend", help="add/remove dependency edges; recorded decision (Lead)")
     q.add_argument("work_id")
-    q.add_argument("--add", action="append", default=[], metavar="ID[:mutating|evidence]")
-    q.add_argument("--remove", action="append", default=[], metavar="ID")
+    q.add_argument("--add", action="append", default=[], metavar="WORK-ID[:mutating|evidence]")
+    q.add_argument("--remove", action="append", default=[], metavar="WORK-ID")
     q.add_argument("--reason", required=True)
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_depend(
@@ -295,7 +295,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = wsub.add_parser("acknowledge-input", help="accept a stale source-bound input for the current commit (Lead)")
     q.add_argument("work_id")
     q.add_argument("--input", dest="evidence", required=True, help="the consumed record's evidence id")
-    q.add_argument("--from", dest="source", required=True, help="the Ticket that produced it")
+    q.add_argument("--from", dest="source", required=True, metavar="WORK-ID", help="the Ticket that produced it")
     q.add_argument("--reason", required=True, help="what was rechecked against the current source")
     _add_approval(q)
     q.set_defaults(handler=lambda a: _approved(a, "input.acknowledge", "work_acknowledge_input",
@@ -317,7 +317,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("subject",
                    help="a finding <evidence>#<finding>, a claim <evidence>#claim-<n>, or an anomaly ANM-<n>")
     q.add_argument("--choice", required=True, choices=["accept_risk", "follow_up", "not_applicable"])
-    q.add_argument("--follow-up", dest="follow_up", help="with --choice follow_up: the Ticket that follows it up")
+    q.add_argument("--follow-up", dest="follow_up", metavar="WORK-ID",
+                   help="with --choice follow_up: the Ticket that follows it up")
     q.add_argument("--rationale", required=True, help="why (recorded with the disposition)")
     _add_approval(q)
     q.set_defaults(handler=_dispose)
@@ -385,7 +386,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = psub.add_parser("adopt", help="propose a plan revision from an accepted Planner plan_proposal (Lead)")
     q.add_argument("work_id", help="the unit whose plan it becomes")
     q.add_argument("--evidence", required=True)
-    q.add_argument("--from", dest="source", required=True, help="the DONE planning Ticket that produced it")
+    q.add_argument("--from", dest="source", required=True, metavar="WORK-ID",
+                   help="the DONE planning Ticket that produced it")
     q.add_argument("--reason")
     _add_assurance(q)
     _add_lead(q)

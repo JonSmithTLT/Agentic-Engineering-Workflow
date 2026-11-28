@@ -222,6 +222,79 @@ def test_o_ids_reads_structured_suggestions():
                      "O-IDS")
 
 
+# Ids and bindings a runtime output fills in itself: the product's own forms (E188 triage, S4, S5, S7 and S10).
+FILLED = ("aew harness wait R-INV-0001-1", "aew harness launch INV-0001 --prior-value none",
+          "aew integrate publish T-0001 --candidate 29f1c0de29f1c0de",
+          "aew history log --since 0 --kind decision.recorded", "aew stage continue SI-0001 --rationale ...",
+          "aew authority accept C-001 --class decisions")
+# What a reader must still look up, in the same slots.
+ASKED = ("aew harness wait <run>", "aew plan accept T-0001 --revision <n>", "aew history log --since N",
+         "aew authority accept <candidate> --class decisions", "aew integrate publish T-0001 --candidate ...")
+
+
+def at_runtime(*commands: str) -> Output:
+    return Output(site="cli:aew status|result", text=" ".join(f"`{c}`" for c in commands), runtime=True)
+
+
+def test_a_runtime_output_that_fills_in_its_own_ids_asks_for_none_and_a_placeholder_still_asks():
+    """The operator's ruling of 2026-11-28 (E188 triage, R1): a command AEW prints with the id filled in, ready to
+    copy and run, asks for nothing; a placeholder the reader must look up still does. A static text keeps every
+    bullet (U1): an id written in a guide is an example the reader must replace."""
+    for command in FILLED:
+        assert not found(at_runtime(command), "O-IDS"), command
+        assert not found(Output(site="tool:status|result", payload={"next": command}, runtime=True), "O-IDS"), command
+        assert found(prose(command), "O-IDS"), command
+    for command in ASKED:
+        assert found(at_runtime(command), "O-IDS"), command
+        assert found(prose(command), "O-IDS"), command
+
+
+def test_the_capture_plugins_outputs_are_runtime_and_the_static_texts_are_not():
+    """R1 reaches only what AEW printed as it ran: the capture plugin's CLI and typed-tool outputs. The same command
+    on a guide line stays a finding."""
+    command = "aew harness wait R-INV-0001-1"
+    outputs = [*capture.cli_outputs(["status"], json.dumps({"next": command}), ""),
+               *capture.cli_outputs(["harness", "wait"], "", json.dumps({"ok": False, "error": {
+                   "code": "USAGE", "message": f"run `{command}`"}})),
+               capture.tool_output("status", {}, {"ok": True, "stopped": None, "next": command})]
+    assert len(outputs) == 3 and all(o.runtime for o in outputs)
+    assert not [f for o in outputs for f in rules.check(o) if f.rule == "O-IDS"]
+    site = "docs/guides/planted.md"
+    assert [f.key for f in static.scan({site: f"`{command}`"}) if f.rule == "O-IDS" and site in f.key] == [
+        f"O-IDS {static.STATIC}{site}|{command}"]
+
+
+def test_a_placeholder_that_lists_its_values_is_no_ask_and_one_that_lists_a_placeholder_is():
+    """§8.2's "a slot whose values the text lists" (E188 triage, R2), read from the text as the parser's choices are:
+    each value of ``<a|b>`` is judged as a value of its slot, so at runtime a list of filled ids asks for nothing. A
+    list with a placeholder in it (``<implementer|N>``) still leaves a value to be found."""
+    assert rules.listed_values("<implementer|reviewer>") == ["implementer", "reviewer"]
+    assert rules.listed_values("<implementer|N>") is None and rules.listed_values("<card>") is None
+    assert not found(at_runtime("aew history log --since <0|12>"), "O-IDS")
+    assert found(at_runtime("aew history log --since <0|N>"), "O-IDS")
+    assert not found(prose("aew work staff T-0001 --execute <implementer|reviewer>"), "O-IDS")
+    assert found(prose("aew work staff T-0001 --execute <implementer|N>"), "O-IDS") == [
+        "placeholder <implementer|N> for execute"]
+    assert found(prose("aew work staff T-0001 --execute <card>"), "O-IDS")
+
+
+def test_every_tickets_slot_is_read_from_the_parser_per_command():
+    """§8.2 exempts a Ticket's slot (E188 triage, R3). It is read from each argument's own declaration, a work unit in
+    its name or metavar (``WORK-ID``), not a hand-kept list of dests, which missed ``acknowledge-input --from``. An
+    argument's dest means different things in different commands: ``--before`` and ``--remove``."""
+    slots = {(path, a.dest) for path in command_paths() for a in parser_at(path)._actions if rules.is_work_action(a)}
+    assert {(("work", "acknowledge-input"), "source"), (("plan", "adopt"), "source"),
+            (("work", "dispose"), "follow_up"), (("work", "create"), "parent"), (("work", "create"), "depends_on"),
+            (("work", "move"), "parent"), (("work", "depend"), "add"), (("work", "depend"), "remove"),
+            (("integrate", "reorder"), "before"), (("history", "load"), "into"), (("map", "show"), "work"),
+            (("work", "show"), "work_id")} <= slots
+    assert not {(("history", "list"), "before"), (("work", "staff"), "remove")} & slots
+    assert not any(rules.is_id_action(a) for a in rules._actions() if rules.is_work_action(a))
+    assert not found(prose("aew work acknowledge-input T-0001 --input E-1 --from <T> --reason ..."), "O-IDS")
+    assert not found(prose("aew integrate reorder T-0001 --before <T>"), "O-IDS")
+    assert found(prose("aew history list --before <n>"), "O-IDS") == ["placeholder <n> for before"]
+
+
 # ---------------------------------------------------------------------------------------------- O-WORDS and O-CODE
 
 def test_o_words_reports_a_refusal_without_the_refusal_schema():

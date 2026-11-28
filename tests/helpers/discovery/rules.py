@@ -35,11 +35,15 @@ REFUSAL_SCHEMA = ("cause", "remedy", "owner")
 # candidate, is U1's witness). An argument takes an id when a word of its name or its metavar names one of these
 # kinds (``is_id_action``): read from the parser's own declarations, so a new id argument is covered as it is added.
 ID_KINDS = frozenset({"rev", "revision", "generation", "inv", "invocation", "run", "intent", "candidate"})
-# Ticket ids are exempt (§2.2): a work unit is a product concept the operator names.
-WORK_DESTS = frozenset({"work_id", "parent", "depends_on", "into"})
+# A Ticket's slot is exempt (§2.2): a work unit is a product concept the operator names. An argument is one when a word
+# of its name or its metavar is this (``is_work_action``: ``work_id``, ``--work``, ``--from WORK-ID``), read from the
+# parser as the id kinds are, on a line that parses. It replaced a hand-kept list of dests, which missed `--from`
+# (E188 triage, R3).
+WORK_KIND = "work"
 
 ANGLE = re.compile(r"^<[^<>]+>$|^\{[^{}]+\}$")
 ELISION = frozenset({"...", "…"})
+BAR = "\x01"  # O-IDS: the bar of a placeholder that lists no values (R2), so it is not split into alternatives
 SPAN = re.compile(r"`([^`\n]+)`")
 FENCE = re.compile(r"^\s*(```|~~~)")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1\s*$")
@@ -61,7 +65,8 @@ class Output:
     """One human- or Lead-facing output. ``payload`` is a parsed JSON answer (else ``None``), ``text`` its prose;
     ``refusal`` is ``{code, message, details}`` when the output refuses; ``echo`` is the input it answers (excluded
     from O-CMD and O-IDS inside a refusal); ``injected_cause`` is set only by an explorer that injected the cause
-    (O-CODE's scope, §2.3, H5)."""
+    (O-CODE's scope, §2.3, H5). ``runtime``: AEW printed it as it ran (the capture plugin's outputs, §8.1), so a value
+    it fills in itself is no O-IDS ask (``o_ids``); a static text, and an output built by hand, is not."""
 
     site: str
     plane: str = OPERATOR
@@ -70,6 +75,7 @@ class Output:
     refusal: dict[str, Any] | None = None
     echo: tuple[str, ...] = ()
     injected_cause: str | None = None
+    runtime: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,6 +135,27 @@ def _find_pattern(schema: Any, prefix: str) -> str:
 
 def is_placeholder(token: str) -> bool:
     return bool(ANGLE.match(token)) or token == "N" or token in ELISION
+
+
+def listed_values(token: str) -> list[str] | None:
+    """The values a bracketed placeholder lists (``<a|b|c>``), or ``None`` when it lists none: §8.2's "a slot whose
+    values the text lists" (E188 triage, R2). An alternative that is itself a placeholder (``<implementer|N>``) is
+    still to be found, so such a token lists nothing and stays a placeholder.
+
+    Its limits (review of #665, m1): a placeholder is known by its shape alone (``N``, ``<…>``, ``{…}``, the elision),
+    so a bare word in a list counts as a listed value: ``<card|default>`` (``role_ops``' refusal, the quickstart) is
+    exempt though ``card`` is to be looked up, as it was before R2; at runtime a bare word in an id slot
+    (``--revision REV``) counts as a filled value. And O-IDS reads only the first alternative of a bar between options
+    (``--assurance none|--review <card>``), so the later ones are not judged."""
+    if not ANGLE.match(token) or "|" not in token:
+        return None
+    values = token[1:-1].split("|")
+    return values if all(v and not is_placeholder(v) for v in values) else None
+
+
+def asks(token: str) -> bool:
+    """Whether ``token`` asks its reader for a value: a placeholder that does not list its values."""
+    return is_placeholder(token) and listed_values(token) is None
 
 
 def _is_id(token: str) -> bool:
@@ -219,15 +246,29 @@ def _id_options() -> frozenset[str]:
     return frozenset(o for a in _actions() if is_id_action(a) for o in a.option_strings)
 
 
+def _declared_words(action: argparse.Action) -> set[str]:
+    """The words of an argument's dest, option strings and metavar: how it declares what it takes."""
+    metavar = action.metavar if isinstance(action.metavar, str) else ""
+    names = [action.dest, metavar, *action.option_strings]
+    return {w for n in names for w in re.split(r"[^a-z]+", n.lower()) if w}
+
+
 def is_id_action(action: argparse.Action) -> bool:
     """Whether an argument takes an id of O-IDS's kinds: a word of its dest, an option string or its metavar names
     one (``--revision``, ``--carry INV``, ``--since REVISION``)."""
     if action.nargs == 0 or isinstance(action, argparse._SubParsersAction) or action.choices:
         return False
-    metavar = action.metavar if isinstance(action.metavar, str) else ""
-    names = [action.dest, metavar, *action.option_strings]
-    words = {w for n in names for w in re.split(r"[^a-z]+", n.lower()) if w}
+    words = _declared_words(action)
     return bool(words & ID_KINDS) and "token" not in words  # a credential is O-SECRET's, not an id
+
+
+def is_work_action(action: argparse.Action) -> bool:
+    """Whether an argument is a Ticket's slot (§2.2, exempt): its dest, an option string or its metavar names a work
+    unit (``work_id``, ``--work``, ``--from WORK-ID``). Per command, as ``is_id_action`` is: ``integrate reorder
+    --before WORK_ID`` is one, ``history list --before SEQ`` is not."""
+    if action.nargs == 0 or isinstance(action, argparse._SubParsersAction):
+        return False
+    return WORK_KIND in _declared_words(action)
 
 
 def command_words(argv: Iterable[str]) -> tuple[str, ...]:
@@ -525,9 +566,14 @@ def o_cmd(s: Suggestion) -> str | None:
     return None
 
 
-def o_ids(s: Suggestion) -> list[str]:
+def o_ids(s: Suggestion, *, runtime: bool = False) -> list[str]:
     """The id-typed values and placeholders ``s`` asks for, decided by position (§2.2): by the parser's dest for each
-    token, or, where the line does not parse, by an id option's value and the engine's id formats."""
+    token, or, where the line does not parse, by an id option's value and the engine's id formats.
+
+    ``runtime``: ``s`` is in an output AEW printed as it ran (§8.1's runtime outputs). There a value the output fills
+    in itself (a live run id, a candidate commit, ``--since 0``) asks for nothing, so the first two bullets judge only
+    a placeholder: the operator's ruling of 2026-11-28 (E188 triage, R1). A static text keeps every bullet: an id
+    written in a guide is an example its reader must replace (U1)."""
     problems: list[str] = []
     argv = _strip(list(s.argv))
     try:  # the id options of the command this line names (the same option can be an id in one command only)
@@ -536,14 +582,18 @@ def o_ids(s: Suggestion) -> list[str]:
     except (KeyError, StopIteration):
         id_options = set(_id_options())
     for i, token in enumerate(argv):
-        if _is_id(token):
-            problems.append(f"id {token}")
-        elif i and argv[i - 1] in id_options:
-            problems.append(f"{argv[i - 1]} {token}")
-    for variant in _variants(argv)[:1]:
+        for value in listed_values(token) or [token]:  # a listed value is judged as a value of its slot
+            if _is_id(value):
+                if not runtime:
+                    problems.append(f"id {value}")
+            elif i and argv[i - 1] in id_options and (not runtime or asks(value)):
+                problems.append(f"{argv[i - 1]} {value}")
+    for variant in _variants(_one_value_each(argv))[:1]:
         try:
             ns = parse(variant, complete=False)
         except ParseFail:
+            # A line the parser refuses gives no position to read a Ticket's slot from (``is_work_action``), so this
+            # fallback exempts the Ticket spellings by hand. It predates R3 (review of #665, n1).
             if any(t == "N" or (ANGLE.match(t) and t not in ("<T>", "<S>", "<E>")) for t in variant):
                 problems.append("placeholder in an unparsed line")
             break
@@ -555,14 +605,27 @@ def o_ids(s: Suggestion) -> list[str]:
                 text = str(item)
                 if item is None or text not in variant:
                     continue
+                shown = text.replace(BAR, "|")
                 if any(is_id_action(a) for a in mine):
-                    entry = f"{dest} {text}"
-                    if entry not in problems and not any(text in p for p in problems):
+                    if runtime and not asks(shown):
+                        continue
+                    entry = f"{dest} {shown}"
+                    if entry not in problems and not any(shown in p for p in problems):
                         problems.append(entry)
-                elif (is_placeholder(text) and text not in ELISION and dest not in WORK_DESTS
+                elif (is_placeholder(text) and text not in ELISION and not any(is_work_action(a) for a in mine)
                       and not any(a.choices for a in mine)):
-                    problems.append(f"placeholder {text} for {dest}")
+                    problems.append(f"placeholder {shown} for {dest}")
     return sorted(set(problems))
+
+
+def _one_value_each(argv: list[str]) -> list[str]:
+    """``argv`` for O-IDS's positions: a placeholder that lists its values stands at its first one (each is a value of
+    the same slot), and one that does not stays one placeholder, its bar not read as alternatives (R2)."""
+    out = []
+    for token in argv:
+        values = listed_values(token)
+        out.append(values[0] if values else token.replace("|", BAR) if ANGLE.match(token) else token)
+    return out
 
 
 def _path_actions(words: tuple[str, ...]) -> dict[str, tuple[argparse.Action, ...]]:
@@ -916,14 +979,15 @@ def credential_argument(s: Suggestion) -> str | None:
     return f"asks to pass {given.split('=', 1)[0]}" if given else None
 
 
-def judge(s: Suggestion) -> list[tuple[str, str]]:
-    """``(rule, why)`` for every finding on one suggested input: O-CMD, O-IDS and O-SECRET's credential argument."""
+def judge(s: Suggestion, *, runtime: bool = False) -> list[tuple[str, str]]:
+    """``(rule, why)`` for every finding on one suggested input: O-CMD, O-IDS and O-SECRET's credential argument.
+    ``runtime`` as for ``o_ids``."""
     out: list[tuple[str, str]] = []
     why = o_cmd(s)
     if why:
         out.append(("O-CMD", why))
     if s.argv:
-        problems = o_ids(s)
+        problems = o_ids(s, runtime=runtime)
         if problems:
             out.append(("O-IDS", "; ".join(problems)))
         secret = credential_argument(s)
@@ -939,7 +1003,7 @@ def check(output: Output, registry: dict[str, frozenset[str]] | None = None) -> 
     for s in suggestions(output):
         if _echoed(s, output):
             continue
-        findings.extend(Finding(rule, site, why) for rule, why in judge(s))
+        findings.extend(Finding(rule, site, why) for rule, why in judge(s, runtime=output.runtime))
     for tool in _tool_names(output.payload):
         if tool not in known_tools():
             findings.append(Finding("O-CMD", site, f"typed tool {tool!r} is not in the contract's catalog"))

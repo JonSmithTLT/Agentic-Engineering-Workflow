@@ -873,9 +873,10 @@ INIT_POLICY_SHA256 = {
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
-# The frozen fixture precedes E183's steering-comment changes. The shipped template includes E183 and MS5b.
+# The frozen fixture precedes E183's steering-comment changes. The shipped template includes E183, MS5b and history
+# search on for a new project (register E185).
 LEGACY_INIT_EXECUTION_SHA256 = "af6422ad80c6522b0681ed81d5ca3a8e237ca04ef833af5a741ff2a7a7fb2cc0"
-SHIPPED_INIT_EXECUTION_SHA256 = "8602fa3fa52b93772f85830ff39df08d2df142a277faf56843e151254c52546a"
+SHIPPED_INIT_EXECUTION_SHA256 = "84fb948dc4af721209a20a8771fc9eba58a01ba9b73429158e8f42b9875f55dd"
 
 # What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
 # (register E228's third PR): the standing crawl mode and the shipped notifier; and maps on (ADR-0015, amended
@@ -937,7 +938,8 @@ def test_shipped_init_template_and_policy_digests_match_the_goldens(tmp_path, mo
     from aew.knowledge.manifest import load_manifest
     from aew.util import sha256_file
 
-    assert util.load_yaml(X.TEMPLATE) == {**INIT_EXECUTION_PARSED, "coordination": {"messaging": "enabled"}}
+    assert util.load_yaml(X.TEMPLATE) == {**INIT_EXECUTION_PARSED, "coordination": {"messaging": "enabled"},
+                                          "recall": {"raw_history_search": "explicit"}}  # register E185
     monkeypatch.setattr(O, "bundled_table", lambda: None)
     root = make_git_repo(tmp_path / "new", CP.FILES)
     engine = Engine.initialize(root, project_id="golden", name="golden", branch="main")
@@ -948,7 +950,8 @@ def test_shipped_init_template_and_policy_digests_match_the_goldens(tmp_path, mo
     }
     assert engine.policy_digests() == {
         **INIT_POLICY_DIGESTS,
-        "operational_digest": "sha256:c511ecc64ac65c3769ef734d2f549b5dab5369c1990e56e7ffa32c8b2febd6cd",
+        # moved again by recall.raw_history_search, operational, on for a new project (register E185)
+        "operational_digest": "sha256:36a0030e9aca79e86b1c4b9f85e97baed88e9e550315ef312f7cfb83a46646df",
     }
 
 

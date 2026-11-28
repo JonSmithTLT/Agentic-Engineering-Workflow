@@ -552,6 +552,13 @@ class HistoryCommands:
         if not recall.fts5_available():
             raise Unavailable("this Python's SQLite has no usable FTS5, which raw-history search needs; nothing "
                               "else is affected", reason="fts5_unavailable")
+        if process_kind.kind() == process_kind.NON_WRITER:
+            # A non-writer takes no lock: the contained Lead's read, relayed to its broker, which runs it on the host
+            # as one (register E185; A-57 KP-R32). The same search from a committed snapshot, never destructive.
+            state = self.k.store.read_committed()
+            return self.history_search_committed(state, list(terms), kinds=kinds, since=since, until=until,
+                                                 limit=limit, enabled=recall.search_enabled(self.k.aew_root, state),
+                                                 fts5=recall.fts5_available())
         root, tail = self._root_and_tail()
         out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
                                        limit=limit)
@@ -560,12 +567,14 @@ class HistoryCommands:
 
     def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
                                  since: str | None = None, until: str | None = None,
-                                 limit: int = recall.LIMIT_DEFAULT, deadline: float, budget_s: float,
-                                 budget_docs: int, candidates: int, enabled: bool, fts5: bool,
+                                 limit: int = recall.LIMIT_DEFAULT, enabled: bool, fts5: bool,
+                                 deadline: float | None = None, budget_s: float | None = None,
+                                 budget_docs: int | None = None, candidates: int | None = None,
                                  fence_token: Callable[[list[str]], str] | None = None,
                                  clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
-        """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2),
-        answering from ``state``, the committed state it already read.
+        """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2; a
+        non-writer's `aew history search`, the contained Lead's relayed read among them, register E185), answering from
+        ``state``, the committed state it already read.
 
         The switch (``enabled``) and the FTS5 answer (``fts5``) are the caller's, read with its snapshot: policy is
         never re-read from disk here, so an edit that lands after the snapshot cannot contradict the capability the
@@ -578,9 +587,10 @@ class HistoryCommands:
         exactly at the root. If it does not (control committed and the tail not yet applied, a later commit appended,
         or a rollover sealed a segment the root does not know), there is no catch-up: the answer is what is already
         indexed, with ``history_moved``. Either way the substrate is searched with ``may_reset=False``, under the
-        caller's ``deadline``, catch-up budget and candidate budget, and the fence takes its token from
-        ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail. ``clock`` is
-        the one ``deadline`` was read from, passed through so the substrate judges it by the same clock."""
+        caller's ``deadline``, catch-up budget and candidate budget (each absent one is the CLI's: no deadline, the
+        substrate's own catch-up budget, every candidate), and the fence takes its token from ``fence_token``.
+        Candidates are proven by ``History.pinned_entry``, which accepts a longer tail. ``clock`` is the one
+        ``deadline`` was read from, passed through so the substrate judges it by the same clock."""
         if not enabled:
             raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
                                         "recall.raw_history_search: explicit", reason="switched_off")

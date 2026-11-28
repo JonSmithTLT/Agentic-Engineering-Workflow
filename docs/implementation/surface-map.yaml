@@ -1556,14 +1556,19 @@ commands:
     probe: [history, reindex]
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: history search
-    home: diagnostic
+    home: product
     users: [operator, lead]
     journeys: []
     mutates: "no"
-    mutates_basis: "a read: its handler only reads the committed state or local telemetry"
+    mutates_basis: "a read: its handler only reads the committed state, and catches up the derived history index under
+      `.aew/local/recall`, never the store"
     probe: [history, search, probe]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
-    conditional: "exists only while the adopted execution policy switches recall search on (register F21)"
+    conditional: "exists only while the adopted execution policy switches recall search on (register F21); `aew init`
+      writes it on, and an existing project is offered it (register E185)"
+    note: "register E185 (A-57 KP-B1, KP-R32): the Lead's read of the history store, a relayed command, not a typed
+      tool; relayed, it runs as a non-writer on the committed path. Refused inside an invocation"
   - name: dashboard serve
     home: operator-admin
     users: [operator]

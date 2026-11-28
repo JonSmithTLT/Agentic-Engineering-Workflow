@@ -1759,6 +1759,7 @@ None.
 - `aew.engine.first_configuration`
 - `aew.engine.guide`
 - `aew.engine.harness_ops`
+- `aew.engine.recall`
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.bridge`

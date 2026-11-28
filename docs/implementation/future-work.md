@@ -1998,18 +1998,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E185
-
-**Work:** History search for the Lead, on by default: `recall.raw_history_search` defaults on at `aew init`, an existing project is offered it through the shared switch offer, and the Lead reads it through a relayed `aew` command (`RELAYED_READS`, the lock-free committed path), not a typed tool. It serves only what the history store already holds, under its existing redaction, and the refusal inside an invocation stays. Workers' search is part of E253. Done when a new project has it on and the Lead's relayed read returns what the store holds
-
-**Source:** The operator, 2026-11-08: "yes unfreeze for planning and let the lead read history search", and to the designer the same day: "yeas i think knolwedge and the systems we are building once done should become on by default. Otherwise...why are we building them"; A-57's `KP-B1` and `KP-R32`; the operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 5
-
-**When:** **Unscheduled**, the first part of E253, the shared switch offer it waited on has merged
-
-**Notes:** Filed by the Lead. Today `aew history search` is behind `recall.raw_history_search`, off by default, and refused inside an invocation, and no MCP tool serves it
-
-*Later notes: `notes.d/E185/`, oldest first (`python tools/register.py show E185`).*
-
 ### E187
 
 **Work:** A context-aware Lead hand-off: once the Lead's per-request context passes a threshold, it hands off to a fresh session with `resume`. The threshold is computed from the provider's declared limit and window and the observed request rate, never a fixed number. Done when a Lead past the computed threshold hands off and the fresh session resumes from the record
@@ -5049,6 +5037,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #378 (`ee3f0737`), #441 (`39de9d9f`) and #480 (`434f8a2a`): every card's pack carries the slice, with each card's added bytes recorded (#378); review items 2, 3 and 5 to 8 (#441); items 1 and 4, the dispatch result's pack without the slice body (`slice_bytes`) and the offer to existing projects, with the switch-on (#480)
 
 *Later notes: `notes.d/E184/`, oldest first (`python tools/register.py show E184`).*
+
+### E185
+
+**Was:** History search for the Lead, on by default: `recall.raw_history_search` defaults on at `aew init`, an existing project is offered it through the shared switch offer, and the Lead reads it through a relayed `aew` command (`RELAYED_READS`, the lock-free committed path), not a typed tool, serving only what the history store holds under its existing redaction, with the refusal inside an invocation kept
+
+**Closed:** 2026-11-27
+
+**By:** #662: `aew init`'s execution template writes `recall.raw_history_search: explicit` (an absent key still reads off); the switch offer's `recall_raw_history_search` row offers an absent key; `aew history search` is in `lead_broker.RELAYED_READS`, and in a non-writer it takes `history_search_committed`; the client refuses inside an invocation before it relays. Tests: a new project has it on, the Lead's relayed read returns what the store holds and nothing unredacted, an invocation is still refused, and the offer takes an existing project. Workers' search stays with E253
+
+*Later notes: `notes.d/E185/`, oldest first (`python tools/register.py show E185`).*
 
 ### E189
 

@@ -109,7 +109,8 @@ def leaf_commands() -> tuple[tuple[str, ...], ...]:
             for name, sub in action.choices.items():
                 yield from walk(sub, (*prefix, name))
 
-    return tuple(sorted(set(walk(build_parser(), ()))))
+    # with the switched `history search` (on for a new project, register E185), as every relayed read is a leaf
+    return tuple(sorted(set(walk(build_parser(recall_search=True), ()))))
 
 
 def _surface() -> list[dict]:

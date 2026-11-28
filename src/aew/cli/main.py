@@ -250,6 +250,10 @@ def _relayed_read(args: argparse.Namespace, argv: list[str]) -> int | None:
 
     if not lead_broker.relays(args):
         return None
+    if lead_broker.command_path(args) == frozenset({"history", "search"}):
+        from aew.engine import recall
+
+        recall.refuse_in_invocations()  # the host's process can't see this one's markers: refused here (E185)
     reply = lead_broker.relay_read(argv)
     sys.stdout.write(reply["stdout"])
     sys.stderr.write(reply["stderr"])

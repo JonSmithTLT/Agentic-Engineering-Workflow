@@ -42,6 +42,7 @@ from aew.dashboard import projections as P  # noqa: E402
 from aew.dashboard import reader as R  # noqa: E402
 from aew.dashboard.reasons import REASONS, codes_in  # noqa: E402
 from aew.dashboard.server import DashboardServer, error_body, pending_routes  # noqa: E402
+from aew.engine import recall  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
 from aew.engine.store import CONTROL_REL, LOCK_REL, ControlStore  # noqa: E402
@@ -253,7 +254,9 @@ def test_maps_is_a_capability_available_on_every_project(world):
     status, _, raw = world.client.get("/capabilities")
     caps = json.loads(raw)["data"]
     assert status == 200 and caps["maps"] == {"state": "AVAILABLE", "reasons": []}
-    assert "history_search" not in caps  # S2's key, absent until it serves the route
+    # S2's key exists exactly while the adopted policy switches the search on: a new project has it on (register E185)
+    on = recall.recall_search_enabled(world.p.root / ".aew")
+    assert on and ("history_search" in caps) is on
 
 
 def test_maps_shows_the_selected_map_its_freshness_and_the_architecture_reference(world):

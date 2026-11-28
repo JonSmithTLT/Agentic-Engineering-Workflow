@@ -1,11 +1,15 @@
 """Register F21's Arm B prototype: guarded, explicit raw-history search (the lead developer's plan v6; recall and
 routing v0.3 §7 to §9 as its specification, not governing; ADR-0013 D8 and its dated note of 2026-10-07 for storage).
 
-**Off by default, and absent while off.** The switch is ``recall.raw_history_search`` in the execution policy, read
-only from the adopted bytes (``recall_search_enabled``): an edit nobody adopted leaves it off. Off, `aew history
-search` is not registered, and nothing here creates or reads a file. On (``explicit``), the command works from an
-operator terminal or a Lead shell, and refuses inside an invocation's environment. That refusal is a discoverability
-guard, not a security boundary: raw history stays readable to anything that can read ``.aew``.
+**On for a new project, and absent while off** (register E185; A-57 KP-B1, KP-R32). The switch is
+``recall.raw_history_search`` in the execution policy, read only from the adopted bytes (``recall_search_enabled``):
+an edit nobody adopted leaves it off. `aew init` writes ``explicit``; an absent key reads ``off``, and a project
+initialized before takes it through the switch offer. Off, `aew history search` is not registered, and nothing here
+creates or reads a file. On (``explicit``), the command works from an operator terminal or a Lead shell; the contained
+Lead's is relayed to its broker (``lead_broker.RELAYED_READS``), which runs it on the host as a non-writer, so it takes
+the lock-free committed path (``HistoryCommands.history_search_committed``). It refuses inside an invocation's
+environment. That refusal is a discoverability guard, not a security boundary: raw history stays readable to anything
+that can read ``.aew``.
 
 **The substrate is separate and outside every commit path.** ``local/recall/history-fts.sqlite`` (rebuildable, under
 the git-ignored ``local/``) is never opened by the history index's sync, inside a Lead transaction or under the control
@@ -52,13 +56,14 @@ from aew.engine.archive_ops import evidence_source, for_display, redact
 from aew.errors import AEWError, CapabilityUnavailable, IntegrityError, UsageError, ValidationFailed
 from aew.history import manifest as M
 from aew.history.store import History
+from aew.policy import execution as X
 from aew.util import load_yaml, parse_frontmatter, sha256_bytes, sha256_text
 
 SUBSTRATE_REL = "local/recall/history-fts.sqlite"
 # 2: a record is indexed as `history show` gives it (``for_display``), so a pinned map slice's body, the worker's
 # navigation, is no longer searchable; a substrate built at 1 may hold it, and is rebuilt.
 SUBSTRATE_VERSION = "2"
-OFF, EXPLICIT = "off", "explicit"
+OFF, EXPLICIT = X.RAW_HISTORY_SEARCH_OFF, X.RAW_HISTORY_SEARCH_EXPLICIT  # the switch's owner (register E185)
 BUILD_BUDGET_S, BUILD_BUDGET_DOCS = 2.0, 500  # what one search spends catching up (KST-44: bounded query cost)
 BATCH_DOCS = 50  # documents per build transaction: short write locks, and a watermark that advances often
 DOC_CAP = 256 * 1024  # bytes of text indexed per document

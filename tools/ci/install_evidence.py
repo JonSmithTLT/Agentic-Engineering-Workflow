@@ -26,7 +26,8 @@ GITLEAKS_URL = f"https://github.com/gitleaks/gitleaks/releases/download/v{GITLEA
 # lane with no scanner withholds its report, so assurance fails although its tests passed. So the download is tried a
 # bounded number of times: each attempt ends after 10 s below 1 KiB/s (a stall) or 20 s in all, and the whole is at
 # most 3 x 25 s + 6 s of backoff. In a lane that time comes out of the job's absolute test deadline (AEW_JOB_DEADLINE);
-# the --scanner-only installs (publish-evidence, the cancel record) have no such deadline, so there it adds to the
+# the --scanner-only installs (publish-evidence, the cancel record, and the lane's retry after a passing pytest, whose
+# time comes from the publication budget a passing lane does not spend) have no such deadline, so there it adds to the
 # step's run time. Only the download is retried: a checksum mismatch is never a reason to try again.
 SCANNER_ATTEMPTS = 3
 SCANNER_BACKOFF_S = (2.0, 4.0)

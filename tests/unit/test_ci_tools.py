@@ -289,6 +289,31 @@ def test_every_lane_report_is_named_for_its_run_attempt_and_coverage_comes_only_
     assert "always()" not in ratchet["if"] and "failure()" not in ratchet["if"]  # after the lane-report check passed
 
 
+def test_passing_lane_retries_an_unavailable_scanner_before_preparing_its_report():
+    lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    retry = next(step for step in lane if step.get("id") == "report_scanner")
+    prepare = next(step for step in lane if "SCANNER_AVAILABLE" in step.get("env", {}))
+    reports = next(step for step in lane if step.get("id") == "reports")
+    collect = next(step for step in lane if step.get("id") == "collect")
+    assert lane.index(collect) < lane.index(retry) < lane.index(prepare) < lane.index(reports)
+    assert retry["if"] == ("always() && steps.pytest.outcome == 'success' && steps.collect.outcome == 'success' "
+                           "&& steps.tools.outputs.scanner != 'true'")
+    assert retry["run"] == "python tools/ci/install_evidence.py --scanner-only" and retry["continue-on-error"]
+    availability = "${{ steps.report_scanner.outputs.scanner || steps.tools.outputs.scanner }}"
+    assert prepare["env"]["SCANNER_AVAILABLE"] == availability
+    # A scanner the retry recovered is kept for later jobs, or a cold cache stays cold (review of #562, m1); like the
+    # save after the first install, only verified bytes, and never a failure of the lane.
+    saves = [i for i, step in enumerate(lane) if str(step.get("uses", "")).startswith("actions/cache/save@")]
+    recovered = next(i for i in saves if "steps.report_scanner.outputs.scanner == 'true'" in lane[i]["if"])
+    assert lane.index(retry) < recovered < lane.index(prepare)
+    assert lane[recovered]["if"] == ("always() && steps.scanner-cache.outcome == 'success' && "
+                                     "steps.scanner-restore.outputs.cache-hit != 'true' && "
+                                     "steps.report_scanner.outputs.scanner == 'true'")
+    assert lane[recovered]["with"] == {"path": "${{ steps.scanner-cache.outputs.path }}",
+                                       "key": "${{ steps.scanner-cache.outputs.key }}"}
+    assert lane[recovered]["continue-on-error"] is True
+
+
 def test_test_evidence_uploads_use_the_scanned_staging_action_and_pytest_has_no_secrets():
     workflows = ROOT / ".github" / "workflows"
     action = ROOT / ".github" / "actions" / "publish-evidence" / "action.yml"

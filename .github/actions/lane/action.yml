@@ -121,6 +121,25 @@ runs:
         SOURCE: ${{ inputs.source }}
         JOB_LABEL: ${{ inputs.job-label }}
       run: python tools/ci/cancel_evidence.py "$SOURCE" "$JOB_LABEL"
+    # A passing lane has the publication time normally reserved for the priority and full bundles.
+    - name: Retry an unavailable report scanner after pytest passes
+      id: report_scanner
+      if: always() && steps.pytest.outcome == 'success' && steps.collect.outcome == 'success' && steps.tools.outputs.scanner != 'true'
+      continue-on-error: true
+      shell: bash
+      run: python tools/ci/install_evidence.py --scanner-only
+    # The retry runs only after the first install failed, so the save above was skipped: without this one a cold cache
+    # stays cold for every later job until some job's first install succeeds (review of #562, m1).
+    - name: "Cache miss: keep the scanner the retry recovered"
+      if: >-
+        always() && steps.scanner-cache.outcome == 'success' && steps.scanner-restore.outputs.cache-hit != 'true' &&
+        steps.report_scanner.outputs.scanner == 'true'
+      # Another job of the same run may save the same key first; that is no failure of this one.
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.scanner-cache.outputs.path }}
+        key: ${{ steps.scanner-cache.outputs.key }}
     - name: Prepare owned evidence inputs
       if: always()
       shell: bash
@@ -130,7 +149,7 @@ runs:
         JOB_LABEL: ${{ inputs.job-label }}
         COLLECTION_OUTCOME: ${{ steps.collect.outcome }}
         LANE_OUTCOME: ${{ inputs.recovery-outcome || steps.pytest.outcome }}
-        SCANNER_AVAILABLE: ${{ steps.tools.outputs.scanner }}
+        SCANNER_AVAILABLE: ${{ steps.report_scanner.outputs.scanner || steps.tools.outputs.scanner }}
         SPY_AVAILABLE: ${{ steps.tools.outputs.spy }}
         ATTACHMENT_PROBE: ${{ steps.probe.outputs.method }}
       run: python tools/ci/evidence_inputs.py "$SOURCE" "$RUNNER_TEMP/$ARTIFACT-watchdog-input"

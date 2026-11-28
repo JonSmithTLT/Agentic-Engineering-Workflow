@@ -4,10 +4,12 @@
 
 ``<dest>`` must not exist. It becomes a git repository whose ``main`` is the starting point (Python-Markdown 3.11.0,
 pinned by the lower-bound qualification lane's ``upstream.yaml``, plus that lane's seeded overlay without its failing
-distractor test), and whose ``contrib/allowed-schemes`` branch is the contributor's change the workload asks the agent
-to review (``fixture/contrib-branch/``). Commits are written with fixed names and dates, so every build of the same
-inputs has the same commit ids: the AEW tree and the raw tree are identical when the printed ``main`` and branch
-commits match.
+distractor test, plus this workload's own seeded files, ``fixture/overlay/``), and whose ``contrib/allowed-schemes``
+branch is the contributor's change the workload asks the agent to review (``fixture/contrib-branch/``). Commits are
+written with fixed names and dates, so every build of the same inputs has the same commit ids: the AEW tree and the
+raw tree are identical when the printed ``main`` and branch commits match. Text is written with LF line ends and no
+file keeps an executable bit, as the lane reads its fixtures, so two upstream files differ from the tag (its CRLF test
+fixture and ``checklinks.sh``'s mode); both arms get them alike.
 
 The upstream base is taken from the lane's fetched copy when ``qualify.py fetch`` has run (its receipt must name the
 pinned commit and tree), and otherwise cloned at the pinned tag into a temporary directory, refusing any other commit
@@ -31,6 +33,7 @@ LBQ = HERE.parent / "lower-bound-qualification"
 UPSTREAM = LBQ / "upstream.yaml"  # the pin is the lane's: this workload restates none of it
 LBQ_BASE, LBQ_RECEIPT = LBQ / "fixture" / "base", LBQ / "fixture" / "base.receipt.json"
 LBQ_OVERLAY = LBQ / "fixture" / "overlay"
+OVERLAY = HERE / "fixture" / "overlay"  # this workload's seeded files: added beside the others, never replacing one
 BRANCH_FILES = HERE / "fixture" / "contrib-branch"
 BRANCH = "contrib/allowed-schemes"
 # The lane's distractor is a test that fails on purpose. Here the project's configured check is the whole upstream
@@ -121,8 +124,10 @@ def materialize(dest: Path) -> dict[str, str]:
     up = yaml.safe_load(UPSTREAM.read_text(encoding="utf-8"))
     base, source = base_files(up)
     overlay = {rel: d for rel, d in tree_files(LBQ_OVERLAY).items() if rel not in LEFT_OUT}
-    if clash := sorted(set(base) & set(overlay)):
-        raise SystemExit(f"refused: the overlay would replace upstream files: {clash}")
+    own = tree_files(OVERLAY)
+    if clash := sorted(set(base) & set(overlay) | (set(base) | set(overlay)) & set(own)):
+        raise SystemExit(f"refused: the seeded files would replace upstream or lane files: {clash}")
+    overlay.update(own)
     if dest.exists():
         raise SystemExit(f"refused: {dest} exists; the starting tree is built into a new directory")
     dest.mkdir(parents=True)

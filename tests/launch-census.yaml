@@ -375,6 +375,14 @@ starts:
   classes: [not_agent_context]
   reason: the fixture's own upstream suite on a fresh copy of its starting files, before any model has written
     anything (test_eval_lbq_lane.py::test_the_upstream_suite_runs_only_on_a_fresh_copy_of_the_fixtures_starting_files)
+- site: eval/experiments/uat-story/materialize.py::base_files
+  call: run
+  classes: [not_agent_context]
+  reason: git, cloning the pinned fixture at its tag into a temporary directory
+- site: eval/experiments/uat-story/materialize.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: git, building the UAT workload's starting repository before any model has seen it
 - site: eval/experiments/verifier-disposition/evaluator/calibrate.py::truth
   call: run
   classes: [not_agent_context]

@@ -56,7 +56,7 @@ from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter, refusal_of, relay_family_of
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
 from aew.knowledge import evidence as E
-from aew.util import sha256_text, utc_now, utc_now_precise
+from aew.util import atomic_write, sha256_text, utc_now, utc_now_precise
 
 TICK_S = 0.25
 REQUEST_ORDER_WAIT_TICKS = 4  # give a sharing conflict four watchdog scans before letting later requests through
@@ -91,10 +91,26 @@ def starting_limit_s(harness: str | None) -> float:
     return 2 * store.RECORD_WAIT_S + probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
+def own_pack(contract: K.LaunchContract) -> str | None:
+    """The run's pinned pack, stored where its sandbox binds it (``layout.for_run``), so the run reads its contract
+    again with `aew context show` (register E368). The contract's text is the pinned one (``launch.pack``), so a
+    pack missing or changed under `.aew/local`, rebuildable local data, is written again first. None without one."""
+    if not contract.pack_path or not contract.pack_text:
+        return None
+    path = Path(contract.pack_path)
+    try:
+        if not path.is_file() or path.read_text(encoding="utf-8") != contract.pack_text:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, contract.pack_text)
+    except OSError:
+        return None  # the run goes on without its pack bound, and `context show` there says it has none
+    return str(path)
+
+
 def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapter], *, provider: str | None,
                    provider_env: list[str], role: str, scope: str, workspace: str, run_dir: Path, scratch: str,
                    bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
-                   marker: Path | None = None, skills_dir: str | None = None,
+                   marker: Path | None = None, skills_dir: str | None = None, pack: str | None = None,
                    key_admission: dict[str, Any] | None = None,
                    execution_profile: dict[str, Any] | None = None,
                    policy_sha256: str | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
@@ -134,7 +150,8 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
                                                 reason="bad_egress_allow") from None
         layout, label = containment.establish(
             role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch, bridge_dir=bridge_dir,
-            policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir)
+            policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir,
+            pack=pack)
         # The relay's absence is known only now: under allow_weaker a sandbox that could not be established runs the
         # harness on the host's network with no relay, whatever the policy's network mode (E123 review, M1)
         unrelayed = layout is None or not layout.private_network
@@ -561,7 +578,8 @@ class Supervisor:
                 bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
                  aew_root=self.engine.aew_root, kind="worker_run", key_admission=key_admission,
                 execution_profile=pin, policy_sha256=policy_sha256,
-                skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
+                skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None,
+                pack=own_pack(contract))
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             self.layout = None
             self.record["containment"] = containment.label(contained=False, reason=exc.message,

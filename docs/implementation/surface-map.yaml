@@ -1078,7 +1078,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [context, show, "{invocation}"]
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    refusals: [NOT_FOUND, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
   - name: check run
     home: product
     users: [worker]

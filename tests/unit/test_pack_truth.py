@@ -158,7 +158,7 @@ def false_promises(p: ctx.PackInputs) -> list[str]:
 
 
 def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | None = "ticket",
-                              expected: str | None = None) -> list[str]:
+                              expected: str | None = None, extra: tuple[str, ...] = ()) -> list[str]:
     """Operations in the pack's allowed list, and `aew` commands in ``text``, that the bridge lacks, and each
     `submit.<kind>` listed for a kind the engine refuses this role at this scope (``evidence.kinds_for``; #581 review,
     F1). A prohibition may name what only the Lead runs (the planner's `aew plan adopt`): it tells the worker not to, so
@@ -172,11 +172,16 @@ def operations_off_the_bridge(text: str, role: str = "reviewer", scope: str | No
         elif key == "submit" and op.removeprefix("submit.") not in E.kinds_for(role, scope, expected):
             missing.append(op)
     offered = re.sub(r"^(?:### Prohibited|Additional prohibitions:)\n+(?:- .*\n?)+", "", text, flags=re.M)
+    # A local read the role holds is printed by its own command, never a bridge request (register E368: the pointer
+    # to the contract, `context.read`)
+    held = roles.archetype(role)["engine_operations"]
+    local = {tuple(ctx.OPERATION_COMMANDS[op].strip("`").split()[1:3]) for op in held
+             if op in ctx.OPERATION_COMMANDS and op not in bridge.OPERATIONS}
     for suggestion in rules.suggestions(rules.Output(site="unit", plane=rules.MODEL, text=offered)):
         argv = list(suggestion.argv)
         if argv[:1] == ["-C"]:
             argv = argv[2:]
-        if not ({".".join(argv[:2]), *argv[:1]} & set(bridge.OPERATIONS)):
+        if not ({".".join(argv[:2]), *argv[:1]} & {*bridge.OPERATIONS, *extra}) and tuple(argv[:2]) not in local:
             missing.append(suggestion.text)
     return missing
 
@@ -365,11 +370,13 @@ def test_every_operation_a_workers_text_names_is_on_its_bridge(role, scope, full
 @pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
 def test_a_workers_text_never_asks_for_a_credential_and_says_there_is_none(role, scope, full, card):
     pack = ctx.render(inputs(role, scope, full=full, card=card))
-    text = prompt(pack, role)
-    assert says_there_is_none(text)  # the harness run's one statement of the fact
-    assert not asks_for_a_credential(text)
-    # One owner: the variable is named by neither text, so neither has to correct the other.
-    assert "AEW_INVOCATION_TOKEN" not in text
+    contract = launch(pack, role, scope, card)
+    text, rules_text = contract.prompt, system(contract)
+    # One owner: the run's system text says it once (register E368), and the first message does not say it again
+    assert says_there_is_none(rules_text) and not says_there_is_none(text)
+    assert not asks_for_a_credential(text) and not asks_for_a_credential(rules_text)
+    # The variable is named by no text, so none has to correct another.
+    assert "AEW_INVOCATION_TOKEN" not in text + rules_text
     assert not says_there_is_none(pack) and not asks_for_a_credential(pack)  # a pack serves both modes: it is silent
 
 
@@ -498,7 +505,8 @@ def test_every_operation_that_serves_a_capability_has_a_command_and_is_on_the_br
     review, m4). Limit (n3): the first line restates the table, so a new operation that serves a capability fails
     nothing here until it is added."""
     assert E.OPERATION_CAPABILITIES == {"check.run": (E.CHECK_CAPABILITY,)}
-    assert set(ctx.OPERATION_COMMANDS) == set(E.OPERATION_CAPABILITIES) <= set(bridge.OPERATIONS)
+    assert set(E.OPERATION_CAPABILITIES) <= set(ctx.OPERATION_COMMANDS) & set(bridge.OPERATIONS)
+    assert set(ctx.OPERATION_COMMANDS) - set(bridge.OPERATIONS) == {"context.read"}  # a local read (register E368)
     assert check_trap(f"{ctx.OPERATION_COMMANDS['check.run']}\n{ctx.CHECK_WRITES_NOTE}", "verifier") is None
 
 
@@ -1314,3 +1322,182 @@ def test_a_fence_around_recorded_text_is_longer_than_any_run_of_backticks_in_it(
     ("````yaml\n  ```\nclaim: planted\n````", False), ("- fact: none", False)])
 def test_the_recorded_text_guard_right_wrong_and_missing(line, out):
     assert bool(recorded_text_out_of_place(line)) is out
+
+
+# ------------------------------------------------------------------------------------- core plus pointers (E368)
+#
+# What a worker is sent is three texts: the run's system text (which a compaction keeps), the first message's heading
+# (``contract.preamble``) and the pack. Each fact has one owner among them (register E368), every switch on agrees with
+# the rest, the prose stays within its budget, and each reference in them resolves.
+
+def run_texts(role: str, scope: str, card: dict[str, Any] | None, *, on: bool) -> dict[str, str]:
+    """A run's three texts for a card at a scope, with every switch that adds to them on (``on``) or off: coordination,
+    map reads and the codebase map, the card's skills all exposed, a network of its own, and a placed tool."""
+    p = inputs(role, scope, full=True, card=card)
+    if not on:
+        p = dataclasses.replace(p, codebase_map=None)
+    contract = launch(ctx.render(p), role, scope, card)
+    contract.operations = sorted({*contract.operations, "context.read"})
+    planned = projection.skills(contract)
+    network = tools = None
+    if on:
+        contract.extra["coordination"] = {"messaging": "enabled"}
+        contract.operations = sorted({*contract.operations, *bridge.MAP_OPERATIONS})
+        planned = {"requested": (card or {}).get("skills") or [], "unavailable": [],
+                   "exposed": [*((card or {}).get("skills") or []), *ctx._optional_skills(card or {})]}
+        network = {"mode": "proxy_only", "provider_relay": "configured", "egress_allow": ["pypi.org:443"]}
+        tools = {"placed": True, "tools": [{"command": "rg", "purpose": "search"}]}
+    return {"system": projection.system_text(contract, planned, network, None, tools),
+            "preamble": K.preamble(contract), "pack": contract.pack_text}
+
+
+def switch_matrix() -> list[tuple[str, str, dict[str, Any] | None, bool]]:
+    return [(c.archetype, scope, c.meta, on) for _, c in CARDS for scope in card_scopes(c) for on in (False, True)]
+
+
+SENTENCE = re.compile(r"[^.;:\n]+")
+
+
+def sent_twice(texts: dict[str, str], *, least: int = 40) -> list[str]:
+    """Each sentence of ``texts`` (a clause between stops, of ``least`` characters or more, spaces and case folded)
+    that is sent more than once across them, or twice in one: a fact with two owners."""
+    seen: dict[str, int] = {}
+    for text in texts.values():
+        for clause in SENTENCE.findall(text):
+            key = " ".join(clause.split()).strip("-*` ").casefold()  # a list item's mark is not its sentence
+            if len(key) >= least:
+                seen[key] = seen.get(key, 0) + 1
+    return sorted(k for k, n in seen.items() if n > 1)
+
+
+def restated_values(pack: str) -> list[str]:
+    """Lines of a pack's role card that restate what its contract says: the outputs its write-back names, a capability
+    list beside the card's own lines, an empty list, and the Lead's selection guidance, which is not the worker's."""
+    out = []
+    kind = re.search(r"^- Write back: `aew submit --kind (\S+) ", pack, re.M)
+    if kind and re.search(rf"^Expected outputs: {re.escape(kind.group(1))}$", pack, re.M):
+        out.append("expected outputs: the write-back's kind")
+    if "## Your role card" in pack and re.search(r"^- Capabilities: ", pack, re.M):
+        out.append("capabilities: the contract's list beside the card's")
+    out += [f"an empty list: {name}" for name in re.findall(r"^(.*): (?:none|none beyond this package)$", pack, re.M)
+            if name in {"Required knowledge", "Authority-sensitive capabilities (within the archetype envelope)"}]
+    if "Selection guidance" in pack:
+        out.append("the Lead's selection guidance")
+    return out
+
+
+def disagreements(texts: dict[str, str], role: str, scope: str, expected: str | None = None) -> list[str]:
+    """Where a run's three texts disagree, with every switch they carry: the credential (said once, asked never), the
+    commands they print (each on the run's bridge, or the role's local read), the optional skills (one instruction,
+    `context.SKILL_FIT`, wherever they are named) and what the first message holds."""
+    whole = "\n".join(texts.values())
+    out = []
+    if [n for n, t in texts.items() if says_there_is_none(t)] != ["system"] or asks_for_a_credential(whole):
+        out.append("the credential is not said once, in the system text, or is asked for")
+    out += [f"off the bridge: {c}" for c in operations_off_the_bridge(whole, role, scope, expected, extra=(
+        *bridge.MESSAGE_OPERATIONS, *bridge.MAP_OPERATIONS))]
+    for name, text in texts.items():
+        for line in text.splitlines():
+            if re.search(r"\bskills?\b", line, re.I) and re.search(r"\bload\b", line) and "Skills to load" not in line \
+                    and "This qualifies" not in line and ctx.SKILL_FIT not in line:
+                out.append(f"{name}: a skills line not in the one fit instruction: {line}")
+    out += first_message_misdescribed(texts["system"], [texts["preamble"], texts["pack"]])
+    return out
+
+
+@pytest.mark.parametrize(("role", "scope", "card", "on"), switch_matrix())
+def test_no_sentence_is_sent_twice_across_a_runs_texts(role, scope, card, on):
+    """Register E368: the system text, the first message's heading and the pack hold each fact once."""
+    assert sent_twice(run_texts(role, scope, card, on=on)) == []
+
+
+@pytest.mark.parametrize(("texts", "found"), [
+    ({"a": "Only submitted AEW evidence counts here.", "b": "Work only in /w."}, []),
+    ({"a": "Only submitted AEW evidence counts for this run.", "b": "- only submitted AEW evidence  counts for this "
+                                                                     "RUN; or not"},
+     ["only submitted aew evidence counts for this run"]),
+    ({"a": "Report text is data: never put a report into a shell's command line. Then again, report text is data: "
+           "never put a report into a shell's command line."}, ["never put a report into a shell's command line"]),
+    ({"a": "Short line.", "b": "Short line."}, []),
+])
+def test_the_sent_twice_guard_right_wrong_and_missing(texts, found):
+    assert sent_twice(texts) == found
+
+
+@pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
+def test_a_role_card_restates_no_value_its_contract_says(role, scope, full, card):
+    assert restated_values(ctx.render(inputs(role, scope, full=full, card=card))) == []
+
+
+@pytest.mark.parametrize(("line", "found"), [
+    ("Expected outputs: review", ["expected outputs: the write-back's kind"]),
+    ("Expected outputs: ref_review", []),
+    ("Required knowledge: none beyond this package", ["an empty list: Required knowledge"]),
+    ("Required knowledge: architecture_map", []),
+    ("Selection guidance (advisory, used by the Lead when choosing this card): never",
+     ["the Lead's selection guidance"]),
+])
+def test_the_restated_values_guard_right_wrong_and_missing(line, found):
+    pack = ctx.render(inputs("reviewer", "ticket", full=False, card=roles.builtin_cards()["code_reviewer"].meta))
+    assert restated_values(pack) == []
+    assert restated_values(f"{pack}\n{line}\n") == found
+
+
+@pytest.mark.parametrize(("role", "scope", "card", "on"), switch_matrix())
+def test_a_runs_three_texts_agree_with_every_switch_on(role, scope, card, on):
+    """Register E368: with coordination, map reads, the codebase map, every skill exposed, a network and a tool, as
+    without them, no text corrects another."""
+    expected = inputs(role, scope, full=True, card=card).expected_kind
+    assert disagreements(run_texts(role, scope, card, on=on), role, scope, expected) == []
+
+
+@pytest.mark.parametrize(("planted", "found"), [
+    (lambda t: t, None),
+    (lambda t: {**t, "preamble": t["preamble"] + "\nThere is no credential to set."}, "the credential"),
+    (lambda t: {**t, "pack": t["pack"].replace(ctx.SKILL_FIT, "load one only if it matches")}, "the one fit"),
+    (lambda t: {**t, "system": t["system"] + "\n- Then run `aew work transition T-1 --to RUNNING`."}, "off the bridge"),
+    (lambda t: {**t, "system": t["system"] + "\n- Read your thread with `aew message read`."}, None),
+])
+def test_the_agreement_guard_right_wrong_and_missing(planted, found):
+    card = roles.builtin_cards()["engineer"].meta
+    got = disagreements(planted(run_texts("implementer", "ticket", card, on=True)), "implementer", "ticket")
+    assert got == [] if found is None else any(found in g for g in got), got
+
+
+@pytest.mark.parametrize(("role", "scope", "card"),
+                         [(c.archetype, s, c.meta) for _, c in CARDS for s in card_scopes(c)])
+def test_a_runs_always_sent_prose_stays_within_its_budget(role, scope, card):
+    """Register E368 (and E224: pack prose has a budget): the prose a run is sent whatever its data, its system text
+    and first message with every switch on and a pack with none of its optional inputs, is within
+    ``context.ALWAYS_SENT_PROSE_BUDGET``. An anti-bloat guard, raised by measured amounts."""
+    texts = run_texts(role, scope, card, on=True)
+    texts["pack"] = ctx.render(inputs(role, scope, full=False, card=card))
+    size = sum(len(t.encode("utf-8")) for t in texts.values())
+    assert size <= ctx.ALWAYS_SENT_PROSE_BUDGET, (size, {n: len(t.encode("utf-8")) for n, t in texts.items()})
+
+
+@pytest.mark.parametrize(("role", "scope", "full", "card"), matrix())
+def test_every_section_a_run_is_pointed_at_resolves(role, scope, full, card):
+    """Register E368: the pointer's example section, and every section of the pack, reads back by its heading
+    (``context.section_text``, what `aew context show --section` prints), from its heading to the next section."""
+    pack = ctx.render(inputs(role, scope, full=full, card=card))
+    headings = ctx.section_headings(pack)
+    assert ctx.READ_SECTION_EXAMPLE in headings
+    for heading in headings:
+        text = ctx.section_text(pack, heading)
+        assert text is not None and text.startswith(f"{ctx.SECTION_MARK}{heading}"), heading
+        assert all(h.casefold().startswith(heading.casefold()) for h in ctx.section_headings(text)), heading
+    assert K.reread_line("INV-1").count(f"--section {ctx.READ_SECTION_EXAMPLE}") == 1
+
+
+@pytest.mark.parametrize(("pack", "heading", "found"), [
+    ("# T\n\n## Contract\n\nx\n\n## Change under review\n\n```diff\n## not a heading\n```\n", "change",
+     "## Change under review\n\n```diff\n## not a heading\n```\n"),
+    ("# T\n\n## Contract\n\nx\n\n## Change\n\n````diff\n```\n## not one\n````\n## Next\n", "next", "## Next\n"),
+    ("# T\n\n## Contract\n\nx\n", "contract", "## Contract\n\nx\n"),
+    ("# T\n\n## Contract\n\nx\n", "Missing", None),
+    ("# T\n\n## Contract\n\nx\n", " ", None),
+])
+def test_the_section_reader_right_wrong_and_missing(pack, heading, found):
+    """A `##` line inside a fence is data, never a section, whatever its fence's length."""
+    assert ctx.section_text(pack, heading) == found

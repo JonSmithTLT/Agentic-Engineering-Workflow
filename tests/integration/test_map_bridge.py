@@ -4,7 +4,6 @@ the Lead's read at the same basis."""
 
 from __future__ import annotations
 
-import hashlib
 import threading
 from pathlib import Path
 from typing import Any
@@ -71,31 +70,24 @@ def test_map_ops_are_offered_only_when_the_launch_snapshot_turns_them_on(tmp_pat
     assert set(bridge.MAP_OPERATIONS) <= set(offered) and cooperative == frozenset(bridge.MAP_OPERATIONS)
 
 
-# The worker preamble with map reads off, for an investigator and for a reviewer with messaging on. The second is the
-# bytes from before map reads existed (origin/main at 2962f12e). The first is those bytes (98ab21a1...) with one token
-# changed by E368's truth fixes (#613 review m3): `aew check run <check-id>` where it read `<check>`. So the switch adds
-# nothing when it is off; a role that may run a check no longer gets 2962f12e's bytes, and no M4-H run was recorded on
-# them. The harness is one with no measured wait, so the messaging line is the same on every platform
-# (`preamble_wait_supported`).
-PREAMBLE_SHA256 = ("a03df6c0b4e72312b003875d2e29d407a14f3615b1c816c3e085994f305a4d06",
-                   "d5f53501542bfa2d0da969aca8d9eac777b16e4e10c4b91838487bcaaec5babc")
-
-
 def test_with_the_switch_off_the_worker_prompt_and_operations_are_byte_identical(tmp_path):
-    """F15.8: switched off, the run's prompt is the pinned bytes, its operations are its role's, and its bridge offers
-    what it always did; switched on, one line is added, built from the bridge rows' own names."""
+    """F15.8: switched off, the run's texts say nothing of map reads, its operations are its role's, and its bridge
+    offers what it always did; switched on, one line is added to the run's rules (``contract.run_rules``, which its
+    system text sends since E368), built from the bridge rows' own names, and the first message is unchanged."""
     plain = contract(["check.run", "context.read", "submit.discovery_record"])
     messaging = contract(["context.read", "submit.review"], {"coordination": {"messaging": "enabled"}})
-    assert tuple(hashlib.sha256(K.preamble(c).encode()).hexdigest() for c in (plain, messaging)) == PREAMBLE_SHA256
+    for c in (plain, messaging):
+        assert "map" not in "\n".join([K.preamble(c), *K.run_rules(c)]).lower()
     engine = Engine.discover(sample_project(tmp_path).root)
     for role, ops in ROLE_OPERATIONS.items():  # its role's, less a submit its scope never takes (E160, #581 F1)
         assert engine._harness.operations_of({"role": role, "runs": [{"run": "R-1"}]}) == sorted(
             E.submit_operations(ops, role, None))
     assert bridge_tables(sorted(ROLE_OPERATIONS["investigator"]), messaging=False) == (bridge.OPERATIONS, frozenset())
     on = contract([*plain.operations, *bridge.MAP_OPERATIONS])
-    added = K.preamble(on).removeprefix(K.preamble(plain))
-    assert added.startswith("\n- Map reads are on for this run: `aew map show` and `aew map search`")
-    assert EVIDENCE_CLASS in added and "\n" not in added[1:]
+    assert K.preamble(on) == K.preamble(plain)
+    [added] = [line for line in K.run_rules(on) if line not in K.run_rules(plain)]
+    assert added.startswith("- Map reads are on: `aew map show` and `aew map search`")
+    assert EVIDENCE_CLASS in added and "\n" not in added
 
 
 def test_a_slow_map_query_does_not_hold_check_run():
@@ -173,8 +165,10 @@ def test_a_worker_read_never_changes_selection_and_agrees_with_the_leads_read_at
         assert section["stdout_json"]["items"][0]["section"] == "languages"
         assert refused["exit"] != 0 and "worker_basis" in refused["stdout"] + refused["stderr"]
         assert set(bridge.MAP_OPERATIONS) <= set(whoami["stdout_json"]["operations"])
-        prompt = (runlog.run_dir(lab.aew_root, run) / "harness" / "prompt.md").read_text(encoding="utf-8")
-        assert "- Map reads are on for this run: `aew map show` and `aew map search`" in prompt
+        # the run's rules as its launch recorded its contract (its system text sends them: E368)
+        recorded = runlog.read_record(runlog.run_dir(lab.aew_root, run))["contract"]
+        launched = K.LaunchContract(**recorded, pack_text="")
+        assert "- Map reads are on: `aew map show` and `aew map search`" in "\n".join(K.run_rules(launched))
 
         lead_found = p.ok("map", "search", "core.py", "--commit", base, "--json")
         lead_scoped = p.ok("map", "show", "--scope", "ticket", "--work", wid, "--commit", base, "--json")

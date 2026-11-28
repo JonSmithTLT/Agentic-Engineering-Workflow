@@ -362,3 +362,22 @@ for a worker's copy (register E368).
 `ROLE_OPERATIONS["investigator"]` and `archetypes/investigator.yaml` gain `submit.ref_review` and the `ref_review`
 evidence kind; what a run is offered is narrowed by its attempt's pinned kind (`evidence.kinds_for`). The archetype's
 prohibition, "mutating source, including the observation workspace", is unchanged and binds the card.
+
+## Amendment 2026-11-28 — one instruction for the optional skills, and the card section says only the worker's (register E368)
+
+The worker-pack audit of 2026-11-25 (its item 5) found the pack's "Optional skills (load one only if the `skill` tool
+lists it and your task matches)" beside the system text's "load each one whose description matches your task". Both
+were conditioned per skill, as the 2026-11-05 amendment says, but "load one only if" also reads as "at most one".
+Nothing of the rulings changes (skills by fit, `skills:` and `optional_skills`, what is exposed): only the words.
+
+- **One owner for the instruction,** `context.SKILL_FIT`: "load each one whose description matches your task". The
+  pack's line is "Optional skills (where the `skill` tool lists them, load each one whose description matches your
+  task)", and the system text's line takes the same words. This replaces the 2026-11-05 amendment's quoted wording of
+  the conditional line; the "Skills to load" line and the system text's clauses are unchanged.
+- **The role card section says only what the worker uses and the contract does not.** The card's `use_when`
+  ("Selection guidance ... used by the Lead") is the Lead's, read in `aew role show`, and is no longer sent to the
+  worker. A "Required knowledge" or "Authority-sensitive capabilities" line with nothing in it, and an "Expected
+  outputs" line equal to the write-back's kind, are left out; the contract's "Capabilities" line is printed only for a
+  pack with no card, whose card lines say what it asked for and what serves each.
+- Tests: `tests/unit/test_pack_truth.py` (`test_a_runs_three_texts_agree_with_every_switch_on`,
+  `test_a_role_card_restates_no_value_its_contract_says`) and `tests/unit/test_skill_delivery.py`.

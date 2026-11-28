@@ -64,7 +64,7 @@ EXEMPT = {
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/cli/capability_commands.py:145": "the command word comes from a value: "
                                               "test_each_capability_change_names_a_capability_command",
-    "src/aew/harness/contract.py:398": "the command words come from bridge.MAP_OPERATIONS: "
+    "src/aew/harness/contract.py:375": "the command words come from bridge.MAP_OPERATIONS: "
                                        "test_the_worker_map_reads_line_names_real_commands",
 }
 
@@ -92,7 +92,7 @@ LEGACY_BARE_SPANS = {
     ("engine/resume_ops.py", "aew lead takeover"): 1,
     ("engine/stage_intents.py", "aew stage continue|abandon"): 1,
     ("engine/work_ops.py", "aew work redispatch"): 1,
-    ("harness/contract.py", "aew submit"): 2,
+    ("harness/contract.py", "aew submit"): 1,
     ("harness/lead_broker.py", "aew lead takeover"): 2,
     ("harness/opencode/projection.py", "aew submit"): 1,
     ("knowledge/manifest.py", "aew authority accept"): 1,
@@ -346,14 +346,14 @@ def test_each_capability_change_names_a_capability_command() -> None:
 
 
 def test_the_worker_map_reads_line_names_real_commands() -> None:
-    """Blind spot 1 again (the worker preamble's map-reads line, ``aew {op}`` from ``bridge.MAP_OPERATIONS``; register
-    F15.8): every command the line renders is a real `aew` command."""
+    """Blind spot 1 again (a run's map-reads rule, ``aew {op}`` from ``bridge.MAP_OPERATIONS``; register F15.8): every
+    command the line renders is a real `aew` command."""
     from aew.harness.bridge import MAP_OPERATIONS
 
-    line = K.preamble(K.LaunchContract(
+    [line] = K.run_rules(K.LaunchContract(
         run="R-1", invocation="INV-1", work_unit="T-1", role="investigator", scope="observation", card=None,
         execution_profile={}, workspace="w", expected_kinds=[], operations=sorted(MAP_OPERATIONS), pack_path="p",
-        pack_sha256="0", pack_text="", continuation=None, run_dir="r")).splitlines()[-1]
+        pack_sha256="0", pack_text="", continuation=None, run_dir="r"))
     printed = [text for text, _ in P.commands(line)]
     assert printed == [f"aew {op.replace('.', ' ')}" for op in MAP_OPERATIONS]
     for text in printed:

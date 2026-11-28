@@ -82,6 +82,8 @@ PLACEHOLDERS: dict[str, str] = {
     "<S>": "S-0002",  # a Story or an Epic
     "<unit>": "T-0008",  # a work unit
     "<id>": "EV-0003",  # a record: evidence, or a finished unit's history record
+    "<invocation>": "INV-0007",  # an invocation, as the pack's local read spells it (context.OPERATION_COMMANDS)
+    "<heading>": "Contract",  # the start of a pack section's heading (`aew context show --section`)
     "<E>": "EV-0004",  # an evidence record
     "<n>": "2",  # a plan revision
     "<candidate>": "C-001",  # an authority candidate
@@ -90,7 +92,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<check-id>": "unit",
     "<kind>": "implementation_report",  # an expected output's kind
     "<file>": "report.md",  # a report file, as each text spells it
-    "<that file>": "report.md",
     "<your-report.md>": "report.md",
     "<0-4>": "2",  # a risk class
     "<STATE>": "REVIEW_PENDING",

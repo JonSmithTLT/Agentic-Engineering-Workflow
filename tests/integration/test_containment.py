@@ -98,7 +98,7 @@ class Lab:
         return C.for_run(role=role, scope=kw.pop("scope", "ticket"), workspace=str(self.ws), run_dir=self.run,
                          scratch=str(self.run / "scratch"), bridge_dir=None, policy=kw.pop("policy", None),
                          home=str(self.home), project=str(self.repo), runs=str(self.run.parent),
-                         env=self.launching_env())
+                         env=self.launching_env(), pack=kw.pop("pack", None))
 
     def sh(self, layout: C.Layout, script: str, *, cwd: Path | None = None,
            env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -796,6 +796,25 @@ def test_from_a_worker_sandbox_the_control_lock_is_not_there_and_none_can_be_mad
     assert res.stdout.split() == ["absent", "EROFS", "harness-writable"], res.stdout + res.stderr
     with FileLock(aew / LOCK_REL, timeout=5):  # the engine's own lock, on the host, untouched
         pass
+
+
+def test_a_runs_sandbox_shows_its_own_pack_alone_and_read_only(lab):
+    """Register E368: the run's pinned pack is bound back, read-only, over the `.aew/local` mask, and no other
+    invocation's is there; the self-test passes the layout, whose runs mask now holds the pack's directory."""
+    aew = aew_project(lab)
+    packs = aew / "local" / "packs"
+    for inv in ("INV-0001", "INV-0002"):
+        (packs / inv).mkdir(parents=True)
+        (packs / inv / "pack.md").write_text(f"# AEW launch contract {inv}\n")
+    lab.run = aew / "local" / "harness" / "runs" / "R-1"
+    layout = lab.layout("reviewer", pack=str(packs / "INV-0001" / "pack.md"))
+    res = lab.sh(layout, f"ls {packs}; cat {packs / 'INV-0001' / 'pack.md'}; "
+                         f"(echo x >> {packs / 'INV-0001' / 'pack.md'}) 2>/dev/null || echo read-only; "
+                         f"test -e {packs / 'INV-0002'} && echo other || echo no-other")
+    assert res.stdout.splitlines() == ["INV-0001", "# AEW launch contract INV-0001", "read-only", "no-other"], (
+        res.stdout + res.stderr)
+    assert (packs / "INV-0001" / "pack.md").read_text() == "# AEW launch contract INV-0001\n"
+    assert probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root)["ok"] is True
 
 
 _NON_WRITER_READS = """

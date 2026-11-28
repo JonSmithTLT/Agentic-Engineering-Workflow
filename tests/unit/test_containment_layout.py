@@ -1801,7 +1801,7 @@ def test_a_workers_containment_event_carries_the_launch_line_of_the_masks_in_its
     label = {"filesystem": "os_readonly_roots", "process_ownership": "tree", "network": {"mode": L.SHARED}}
     monkeypatch.setattr(procs, "ProcessTree", lambda **_: None)
     contract = SimpleNamespace(role="implementer", scope="ticket", workspace=str(tmp_path / "ws"),
-                               scratch=str(tmp_path / "s"), extra={})
+                               scratch=str(tmp_path / "s"), extra={}, pack_path="", pack_text="")
     for tree_masks in (masks, ()):
         layout = C.Layout(role="implementer", access="write", bwrap="/usr/bin/bwrap",
                           writable=(str(tmp_path / "ws"),), readonly=(), tree_masks=tree_masks)

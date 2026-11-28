@@ -183,6 +183,8 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.supervisor:Supervisor.start`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.supervisor:contain_launch`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.supervisor:own_pack`: Path.mkdir of a path this reading cannot place: a relative path, ``, with no root this reading can name
+- `aew.harness.supervisor:own_pack`: atomic_write of a path this reading cannot place: a relative path, ``, with no root this reading can name; under `.aew`, but its first directory or file name is computed
 - `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.usage_live:Meter._persist`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer

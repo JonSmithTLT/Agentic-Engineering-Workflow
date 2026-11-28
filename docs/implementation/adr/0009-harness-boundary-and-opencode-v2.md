@@ -2419,3 +2419,25 @@ still apply. See the [coordination amendment](0017-coordination-messages.md#amen
 Launch and relaunch bind the prior run of the named invocation, or `none` when the invocation has no run. The locked launch checks the current run, active invocation and Lead authority before rotating the credential. A changed run requires a new decision. The state revision still identifies durable dispatch and launch commits.
 
 [Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).
+
+## Amendment 2026-11-28 — a run reads its own launch contract, and only its own (register E368)
+
+The worker-pack rewrite gives every run a pointer to its contract, `aew context show <invocation> --section
+<heading>`, to read a section again after a compaction (the run's system text, which a compaction keeps, carries it).
+What the pointer reads is fixed by the launch, never by a variable the run could change.
+
+- **The layout binds the run's own pinned pack**, `.aew/local/packs/<invocation>/pack.md`, read-only and protected,
+  alone, over the `.aew/local` mask (`layout.for_run`'s `pack`). The supervisor writes the pinned text there first
+  when the file is missing or differs (`supervisor.own_pack`): it is rebuildable local data, and the launch already
+  holds the pinned text (`launch.pack`). The self-test's runs-mask row allows the pack's directory as one of the run's
+  own, as it does the run's directories.
+- **`aew context show` in a run reads only a stored pack:** the run's own, the one its sandbox shows. Any other id is
+  refused before anything of it is read, `PERMISSION_DENIED` with reason `not_own_invocation`, naming the command for
+  the run's own. A non-writer that sees a stored pack but not the one asked for is refused the same way, whatever its
+  variables say. With `--section`, it prints the sections whose `##` heading starts with the text given; an unknown
+  one is `USAGE` with reason `no_such_section` and the pack's headings.
+- **Unchanged:** the operator's and the Lead's `context show` on the host, and the contained Lead's, whose sandbox
+  shows no stored pack and renders one without writing (STG-05 CB-09).
+- Tests: `tests/integration/test_containment.py` (`test_a_runs_sandbox_shows_its_own_pack_alone_and_read_only`) and
+  `tests/integration/test_non_writer_reads.py` (`test_a_run_reads_its_own_launch_contract_and_a_section_of_it`,
+  `test_a_run_asking_for_another_invocations_contract_is_refused`).

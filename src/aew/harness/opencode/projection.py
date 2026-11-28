@@ -49,7 +49,7 @@ from aew.harness.contract import (
     wake_line,
 )
 from aew.harness.wake_queue import HEADER as WAKE_HEADER
-from aew.knowledge.context import CONTRACT_HEADING
+from aew.knowledge.context import CONTRACT_HEADING, SKILL_FIT
 from aew.surface import SERVER_NAME, contract
 
 AGENT = "aew"
@@ -210,7 +210,7 @@ def skills_text(planned: Mapping[str, Any]) -> list[str]:
         lines.append(f"- Load {_ids(load)} with the `skill` tool before you start, unless its description says it does "
                      "not fit this task. This qualifies the contract's \"Skills to load\".")
     if optional:
-        lines.append(f"- The `skill` tool lists {_ids(optional)}: load each one whose description matches your task.")
+        lines.append(f"- The `skill` tool lists {_ids(optional)}: {SKILL_FIT}.")
     if unavailable:
         lines.append("- Skills your role card requests that this harness does not provide: "
                      f"{', '.join(unavailable)}. Proceed without them and say so in your report.")
@@ -259,8 +259,9 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
         f"invocation {contract.invocation}, run {contract.run}.",
         # What the first message holds, by the headings of its two texts, each from its owner (register E368, the
         # worker-pack audit's F4: it starts with the run's preamble, so "is your AEW launch contract" was false).
-        f"The first message is this run's rules (\"{K.RUN_HEADING}\"), then your authoritative launch contract "
-        f"(\"{CONTRACT_HEADING}\"); this OpenCode session is disposable and nothing in it is AEW state.",
+        f"The first message is this run's heading (\"{K.RUN_HEADING}\"), then your authoritative launch contract "
+        f"(\"{CONTRACT_HEADING}\"); these rules hold for the whole run. This OpenCode session is disposable and "
+        "nothing in it is AEW state.",
         "- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential "
         "exists here and none is needed.",
         "- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.",
@@ -273,6 +274,7 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
         "never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.",
         "- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.",
         "- Tools that are unavailable here are unavailable by design. Do not work around them.",
+        *K.run_rules(contract),
     ]
     if network is not None:
         lines.append(network_text(network))

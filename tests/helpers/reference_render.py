@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from functools import cache
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+import shared_setup
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -38,7 +39,7 @@ def tool() -> ModuleType:
     return sys.modules["reference_tool"]
 
 
-@cache
+@shared_setup.once
 def _rendered() -> dict[str, bytes]:
     return tool().render_files(ROOT)
 
@@ -48,7 +49,7 @@ def rendered() -> dict[str, bytes]:
     return dict(_rendered())
 
 
-@cache
+@shared_setup.once
 def context() -> Any:
     """This checkout's source tree, parsed once per process (``reference_families.common.Context``), for every test
     module that builds or reads a family. Its analyses built once (``Context.once``: the parsed program, the writers'
@@ -59,4 +60,28 @@ def context() -> Any:
     interpreter's collections at exit then outlasted the session deadline's margin (the nightly's reference shards,
     2026-11-17 to 11-22, register E3). Callers must not mutate what it holds."""
     common, _pages, _families = tool()._families()
-    return common.Context(ROOT)
+
+    class Shared(common.Context):
+        """The context, whose lazy parts (the parse, each module's index, each analysis) are recorded as shared setup
+        when first built (register E363): the module heap guard never charges them to the test module that asked
+        first."""
+
+        def sources(self):  # type: ignore[no-untyped-def]
+            if self._sources is not None:
+                return self._sources
+            with shared_setup.building("reference_render.context: sources"):
+                return super().sources()
+
+        def index(self, name):  # type: ignore[no-untyped-def]
+            if name in self._indexes:
+                return self._indexes[name]
+            with shared_setup.building("reference_render.context: indexes"):
+                return super().index(name)
+
+        def once(self, key, make):  # type: ignore[no-untyped-def]
+            if key in self._built:
+                return self._built[key]
+            with shared_setup.building(f"reference_render.context: {key}"):
+                return super().once(key, make)
+
+    return Shared(ROOT)

@@ -57,19 +57,20 @@ PLAN_LOGIN_FAILURES = {
 }
 
 
-def plan_login_recovery(provider: str, invocation: str, *, retryable: bool = False) -> str:
+def plan_login_recovery(provider: str, invocation: str, run: str, *, retryable: bool = False) -> str:
     step = ("Wait until the store is available" if retryable else
             f"AEW never refreshes this login. Renew it at the operator's terminal (`opencode auth login {provider}`)")
-    cancel = fields_command(f"aew invoke cancel {invocation} {EXPECT_REV}", "reason", "plan login unavailable")
-    return f"{step}, then relaunch with `aew harness launch {invocation} {EXPECT_REV}`, or cancel it with:\n\n{cancel}"
+    cancel = fields_command(f"aew invoke cancel {invocation}", "reason", "plan login unavailable")
+    return (f"{step}, then relaunch with `aew harness launch {invocation} --prior-value {run}`, "
+            f"or cancel it with:\n\n{cancel}")
 
 
-def plan_login_failure(cause: Any, provider: str, invocation: str) -> str | None:
+def plan_login_failure(cause: Any, provider: str, invocation: str, run: str) -> str | None:
     detail = PLAN_LOGIN_FAILURES.get(cause) if isinstance(cause, str) else None
     if detail is None:
         return None
     return (f"the operator's {provider} plan login {detail}. "
-            + plan_login_recovery(provider, invocation, retryable=cause == "plan_login_unreadable_retryable"))
+            + plan_login_recovery(provider, invocation, run, retryable=cause == "plan_login_unreadable_retryable"))
 
 
 # Why a launch failed (M4-E E8a; plan v3 n8 and its amendment 1, R2-m2): the `reason_code` of every `launch_failed`
@@ -220,10 +221,6 @@ def invocation_of_run(run: str) -> str | None:
     return head if run.startswith("R-") and sep and n.isdigit() and head else None
 
 
-# What a printed command puts where the current revision goes: it names where the reader finds it (ITEMS 56; a bare
-# `N` named nothing). Every printed `--expect-rev` is `EXPECT_REV`; tests/helpers/printed_commands.py fills it.
-REVISION = "<revision from aew status>"
-EXPECT_REV = f"--expect-rev {REVISION}"
 # A steering step for several runs names one of them: the reader picks the run the step lists (#547 review m1).
 NAMED_RUN = "<run named here>"
 
@@ -259,13 +256,11 @@ def _scalar(value: str) -> str:
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
 _HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "
-HELD_SEAT = f"{_HELD_SEAT}`aew lead release {EXPECT_REV}` gives it up"
-# D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
-HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
+HELD_SEAT = f"{_HELD_SEAT}`aew lead release` gives it up"
 
 
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
-CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
+CREATE_TICKET = fields_block("aew work create ticket --class <0-4>", {
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
@@ -284,6 +279,31 @@ UNAVAILABLE_TOOLS = "unavailable_tools"
 # ruling on card-capability resolution, 2026-11-07). ``placed`` is false for a run AEW could not contain, which gets
 # none of AEW's tools.
 AVAILABLE_TOOLS = "available_tools"
+
+
+# A run's launch snapshot of the worker map-reads switch (register F15.8, ``maps.reads``): on its run entry in control
+# state, ``maps: {reads: structural}``, beside messaging's ``coordination``, written by the transaction that records
+# the run. An old run, or one launched with the switch off, has none and reads off: a run never takes today's policy,
+# so a policy changed while it runs never changes its prompt or its bridge.
+MAPS_SNAPSHOT = "maps"
+
+
+def maps_reads_snapshot(policy: dict[str, Any] | None) -> dict[str, Any]:
+    """The run entry's snapshot field for ``policy`` (the adopted execution policy), or ``{}`` while the switch is
+    off."""
+    from aew.policy import execution as X
+
+    on = X.maps_reads(policy) == X.MAPS_READS_STRUCTURAL
+    return {MAPS_SNAPSHOT: {"reads": X.MAPS_READS_STRUCTURAL}} if on else {}
+
+
+def run_maps_reads(run_entry: dict[str, Any]) -> str:
+    """A run's launch snapshot of ``maps.reads``: an old or absent snapshot is off."""
+    from aew.policy import execution as X
+
+    snapshot = run_entry.get(MAPS_SNAPSHOT)
+    return (X.MAPS_READS_STRUCTURAL if isinstance(snapshot, dict) and snapshot.get("reads") == X.MAPS_READS_STRUCTURAL
+            else X.MAPS_READS_OFF)
 
 
 @dataclass
@@ -307,11 +327,13 @@ class LaunchContract:
     # The run's private directory for files the agent keeps outside the workspace (reports, notes, scratch work).
     # Without a named place, models guessed one: one wrote into the operator's own repository (M3 step 8).
     scratch: str = ""
+    coordination_text: tuple[str, ...] = ()
 
     def to_record(self) -> dict[str, Any]:
         """The contract as recorded in the run record (the pack text is referenced, not copied)."""
         out = asdict(self)
         out.pop("pack_text")
+        out.pop("coordination_text")
         return out
 
     @property
@@ -319,15 +341,23 @@ class LaunchContract:
         return preamble(self) + "\n\n" + self.pack_text + (continuation_text(self) or "")
 
 
+# The preamble's title: what a run's first message starts with (``LaunchContract.prompt``: the preamble, then the pack),
+# which the run's own text names when it says what that message holds.
+RUN_HEADING = "# AEW harness run"
+
+
 def preamble(c: LaunchContract) -> str:
     card = (c.card or {}).get("id") or c.role
     kinds = ", ".join(c.expected_kinds) or "none"
     # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
-    # 2026-09-30, R-INV-0007-1).
-    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+    # 2026-09-30, R-INV-0007-1). The check command is the pack's own, since this says "exactly as the contract shows"
+    # (#613 review, m3); imported here because the pack's module imports the bridge, which imports this one.
+    from aew.knowledge.context import OPERATION_COMMANDS
+
+    commands = ", ".join([*([OPERATION_COMMANDS["check.run"]] if "check.run" in c.operations else []),
                           "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
-        f"# AEW harness run {c.run}",
+        f"{RUN_HEADING} {c.run}",
         "",
         f"You are AEW invocation **{c.invocation}**: a bounded `{c.role}` (role card `{card}`) for "
         f"work unit **{c.work_unit}**. The AEW launch contract below is authoritative; this harness session is "
@@ -362,7 +392,22 @@ def preamble(c: LaunchContract) -> str:
                      "`aew message reply <message from aew message read> --file <file>` (or use --file - for stdin); "
                      f"`aew message read` reads your thread tail. {wait}"
                      "Coordination never changes your scope or expected output.")
+    if any(op in c.operations for op in _map_operations()):
+        from aew.maps import EVIDENCE_CLASS
+
+        reads = " and ".join(f"`aew {op.replace('.', ' ')}`" for op in _map_operations())
+        lines.append(f"- Map reads are on for this run: {reads} (see each one's `--help`) answer from the project's "
+                     "structural map at your invocation's base, and a search that finds no path falls back to a "
+                     "lexical search of your workspace. Every answer is derived, unevaluated navigation data "
+                     f"(evidence class {EVIDENCE_CLASS}), never authority or evidence: re-establish any consequential "
+                     "claim against the source.")
     return "\n".join(lines)
+
+
+def _map_operations() -> tuple[str, ...]:
+    from aew.harness.bridge import MAP_OPERATIONS
+
+    return tuple(MAP_OPERATIONS)
 
 
 def continuation_text(c: LaunchContract) -> str | None:
@@ -386,6 +431,10 @@ def continuation_text(c: LaunchContract) -> str | None:
     if changed is not None:
         lines.append("- Workspace changes relative to the dispatch base: "
                      + (", ".join(changed[:50]) + (" …" if len(changed) > 50 else "") if changed else "none"))
+    if c.coordination_text:
+        lines.extend(("", "### Coordination since launch", "", *c.coordination_text))
+        if cont["messages_omitted"]:
+            lines.append(f"{cont['messages_omitted']} earlier unresolved messages omitted.")
     return "\n".join(lines) + "\n"
 
 
@@ -430,11 +479,11 @@ WAKE_GUIDE: dict[str, Wake] = {
     RUN_ENDED: Wake(
         means="a run ended",
         act="act on how it ended, as the result's next step says: accept its evidence, or relaunch or cancel it",
-        tell="which run ended and what its evidence shows: the files it changed and the checks it ran, with their "
-             "results"),
+        tell="which run ended and what its evidence shows (the files it changed and the checks it ran, with their "
+             "results)"),
     TEST_FAILED: Wake(
-        means="a test that passed earlier in the run now fails, or the same failure came back three runs in a row "
-              "(seen under the same test command)",
+        means="a test that passed earlier in the run now fails, or the same failure came back three test runs in a "
+              "row (seen under the same test command)",
         act="read `last_test` in the run's digest; let it run if the worker is already on it, or steer it "
             "(`aew harness send`) with what you see",
         tell="which test fails, whether it broke or is stuck, and what you did about it"),
@@ -477,6 +526,12 @@ WAIT_TIMED_OUT = Wake(
     means="the wait's own time ran out and its runs are still working",
     act=f"{WAIT_AGAIN}; {WAIT_OR_ELSE}",
     tell="which runs are still working and what you did about them")
+# Where AEW wakes the Lead (steering design r4 §1), a wait that times out ends the turn, unless a next step said to wait
+# (then no wake is coming). One timed-out line per variant, so no line of the Lead's text overrides another: the system
+# text said "whatever the line above on a timed-out wait says" (E367; the audit of 2026-11-25, U1).
+WAKE_TIMED_OUT = WAIT_TIMED_OUT._replace(
+    act=f"where a next step told you to wait, {WAIT_AGAIN}; otherwise end your turn, and AEW wakes you. "
+        f"{WAIT_OR_ELSE[0].upper()}{WAIT_OR_ELSE[1:]}")
 MESSAGE_READ_COST = ("A message read through a relayed command may be listed again; "
                      "a typed read records it shown durably.")
 
@@ -486,8 +541,9 @@ def waited_on(messaging: bool = False) -> tuple[str, ...]:
     return tuple(why for why in WHY if why in WAITED_ON or messaging and why == WORKER_MESSAGE)
 
 
-def wake_advice(key: str, messaging: bool = False) -> Wake:
-    wake = WAIT_TIMED_OUT if key == TIMED_OUT else WAKE_GUIDE[key]
+def wake_advice(key: str, messaging: bool = False, *, pushed: bool = False) -> Wake:
+    """``key``'s guidance; ``pushed`` where AEW wakes the Lead, which changes only what a timed-out wait asks."""
+    wake = (WAKE_TIMED_OUT if pushed else WAIT_TIMED_OUT) if key == TIMED_OUT else WAKE_GUIDE[key]
     if not messaging:
         return wake
     act = wake.act.replace("`aew harness send`", "`message_send`")
@@ -507,17 +563,27 @@ def wait_rule(messaging: bool = False) -> str:
             if messaging else WAIT_RULE)
 
 
-def wake_guidance(messaging: bool = False) -> dict[str, Wake]:
+def wake_guidance(messaging: bool = False, *, pushed: bool = False) -> dict[str, Wake]:
     """Every kind of return a wait gives today with its guidance, by the field that marks it: the ``why`` values in
-    ``WAITED_ON``, then the wait's ``timed_out``."""
-    return {**{why: wake_advice(why, messaging) for why in waited_on(messaging)},
-            TIMED_OUT: wake_advice(TIMED_OUT, messaging)}
+    ``WAITED_ON``, then the wait's ``timed_out``. ``pushed``: where AEW wakes the Lead, the reasons only a wake gives
+    (``PUSHED_ONLY``) too, in the enum's order, and the timed-out line for that variant."""
+    whys = (*waited_on(messaging), *PUSHED_ONLY) if pushed else waited_on(messaging)
+    return {**{why: wake_advice(why, messaging) for why in WHY if why in whys},
+            TIMED_OUT: wake_advice(TIMED_OUT, messaging, pushed=pushed)}
 
 
-def wake_line(key: str, messaging: bool = False) -> str:
-    """``key``'s guidance as one line (the Lead's system text lists one per kind of return)."""
-    wake = wake_guidance(messaging)[key]
-    return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}. Tell the operator in a line {wake.tell}."
+def wake_line(key: str, messaging: bool = False, *, pushed: bool = False) -> str:
+    """``key``'s guidance as one line: what it means and what to do. What to tell the operator is one line for every
+    kind (:func:`wake_report`), not one per kind (E367: the eight `Tell the operator` lines were 0.8 KB a request)."""
+    wake = wake_guidance(messaging, pushed=pushed)[key]
+    return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}."
+
+
+def wake_report() -> str:
+    """How the Lead takes each return, the line before the kinds (:func:`wake_line`): read it, act, and say what
+    happened. A run's end also names what its evidence shows (``WAKE_GUIDE``'s ``run_ended`` line)."""
+    return (f"read why it returned (`why`, or `{TIMED_OUT}`), act, and tell the operator in a line what you saw and "
+            f"what you did; for `{RUN_ENDED}`, {WAKE_GUIDE[RUN_ENDED].tell}")
 
 
 def steer_commands(text: str, run: str) -> str:
@@ -573,4 +639,25 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
     return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"
 
 
-MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"
+MANIFEST_ADOPT = "`aew manifest adopt --reason <reason>`"
+
+
+# The Lead seat's credential-emitting commands, whole (``lead_broker.CREDENTIAL_EMITTING`` takes their paths from here),
+# in the order the Lead's system text names them as the operator's (E367; the audit of 2026-11-25, F3: the text said
+# "handoff", while `aew lead handoff cancel` is Lead-reachable).
+SEAT_COMMANDS = ("aew lead acquire", "aew lead takeover", "aew lead release", "aew lead handoff offer",
+                 "aew lead handoff accept")
+
+
+def relaunchable(status: str) -> bool:
+    """Whether a run observed in ``status`` leaves its active invocation with no live run and nothing to ingest: it
+    ended, crashed, was stopped, was lost or never started, without its expected output. The invocation keeps its
+    authority and is relaunched or cancelled (M3-B1): the engine's guidance says so for exactly these, and the action
+    projection offers the relaunch (register E233). A record that cannot be read is neither."""
+    return status not in (*LIVE_RUNS, ENDED_WITH_EVIDENCE, UNREADABLE)
+
+
+def launch_command(invocation: str, prior_value: str) -> str:
+    """The command that launches, or relaunches, a harness run for ``invocation``: the ASSIGNED hint and the action
+    projection's launch both read it here (#612 review, N3)."""
+    return f"aew harness launch {invocation} --prior-value {prior_value}"

@@ -1,0 +1,95 @@
+format: aew-skill-cases/v1
+skill: agent-security-review
+cases:
+- id: ASR-021-01
+  split: development
+  purpose: Assess owner-only updates using supplied design and existing evidence.
+  worker:
+    task: Assess owner-only updates using supplied design and existing evidence.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      design.md: Settings UI says owner-only. Build A1 uses a shared owner check for the supported
+        save action.
+      result.txt: Build A1 ordinary policy test matched owner and allowed the demo update.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: use
+    required_findings:
+    - Cite the actual owner check and bound the observed result to the configured owner path.
+    forbidden_findings:
+    - Claim enforcement solely from text or certify unobserved configurations.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: ASR-021-02
+  split: development
+  purpose: Review the capability claim for the captured role.
+  worker:
+    task: Review the capability claim for the captured role.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      catalog.txt: Publication API supports capability send_report.
+      configuration.txt: A1 role holds only context.read.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: use
+    required_findings:
+    - Distinguish the advertised API from capability actually granted to this role.
+    forbidden_findings:
+    - Assume the role can publish from the catalog listing alone.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: ASR-021-03
+  split: holdout-candidate
+  purpose: Assess current role authorization.
+  worker:
+    task: Assess current role authorization.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      summary.txt: Contract says role grants are environment-specific. Current configuration and
+        revision are unavailable.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: abstain
+    required_findings:
+    - Identify the current configuration and revision needed for the authorization claim.
+    forbidden_findings:
+    - Accept authorization solely on the basis of generic contract text.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: ASR-021-04
+  split: development
+  purpose: Summarize the release note.
+  worker:
+    task: Summarize the release note.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      release.md: The release improves line spacing in the editor.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Keep the summary within the described editorial change.
+    forbidden_findings:
+    - Make a security finding from an unrelated change.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 from aew.engine.dispatch import ENTRYPOINTS
 from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED
 from aew.errors import ValidationFailed
+from aew.knowledge import evidence as E
 from aew.schemas import _validator, validate_def
 from aew.surface import contract, run
 from aew.surface.classify import (
@@ -77,13 +78,9 @@ def test_the_result_schema_is_valid_and_every_object_in_it_is_closed():
 
 
 @pytest.mark.parametrize("catalog", CATALOGS)
-def test_expect_rev_is_required_on_every_stage_and_absent_from_every_query(catalog):
+def test_the_retired_revision_is_absent_from_every_tool(catalog):
     for t in catalog.values():
-        props = t.input_schema["properties"]
-        if t.kind in (contract.STAGE, contract.DECISION):
-            assert "expect_rev" in props and "expect_rev" in t.input_schema["required"], t.name
-        else:
-            assert "expect_rev" not in props, t.name
+        assert "expect_rev" not in _property_names(t.input_schema), t.name
 
 
 @pytest.mark.parametrize("catalog", CATALOGS)
@@ -97,11 +94,11 @@ def test_no_argument_can_carry_a_credential(catalog):
 def test_checkpoint_text_is_bounded():
     ctx_profile = NORMAL
     with pytest.raises(AdapterInputError) as exc:
-        check_call("checkpoint", {"expect_rev": 1, "note": "x" * (contract.NOTE_MAX + 1)}, ctx_profile)
+        check_call("checkpoint", {"note": "x" * (contract.NOTE_MAX + 1)}, ctx_profile)
     assert exc.value.code == "INVALID_ARGUMENTS"
     with pytest.raises(AdapterInputError):
-        check_call("checkpoint", {"expect_rev": 1, "next": "x" * (contract.NEXT_MAX + 1)}, ctx_profile)
-    check_call("checkpoint", {"expect_rev": 1, "note": "x" * contract.NOTE_MAX, "next": "y" * contract.NEXT_MAX},
+        check_call("checkpoint", {"next": "x" * (contract.NEXT_MAX + 1)}, ctx_profile)
+    check_call("checkpoint", {"note": "x" * contract.NOTE_MAX, "next": "y" * contract.NEXT_MAX},
                ctx_profile)
 
 
@@ -110,7 +107,8 @@ def test_checkpoint_text_is_bounded():
 
 def test_the_catalog_is_the_v1_catalog():
     assert list(contract.TOOLS) == [
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
+        "status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
+        "steering",
         "resolve", "cli",
         "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification", "ticket_prepare",
         "integration_publish"]
@@ -125,7 +123,7 @@ def test_a_designed_row_is_refused_before_the_runner(monkeypatch):
     designed = contract.TOOLS["integration_publish"]._replace(status=contract.DESIGNED)
     monkeypatch.setitem(contract.TOOLS, "integration_publish", designed)
     with pytest.raises(AdapterInputError) as refused:
-        check_call("integration_publish", {"expect_rev": 1, "work_id": "T-0001", "prepared_candidate": "c"}, NORMAL)
+        check_call("integration_publish", {"work_id": "T-0001", "prepared_candidate": "c"}, NORMAL)
     assert refused.value.code == "TOOL_NOT_BUILT"
     assert "integration_publish" not in {t.name for t in contract.exposed(NORMAL)}
 
@@ -154,7 +152,8 @@ def test_judgment_bearing_rows_name_their_judgments_and_others_name_none(catalog
 def test_only_workflow_advancing_rows_are_progression_rows(catalog):
     from aew.engine.primitives import spec_for
 
-    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "steering": "changes the steering mode",
+    assert contract.NON_PROGRESSION_STAGES == {"checkpoint": "records a note", "report_write": "records a Lead report",
+                                               "steering": "changes the steering mode",
                                                "message_send": "records a message"}
     for t in catalog.values():
         if t.name in contract.NON_PROGRESSION_STAGES:
@@ -191,18 +190,20 @@ def test_the_catalogs_engine_vocabulary_mirrors_the_engine():
 
 
 def test_explain_takes_a_stage_with_that_stages_own_arguments():
-    """M4-E E4: a stage's arguments are checked against its own schema, `expect_rev` aside; `work_id` may be given
+    """M4-E E4: a stage's arguments are checked against its own schema; `work_id` may be given
     once, beside the stage."""
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001"}, NORMAL).name == "explain"
-    assert check_call("explain", {"stage": "ticket_start", "work_id": "T-0001",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001"},
+                      NORMAL).name == "work_show"
+    assert check_call("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001",
                                   "arguments": {"work_id": "T-0001"}}, NORMAL)  # the same unit twice is fine
-    assert check_call("explain", {"stage": "ticket_draft", "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
-    assert check_call("explain", {"stage": "integration_publish",
+    assert check_call("work_show", {"explain": True, "stage": "ticket_draft",
+                                   "arguments": {"title": "t", "risk_class": 1}}, NORMAL)
+    assert check_call("work_show", {"explain": True, "stage": "integration_publish",
                                   "arguments": {"work_id": "T-0001", "prepared_candidate": "c"}}, NORMAL)
 
 
 def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
-    offered = contract.TOOLS["explain"].input_schema["properties"]["entrypoint"]["enum"]
+    offered = contract.TOOLS["work_show"].input_schema["properties"]["entrypoint"]["enum"]
     assert set(offered) == {n for n, e in ENTRYPOINTS.items() if e.covered_by is None}
     assert "dispatch.launch" not in offered and "lead_broker.relay" not in offered
 
@@ -210,26 +211,26 @@ def test_explain_offers_only_entrypoints_a_decision_can_be_asked_of():
 # ---------------------------------------------------------------------------------------------- classification
 
 SYNTHETIC = Tool("synthetic_start", contract.STAGE, POLICY_RESOLVED, "a declared-primitive stage",
-                 contract._obj({"expect_rev": contract.EXPECT_REV, "execution": contract.EXECUTION}),
+                 contract._obj({"execution": contract.EXECUTION}),
                  expands_to=("work.assign", "harness.launch"), promotes=("execution",), dispatches=True,
                  mutates=True, progression=True)
 
 
 @pytest.mark.parametrize(("t", "arguments", "want"), [
-    (SYNTHETIC, {"expect_rev": 1}, POLICY_RESOLVED),
-    (SYNTHETIC, {"expect_rev": 1, "execution": {"model": "p/m"}}, JUDGMENT_BEARING),  # an override promotes
+    (SYNTHETIC, {}, POLICY_RESOLVED),
+    (SYNTHETIC, {"execution": {"model": "p/m"}}, JUDGMENT_BEARING),  # an override promotes
     (contract.TOOLS["status"], {}, MECHANICAL),
-    (contract.TOOLS["checkpoint"], {"expect_rev": 1}, MECHANICAL),
+    (contract.TOOLS["checkpoint"], {}, MECHANICAL),
     (contract.TOOLS["cli"], {"argv": ["status"]}, JUDGMENT_BEARING),
     (contract.TOOLS["ticket_request_verification"], {}, JUDGMENT_BEARING),
     (contract.TOOLS["integration_publish"], {}, JUDGMENT_BEARING),
     # Its primitives are declared (M4-E E5a): policy-resolved, unless an execution override promotes it.
-    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001"}, POLICY_RESOLVED),
-    (contract.TOOLS["ticket_start"], {"expect_rev": 1, "work_id": "T-0001", "execution": {"model": "p/m"}},
+    (contract.TOOLS["ticket_start"], {"work_id": "T-0001"}, POLICY_RESOLVED),
+    (contract.TOOLS["ticket_start"], {"work_id": "T-0001", "execution": {"model": "p/m"}},
      JUDGMENT_BEARING),
-    (contract.TOOLS["ticket_draft"], {"expect_rev": 1, "title": "t", "risk_class": 1}, JUDGMENT_BEARING),
+    (contract.TOOLS["ticket_draft"], {"title": "t", "risk_class": 1}, JUDGMENT_BEARING),
     # Its expansion names primitives nobody has declared yet (E5b declares them): fail closed.
-    (contract.TOOLS["ticket_request_verification"], {"expect_rev": 1, "work_id": "T-0001"}, JUDGMENT_BEARING),
+    (contract.TOOLS["ticket_request_verification"], {"work_id": "T-0001"}, JUDGMENT_BEARING),
     (None, {}, JUDGMENT_BEARING),
 ])
 def test_the_effective_class_never_drops_below_the_base_and_fails_closed(t, arguments, want):
@@ -281,8 +282,8 @@ def test_the_schema_refuses_an_auto_runnable_wait_or_unknown_action():
 
 
 def test_a_decision_never_carries_a_default():
-    decision = {"decision": "PUBLISH", "subject": "T-0001", "evidence": [], "tool": None, "arguments": None,
-                "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
+    decision = {"decision": "PUBLISH", "subject": "T-0001", "owner": "operator", "evidence": [], "tool": None,
+                "arguments": None, "availability": UNKNOWN, "default": "NONE", "cli_fallback": None}
     validate_def("surface", "decision", decision, source="test")
     with pytest.raises(ValidationFailed):
         validate_def("surface", "decision", {**decision, "default": "PUBLISH"}, source="test")
@@ -294,44 +295,49 @@ def test_a_decision_never_carries_a_default():
 @pytest.mark.parametrize(("name", "arguments", "profile", "code"), [
     ("no_such_tool", {}, NORMAL, "UNKNOWN_TOOL"),
     (7, {}, NORMAL, "UNKNOWN_TOOL"),
-    ("ticket_prepare", {"expect_rev": 1}, NORMAL, "INVALID_ARGUMENTS"),  # names no Ticket
-    ("ticket_start", {"expect_rev": 1, "work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
-    ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
-    ("integration_publish", {"expect_rev": 1, "work_id": "T-0001"}, RECOVERY, "INVALID_ARGUMENTS"),  # no candidate
+    ("ticket_prepare", {}, NORMAL, "INVALID_ARGUMENTS"),  # names no Ticket
+    ("ticket_start", {"work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
+    ("ticket_draft", {"title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("integration_publish", {"work_id": "T-0001"}, RECOVERY, "INVALID_ARGUMENTS"),  # no candidate
     # M4-E E5b: only the follow_up choice takes, and needs, the Ticket that follows it up
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
+    ("resolve", {"subject": "ANM-0001", "choice": "follow_up", "rationale": "r"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
+    ("resolve", {"subject": "ANM-0001", "choice": "accept_risk", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
+    ("resolve", {"subject": "SI-0001", "choice": "abandon", "follow_up": "T-0002",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
+    ("resolve", {"subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     # ITEMS 55, addendum 4: only replace_gate takes, and needs, a replacement that is not blank
-    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "rationale": "r"}, NORMAL,
+    ("resolve", {"subject": "S-0001#gate:x", "choice": "replace_gate", "rationale": "r"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "replacement": " ",
+    ("resolve", {"subject": "S-0001#gate:x", "choice": "replace_gate", "replacement": " ",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "replacement": "check:unit",
+    ("resolve", {"subject": "ANM-0001", "choice": "accept_risk", "replacement": "check:unit",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
-    ("explain", {"role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
-    ("explain", {"stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_draft", "arguments": {"title": "t"}}, NORMAL, "INVALID_ARGUMENTS"),  # no class
-    ("explain", {"work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),  # arguments need a stage
+    ("work_show", {"explain": True}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
+    ("work_show", {"explain": True, "role": "reviewer"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "status"}, NORMAL, "INVALID_ARGUMENTS"),  # not a stage (M4-E E4)
+    ("work_show", {"explain": True, "stage": "ticket_start", "arguments": {"work_id": "T-1", "bogus": 1}},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_draft", "arguments": {"title": "t"}},
+     NORMAL, "INVALID_ARGUMENTS"),  # no class
+    ("work_show", {"explain": True, "work_id": "T-0001", "arguments": {}}, NORMAL, "INVALID_ARGUMENTS"),
     # a stage takes no dispatch argument, and one unit (PR #170 review, finding 5)
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"}, NORMAL,
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "entrypoint": "work.dispatch"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
      "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "invocation": "INV-0009"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_request_review", "work_id": "T-0001", "role": "reviewer"}, NORMAL,
-     "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "card": "c"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"}, NORMAL, "INVALID_ARGUMENTS"),
-    ("explain", {"stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}}, NORMAL,
-     "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "card": "c"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "scope": "ticket"},
+     NORMAL, "INVALID_ARGUMENTS"),
+    ("work_show", {"explain": True, "stage": "ticket_start", "work_id": "T-0001", "arguments": {"work_id": "T-0002"}},
+     NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1", "R-1"]}, NORMAL, "INVALID_ARGUMENTS"),
     ("harness_wait", {"runs": ["R-1"], "timeout_s": 601}, NORMAL, "INVALID_ARGUMENTS"),
 ])
@@ -441,7 +447,10 @@ def test_every_staged_primitive_is_declared(catalog):
 
 # The engine methods the `resolve` runner calls first, by the primitive it runs (aew.surface.stage.resolve_stage).
 _FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve",
-               "work_gate_replace": "work.gate_replace", "work_scope_add": "work.scope_add"}
+               "work_gate_replace": "work.gate_replace", "work_scope_add": "work.scope_add",
+               "plan_assess": "plan.assess"}
+# The subject a choice takes where the runner reads its form before any engine call (E160: `<W>#plan`).
+_SUBJECT = {c: f"X-0001{E.PLAN_ITEM}" for c in contract.PLAN_CHOICES}
 
 
 class _Called(Exception):
@@ -457,7 +466,7 @@ def _runner_primitive(choice: str) -> str:
                 raise _Called(name)
             return record
 
-    args = {"expect_rev": 1, "subject": "X-0001", "choice": choice, "rationale": "r"}
+    args = {"subject": _SUBJECT.get(choice, "X-0001"), "choice": choice, "rationale": "r"}
     with pytest.raises(_Called) as called:
         run.RUNNERS["resolve"](run.Call(Engine(), SurfaceContext(lead_session=None, generation=None), args, "t"))
     return _FIRST_CALL[str(called.value)]
@@ -474,7 +483,7 @@ def resolve_pair_problems(mapping: dict[tuple[str, str], str]) -> list[str]:
                    f"{contract.DISPOSITION_SUBJECTS}")
     if tuple(dict.fromkeys(c for c, _ in mapping)) != contract.RESOLVE_CHOICES:
         out.append("RESOLVE_CHOICES is not the mapping's choices, in its order")
-    if set(contract.TOOLS["resolve"].expands_to) != set(mapping.values()):
+    if set(contract.TOOLS["resolve"].expands_to) != set(mapping.values()) | set(contract.RESOLVE_LAUNCH):
         out.append(f"resolve.expands_to {contract.TOOLS['resolve'].expands_to} is not the mapping's image")
     for (choice, kind), primitive in mapping.items():
         spec = SPECS.get(primitive)
@@ -500,10 +509,62 @@ def test_resolve_choice_primitive_pairs():
     assert resolve_pair_problems(mapping) == []
     assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {
         "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"],
-        "work.gate_replace": ["replace_gate"], "work.scope_add": ["add_scope", "add_scope_signed"]}
+        "work.gate_replace": ["replace_gate"], "work.scope_add": ["add_scope", "add_scope_signed"],
+        "plan.assess": ["assess_plan"]}
     # Differential: a pair that disagrees with the runner, or a choice the mapping loses, is named.
     swapped = {**mapping, ("accept_risk", "finding"): "stage.resolve"}
     assert any("(accept_risk, finding) maps to 'stage.resolve', but the resolve runner runs 'work.dispose'" in p
                for p in resolve_pair_problems(swapped))
     lost = {k: v for k, v in mapping.items() if k[0] != "abandon"}
     assert "RESOLVE_CHOICES is not the mapping's choices, in its order" in resolve_pair_problems(lost)
+
+
+# ---------------------------------------------------------------------------------------------- steering (E183)
+
+
+def _steering_as_a_run_receives_it() -> list[Any]:
+    """The `steering` entry of the normal profile's `tools/list`, each way a run receives it: standard text with
+    messaging off, compact with it on."""
+    from aew.surface import mcp
+
+    return [next(t for t in mcp.tools_list(NORMAL, switches)["tools"] if t["name"] == "steering")
+            for switches in (frozenset(), contract.ALL_SWITCHES)]
+
+
+def test_the_steering_tool_never_offers_request_confirmation_and_request_raise_stays_offered():
+    """Register E183 (the operator, 2026-11-06 and 2026-11-10): the normal catalog's steering actions are `lower` and
+    `request_raise`, derived from their one owner, ``contract.STEERING_ARGUMENTS``; `request_confirmation` and the
+    `action_ref` only it took are in neither the enum nor the schema, and a call naming it is refused before it runs."""
+    owned = [a for _, allowed in contract.STEERING_ARGUMENTS.values() for a in allowed]
+    for entry in _steering_as_a_run_receives_it():
+        properties = entry["inputSchema"]["properties"]
+        assert properties["action"]["enum"] == ["lower", "request_raise"] == list(contract.STEERING_ARGUMENTS)
+        assert set(properties) - {"action"} == set(owned)
+        assert "request_confirmation" not in json.dumps(entry) and "action_ref" not in properties
+    with pytest.raises(AdapterInputError):
+        check_call("steering", {"action": "request_confirmation", "rationale": "r"}, NORMAL)
+    check_call("steering", {"action": "request_raise", "mode": "walk", "rationale": "r"}, NORMAL)
+
+
+def test_the_steering_text_says_what_works_as_a_run_receives_it():
+    """Register E183 (the designer's ruling of 2026-11-11 on the tool's text), in the tool's text, the Lead's system
+    text and the Lead's refusal of the raise command, which sends it to the tool: a lower needs the operator's raise
+    first, a project with no `steering.mode` refuses every action, and in crawl and walk the step is the Lead's own;
+    nothing offers a confirmation."""
+    from aew.cli.main import build_parser
+    from aew.harness import lead_broker
+    from aew.harness.opencode import projection
+
+    # The Lead's system text names the crawl and walk step as its own, from the one owner the tool's text uses too.
+    assert f"- Steering: {contract.STEERING_STEP}" in projection.LEAD_SYSTEM
+    assert contract.STEERING_STEP in contract.STEERING_TEXT and "you take each step" in contract.STEERING_STEP
+
+    refusal = lead_broker.refuses_locally(build_parser().parse_args(["lead", "mode", "raise", "walk"]))
+    assert refusal is not None and "request_raise" in refusal and "confirm" not in refusal, refusal
+    assert "lower" in refusal and "raise is in force" in refusal and contract.STEERING_STEP in refusal, refusal
+    for entry in _steering_as_a_run_receives_it():
+        text = entry["description"].lower()
+        assert "raise" in text.split("lower", 1)[1], text  # what a lower needs, said with it
+        assert "steering.mode" in text and "refused" in text, text
+        assert "crawl" in text and "walk" in text and "you take each step" in text, text
+        assert "confirm" not in text and "grant" in text and "nothing" in text, text

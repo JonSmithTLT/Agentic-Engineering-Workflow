@@ -18,9 +18,10 @@ from aew.util import load_yaml
 
 RECORD_PATH = "docs/implementation/lead-context-pool.yaml"
 RECORD = Path(__file__).resolve().parents[2] / RECORD_PATH
-MESSAGING_ON = frozenset({contract.MESSAGING})
-# TLS-21 as amended by LEAD-CONTEXT-BUDGET-2026-11-10 retains the offered-tool ceiling.
-TOOL_LIMIT = 16
+# The fixture's switches: messaging on and off, each with a new project's map reads (`maps.reads: structural`, which
+# `aew init` writes: the operator, 2026-11-25, O1), so the Lead's typed `map` row (register F15.8, PR A2) is measured.
+MESSAGING_ON = frozenset({contract.MESSAGING, contract.MAPS})
+MESSAGING_OFF = frozenset({contract.MAPS})
 
 
 @dataclass(frozen=True)
@@ -44,13 +45,24 @@ def read_baseline(record: dict) -> Pool:
     return Pool(**parts)
 
 
+# Room above the measured pool that the operator keeps on purpose (the operator, 2026-11-26: the cap is "a guard
+# against bloat"). Only an allocation of this kind, carrying the operator's words and date, may stand for unused bytes
+# beside the estimates; an author cannot write one without quoting a decision.
+RESERVE = "reserve"
+
+
+def unused_room(record: dict) -> int:
+    """The bytes the slack rule lets stay unused under the cap: the open estimates and the operator's reserve."""
+    return sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] in {"estimate", RESERVE})
+
+
 def operator_count(entry: object, name: str, count_key: str) -> int:
     location = f"{RECORD_PATH} {name}"
     assert isinstance(entry, dict) and set(entry) == {count_key, "operator", "date"}, (
         f"{location} requires exactly {count_key}, operator, and date"
     )
     count = entry[count_key]
-    assert type(count) is int and count > 0, f"{location}.{count_key} must be a positive byte count"
+    assert type(count) is int and count > 0, f"{location}.{count_key} must be a positive count"
     assert isinstance(entry["operator"], str) and entry["operator"].strip(), f"{location} requires the operator's words"
     quoted_date = entry["date"]
     try:
@@ -66,11 +78,16 @@ def approved_ceiling(record: dict) -> int:
     baseline = read_baseline(record)
     allocations = record["allocations"]
     # These names are operator-approved. A new name needs an operator decision recorded with the allocation.
-    assert set(allocations) == {"E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry"}
+    assert set(allocations) == {"E157", "E158", "E160", "E162", "messaging_guide_line", "E176", "maps_guide_entry",
+                                "F15.8_map_tool", "operator_reserve"}
     for name, entry in allocations.items():
         assert type(entry["bytes"]) is int, name
-        assert entry["kind"] in {"estimate", "measured"} and entry["source"].strip(), name
-        assert entry["kind"] != "estimate" or entry["bytes"] > 0, name
+        assert entry["kind"] in {"estimate", "measured", RESERVE} and entry["source"].strip(), name
+        assert entry["kind"] not in {"estimate", RESERVE} or entry["bytes"] > 0, name
+        if entry["kind"] == RESERVE:  # the operator's decision, quoted, or no reserve
+            operator_count({"bytes": entry["bytes"], "operator": entry.get("operator"), "date": entry.get("date")},
+                           f"allocations.{name}", "bytes")
+            assert set(entry) == {"bytes", "kind", "source", "operator", "date"}, f"allocations.{name}"
     ceiling = baseline.total + sum(entry["bytes"] for entry in allocations.values())
     assert ceiling > 0, "the context pool needs a positive ceiling"
     cap = operator_count(record.get("approval"), "approval", "ceiling_bytes")
@@ -118,11 +135,11 @@ def check_pool(pool: Pool, record: dict, *, switches: frozenset[str]) -> None:
         f"In {RECORD_PATH}, record the landed item's measured delta or the operator's wip_allowance."
     )
     if switches == MESSAGING_ON:
-        remaining = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
+        remaining = unused_room(record)
         slack = cap - pool.total
         assert slack <= remaining, (
             f"Lead context pool uses {pool.total} B under its {cap} B cap, leaving {slack} B of slack "
-            f"for {remaining} B of estimates ({component_changes(pool, read_baseline(record))}). "
+            f"for {remaining} B of estimates and operator reserve ({component_changes(pool, read_baseline(record))}). "
             f"Account for the {slack - remaining} B saving in {RECORD_PATH} baseline and lower the recorded cap."
         )
 
@@ -137,21 +154,43 @@ def host_independent_placement(monkeypatch):
     monkeypatch.setattr(capability_store, "read", lambda directory=None: capability_store.empty())
 
 
-@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
 def test_the_contained_normal_lead_fits_its_context_pool(record, switches, host_independent_placement):
     pool = render_pool(record["baseline"]["containment"], switches)
     check_pool(pool, record, switches=switches)
 
 
-def check_tool_count(count: int) -> None:
-    assert count <= TOOL_LIMIT, f"normal surface offers {count} tools (limit {TOOL_LIMIT})"
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
+def test_the_guides_core_is_the_size_the_pool_records(record, switches, host_independent_placement):
+    """E231: the guide's core is what the Lead's system text carries, and its bytes, messaging on and off, are the
+    measured `after` figures the record gives, with the saving it lowered the baseline and cap by. A change to the
+    core's bytes fails here until the record says what it measures."""
+    pool = render_pool(record["baseline"]["containment"], switches)
+    measured = record["guide_core"]["messaging_on" if contract.MESSAGING in switches else "messaging_off"]
+    assert pool.guide_bytes == measured["after"], (
+        f"the guide's core renders {pool.guide_bytes} B, the record says {measured['after']} B: update "
+        f"{RECORD_PATH} guide_core and the baseline")
+    on = record["guide_core"]["messaging_on"]
+    assert record["guide_core"]["saving_bytes"] == on["before"] - on["after"]
 
 
-@pytest.mark.parametrize("switches", [MESSAGING_ON, frozenset()], ids=["messaging-on", "messaging-off"])
-def test_the_normal_surface_stays_within_the_offered_tool_limit(switches):
+def tool_ceiling(record: dict) -> int:
+    """TLS-21's offered-tool ceiling: the operator-approved count the record holds (the operator, 2026-11-27), with the
+    operator's words and date, so an author cannot raise it without quoting a decision."""
+    return operator_count(record.get("tool_ceiling"), "tool_ceiling", "count")
+
+
+def check_tool_count(count: int, record: dict) -> None:
+    limit = tool_ceiling(record)
+    assert count <= limit, f"normal surface offers {count} tools (limit {limit}, {RECORD_PATH} tool_ceiling)"
+
+
+@pytest.mark.parametrize("switches", [MESSAGING_ON, MESSAGING_OFF], ids=["messaging-on", "messaging-off"])
+def test_the_normal_surface_stays_within_the_offered_tool_limit(record, switches):
     listing = mcp.tools_list(NORMAL, switches=switches)
-    assert ("message_send" in {tool["name"] for tool in listing["tools"]}) == bool(switches)
-    check_tool_count(len(listing["tools"]))
+    names = {tool["name"] for tool in listing["tools"]}
+    assert ("message_send" in names) == (contract.MESSAGING in switches) and "map" in names
+    check_tool_count(len(listing["tools"]), record)
 
 
 @pytest.mark.parametrize("part", ["system_bytes", "guide_bytes", "join_bytes", "mcp_bytes"])
@@ -171,18 +210,17 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     label = record["baseline"]["containment"]
     original = render_pool(label, MESSAGING_ON)
     # Start this synthetic shrink at exactly the reserved slack. The separate live-pool test checks the real cap.
-    estimates = sum(entry["bytes"] for entry in record["allocations"].values() if entry["kind"] == "estimate")
-    record["approval"]["ceiling_bytes"] = original.total + estimates
+    record["approval"]["ceiling_bytes"] = original.total + unused_room(record)
     cap = approved_ceiling(record)
-    name, meaning, _example = lead_text.guide.CLASS_TEXT["0"]
-    monkeypatch.setitem(lead_text.guide.CLASS_TEXT, "0", (name, meaning, "x"))
+    # A shorter rule in the guide's core, which the system text carries (a section's text is not in the pool: E231).
+    monkeypatch.setattr(lead_text.guide, "TEST_WORK", "x")
     smaller = render_pool(label, MESSAGING_ON)
     freed = original.guide_bytes - smaller.guide_bytes
     assert freed > 0 and smaller.total == original.total - freed
     message = rf"{cap} B cap.*guide {smaller.guide_bytes} B.*{freed} B saving.*{RECORD_PATH}"
     with pytest.raises(AssertionError, match=message):
         check_pool(smaller, record, switches=MESSAGING_ON)
-    check_pool(render_pool(label, frozenset()), record, switches=frozenset())
+    check_pool(render_pool(label, MESSAGING_OFF), record, switches=MESSAGING_OFF)
     # Measured allocations already account for growth beyond the baseline; retain that accounting and remove
     # only this saving, rather than copying the grown rendered guide into the baseline and counting growth twice.
     record["baseline"]["guide_bytes"] -= freed
@@ -192,18 +230,44 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     check_pool(smaller, record, switches=MESSAGING_ON)
 
 
-def test_one_tool_over_the_count_limit_fails_independently_of_bytes():
-    check_tool_count(TOOL_LIMIT)
-    with pytest.raises(AssertionError, match=f"{TOOL_LIMIT + 1} tools"):
-        check_tool_count(TOOL_LIMIT + 1)
+def test_one_tool_over_the_count_limit_fails_independently_of_bytes(record):
+    limit = tool_ceiling(record)
+    check_tool_count(limit, record)
+    with pytest.raises(AssertionError, match=rf"{limit + 1} tools \(limit {limit}, {RECORD_PATH} tool_ceiling\)"):
+        check_tool_count(limit + 1, record)
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    ({"operator": None}, "requires exactly count, operator, and date"),
+    ({"date": None}, "requires exactly count, operator, and date"),
+    ({"operator": " "}, "requires the operator's words"),
+    ({"date": load_yaml("date: 2026-11-27")["date"]}, "quoted ISO date"),
+    ({"count": 0}, "positive count"),
+])
+def test_the_tool_ceiling_is_the_operator_approved_count_in_the_pool_record(record, change, message):
+    """The operator, 2026-11-27, raised the ceiling from 16 (the Lead chose 20 of the 18 or 20 allowed). The limit is
+    the record's operator-approved count, never a literal here, and an entry without the operator's words or the
+    date, or no entry at all, fails before any tool is counted."""
+    entry = record["tool_ceiling"]
+    assert tool_ceiling(record) == entry["count"]
+    for key, value in change.items():
+        if value is None:
+            del entry[key]
+        else:
+            entry[key] = value
+    with pytest.raises(AssertionError, match=rf"{RECORD_PATH} tool_ceiling.*{message}"):
+        check_tool_count(1, record)
+    del record["tool_ceiling"]
+    with pytest.raises(AssertionError, match=rf"{RECORD_PATH} tool_ceiling requires exactly"):
+        check_tool_count(1, record)
 
 
 @pytest.mark.parametrize(("change", "message"), [
     ({"operator": " "}, "requires the operator's words"),
-    ({"count": True}, "positive byte count"),
+    ({"count": True}, "positive count"),
     ({"date": "11/11/2026"}, "quoted ISO date"),
     ({"date": load_yaml("date: 2026-11-11")["date"]}, "quoted ISO date"),
-    ({"count": 0}, "positive byte count"),
+    ({"count": 0}, "positive count"),
     ({"extra": "value"}, "requires exactly"),
 ])
 @pytest.mark.parametrize(("name", "count_key"), [("approval", "ceiling_bytes"), ("wip_allowance", "count")])
@@ -242,4 +306,25 @@ def test_baseline_plus_allocations_cannot_raise_the_operator_cap(record, change)
         record["allocations"]["E176"].update(bytes=23_000, kind=change)
     cap = record["approval"]["ceiling_bytes"]
     with pytest.raises(AssertionError, match=rf"{RECORD_PATH}.*{cap} B cap.*wip_allowance"):
+        approved_ceiling(record)
+
+
+def test_only_an_operator_attributed_reserve_lets_bytes_stay_unused_under_the_cap(record, host_independent_placement):
+    """The operator, 2026-11-26: the cap is an anti-bloat guard, set above what the measured pool needs. The room above
+    it is the operator's reserve, and the slack rule accepts it only as that: with the operator's words and date. The
+    same bytes recorded as a measured allocation, or as a reserve without the operator's words, fail."""
+    pool = render_pool(record["baseline"]["containment"], MESSAGING_ON)
+    reserve = record["allocations"]["operator_reserve"]
+    assert reserve["kind"] == RESERVE and reserve["operator"] == record["approval"]["operator"]
+    check_pool(pool, record, switches=MESSAGING_ON)
+    reserve["kind"] = "measured"
+    del reserve["operator"], reserve["date"]
+    with pytest.raises(AssertionError, match=r"slack .*estimates and operator reserve"):
+        check_pool(pool, record, switches=MESSAGING_ON)
+    reserve.update(kind=RESERVE, operator=" ", date="2026-11-26")
+    with pytest.raises(AssertionError, match=r"allocations.operator_reserve requires the operator's words"):
+        approved_ceiling(record)
+    reserve["operator"] = "Synthetic decision"
+    del reserve["date"]
+    with pytest.raises(AssertionError, match=r"allocations.operator_reserve.date must be a quoted ISO date"):
         approved_ceiling(record)

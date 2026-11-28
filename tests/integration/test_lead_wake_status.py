@@ -54,7 +54,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     from aew.policy import execution as X
 
     _wakes_are_posted_on_this_platform(monkeypatch)
-    assert _next_after_launch(project) == K.no_broker_step(["run-1"])  # on by default, and no broker posts
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"], messaging=True)
     assert "no broker is posting wakes here" in _next_after_launch(project)
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
     assert _next_after_launch(project).startswith("wait on run-1 with `harness_wait`")  # off: no fallback to explain
@@ -73,7 +73,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
     assert Q.status(project.root / ".aew", generation=generation) is None  # no wake was ever recorded
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: object())  # crashed, stale or closed
-    assert _next_after_launch(project) == K.no_broker_step(["run-1"])
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"], messaging=True)
 
 
 def _engine_of(project):
@@ -114,7 +114,7 @@ def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkey
     policy = engine.execution_policy()[0]
     assert X.push_wake(policy) == X.PUSH_WAKE_OFF and L.pushes_wakes(engine) is False
     assert L.lead_poster(policy, "password", unix="socket") is None
-    assert engine._harness._wait_on(["run-1"]) == K.wait_step(["run-1"])
+    assert engine._harness._wait_on(["run-1"]) == K.wait_step(["run-1"], messaging=True)
     system = P.lead_config(push_wake=L.pushes_wakes(engine))["agents"][P.LEAD_AGENT]["system"]
     assert Q.HEADER not in system and "do not end your turn" in system
 
@@ -175,6 +175,59 @@ def test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_
     finally:
         broker.close()
     assert Q.serving(root) is None and not broker._wakes.is_alive()
+
+
+def _a_broker_posting_wakes(project):
+    from aew.engine.api import Engine
+    from aew.harness.lead_broker import LeadBroker
+
+    broker = LeadBroker(Engine.discover(project.root), project.token)
+    broker.start()
+    try:
+        broker.start_wakes(_Poster())
+    except BaseException:
+        broker.close()
+        raise
+    assert Q.serving(project.root / ".aew") == broker.generation
+    return broker
+
+
+def test_a_broker_close_clears_its_mark_while_a_reader_holds_it(project):
+    """A reader holding the serving mark refuses its removal on Windows (main push run 45941273545, job 140316044983):
+    the close waits it out, and the mark is gone once the close returns."""
+    from windows_sharing import held_by_a_reader
+
+    root = project.root / ".aew"
+    broker = _a_broker_posting_wakes(project)
+    try:
+        with held_by_a_reader(root / Q.SERVING_REL):
+            broker.close()
+    except BaseException:
+        broker.close()  # only on a failure: a second close would clear the mark the test looks at
+        raise
+    assert Q.serving(root) is None and not broker._wakes.is_alive() and broker.server.closed
+
+
+def test_a_reader_that_outlasts_the_wait_never_stops_a_broker_close(project, capsys):
+    """The close finishes all the same, the bridge and the liveness record included, and the mark it leaves posts
+    nothing: the closed record says no broker is there."""
+    from windows_sharing import held_by_a_reader
+
+    from aew.harness import broker_liveness
+
+    root = project.root / ".aew"
+    broker = _a_broker_posting_wakes(project)
+    try:
+        with held_by_a_reader(root / Q.SERVING_REL, release_after=None):
+            broker.close()
+    except BaseException:
+        broker.close()  # only on a failure: a second close would clear the mark the test looks at
+        raise
+    assert broker.server.closed and not broker._wakes.is_alive()
+    assert Q.serving(root) == broker.generation and "could not remove its wake mark" in capsys.readouterr().err
+    record = broker_liveness.read(root)
+    assert isinstance(record, dict) and record.get("closed_at") is not None
+    assert Q.some_broker_posts(root) is False
 
 
 class _CountingPoster(_Poster):

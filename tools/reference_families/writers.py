@@ -70,7 +70,7 @@ WITH_CASE = ("aew.dashboard.service", "Service.start", ("local/dashboard/endpoin
 # tests: every first entry a write resolves to is in it (else the write is unresolved: a new directory is a decision),
 # and every entry is the first entry of a record. The layout family reuses this table.
 TOP_LEVEL: tuple[str, ...] = (".gitignore", "coordination", "decisions", "evidence", "history", "knowledge", "local",
-                              "policy", "pricing", "project.yaml", "records", "roles", "state", "work")
+                              "policy", "pricing", "project.yaml", "records", "reports", "roles", "state", "work")
 
 # `aew.util` is the write mechanism: its callers are the writers, so a path written inside it is its caller's. So is the
 # store's own `write_file` (every write into the store goes through it: its docstring says so). So is the store's apply
@@ -90,6 +90,7 @@ CALL_PRIMITIVES: dict[str, tuple[str, int]] = {
     f"{UTIL}.create_exclusive": ("create_exclusive", 0),
     f"{UTIL}.write_temp": ("write_temp", 0),
     f"{UTIL}.replace_with_retry": ("replace_with_retry", 1),
+    f"{UTIL}.unlink_with_retry": ("unlink_with_retry", 0),
     "os.replace": ("os.replace", 1), "os.rename": ("os.rename", 1), "os.link": ("os.link", 1),
     "os.symlink": ("os.symlink", 1), "os.remove": ("os.remove", 0), "os.unlink": ("os.unlink", 0),
     "os.rmdir": ("os.rmdir", 0), "os.mkdir": ("os.mkdir", 0), "os.makedirs": ("os.makedirs", 0),

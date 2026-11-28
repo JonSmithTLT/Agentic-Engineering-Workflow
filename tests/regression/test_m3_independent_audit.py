@@ -187,7 +187,7 @@ SILENTLY_CHANGED = {  # what the YAML layer stored for each, before this fix
     "comment after a value": "goal: Finish #1 with $5.00\n",            # "Finish"
     "comment after a list item": "goal:\n  - one # two\n",               # "one"
     "duplicate key": "goal: first\ngoal: second\n",                      # "second" only
-    "two spellings of one option": "expect_rev: 1\nexpect-rev: 2\n",     # "2" only
+    "two spellings of one option": "acceptance_check: one\nacceptance-check: two\n",  # "two" only
     "anchor": "goal: &1 is the first case\n",                            # "is the first case"
     "alias": "title: &t x\ngoal: [*t]\n",                                # a copy of another value
     "tag": "goal: !x value\n",                                           # "value"
@@ -226,7 +226,7 @@ def test_a_goal_is_stored_as_intended_or_refused_never_truncated(tmp_path):
 
     def create(text: str):
         return p.aew("work", "create", "ticket", "--class", "1", "--title", "t", "--fields", "-",
-                     "--expect-rev", str(p.rev()), input=text, env={"AEW_LEAD_TOKEN": p.token})
+                     input=text, env={"AEW_LEAD_TOKEN": p.token})
 
     intended = "Finish #1 with $5.00"
     refused = create(f"goal: {intended}\n")
@@ -303,5 +303,5 @@ def test_a_post_integration_check_counts_only_under_its_current_definition(tmp_p
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
     _redefine_check(p, "unit", command=["{python}", "-c", "raise SystemExit(1)"])
-    refused = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    refused = p.aew(*p.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "post-integration" in refused.error["message"], refused.stdout

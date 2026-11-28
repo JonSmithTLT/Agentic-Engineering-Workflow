@@ -21,7 +21,7 @@ from aew.engine import approval, transitions
 from aew.engine import gates as G
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
-from aew.harness.contract import EXPECT_REV
+from aew.knowledge import evidence as E
 from aew.operator import require_operator_attribution
 from aew.policy import checks as C
 from aew.policy import consistency
@@ -175,9 +175,25 @@ class Roles:
         if card.archetype not in allowed:
             raise UsageError(f"card {card.id} ({card.archetype}) cannot fill the {slot} slot of {unit['title']!r}",
                              allowed_archetypes=sorted(allowed))
+        if slot == "execute":
+            self._ref_review_fit(unit, card)
+
+    @staticmethod
+    def _ref_review_fit(unit: dict[str, Any], card: roles.Card) -> None:
+        """A Ticket that names a ref is executed by a ref reviewer, a card of an archetype that writes a ref review and
+        lists it among its outputs; a card whose only output is a ref review executes nothing else (register E168)."""
+        outputs = card.meta.get("outputs") or []
+        reviews = E.REF_REVIEW in outputs and E.REF_REVIEW in E.ROLE_KINDS.get(card.archetype, set())
+        if unit.get("review_ref") and not reviews:
+            raise UsageError(f"card {card.id} does not review a ref: {unit['title']!r} names {unit['review_ref']} to "
+                             f"review, so its executor lists {E.REF_REVIEW} among its outputs; omit --card for the "
+                             f"built-in {E.REF_REVIEW_CARD}", reason="card_not_a_ref_reviewer", card=card.id)
+        if not unit.get("review_ref") and outputs == [E.REF_REVIEW]:
+            raise UsageError(f"card {card.id} reviews a named ref, and {unit['title']!r} names none: create the Ticket "
+                             "with --review-ref <ref> (and --non-mutating)", reason="no_ref_to_review", card=card.id)
 
     def work_staff(
-        self, *, token: str, expect_rev: int, work_id: str,
+        self, *, token: str, work_id: str,
         execute: list[str] | None = None, review: list[str] | None = None, verify: list[str] | None = None,
         forbid: list[str] | None = None, remove: list[str] | None = None,
         selected_by: str = "lead", pin: bool = False, reason: str | None = None,
@@ -186,7 +202,7 @@ class Roles:
         if selected_by not in {"lead", "operator"}:
             raise UsageError("selected_by is lead or operator (policy/workflow entries are computed)")
         require_operator_attribution(selected_by == "operator", authorization, "a role selection")
-        with self.k.lead_txn(token, expect_rev, "work.staff", reason=reason) as ctx:
+        with self.k.lead_txn(token, "work.staff", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if unit["state"] in transitions.TERMINAL:
                 raise IllegalTransition(f"{work_id} cannot be staffed in state {unit['state']}")
@@ -265,7 +281,7 @@ class Roles:
         digest = approval.role_plan_digest(unit)
         return {"ok": True, "work_id": work_id, "role_plan": unit["role_plan"], "decision": decision,
                 "role_plan_digest": digest, "revision": revision,
-                "staff_argv": approval.bound_argv(("work", "staff", work_id), revision, digest)}
+                "staff_argv": approval.bound_argv(("work", "staff", work_id), digest)}
 
     def effective_role_plan(self, state: dict[str, Any], work_id: str,
                             gc: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -297,8 +313,12 @@ class Roles:
                     "review": "reviewer" if "review_r1" in required_gates else None,
                     "verify": "verifier" if required_gates & set(G.VERIFICATION_GATES) else None}
         for slot, arch in defaults.items():
-            if arch and not eff[slot] and roles.default_card(arch):
-                eff[slot].append({"card": roles.default_card(arch), "selected_by": "workflow",
+            # A Ticket that names a ref is executed by the ref reviewer by default (register E168)
+            if not arch or eff[slot]:
+                continue
+            card = E.REF_REVIEW_CARD if slot == "execute" and unit.get("review_ref") else roles.default_card(arch)
+            if card:
+                eff[slot].append({"card": card, "selected_by": "workflow",
                                   "reason": f"default {arch} card for a required gate"})
         return {"stored": stored, "effective": eff, "forbidden": stored.get("forbidden", []),
                 "role_plan_digest": approval.role_plan_digest(unit),
@@ -379,8 +399,8 @@ class Roles:
         if pinned and card.id not in pinned:
             raise PermissionDenied(
                 f"the operator pinned {pinned} for {work_id}'s execute slot; to dispatch {card.id}, change the role "
-                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason> {EXPECT_REV}` (a "
-                "recorded decision)",
+                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason> "
+                f"--prior-value {approval.role_plan_digest(unit)}` (a recorded decision)",
                 pinned=pinned, requested=card.id)
 
     @staticmethod

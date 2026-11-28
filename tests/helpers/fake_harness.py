@@ -189,6 +189,12 @@ class HarnessLab:
         # test names one: a lab project is a new project, and without the key it would read off and be offered maps at
         # `aew opencode`'s start, which a Lead session's test runs on a relayed terminal, where it waits for an answer.
         policy.setdefault("maps", {"pack_slices": X.NEW_PROJECT_PACK_SLICES})
+        # The synthetic policy keeps messaging disabled unless a test enables it. A missing key would ask at the lab's
+        # terminal, before the scripted Lead runs.
+        policy.setdefault("coordination", {"messaging": X.MESSAGING_DISABLED})
+        # History search as init writes it (register E185), for the same reason as maps: without the key it reads off
+        # and would be offered at the lab's terminal.
+        policy.setdefault("recall", {"raw_history_search": X.NEW_PROJECT_RAW_HISTORY_SEARCH})
         # Contained runs (Linux, M4-B) can write only their own roots and see a private /tmp: the fake agent reads its
         # script and tests exchange pid and sync files through these two directories, so the lab's policy adds them
         # as operator-declared writable roots (recorded on every run's label, like any operator addition).
@@ -230,7 +236,7 @@ class HarnessLab:
         return res.json
 
     def lead_args(self, *args: str) -> list[str]:
-        return [*args, "--expect-rev", str(self.project.rev())]
+        return self.project.lead_args(*args)
 
     def lead_env(self, env: dict[str, str] | None) -> dict[str, str]:
         """The Lead credential the way the operator gives it, in the environment."""

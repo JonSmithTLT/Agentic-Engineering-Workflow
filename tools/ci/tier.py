@@ -53,6 +53,9 @@ SHARED = (
     # The surface map: its probes are what a worker's agent can run, which the non-writer and containment integration
     # tests run (tests/helpers/worker_surface.py; review of #231, m7).
     "docs/implementation/surface-map.yaml",
+    # The Lead's context pool record: its containment fixture is the input of E231's typed-versus-shell measurement
+    # (tools/perf/lead_typed_vs_shell.py), whose run is an integration test.
+    "docs/implementation/lead-context-pool.yaml",
 )
 # A Markdown file under one of these is not documentation. `eval/` joined in plan v7 (§3.3, V3-4): the dogfood
 # regression reads eval/m3/dogfood, Markdown included.
@@ -237,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pr", default="", help="the pull request's number, to read its labels live")
     ap.add_argument("--labels", help="the labels, comma-separated (instead of reading them live)")
     ap.add_argument("--github-output", type=Path, help="append the tier, lanes and reuse eligibility here")
+    ap.add_argument("--lanes-out", type=Path, help="write the effective tier's lane names, one per line")
     ap.add_argument("--record", type=Path, help="write the decision record (JSON) here")
     ap.add_argument("--ran", help="fail unless this tier (the one the jobs ran under) covers the recomputed one")
     ap.add_argument("--jobs-for", metavar="TIER", help="instead: check the needed jobs' results for this tier")
@@ -289,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
         with args.github_output.open("a", encoding="utf-8") as fh:
             fh.write(f"tier={tier}\nlanes={','.join(LANES[tier])}\n"
                      f"reusable={'false' if shortcut_barred(paths) else 'true'}\n")
+    if args.lanes_out:
+        args.lanes_out.write_text("".join(f"{lane}\n" for lane in LANES[tier]), encoding="utf-8", newline="\n")
     if args.record:
         args.record.parent.mkdir(parents=True, exist_ok=True)
         record = {"schema": "aew/tier-decision/v2", "event": args.event, "base_ref": args.base_ref,

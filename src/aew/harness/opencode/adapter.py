@@ -68,7 +68,6 @@ from aew.harness.contract import (
     AVAILABLE_TOOLS,
     CATALOG_TIMEOUT,
     CREDENTIAL_PATTERNS,
-    EXPECT_REV,
     LONG_TOKEN,
     PLUGINS_TIMEOUT,
     PROVIDER_AUTH_FAILED,
@@ -186,13 +185,27 @@ def _changed_now(contract: LaunchContract) -> Callable[[], list[str] | None] | N
     return read
 
 
+# The architecture names OpenCode Desktop gives its CLI folders (``cli\\<version>-<name>``). ``x64`` is the one seen
+# (2.2.6, register E235); another joins this when it is seen, never by guess.
+DESKTOP_CLI_ARCHITECTURES = ("x64",)
+
+
 def default_binary() -> Path | None:
-    """The pinned CLI: OpenCode Desktop's version-specific copy on Windows, else ``opencode-cli`` on PATH."""
+    """The pinned CLI: OpenCode Desktop's version-specific copy on Windows, else ``opencode-cli`` on PATH.
+
+    The Desktop keeps each CLI it downloaded under ``%APPDATA%\\ai.opencode.desktop\\cli``, in a folder named for its
+    version: the version alone before 2.2.6, and from 2.2.6 the version, a hyphen and the build's architecture
+    (``2.2.6-x64``; register E235). Exactly those names are read, the version alone first, then one per name in
+    ``DESKTOP_CLI_ARCHITECTURES``: a folder of another version, a pre-release (``2.2.6-rc.1-x64``) or any other
+    suffix is never taken for the pin. The Desktop's own copy under ``Programs\\ai.opencode.desktop\\resources``
+    is not looked for: its folder names no version, so the pin could not choose it."""
     if sys.platform == "win32" and os.environ.get("APPDATA"):
-        pinned = Path(os.environ["APPDATA"], "ai.opencode.desktop", "cli", capabilities.TESTED_VERSIONS[0],
-                      "opencode-cli.exe")
-        if pinned.exists():
-            return pinned
+        cli = Path(os.environ["APPDATA"], "ai.opencode.desktop", "cli")
+        version = capabilities.TESTED_VERSIONS[0]
+        for name in (version, *(f"{version}-{arch}" for arch in DESKTOP_CLI_ARCHITECTURES)):
+            pinned = cli / name / "opencode-cli.exe"
+            if pinned.exists():
+                return pinned
     found = shutil.which("opencode-cli") or shutil.which("opencode")
     return Path(found) if found else None
 
@@ -343,6 +356,7 @@ class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
     # Use the local HTTP socket-operation timeout as the heartbeat bound. The whole call can take longer.
     STEERING_BOUND_S = REQUEST_TIMEOUT_S
+    coordination_live = True
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
     # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
     PROVIDER_RELAY = True
@@ -406,6 +420,11 @@ class OpenCodeAdapter(HarnessAdapter):
         self.events: EventStream | None = None
         self.session: str | None = None
         self.sent: list[str] = []
+        self._coordination_prompts: set[str] = set()
+        self._staged_coordination: list[str] = []
+        self._waking_coordination: set[str] = set()
+        self._coordination_input_lock = threading.Lock()
+        self._coordination_launch_id: str | None = None
         self.turn = "starting"          # running | held (after a Lead interrupt) | ended
         self.exit_code: int | None = None
         self.detail: str | None = None
@@ -445,8 +464,9 @@ class OpenCodeAdapter(HarnessAdapter):
     def _relaunch_command(self) -> str:
         """The complete command for recovering this invocation's run."""
         contract = getattr(self, "contract", None)
-        invocation = contract.invocation if contract is not None else "<invocation from aew harness status>"
-        return f"`aew harness launch {invocation} {EXPECT_REV}`"
+        if contract is None:
+            return "`aew harness status` and its `launch_argv`"
+        return f"`aew harness launch {contract.invocation} --prior-value {contract.run}`"
 
     @staticmethod
     def projected_config(contract: LaunchContract, state: str | None = None,
@@ -721,7 +741,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def deliver_contract(self, contract: LaunchContract) -> None:
         """The first prompt: the launch contract (subclasses in tests act without a model instead)."""
         try:
-            self._prompt(contract.prompt)
+            self._coordination_launch_id = self._prompt(contract.prompt)
         except OpenCodeUnavailable:
             assert self.server is not None
             try:  # a server that was healthy and then died while taking the contract crashed: it did not fail to start
@@ -730,12 +750,13 @@ class OpenCodeAdapter(HarnessAdapter):
                 raise
             self._server_gone()
 
-    def _probe_version(self) -> tuple[Any, Any]:
+    def _probe_version(self, *, messaging: bool = False) -> tuple[Any, Any]:
         """The server's version and served schema, refused where they lack what AEW needs."""
         assert self.client is not None
         version = (self.client.get("/api/info") or {}).get("version")
         spec = self.client.get("/openapi.json", timeout=OPENAPI_TIMEOUT_S)
-        gaps = capabilities.version_problems(version) + capabilities.problems(spec, self.extra_requirements())
+        gaps = capabilities.version_problems(version) + capabilities.problems(
+            spec, self.extra_requirements(), messaging=messaging)
         if gaps:
             raise HarnessIncompatible(f"OpenCode {version} lacks what AEW needs: " + "; ".join(gaps),
                                       version=version, problems=gaps)
@@ -743,7 +764,8 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def _health(self, contract: LaunchContract, config: dict[str, Any]) -> dict[str, Any]:
         t0 = time.monotonic()
-        version, spec = self._probe_version()
+        version, spec = self._probe_version(
+            messaging=(contract.extra.get("coordination") or {}).get("messaging") == "enabled")
         probe_s = time.monotonic() - t0
         model = self._await_model(contract.execution_profile)
         loaded = self._await_projection(config)
@@ -993,6 +1015,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn == "ended":  # nothing watches an ended run: reviving it would leave it hanging (audit I3)
                 raise HarnessError("this run's harness turn has ended, so the message was not delivered; "
                                    f"relaunch the run to continue it ({self._relaunch_command()})")
+            self.sent.extend(m for m in self._staged_coordination if m not in self.sent)
             self.sent.append(mid)
             self.turn = "running"
             self._idle_seen = None
@@ -1010,6 +1033,124 @@ class OpenCodeAdapter(HarnessAdapter):
         self._wake.set()
         return mid
 
+    def coordination_launch_prompt(self) -> str | None:
+        return self._coordination_launch_id
+
+    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                          delivery: str = "steer", wake: bool = False) -> str:
+        with self._coordination_input_lock:
+            return self._coordination_post(prompt_id, text, metadata, retry=retry, delivery=delivery, wake=wake)
+
+    def _coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                           delivery: str, wake: bool) -> str:
+        assert self.client is not None and self.session is not None
+        with self._lock:
+            if self.turn == "ended":
+                return "session_lost"
+            staged = not wake and (self.turn == "held" or self._lead_interrupted
+                                   or (retry and self.turn != "running"))
+            waking = wake and (self.turn == "held" or self._lead_interrupted)
+            self._coordination_prompts.add(prompt_id)
+            if waking:
+                self._waking_coordination.add(prompt_id)
+            if not (staged or waking or prompt_id in self.sent):
+                self.sent.append(prompt_id)
+                self._idle_seen = None
+        try:
+            receipt = self.client.post(
+                f"/api/session/{self.session}/prompt",
+                {"id": prompt_id, "text": text, "delivery": delivery, "metadata": metadata, "resume": not staged},
+                timeout=2,
+            )
+        except OpenCodeUnavailable:
+            return "uncertain"
+        except OpenCodeError as exc:
+            if exc.status >= 500:
+                return "uncertain"
+            if exc.status == 409:
+                return "id_conflict"
+            if exc.status == 404 and self._session_missing(exc):
+                return "session_lost"
+            return "rejected"
+        item = receipt.get("data") if isinstance(receipt, dict) else None
+        payload = item.get("payload") if isinstance(item, dict) else None
+        if not isinstance(item, dict) or not isinstance(payload, dict) or (
+                payload.get("text") != text or item.get("id") != prompt_id or item.get("delivery") != delivery):
+            return "delivery_mismatch"
+        if staged:
+            with self._lock:
+                if prompt_id not in self._staged_coordination:
+                    self._staged_coordination.append(prompt_id)
+        else:
+            self._observe_coordination_wake(prompt_id)
+        self.emit({"event": "opencode.prompt", "message": prompt_id, "delivery": delivery,
+                   "resume": not staged, "staged": staged, "bytes": len(text.encode("utf-8"))})
+        self._wake.set()
+        return "offered"
+
+    def coordination_admission(self, prompt_id: str, text: str | None = None, *, timeout: float = 2.0) -> str:
+        assert self.client is not None and self.session is not None
+        try:
+            receipt = self.client.get(f"/api/session/{self.session}/message/{prompt_id}", timeout=timeout)
+        except OpenCodeUnavailable:
+            return "unknown"
+        except OpenCodeError as exc:
+            if exc.status == 404:
+                return "session_lost" if self._session_missing(exc) else "pending"
+            return "unknown"
+        item = receipt.get("data") if isinstance(receipt, dict) else None
+        if not isinstance(item, dict) or item.get("id") != prompt_id:
+            return "delivery_mismatch"
+        if text is not None and item.get("text") != text:
+            return "delivery_mismatch"
+        self._observe_coordination_wake(prompt_id)
+        return "admitted"
+
+    def _observe_coordination_wake(self, prompt_id: str) -> None:
+        """Only an accepted waking input can put a held adapter back on its ordinary watch path."""
+        with self._lock:
+            if prompt_id not in self._waking_coordination:
+                return
+            self._waking_coordination.remove(prompt_id)
+            if self.turn == "ended":
+                return
+            self.sent.extend(m for m in self._staged_coordination if m not in self.sent)
+            if prompt_id not in self.sent:
+                self.sent.append(prompt_id)
+            self.turn = "running"
+            self._lead_interrupted = False
+            self._idle_seen = None
+
+    def coordination_abandon(self, prompt_id: str) -> None:
+        with self._lock:
+            self._coordination_prompts.discard(prompt_id)
+            self._waking_coordination.discard(prompt_id)
+            if prompt_id in self.sent:
+                self.sent.remove(prompt_id)
+            if prompt_id in self._staged_coordination:
+                self._staged_coordination.remove(prompt_id)
+            self._idle_seen = None
+
+    def coordination_halt(self, timeout: float) -> bool:
+        assert self.client is not None
+        deadline = time.monotonic() + timeout
+        if not self._coordination_input_lock.acquire(timeout=timeout):
+            return False
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"}, timeout=remaining)
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                active = (self.client.get("/api/session/active", timeout=remaining) or {}).get("data") or {}
+                return self.session not in active
+        except (OpenCodeUnavailable, OpenCodeError):
+            pass
+        finally:
+            self._coordination_input_lock.release()
+        return False
+
     def send(self, text: str, delivery: str) -> None:
         # `steer`: at the next step boundary, inside the same turn; `queue`: only when the turn would end, after its
         # last step (the F9-A MS0 probe, P1 and P2). Either way never lost.
@@ -1019,9 +1160,10 @@ class OpenCodeAdapter(HarnessAdapter):
 
     def interrupt(self) -> None:
         assert self.client is not None
-        with self._lock:
-            self._lead_interrupted = True
-        self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"})
+        with self._coordination_input_lock:
+            with self._lock:
+                self._lead_interrupted = True
+            self.client.post(f"/api/session/{self.session}/interrupt", params={"resume": "false"})
         self._wake.set()
 
     # ------------------------------------------------------------------ watching
@@ -1143,6 +1285,14 @@ class OpenCodeAdapter(HarnessAdapter):
             return True  # unknown: the server check decides
         return True
 
+    def _session_missing(self, error: OpenCodeError) -> bool:
+        tag = error.body.get("_tag") if isinstance(error.body, dict) else None
+        if tag == "SessionNotFoundError":
+            return True
+        if tag == "MessageNotFoundError":
+            return False
+        return not self._session_exists()
+
     def _server_gone(self) -> None:
         assert self.server is not None
         code = self.server.proc.returncode
@@ -1157,6 +1307,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if self.turn != "running" or not self.sent:
                 return
             last = self.sent[-1]
+            may_be_parked = self._lead_interrupted and last in self._coordination_prompts
         active = (self.client.get("/api/session/active") or {}).get("data") or {}
         if self.session in active:
             self._idle_seen = None
@@ -1165,37 +1316,54 @@ class OpenCodeAdapter(HarnessAdapter):
             delivered = self.client.get(f"/api/session/{self.session}/message/{last}")["data"]
         except OpenCodeError as exc:
             if exc.status == 404:  # still queued: not delivered yet
-                self._idle_seen = None
-                return
-            raise
+                if self._session_missing(exc):
+                    self._end(1, f"the OpenCode session {self.session} disappeared")
+                    return
+                if not may_be_parked:
+                    self._idle_seen = None
+                    return
+                delivered = None
+            else:
+                raise
         newest = (self.client.get(f"/api/session/{self.session}/message", {"order": "desc", "limit": "1"})
                   or {}).get("data") or []
         idle = newest[0] if newest else {}
-        if idle.get("type") != "idle" or _created(idle) < _created(delivered):
+        if idle.get("type") != "idle" or (delivered is not None and _created(idle) < _created(delivered)):
             self._idle_seen = None
             return
         inbox = (self.client.get(f"/api/session/{self.session}/inbox") or {}).get("data") or []
+        queued = {item.get("id") for item in inbox}
         with self._lock:
-            if any(item.get("id") in self.sent for item in inbox) or self.sent[-1] != last:
+            interrupted = self._lead_interrupted and idle.get("outcome") == "interrupted"
+            # resume=false leaves pending coordination in the inbox. It belongs to the next wake, so it cannot keep
+            # this interrupted turn running while the very prompt it waits on is parked.
+            parked = ([mid for mid in self.sent if mid in queued and mid in self._coordination_prompts]
+                      if interrupted else [])
+            if (not self.sent or self.sent[-1] != last or (delivered is None and last not in parked)
+                    or any(mid in queued and mid not in parked for mid in self.sent)):
                 self._idle_seen = None
                 return
             if self._idle_seen != idle.get("id"):
                 self._idle_seen = idle.get("id")  # confirm on the next poll: a queue boundary can reopen the turn
                 self._wake.set()
                 return
-        self._turn_over(str(idle.get("outcome")), last, _created(delivered))
+        self._turn_over(str(idle.get("outcome")), last, _created(delivered or {}), parked=parked)
 
-    def _turn_over(self, outcome: str, last: str, since: float = 0.0) -> None:
+    def _turn_over(self, outcome: str, last: str, since: float = 0.0, *, parked: list[str] | None = None) -> None:
         """Close the turn whose last prompt was ``last`` (delivered at ``since``), unless a newer prompt arrived since
         the poll decided."""
         self._meter_wake.set()  # F25 L2: a turn's end is sampled at once, by the meter's own thread
         self._take_snapshot()
         with self._lock:  # the decision and the state change are one step for `_prompt` (independent audit I3)
-            if self.turn != "running" or self.sent[-1] != last:
+            if self.turn != "running" or not self.sent or self.sent[-1] != last:
                 self._idle_seen = None  # a Lead message arrived meanwhile: the run goes on
                 return
             if outcome == "interrupted" and self._lead_interrupted:
                 self._lead_interrupted = False
+                if parked:
+                    parked = [mid for mid in parked if mid in self.sent]
+                    self.sent = [mid for mid in self.sent if mid not in parked]
+                    self._staged_coordination = list(dict.fromkeys(parked + self._staged_coordination))
                 self.turn = "held"  # the Lead interrupted: the session waits for `send`, a stop or the deadline
                 self.emit({"event": "opencode.held", "outcome": outcome})
                 return

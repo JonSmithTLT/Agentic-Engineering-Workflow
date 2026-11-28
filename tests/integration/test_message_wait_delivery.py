@@ -267,8 +267,8 @@ def test_two_real_runs_share_the_twenty_body_wait_budget_and_omitted_replies_ret
         launched = lab.lead("work", "dispatch", wid, "--launch")
         assert launched["launch"]["run"] == run
         runs.append(run)
-        e.message_record_lead(token=lab.project.token, expect_rev=e.store.read()["revision"],
-                              to=launched["invocation"], body=f"Report the observations for worker {n}.")
+        e.message_record_lead(token=lab.project.token, to=launched["invocation"],
+                              body=f"Report the observations for worker {n}.")
     (sync / "go").touch()
     try:
         lab.until(lambda: all((sync / f"done-{n}").exists() for n in (1, 2)),

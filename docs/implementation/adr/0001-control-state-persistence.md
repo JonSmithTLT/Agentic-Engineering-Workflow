@@ -187,3 +187,20 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
       the process exits;
     - a taker stuck in the turnstile holds others back until their timeout;
     - a turnstile that cannot be opened costs fairness, never the lock.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+Control transactions still serialize under the state lock, validate current authority and recover atomically. The transaction allocates and records the next revision against the state it locked. A caller supplies the operation's declared prior item value or approval subject where one is needed. Unrelated transitions do not block a legal operation. The revision continues to order committed transitions and identify durable records.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).
+
+## E331 amendment — who adopts
+
+The designer's decision of 2026-11-10 (design workspace `ab975c1`, part 3(a)), decided by the operator the same day,
+amends the pin's "`aew manifest adopt` accepts both" bullet on who adopts. Adopt is the operator's own transaction at
+their terminal, with no Lead credential (`Kernel.operator_txn`; ADR-0005's E331 amendment): it still re-pins the
+manifest and every policy file from the bytes it validates, but whatever credential is in the shell is not used, and a
+held Lead seat stays with its holder. The decision record is the operator's alone (`kind: operator`,
+`authorized_by: operator-tty`, no Lead actor). The prompt shows each file's diff against its pinned version, from the
+bytes kept under `.aew/local/pinned/` when a pin is written (gitignored, rebuildable, never authority), and the commit
+compares the digests shown. The switch offer's adoption at `aew opencode`'s start keeps its Lead transaction.

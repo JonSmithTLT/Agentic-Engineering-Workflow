@@ -2,29 +2,90 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
 import sys
-from pathlib import Path
+from collections import defaultdict
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "helpers"))
 from bounds import CHEAP_FILE  # noqa: E402
 from evidence_files import (  # noqa: E402
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
+    CANCEL_COLLECTION,
+    CONTROLLER,
     FRAME,
     FRESH_S,
+    INTERRUPTION_REASONS,
+    LANE_REPORT_SCHEMA,
+    NOT_SAMPLED,
+    OUTCOME_FILES,
     PREFIX,
+    SAMPLING_POLICY,
+    STACK_NOT_OWED,
+    WARNING,
     WATCHDOG_HEADER,
+    WORKER_COUNT,
+    WORKER_PHASES,
     entries,
     failure_overflow,
+    finished_without_tests,
+    lifecycle_receipt,
     owner,
+    policy_samples,
     priority,
     publishable,
+    pytest_phase,
+    receipt_phases,
     report_json,
+    report_shows_no_test,
+    sampling_failures,
     stack_file,
     state,
     test_frame,
 )
+
+
+def interruption_outcomes(texts: dict, observed: dict):
+    """Each typed outcome an interruption's capture left for this observation, with the interruption's sample reason:
+    the outcome of the same worker identity, test and collection instant, and no other's."""
+    pid, start = observed["pid"], observed["start"]
+    for reason, named in OUTCOME_FILES.items():
+        for row in rows_named(texts, named(pid, start)):
+            if ((row.get("pid"), row.get("start"), row.get("node")) == (pid, start, observed["node"])
+                    and observed.get("collect_at") is not None and row.get("collect_at") == observed["collect_at"]):
+                yield reason, row.get("outcome")
+
+
+def outcome_note(texts: dict, observed: dict) -> str:
+    """The typed outcomes of an observation as a defect names them, so a sighting says why with no artifact download
+    (register E3): `` (warning outcome: straddled a test change)``, or nothing when none was left."""
+    why = "; ".join(f"{reason} outcome: {outcome}" for reason, outcome in interruption_outcomes(texts, observed))
+    return f" ({why})" if why else ""
+
+
+def outside_call(texts: dict, observed: dict, stacks: list, *, sampled: bool) -> bool:
+    """A live worker owes no interruption stack only by a typed outcome the bundle bears out (register E3), and only
+    for the observation that outcome belongs to: a worker in a lane whose sampling is off, with no retained sample of
+    its identity and no failed sampling attach of it, or one outside its test's call (STACK_NOT_OWED: in setup,
+    teardown or between tests at the cancellation collection; in setup or teardown at the Linux pre-signal warning,
+    by the operator's decision of 2026-11-26) by the frames that same interruption retained. A worker inside its
+    test's call always owes one."""
+    pid, start = observed["pid"], observed["start"]
+    policies = list(rows_named(texts, SAMPLING_POLICY))
+    failed = any(path.name == sampling_failures(pid, start) for path in texts)
+    for reason, outcome in interruption_outcomes(texts, observed):
+        if (reason == CANCEL_COLLECTION and outcome == NOT_SAMPLED and not sampled and not failed and policies
+                and not any(policy_samples(policy) for policy in policies)):
+            return True
+        if outcome in STACK_NOT_OWED[reason] and any(
+                taken == reason and pytest_phase(frames) == outcome for taken, frames in stacks):
+            return True
+    return False
 
 
 def rows_named(texts: dict, name: str):
@@ -36,6 +97,91 @@ def rows_named(texts: dict, name: str):
                     yield row
             except ValueError:
                 continue
+
+
+def before_tests_problems(texts: dict, running: set) -> list[str]:
+    """Where the bundle contradicts or lacks its record that the lane was cancelled before any test started (register
+    E3). The record stands in for a worker observation and a running name only when every copy agrees, every session
+    is listed, every registered worker is listed by identity with its lifecycle receipt, which reached the recorded
+    phase and never execution, a session with no worker roster that had not finished (a serial one, whose controller
+    runs its tests itself) lists its controller on the same terms, a finished session's own files show that it began
+    no test, and no autopsy of a test, watchdog header, interruption record, test result or running name shows a test
+    begun (review of #579, M1 and m1)."""
+    problems = []
+    copies = {json.dumps(row, sort_keys=True) for row in rows_named(texts, BEFORE_TESTS)}
+    record = json.loads(copies.pop()) if len(copies) == 1 else {}
+    sessions = record.get("sessions")
+    if record.get("outcome") != BEFORE_TESTS_OUTCOME or not isinstance(sessions, list) or not all(
+            isinstance(row, dict) and isinstance(row.get("workers"), list) for row in sessions):
+        return ["no single readable before-tests observation"]
+    listed = {}
+    for row in sessions:
+        for worker in row["workers"]:
+            if not isinstance(worker, dict) or worker.get("phase") not in BEFORE_EXECUTION:
+                problems.append(f"{row.get('session')}: a worker not recorded before its first test")
+            else:
+                listed[(PurePosixPath(str(row.get("session"))).name, worker.get("worker"))] = worker
+    names = {PurePosixPath(str(row.get("session"))).name for row in sessions}
+    reports = []
+    files = defaultdict(dict)  # each published session's files, by name, across the bundle's copies
+    for path, text in texts.items():
+        if path.suffix == ".json":
+            with contextlib.suppress(ValueError):
+                doc = json.loads(text)
+                if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
+                    reports.append(doc)
+                    # A collection error is reported before any test; any other result is a test that ran.
+                    if not report_shows_no_test({**doc, "complete": True, "collected": None}):
+                        problems.append(f"{path.name}: the lane report has a test's result")
+            continue
+        if "autopsy" in path.parts[:-1]:
+            under = path.parts[len(path.parts) - 1 - path.parts[::-1].index("autopsy") + 1]
+            if not under.startswith("session-"):
+                problems.append(f"autopsy/{under}: a test's autopsy")
+            elif path.parent.name == under:
+                files[under][path.name] = text
+            continue
+        if path.name.startswith("hang-") and WATCHDOG_HEADER.match(text):
+            problems.append(f"{path.name}: a test was in flight")
+        elif re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+", path.stem):
+            problems.append(f"{path.name}: a worker was observed in a test")
+    for session, published in sorted(files.items()):
+        if session not in names:
+            problems.append(f"{session}: a session the observation does not list")
+            continue
+        if "session-finished.txt" in published and (why := finished_without_tests(published, reports)):
+            problems.append(f"{session}: the session had finished, and {why}")
+        for name, text in sorted(published.items()):
+            if re.fullmatch(r"(?:interrupted|cancelled)-[0-9]+\.txt", name):
+                problems.append(f"{session}/{name}: a worker was observed in a test")
+            elif ident := re.fullmatch(r"(worker-gw[0-9]+)-pid\.txt", name):
+                worker = listed.get((session, ident[1]), {})
+                start = published.get(f"{ident[1]}-start.txt", "")
+                if (not text.strip().isdecimal() or not start.strip().isdecimal()
+                        or (worker.get("pid"), worker.get("start")) != (int(text), int(start))):
+                    problems.append(f"{session}: {ident[1]} is not recorded, by pid and start, before its first test")
+            elif name.endswith("-lifecycle.txt") and WORKER_PHASES[-1] in text.split():
+                problems.append(f"{session}/{name}: a worker had started its tests")
+        controller = listed.get((session, CONTROLLER))
+        if controller is not None:
+            pid, start = (published.get(f"{CONTROLLER}-{key}.txt", "").strip() for key in ("pid", "start"))
+            if (not pid.isdecimal() or not start.isdecimal()
+                    or (controller.get("pid"), controller.get("start")) != (int(pid), int(start))):
+                problems.append(f"{session}: {CONTROLLER} is not recorded, by pid and start, before its first test")
+        elif "session-finished.txt" not in published and f"{WORKER_COUNT}.txt" not in published:
+            # Neither finished nor shown to be an xdist session: its controller may run its tests itself.
+            problems.append(f"{session}: a session with no worker roster does not list its {CONTROLLER} before its "
+                            "first test")
+    for (session, name), worker in sorted(listed.items()):
+        phases = receipt_phases(files.get(session, {}).get(
+            lifecycle_receipt(name, worker.get("pid"), worker.get("start")), ""))
+        # The receipt must have reached the recorded phase: a worker can go on collecting after the observation until
+        # the lane is ended, so a later phase short of execution still bears it out.
+        if phases is None or worker["phase"] not in phases or WORKER_PHASES[-1] in phases:
+            problems.append(f"{session}: {name} has no lifecycle receipt bearing out its recorded phase")
+    if running:
+        problems.append("a running test name was published")
+    return problems
 
 
 ELISION = re.compile(r"Use -v+ to (?:get more diff|show)|Omitting \d+ identical items|Skipping \d+ identical leading")
@@ -111,7 +257,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
 
     files = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
     texts = {path: data.decode("utf-8", errors="replace") for path, data in files.items()}
-    if kind in {"cancel", "cancel-after-tests"}:
+    if kind in {"cancel", "cancel-after-tests", "cancel-before-tests"}:
         from cancel_evidence import REASON_FILE, valid
 
         if not valid(cancel_reason):
@@ -154,7 +300,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                 except ValueError:
                     report("failure-report", f"{relative}: unreadable scanned JSON")
                 else:
-                    if isinstance(doc, dict) and doc.get("schema") == "aew/lane-report/v1":
+                    if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
                         defects.extend(failure_problems(path, doc))
             if owner(relative) is None:
                 report("writer-path", f"{relative}: unlisted writer")
@@ -246,13 +392,16 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     if not observed.get("alive_when_observed"):
                         continue
                     seen = observed.get("collect_at", observed["at"])
-                    stacks = (frames for ring, text in texts.items() if "snapshots" in ring.parts
-                              for sample, frames in entries(text) if sample.get("node") == observed["node"]
-                              and sample.get("pid") == observed["pid"] and sample.get("start") == observed["start"]
-                              and sample.get("reason") in {"warning", "cancel collection"}
-                              and abs(sample["at"] - seen) <= 10)
-                    if not any(test_frame(observed["node"], frames) for frames in stacks):
-                        report("live-stack", f"{path.name}: live worker lacks its interruption stack")
+                    samples = [(sample, frames) for ring, text in texts.items() if "snapshots" in ring.parts
+                               for sample, frames in entries(text)
+                               if sample.get("pid") == observed["pid"] and sample.get("start") == observed["start"]]
+                    stacks = [(sample["reason"], frames) for sample, frames in samples
+                              if sample.get("node") == observed["node"]
+                              and sample.get("reason") in INTERRUPTION_REASONS and abs(sample["at"] - seen) <= 10]
+                    if (not any(test_frame(observed["node"], frames) for _, frames in stacks)
+                            and not outside_call(texts, observed, stacks, sampled=bool(samples))):
+                        report("live-stack", f"{path.name}: live worker lacks its interruption stack"
+                               + outcome_note(texts, observed))
                 except (KeyError, TypeError, ValueError):
                     report("death-record", f"{path.name}: unreadable live-worker observation")
         if kind == "oom":
@@ -271,7 +420,8 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                         for sample, frames in entries(text)) for worker in peak["top_workers"]
                 ):
                     report("pressure", "observed high-water crossing has no RSS list or pressure sample")
-    if kind == "cancel" and any(path.stem in {"cutoff", "session-deadline"} for path in files):
+    if kind in {"cancel", "cancel-before-tests"} and any(path.stem in {"cutoff", "session-deadline"}
+                                                          for path in files):
         report("false-cutoff", "cancel: a local cutoff or session deadline also fired")
     if kind and kind not in {"normal", "cancel", "oom"}:
         names = {path.stem for path in files}
@@ -298,6 +448,10 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     current[int(ident[1])] = (match[1], float(match[4]))
         elif path.name.startswith("running-"):
             running.update(text.splitlines())
+    if kind == "cancel-before-tests":
+        # It stands in for the cancellation's worker observation and running name only as the bundle bears it out.
+        for problem in before_tests_problems(texts, running):
+            report("before-tests", problem)
     if require_stacks or kind in {"cancel", "sigkill", "deadline", "time-limit", "hang"}:
         if not running or "<unrecognized test>" in running:
             report("running", "missing running test name")
@@ -311,7 +465,7 @@ def evidence_problems(root: Path, *, kind: str | None = None, require_stacks: bo
                     for sample, frames in entries(text):
                         pid, birth = sample.get("pid"), sample.get("start")
                         watched = current.get(pid)
-                        if (not watched or (pid, birth) not in births or sample.get("reason") != "warning"
+                        if (not watched or (pid, birth) not in births or sample.get("reason") != WARNING
                                 or sample.get("node") != watched[0] or sample.get("test_began") != watched[1]
                                 or node not in {watched[0], watched[0].split("[", 1)[0]}):
                             continue

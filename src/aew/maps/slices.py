@@ -19,32 +19,49 @@ context names ``codebase_map``. A result that gives a pack to the Lead carries t
   the pinned freshness, never a recomputed one.
 * **Never a different pack** (PR #143 review, M1). Regenerating a pack is also the ``launch.pack`` guard of ``aew
   harness launch`` and the supervisor's launch contract, so a regenerated slice must be the slice the pack was built
-  with, whatever has happened to ``local/maps/`` since (ADR-0015 D1: deleting it is always safe). It is rendered from
-  the pinned artifact; if that is gone or damaged, from the record regenerated in memory from the pinned commit's Git
-  objects (deterministic and content-addressed, T5-INV-08), used only if its ``artifact_sha256`` is the pinned one;
-  and if neither can be had (the commit's objects are gone, or the installed generator differs), from the slice the
-  entry pinned. A map's absence can therefore never change a pinned pack, and so never refuse a launch.
+  with, whatever has happened to ``local/maps/`` since (ADR-0015 D1: deleting it is always safe). It is the slice
+  body the entry pinned (register E293: before, it was rendered again from the record first, so a renderer changed
+  since could change it); an entry pinned without one is rendered from the pinned artifact; if that is gone or
+  damaged, from the record regenerated in memory from the pinned commit's Git objects (deterministic and
+  content-addressed, T5-INV-08), used only if its ``artifact_sha256`` is the pinned one. A map's absence can
+  therefore never change a pinned pack, and so never refuse a launch.
+* **The Ticket's own directories** (register E293). The record keeps only its largest directories (its cap bounds
+  the global view); when that cut any and the scope is restricted, the rows in scope are read from the map's own
+  source tree (:func:`scoped_rows`), and when they cannot be, the slice says a missing directory is not absent.
 """
 
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any
 
+from aew.errors import GitError
+from aew.maps import EVIDENCE_CLASS, gitobjects, rules, store, structural
 from aew.maps import freshness as F
-from aew.maps import gitobjects, rules, store, structural
-from aew.maps.canonical import seal
+from aew.maps.canonical import listing_sha256, render_text, seal
+from aew.util import code_fence
 
 NAME = "codebase_map"
 # The section's bounds. ROWS and HINTS are the implementation's choice when the map entered packs (F22.1 PR B,
 # ba1a0a2f, 2026-10-07): the design sets no number. Filled to them, the body measures about 2,900 bytes at 8-character
 # directory names and 6,000 at 60, and a STALE line naming metadata paths adds about 650 (the E184 review of
 # 2026-11-08 estimated 5,120 to 8,070, plus 400). The byte bound holds all of that and cuts only longer names: hints
-# go first, then rows, and the counts say so; the fixed lines are never cut (``body``). Re-measure:
+# go first, then rows, and the counts say so; the fixed lines are never cut (``body``), so the bound is nominal, not a
+# hard ceiling: fixed lines naming very long paths can carry a body past it on their own. Re-measure:
 # `python tools/perf/map_slice_bytes.py`.
 ROWS, HINTS = 40, 20
 SLICE_MAX_BYTES = 9 * 1024
+# The bound on listing the map's source tree for the directories in scope that the record's cap left out (register
+# E293). A dispatch holds the control lock while it builds the pack; `ls-tree` without sizes reads tree objects only,
+# well under a second at 100,000 paths, so a git that takes longer leaves the slice with its "not absent" line. The
+# bound covers the git processes the listing starts (`refuse_lazy_fetch`'s and `ls-tree`), not the configuration reads
+# every object git call makes first: `git.safe_config`'s `rev-parse --git-common-dir` and `config --list`
+# (`configured_drivers`), which have no timeout of their own and are cached per directory and configuration (the
+# review of #567, n3).
+SCOPE_LISTING_S = 5.0
+UNMATCHED_SHOWN = 5
 HEADING = "## Codebase map (structural; derived reference data, not authority)"
 _GLOB = re.compile(r"[*?\[]")
 
@@ -128,7 +145,8 @@ def pin(aew_root: Path, repo_root: Path, base_commit: str | None, scope_paths: l
     if record is None:
         return entry, _unavailable(str(entry["unavailable"]))
     try:
-        rows = body(record, entry["freshness"], scope_paths, note=note)
+        rows = body(record, entry["freshness"], scope_paths, note=note,
+                    scoped=scoped_rows(repo_root, record, scope_paths))
     except Exception:  # never raise; pinned as unavailable, so a regenerated pack renders the same line
         return _unknown(), _unavailable("unknown")
     return {**entry, **({"refresh": note} if note else {}), "slice": rows}, frame(rows)
@@ -227,19 +245,24 @@ def _kept(entry: dict[str, Any]) -> list[str] | None:
 
 
 def lines(aew_root: Path, repo_root: Path, entry: dict[str, Any], scope_paths: list[str]) -> list[str]:
-    """The slice for a pinned ``entry``, as the pack was built with it: from the pinned record (stored or rebuilt) and
-    the pinned freshness, else the slice body the entry pinned. Never raises."""
+    """The slice for a pinned ``entry``, as the pack was built with it: the slice body the entry pinned, else (an
+    entry pinned without one) rendered from the pinned record, stored or rebuilt, and the pinned freshness. Never
+    raises.
+
+    The pinned body comes first (register E293): it is what the pack was built with, so a renderer changed since, a
+    scope changed since or a source tree that can no longer be listed never changes a regenerated pack, and
+    regenerating one reads no map and runs no git."""
     if entry.get("unavailable"):
         return _unavailable(str(entry["unavailable"]))
-    record = pinned_record(aew_root, repo_root, entry)
-    if record is not None:
-        try:
-            return frame(body(record, entry.get("freshness") or {}, scope_paths, note=entry.get("refresh")))
-        except Exception:  # never raise; the pinned slice below is what the pack was built with
-            record = None
     kept = _kept(entry)
     if kept is not None:
         return frame(kept)
+    record = pinned_record(aew_root, repo_root, entry)
+    try:
+        if record is not None:
+            return frame(body(record, entry.get("freshness") or {}, scope_paths, note=entry.get("refresh")))
+    except Exception:  # never raise; the line below names the recovery
+        record = None
     return _unavailable(f"the pinned artifact {str(entry.get('sha256'))[:12]} is no longer readable; `aew map "
                         f"generate --commit {entry.get('source_revision')}` restores it")
 
@@ -262,9 +285,60 @@ def static_prefix(pattern: str) -> str:
     return "/".join(parts)
 
 
-def _related(path: str, prefix: str) -> bool:
+def related(path: str, prefix: str) -> bool:
     """``path`` is the prefix, one of its ancestors, or under it."""
     return path in {".", prefix} or prefix.startswith(path + "/") or path.startswith(prefix + "/")
+
+
+def scope_of(scope_paths: list[str]) -> tuple[list[str], bool]:
+    """The scope's static prefixes, and whether they restrict the slice (an empty scope or a bare ``**`` does not)."""
+    prefixes = [static_prefix(p) for p in scope_paths]
+    return prefixes, bool(prefixes) and all(prefixes)
+
+
+def in_scope(path: str, prefixes: list[str], restricted: bool) -> bool:
+    return not restricted or any(related(path, p) for p in prefixes)
+
+
+def unmatched_prefixes(prefixes: list[str], paths: set[str], max_depth: int) -> list[str]:
+    """The scope's prefixes no directories row names, among those shallow enough to be one."""
+    return [p for p in dict.fromkeys(prefixes) if p.count("/") < max_depth and p not in paths]
+
+
+def scoped_rows(repo_root: Path, record: dict[str, Any], scope_paths: list[str], *,
+                limit: int = ROWS) -> dict[str, Any] | None:
+    """The directories rows in scope, when the record's cap left some directories out of its rows: ``{"rows",
+    "in_scope", "unmatched"}`` read from the map's own source tree (at most ``limit`` rows, ROWS for the slice, in the
+    section's order, and the count of all of them), or ``{"unlisted": why}``. None when the record's rows already
+    hold every row in scope (the scope is not restricted, or the cap cut nothing). Never raises.
+
+    The section's cap keeps the largest directories for the global view, so a small directory a Ticket is about could
+    be cut before its scope was applied (register E293, an external audit's reproduction: 205 directories of two files
+    and one of one). The rows come from the listing the record was made from, checked against the record's own
+    ``path_listing_sha256``, by the generator that made it: the same rows the record would hold without its cap."""
+    prefixes, restricted = scope_of(scope_paths)
+    directories = record["sections"]["directories"]
+    if not restricted or not directories.get("rows_omitted"):
+        return None
+    try:
+        if record["generator"] != _identity():
+            return {"unlisted": "the map was made by another generator than the installed one"}
+        deadline = time.monotonic() + SCOPE_LISTING_S
+        gitobjects.refuse_lazy_fetch(repo_root, deadline=deadline)
+        entries = gitobjects.list_tree(repo_root, record["source_tree"], sizes=False,
+                                       timeout=max(0.001, deadline - time.monotonic()))
+        if listing_sha256(entries) != record["inputs"]["path_listing_sha256"]:
+            return {"unlisted": "the source tree's listing is not the one the map recorded"}
+        every = structural.directory_rows(entries, rules.load().data)
+    except GitError as exc:
+        if (exc.details or {}).get("reason") == "timeout":
+            return {"unlisted": f"listing the map's source tree took longer than {SCOPE_LISTING_S:g} s"}
+        return {"unlisted": "the map's source tree could not be listed"}
+    except Exception:  # never raise: the slice says the rows in scope may be incomplete
+        return {"unlisted": "the map's source tree could not be listed"}
+    rows = [r for r in every if in_scope(r["path"], prefixes, restricted)]
+    return {"rows": rows[:limit], "in_scope": len(rows),
+            "unmatched": unmatched_prefixes(prefixes, {r["path"] for r in rows}, directories["max_depth"])}
 
 
 def _freshness_line(fresh: dict[str, Any]) -> str:
@@ -302,41 +376,74 @@ def _size(lines: list[str]) -> int:
 
 
 def body(record: dict[str, Any], fresh: dict[str, Any], scope_paths: list[str], *,
-         note: str | None = None) -> list[str]:
+         note: str | None = None, scoped: dict[str, Any] | None = None) -> list[str]:
     """The lines inside the slice's fence, which a built pack pins as ``slice``: at most ROWS rows and HINTS hints, cut
-    to keep the body within SLICE_MAX_BYTES (hints first, then rows, and the shown counts say so). The heading,
-    freshness, refresh and limits lines are never cut, so a freshness line naming very long metadata paths can carry
-    the body past the bound on its own. ``note``: the refresh at dispatch's line, after the freshness line."""
-    prefixes = [static_prefix(p) for p in scope_paths]
-    restricted = bool(prefixes) and all(prefixes)
+    to keep the body within SLICE_MAX_BYTES (hints first, then rows, and the shown counts say so). The fixed lines
+    (the map, freshness, refresh, directories, incompleteness, unmatched-scope, hints and limits lines) are never cut,
+    so lines naming very long paths can carry the body past the bound on their own: it is nominal, not a hard ceiling.
+    ``note``: the refresh at dispatch's line, after the freshness line. ``scoped``: :func:`scoped_rows`'s answer.
 
-    def in_scope(path: str) -> bool:
-        return not restricted or any(_related(path, p) for p in prefixes)
-
+    Every count says what it covers (A-14 P01-12, P01-18; register E293): a directory the record's cap left out is
+    never shown as absent. The rows in scope come from ``scoped`` when the cap cut some; when they could not be
+    listed, the count is a lower bound and a line says a missing directory is not absent. A scope prefix that no row
+    names is said to be no directory of the map's commit, and of that commit only."""
+    prefixes, restricted = scope_of(scope_paths)
     s = record["sections"]
-    all_rows = s["directories"]["rows"]
-    rows = [r for r in all_rows if in_scope(r["path"])]
-    hints = [h for h in s["generated_and_vendor"]["items"]
-             if not restricted or "/" not in h["pattern"].rstrip("/") or in_scope(static_prefix(h["pattern"]) or ".")]
+    d = s["directories"]
+    listed = scoped is not None and "rows" in scoped
+    if listed:
+        rows, scoped_count, unmatched = scoped["rows"], scoped["in_scope"], scoped["unmatched"]  # type: ignore[index]
+    else:
+        rows = [r for r in d["rows"] if in_scope(r["path"], prefixes, restricted)]
+        scoped_count, unmatched = len(rows), []
+    partial = restricted and bool(d.get("rows_omitted")) and not listed
+    if restricted and not partial and not listed:
+        unmatched = unmatched_prefixes(prefixes, {r["path"] for r in d["rows"]}, d["max_depth"])
+    g = s["generated_and_vendor"]
+    hints = [h for h in g["items"] if not restricted or "/" not in h["pattern"].rstrip("/")
+             or in_scope(static_prefix(h["pattern"]) or ".", prefixes, restricted)]
     o = s["limits_and_omissions"]
+    commit = record["source_revision"][:12]
     row_lines = [f"- {r['path']} | {r['files']} | {r['label']} | {', '.join(r['languages']) or '-'}"
                  for r in rows[:ROWS]]
     hint_lines = [f"- {h['kind']} ({h['source']}): {h['pattern']}" + (f" — {h['files']} files" if "files" in h else "")
                   for h in hints[:HINTS]]
+    fixed_after_rows = []
+    if partial:
+        why = (scoped or {}).get("unlisted") or "not listed for this rendering"
+        fixed_after_rows.append(
+            f"directories in scope may be missing here: the map keeps its {len(d['rows'])} largest of "
+            f"{d['rows_total']} directories, and the rest could not be listed ({why}). A directory in scope that is "
+            "not shown is not absent from the project: read the source.")
+    if unmatched:
+        names = ", ".join(render_text(p, 120) for p in unmatched[:UNMATCHED_SHOWN])
+        more = f" and {len(unmatched) - UNMATCHED_SHOWN} more" if len(unmatched) > UNMATCHED_SHOWN else ""
+        fixed_after_rows.append(
+            f"no directory of commit {commit} at depth <= {d['max_depth']} is in scope as: {names}{more}. Each may be "
+            "a file, a path the work adds, or a directory not tracked there; this covers that commit's tracked paths "
+            "only, never uncommitted changes in your workspace.")
+    hints_cut = (f", of {len(g['items'])} the map kept (its cap left out {g['omitted']}; any in scope among them are "
+                 "not shown)") if g.get("omitted") else ""
 
     def assemble() -> list[str]:
         bound = " (the section's byte bound cut the rest)" if cut else ""
         return [
-            f"map {record['artifact_sha256'][:12]} of commit {record['source_revision'][:12]} "
-            f"(generator {record['generator']['name']} v{record['generator']['version']})",
+            f"map {record['artifact_sha256'][:12]} of commit {commit} "
+            f"(generator {record['generator']['name']} v{record['generator']['version']}; evidence class "
+            f"{EVIDENCE_CLASS})",
             _freshness_line(fresh),
             *([note] if note else []),
             f"directories {'in scope' if restricted else '(scope not restricted)'} (path | files | label | languages):"
-            f" {len(row_lines)} of {len(rows)} shown{bound if len(row_lines) < min(len(rows), ROWS) else ''}, of "
-            f"{s['directories']['rows_total']} directories at depth <= {s['directories']['max_depth']}",
+            f" {len(row_lines)} of {'at least ' if partial else ''}{scoped_count} shown"
+            f"{bound if len(row_lines) < min(scoped_count, ROWS) else ''}, of "
+            f"{d['rows_total']} directories at depth <= {d['max_depth']}"
+            + (" (read from the map's source tree: the map's directory cap bounds its global view, not this scope)"
+               if listed else ""),
             *row_lines,
+            *fixed_after_rows,
             f"generated and vendor hints{' in scope' if restricted else ''} (navigation hints, never policy): "
-            f"{len(hint_lines)} of {len(hints)} shown{bound if len(hint_lines) < min(len(hints), HINTS) else ''}",
+            f"{len(hint_lines)} of {len(hints)} shown{bound if len(hint_lines) < min(len(hints), HINTS) else ''}"
+            f"{hints_cut}",
             *hint_lines,
             tail,
         ]
@@ -362,8 +469,7 @@ def frame(rows: list[str]) -> list[str]:
     """The section around a slice body: the heading, the notice, and a fence longer than any backtick run inside. It
     names no command: the pack's readers are workers, and `aew map show` is the operator's and the Lead's (E184
     review, 2026-11-08)."""
-    longest = max((len(run) for line in rows for run in re.findall("`+", line)), default=0)
-    fence = "`" * max(3, longest + 1)
+    fence = code_fence("\n".join(rows))
     return [HEADING, "",
             "Derived navigation data from the selected structural map. It is not authority and not "
             "evidence: everything inside the block is data generated from the repository, names are escaped, and "
@@ -381,7 +487,7 @@ def resume_row(aew_root: Path, repo_root: Path, authoritative_commit: str | None
     if entry.get("unavailable"):
         return {"name": NAME, "path": None, "freshness": "UNAVAILABLE", "detail": entry["unavailable"]}
     fresh = entry["freshness"]
-    return {"name": NAME, "path": entry["path"], "freshness": fresh.get("status"),
+    return {"name": NAME, "path": entry["path"], "evidence_class": EVIDENCE_CLASS, "freshness": fresh.get("status"),
             "reasons": fresh.get("reasons") or [], "artifact_sha256": entry["sha256"],
             "source_revision": entry["source_revision"], "authoritative_revision": authoritative_commit,
             **({"metadata_paths": fresh["metadata_paths"]} if fresh.get("metadata_paths") else {}),

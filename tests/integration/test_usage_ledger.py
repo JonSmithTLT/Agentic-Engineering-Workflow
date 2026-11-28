@@ -345,9 +345,9 @@ def test_the_snapshot_check_reads_only_the_hot_state_and_the_recent_ring(lab, tm
     archived = []
     for i in range(3):
         wid = create_planned_ticket(lab.project, tmp_path, title=f"Archived {i}")
-        rev = load_control(lab.root)["revision"]
-        Engine.discover(lab.root).work_transition(token=lab.project.token, expect_rev=rev, work_id=wid, to="CANCELLED",
-                                                  reason="not needed")
+        engine = Engine.discover(lab.root)
+        engine.work_transition(token=lab.project.token, work_id=wid, to="CANCELLED", reason="not needed",
+                               prior_value=engine.prior_value("work_transition", wid))
         archived.append(wid)
     opened = []
     real = Archive.bundle
@@ -418,6 +418,13 @@ def test_usage_show_derives_every_level_from_one_projection_and_status_carries_i
     assert "not a bill or a budget" in text and "Per-task enforcement: none" in text  # IF10-11, conspicuously
     assert lab.ok("usage", "show", wid, "--json")["basis"]["current_table"]["as_of"] == "2026-10-01"
     assert "Usage (hot work): 1 run(s): 1 recorded, 0 provisional" in lab.aew("status").stdout
+    # The rate-limit unit's ruling 2: a real run's requests are read back, at every level, from the same projection.
+    assert row["requests"] == {"count": row["usage"]["steps"], "at_least": False}
+    for totals in figures:
+        assert (totals["steps"], totals["requests_unknown_runs"], totals["requests_floor_runs"]) == (
+            row["usage"]["steps"], 0, 0)
+    assert (f"requests: {row['usage']['steps']:,} model call(s) in the messages of 1 run(s) (compaction, title and "
+            "retried calls not counted)") in text
     assert_control_invariants(lab.project)
 
 

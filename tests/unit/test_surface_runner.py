@@ -40,7 +40,7 @@ def test_queries_return_a_valid_result_and_commit_nothing(lab):
     p, wid, engine = lab
     rev = p.rev()
     for name, args in (("status", {}), ("status", {"work_id": wid}), ("resume", {}), ("work_show", {"work_id": wid}),
-                       ("explain", {"work_id": wid}), ("harness_status", {})):
+                       ("work_show", {"explain": True, "work_id": wid}), ("harness_status", {})):
         out = run.run_tool(engine, CTX, name, args, token=p.token)
         validate("surface", out, source=name)
         assert out["ok"] and out["stopped"] is None and out["completed_steps"] == [], (name, out["stopped"])
@@ -58,24 +58,25 @@ def test_a_refused_query_is_a_stage_result_with_the_engines_code(lab):
     assert out["revision"] == p.rev()
 
 
-def test_checkpoint_commits_one_step_and_a_stale_one_commits_nothing(lab):
+def test_checkpoint_commits_one_step_and_a_retired_argument_commits_nothing(lab):
     p, _wid, engine = lab
     rev = p.rev()
-    out = run.run_tool(engine, CTX, "checkpoint", {"expect_rev": rev, "note": "paused", "next": "review T-0001"},
+    out = run.run_tool(engine, CTX, "checkpoint", {"note": "paused", "next": "review T-0001"},
                        token=p.token)
     assert out["ok"] and out["revision"] == rev + 1
     assert [s["primitive"] for s in out["completed_steps"]] == ["checkpoint"]
     assert out["completed_steps"][0]["operation_class"] == "MECHANICAL"
     assert out["completed_steps"][0]["revision"] == rev + 1
-    stale = run.run_tool(engine, CTX, "checkpoint", {"expect_rev": rev, "note": "again"}, token=p.token)
-    assert not stale["ok"] and stale["stopped"]["boundary"] == "stale_revision" and stale["completed_steps"] == []
+    with pytest.raises(AdapterInputError) as refused:
+        run.run_tool(engine, CTX, "checkpoint", {"note": "again", "expect_rev": rev}, token=p.token)
+    assert refused.value.code == "INVALID_ARGUMENTS"
     assert p.rev() == rev + 1
 
 
 def test_a_mutation_without_the_credential_is_the_engines_refusal(lab):
     p, _wid, engine = lab
     rev = p.rev()
-    out = run.run_tool(engine, CTX, "checkpoint", {"expect_rev": rev})
+    out = run.run_tool(engine, CTX, "checkpoint", {})
     assert not out["ok"] and out["stopped"]["boundary"] in ("permission", "stale_authority")
     assert p.rev() == rev
 
@@ -84,7 +85,7 @@ def test_a_caller_acting_for_a_superseded_generation_runs_nothing(lab):
     p, _wid, engine = lab
     rev = p.rev()
     stale = SurfaceContext.for_session({"generation": 0, "session_label": "old"}, profile=NORMAL, ingress="mcp")
-    out = run.run_tool(engine, stale, "checkpoint", {"expect_rev": rev}, token=p.token)
+    out = run.run_tool(engine, stale, "checkpoint", {}, token=p.token)
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority"
     assert out["generation"] == 1 and out["completed_steps"] == [] and p.rev() == rev
 
@@ -93,7 +94,7 @@ def test_ill_formed_calls_never_reach_the_engine(lab, monkeypatch):
     p, _wid, engine = lab
     rev = p.rev()
     monkeypatch.setattr(engine, "checkpoint", lambda **_: pytest.fail("an ill-formed call reached the engine"))
-    for name, args in (("checkpoint", {"expect_rev": rev, "bogus": True}), ("ticket_start", {}), ("nope", {}),
+    for name, args in (("checkpoint", {"bogus": True}), ("ticket_start", {}), ("nope", {}),
                        ("cli", {"argv": ["status"]})):
         with pytest.raises(AdapterInputError):
             run.run_tool(engine, CTX, name, args, token=p.token)
@@ -102,9 +103,9 @@ def test_ill_formed_calls_never_reach_the_engine(lab, monkeypatch):
 
 def test_no_result_ever_carries_the_lead_credential(lab):
     p, wid, engine = lab
-    rev = p.rev()
+    p.rev()
     for name, args in (("status", {}), ("resume", {}), ("work_show", {"work_id": wid}),
-                       ("checkpoint", {"expect_rev": rev, "note": f"do not store {p.token}"})):
+                       ("checkpoint", {"note": f"do not store {p.token}"})):
         out = run.run_tool(engine, CTX, name, args, token=p.token)
         assert p.token not in json.dumps(out), name
     assert run.scrub({"a": [{"token": "x", "invocation_token": "y", "ok": p.token}]}) == {
@@ -126,7 +127,7 @@ def test_a_ready_tickets_start_is_named_by_its_stage_with_todays_command(lab):
     # Built (M4-E E5a) and policy-resolved: callable, and eligible for a stage runner while legal now.
     assert start["callable"] is True and start["operation_class"] == "POLICY_RESOLVED"
     assert start["auto_runnable"] is True
-    assert start["cli_fallback"] == ["work", "assign", wid, "--launch", "--expect-rev", str(p.rev())]
+    assert start["cli_fallback"] == ["work", "assign", wid, "--launch", ]
 
 
 def _assign_answers(engine, monkeypatch, answer):
@@ -203,8 +204,8 @@ def test_the_control_part_is_recomputed_exactly_when_its_inputs_change(lab, monk
     first = len(calls)
     projection.project(engine, CTX, wid)
     assert len(calls) == first, "an unchanged key must reuse the cached control part"
-    rev = p.rev()
-    engine.checkpoint(token=p.token, expect_rev=rev, note="n")  # a commit
+    p.rev()
+    engine.checkpoint(token=p.token, note="n")  # a commit
     projection.project(engine, CTX, wid)
     assert len(calls) > first
     second = len(calls)
@@ -264,6 +265,7 @@ def test_decisions_bind_only_reports_of_their_kind_from_the_current_run_and_carr
     [decision] = out["decisions_required"]
     assert decision["decision"] == "ACCEPT_REVIEW_EVIDENCE" and decision["tool"] == "ticket_request_verification"
     assert decision["evidence"] == ["EV-0007"] and decision["default"] == "NONE"
+    assert decision["owner"] == "lead"  # the Lead's by design, never asked of the operator (register E335)
     assert decision["availability"] == BLOCKED
     assert ("ticket_request_verification", {"work_id": wid, "review_evidence": "EV-0007"}) in asked
     assert decision["arguments"]["review_evidence"] == "EV-0007"

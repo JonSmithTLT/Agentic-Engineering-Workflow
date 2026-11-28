@@ -14,6 +14,7 @@ from aew.engine.conflicts import live_mutating_tickets
 from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
+from aew.engine.harness_ops import maps_launch_snapshot
 from aew.engine.queue_ops import is_custodian
 from aew.errors import (
     ConcurrencyLimit,
@@ -24,8 +25,9 @@ from aew.errors import (
     NotFound,
     PermissionDenied,
 )
-from aew.harness import agentenv, base, registry
+from aew.harness import agentenv, base, registry, runlog
 from aew.harness import contract as K
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.policy import execution as X
 from aew.roles import NON_MUTATING_EXECUTORS
@@ -44,6 +46,16 @@ if TYPE_CHECKING:
         RolesPort,
         WorkUnitsPort,
     )
+
+
+REVOKE_REASON_MAX = 300  # the characters kept of a reason recorded with an invocation's revoked credential
+
+
+def _one_line(reason: str) -> str:
+    """``reason`` as one line (every run of whitespace a space), cut to ``REVOKE_REASON_MAX`` with the cut counted."""
+    line = " ".join(reason.split())
+    more = len(line) - REVOKE_REASON_MAX
+    return line if more <= 0 else f"{line[:REVOKE_REASON_MAX]} [… {more} more characters]"
 
 
 class Invocations:
@@ -77,7 +89,7 @@ class Invocations:
             if (current.get("status") == "active" and current.get("role") == archetype
                     and current.get("scope", "ticket") == scope
                     and (current.get("card") or {}).get("id") == card_id):
-                cancel = K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                cancel = K.fields_command(f"aew invoke cancel {invocation}", "reason",
                                           "why this active invocation must end")
                 raise IllegalTransition(
                     f"{invocation} is still active for {work_id}'s {card_id} card. "
@@ -120,17 +132,48 @@ class Invocations:
 
     def _resolve_execution(self, ctx: TxnContext, archetype: str, work_id: str, card: Any) -> dict[str, Any] | None:
         """The harness/provider/model/effort pin for a new invocation (ADR-0010); never changed afterwards."""
+        return self._execution(ctx.state, archetype, work_id, getattr(card, "id", None), ctx.execution_request)
+
+    def _execution(self, state: dict[str, Any], archetype: str, work_id: str, card_id: str | None,
+                   request: dict[str, Any] | None) -> dict[str, Any] | None:
         policy, sha = self.k.execution_policy()
-        return X.resolve(policy, sha, archetype=archetype, card_id=getattr(card, "id", None),
-                         risk_class=G.effective_class(ctx.state, work_id), request=ctx.execution_request,
+        return X.resolve(policy, sha, archetype=archetype, card_id=card_id,
+                         risk_class=G.effective_class(state, work_id), request=request,
                          identity=registry.model_identity)  # the adapter's model identity (ADR-0010, 2026-10-11)
 
-    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed") -> None:
+    @staticmethod
+    def unprofiled(what: str) -> IllegalTransition:
+        """The refusal of a launch with no execution profile: what cannot be launched, why, and what to configure."""
+        return IllegalTransition(
+            f"{what} has no execution profile, so no harness, provider or model is pinned for it: configure "
+            "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
+
+    def launch_refusal(self, state: dict[str, Any], work_id: str, role: str) -> IllegalTransition | None:
+        """Why a dispatch of ``role`` for ``work_id`` made with `--launch` and no selection of its own would be
+        refused at its launch now, or None: the execution policy pins no profile for it, so the run it would launch
+        has no harness (``require_launchable``'s refusal, which a `--launch` dispatch meets in its own transaction;
+        register E233). The dispatch decision does not ask this: it decides the invocation, not its run. With no
+        selection of its own a dispatch is pinned nothing only while the policy is unconfigured, whatever its card."""
+        if self._execution(state, role, work_id, None, None):
+            return None
+        article = "an" if role[:1] in "aeiou" else "a"
+        return self.unprofiled(f"{article} {role} dispatched for {work_id}")
+
+    def complete_invocation(self, state: dict[str, Any], inv_id: str, status: str = "completed", *,
+                            reason: str | None = None, decision: str | None = None) -> None:
+        """``reason``: why it was ended (the Lead's words for `invoke cancel` and a redispatch, the engine's for a
+        released workspace), kept with the credential's revocation, the one record of why an invocation's authority
+        ended; a replacement's recovery section quotes it (register F36). It is recorded as one line of at most
+        ``REVOKE_REASON_MAX`` characters with the cut counted, since the Lead's text is free: the same record is the
+        refusal the ended worker's next call gets, the `credential.revoked` event, its run's stop reason and the
+        dashboard's authority line (review of #614, m5). ``decision``: the id of the decision that records the ending
+        (a redispatch's), appended after the bounded reason, so a long reason never cuts it off (quick check, m7)."""
         inv = state["invocations"][inv_id]
         if inv["status"] == "active":
             inv["status"] = status
             if inv.get("token_id"):  # an engine custody invocation holds no credential (M4-D)
-                revoke(state, inv["token_id"], f"invocation {status}")
+                revoke(state, inv["token_id"], f"invocation {status}" + (f": {_one_line(reason)}" if reason else "")
+                       + (f" ({decision})" if decision else ""))
         obs = inv.get("observation")
         if obs and obs.get("status") == "active":
             obs["status"] = "retired"  # its read-only worktree is removed after the commit (ADR-0008)
@@ -167,7 +210,7 @@ class Invocations:
             ws["status"] = f"released ({why})"
         for inv_id in unit.get("invocations", []):
             if not is_custodian(ctx.state["invocations"].get(inv_id)):  # the queue ends it (M4-D)
-                self.complete_invocation(ctx.state, inv_id, "cancelled")
+                self.complete_invocation(ctx.state, inv_id, "cancelled", reason=why)
 
     def require_launchable(self, state: dict[str, Any], inv_id: str, *, relaunch: bool = True) -> dict[str, Any]:
         inv = state["invocations"].get(inv_id)
@@ -177,9 +220,7 @@ class Invocations:
             raise IllegalTransition(f"{inv_id} is {inv['status']}; only an active invocation is launched")
         profile = inv.get("execution_profile")
         if not profile:
-            raise IllegalTransition(
-                f"{inv_id} has no execution profile, so no harness, provider or model is pinned for it: configure "
-                "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
+            raise self.unprofiled(inv_id)
         adapter = registry.load(profile["harness"])  # fails before any commit when it cannot even be loaded
         admission = self._require_provider_key(profile, adapter.PROVIDER_RELAY)
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction
@@ -266,6 +307,8 @@ class Invocations:
         }]
         if self.coordination.project_switch(ctx.state) == X.MESSAGING_ENABLED:
             inv["runs"][-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+        # the run's map-reads snapshot, as `harness launch` records it (register F15.8)
+        ctx.state["invocations"][inv_id]["runs"][-1].update(maps_launch_snapshot(self.k))
         ctx.refs.append(f"run:{run}")
 
     def invocation_workspace(self, state: dict[str, Any], inv: dict[str, Any]) -> tuple[Path, str, str | None]:
@@ -274,7 +317,7 @@ class Invocations:
         An invocation is never retargeted to a later workspace or candidate of the same Ticket.
         """
         unit = state["work"][inv["work_unit"]]
-        if inv.get("scope") in {"observation", "parent"}:
+        if inv.get("scope") in E.OBSERVER_SCOPES:
             obs = inv.get("observation") or {}
             if obs.get("status") != "active" or not obs.get("path"):
                 raise PermissionDenied("this invocation's read-only observation workspace has been retired",
@@ -300,6 +343,38 @@ class Invocations:
                 f"which is no longer the Ticket's live workspace", dispatched_for=inv.get("workspace"),
                 current=ws.get("id"), current_status=ws.get("status"))
         return Path(ws["path"]), ws["id"], ws.get("base_commit")
+
+    def run_evidence_binding(self, state: dict[str, Any], run: str) -> dict[str, Any] | None:
+        """What a run that ended with its evidence left, for a stage's continue over it (register E400): the run's
+        invocation, role and scope, the ids of the evidence it produced (from the sealed store, as ``harness_resume``
+        selects them), and whether its expected output is bound to the snapshot its invocation evaluates now: the
+        latest record of each kind its run record's contract expected (``expected_kinds``, the set that made its
+        supervisor call it ``ended_with_evidence``), each ``gates.bound_to`` that snapshot (#651 review, M1: a check
+        run after the report is not the report). ``taken`` lists what is bound. None when that cannot be told: no such
+        invocation, no record of the run or of its expected output, a seal the store refuses (``find_evidence``'s
+        rule: any integrity problem), or a workspace that is retired or gone. A caller then takes nothing."""
+        inv_id = K.invocation_of_run(run)
+        inv = state["invocations"].get(inv_id) if inv_id else None
+        if inv is None or inv["work_unit"] not in state["work"]:
+            return None
+        records, problems = E.scan(self.k.aew_root, inv["work_unit"])
+        produced = [e for e in records if e["producer"].get("run") == run]
+        record = runlog.read_record(runlog.run_dir(self.k.aew_root, run)) or {}
+        expected = set((record.get("contract") or {}).get("expected_kinds") or [])
+        latest = {e["kind"]: e for e in produced if e["kind"] in expected}  # the scan is in recording order
+        if problems or not latest:
+            return None
+        try:
+            path, ws_id, _ = self.invocation_workspace(state, inv)
+        except PermissionDenied:
+            return None
+        if not path.exists():
+            return None
+        now = self.snapshot_of(path, ws_id)["relevant_inputs_fingerprint"]
+        return {"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"],
+                "scope": inv.get("scope") or "ticket", "evidence": [e["id"] for e in produced],
+                "taken": [e["id"] for e in produced if G.bound_to(e, now)],
+                "bound": all(G.bound_to(e, now) for e in latest.values())}
 
     @staticmethod
     def execution_provenance(inv: dict[str, Any]) -> dict[str, Any]:
@@ -371,7 +446,7 @@ class Assignment:
             # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
             return blocker_from(IllegalTransition(
                 f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
-                f"implementer. Dispatch it with `aew work dispatch {work_id} {K.EXPECT_REV}` (the M2 non-mutating "
+                f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating "
                 "path)"))
         facts["archetype"] = "implementer"
         return None
@@ -433,9 +508,9 @@ class Assignment:
 
     # ---- the route
 
-    def work_assign(self, *, token: str, expect_rev: int, work_id: str,
+    def work_assign(self, *, token: str, work_id: str,
                     execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
-        with self.k.lead_txn(token, expect_rev, "work.assign") as ctx:
+        with self.k.lead_txn(token, "work.assign") as ctx:
             ctx.execution_request, ctx.launch_request = execution_profile, launch
             state = ctx.state
             unit = self.units.unit(state, work_id)

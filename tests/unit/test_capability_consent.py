@@ -817,16 +817,24 @@ def test_each_shipped_tools_purpose_is_its_descriptions_first_clause():
      ["Capabilities no tool of AEW's serves (use your shell and the project's own commands): documentation_lookup"]),
     ([], [], ["Other capabilities requested: none"]),
     (["source_mutation"], [], ["Other capabilities requested: none"]),  # authority-sensitive: its own line
+    # Register E368: what one of the role's own operations serves is named with its command, never sent to the shell
+    (["targeted_test_execution", "build_execution"], [],
+     ["Capabilities an AEW command serves (it records the evidence you cite): "
+      "targeted_test_execution (`aew check run <check-id>`)",
+      "Capabilities no tool of AEW's serves (use your shell and the project's own commands): build_execution"]),
 ])
 def test_the_pack_splits_a_cards_capabilities_by_whether_a_tool_serves_them(monkeypatch, required, optional, said):
-    """The pending line is gone. The split is the card's alone, never this host's: with no shipped record at all the
-    lines are the same, so a pack's hash never moves with what a host has."""
+    """The pending line is gone. The split is the card's and its role's operations', never this host's: with no shipped
+    record at all the lines are the same, so a pack's hash never moves with what a host has."""
+    from aew import roles
     from aew.knowledge import context as ctxmod
 
     card = {"display_name": "X", "role": "x", "extends": "implementer", "purpose": "p",
             "required_capabilities": required, "optional_capabilities": optional}
     inputs = ctxmod.PackInputs.__new__(ctxmod.PackInputs)
-    object.__setattr__(inputs, "card", card)
+    for name, value in {"card": card, "role": "implementer", "role_def": roles.archetype("implementer"),
+                        "scope": "ticket"}.items():
+        object.__setattr__(inputs, name, value)
     lines = ctxmod._card_section(inputs)
     assert not any("workbench resolution pending" in x for x in lines)
     start = next(i for i, x in enumerate(lines) if x.startswith("Authority-sensitive")) + 1
@@ -924,12 +932,18 @@ def test_the_contained_leads_system_text_names_its_tools_and_that_its_shell_asks
     assert [r["resource"] for r in shell if r["effect"] == "allow"] == ["aew *", *projection.LEAD_GIT_READS]
 
 
-def test_the_leads_tools_note_names_the_tools_its_rules_let_it_use_without_asking():
-    """Review of #353, m3: the note's "read, glob and grep" are the Lead's own rules' (one list for both), and for each
-    the last rule that covers every path allows it, so the note never sends the Lead to a tool that asks."""
+def test_the_tools_the_lead_is_told_to_read_with_are_the_ones_its_rules_let_it_use_without_asking():
+    """Review of #353, m3: the "read, glob and grep" the Lead is told of are its own rules' (one list for both), and for
+    each the last rule that covers every path allows it, so the text never sends the Lead to a tool that asks. E367 left
+    them to the guide's core alone (the note and the system text repeated them), so the core is held to the list."""
     from aew.harness.opencode import projection
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
 
-    assert projection.LEAD_TOOLS_NOTE.endswith(" so search with your read, glob and grep tools first.")
+    free = projection.LEAD_FREE_TOOLS
+    told = f"your {', '.join(free[:-1])} and {free[-1]} tools"
+    assert told in lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    assert "read, glob" not in projection.LEAD_TOOLS_NOTE and told not in projection.LEAD_SYSTEM
     for action in projection.LEAD_FREE_TOOLS:
         last = [r for r in projection.LEAD_RULES if r["action"] in (action, "*") and r["resource"] == "*"][-1]
         assert last == projection.rule(action, "allow"), action
@@ -1060,13 +1074,12 @@ def test_a_runs_results_need_no_register_to_be_read(reg, monkeypatch):
 
 def test_what_the_leads_system_text_says_of_its_rules_is_what_its_rules_hold():
     """The class behind the review of #353's m2 and m3: agent text that restates a fact owned elsewhere. The Lead's
-    system text names the tools and git reads its rules let it run without asking, and its contained line the git reads
-    that work there; each is pinned to its owner (:data:`LEAD_FREE_TOOLS`, :data:`LEAD_GIT_READS`)."""
+    system text names the git reads its rules let it run without asking, pinned to their owner
+    (:data:`LEAD_GIT_READS`), and its contained line no longer repeats them (E367); the free tools are the guide's
+    (the test above)."""
     from aew.harness.opencode import projection
 
-    free = projection.LEAD_FREE_TOOLS
-    assert f"your {', '.join(free[:-1])} and {free[-1]} tools" in projection.LEAD_SYSTEM
     reads = [p.removeprefix("git ").removesuffix("*") for p in projection.LEAD_GIT_READS]
     assert f"`git {'|'.join(reads)}` directly" in projection.LEAD_SYSTEM
     contained = projection.lead_contained_text({"filesystem": "x", "network": {}})
-    assert f"`git {reads[0]}`, {', '.join(f'`{r}`' for r in reads[1:-1])} and `{reads[-1]}` work" in contained
+    assert not any(f"`{r}`" in contained for r in reads)

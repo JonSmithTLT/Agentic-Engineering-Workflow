@@ -146,15 +146,17 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
 
     credentials.before(args)  # a credential this command issues must have somewhere safe to go (ADR-0009)
     try:
-        with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
+        with dispatch.channel(dispatch.CLI):  # recorded with any dispatch decision this command makes (M4-A)
             return credentials.deliver(handler(args), args), getattr(args, "json", False)
     finally:
         lead_credential.take_prompted()  # what the operator typed at the prompt was for this command only
 
 
 def main(argv: list[str] | None = None) -> int:
+    from aew import process_kind
+
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not profile.cli_start():
+    if process_kind.cli_entry_point(argv, os.environ) == process_kind.OUTAGE_READER or not profile.cli_start():
         return _main(argv)
     code = 1
     try:
@@ -169,11 +171,25 @@ def _main(argv: list[str]) -> int:
 
     # Before anything can open the store (STG-05 CB-09). Scoped, since tests call `main` in-process.
     with process_kind.declared_as(process_kind.cli_entry_point(argv, os.environ)):
-        return _run_main(argv)
+        entry_point = process_kind.declared()
+        code = _run_main(argv)
+    if entry_point != process_kind.OUTAGE_READER and os.environ.get("AEW_LEAD_BROKER"):
+        from aew.harness import lead_broker
+
+        if lead_broker.notes_guide_read(argv):
+            lead_broker.note_lookup(argv, code)
+    return code
 
 
 def _run_main(argv: list[str]) -> int:
+    from aew import process_kind
+
     _utf8_streams()
+    if process_kind.declared() != process_kind.OUTAGE_READER and os.environ.get("AEW_LEAD_BROKER"):
+        from aew.harness import lead_broker
+
+        if lead_broker.is_help_lookup(argv):
+            lead_broker.note_lookup(argv)
     parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv),
                           worker_messaging=bool(os.environ.get("AEW_AGENT_ENDPOINT"))
                           and os.environ.get("AEW_MESSAGING") == "enabled")
@@ -183,6 +199,12 @@ def _run_main(argv: list[str]) -> int:
         sys.stderr.write(json.dumps({"ok": False, "error": exc.to_dict()}, indent=2, default=str) + "\n")
         return exc.exit_code
     args = parser.parse_args(argv)
+    if args.command == "read":
+        # No credentials, broker, or dispatch channel. Even the refusal is a local D-01 response.
+        try:
+            return args.handler(args)
+        except KeyboardInterrupt:
+            return 130
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
         parser.print_help()
@@ -228,6 +250,10 @@ def _relayed_read(args: argparse.Namespace, argv: list[str]) -> int | None:
 
     if not lead_broker.relays(args):
         return None
+    if lead_broker.command_path(args) == frozenset({"history", "search"}):
+        from aew.engine import recall
+
+        recall.refuse_in_invocations()  # the host's process can't see this one's markers: refused here (E185)
     reply = lead_broker.relay_read(argv)
     sys.stdout.write(reply["stdout"])
     sys.stderr.write(reply["stderr"])

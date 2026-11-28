@@ -87,7 +87,7 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
         assert lab.step(run, 1)["found"], lab.transcript(run)
     # The planted control: the cap is 2, not unlimited, so a third mutating Ticket meets it.
     third = create_planned_ticket(p, tmp_path, title="Add three", scope=("calc/three.py",))
-    res = p.aew("work", "assign", third, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", third, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and res.error["code"] == "CONCURRENCY_LIMIT", res.error
     assert "mutating concurrency is 2" in res.error["message"]
     assert res.error["details"]["holding"] == sorted([first, second])
@@ -130,7 +130,7 @@ def test_a_gates_file_without_the_key_reads_the_default_at_admission_and_in_doct
     p.lead("work", "assign", create_planned_ticket(p, tmp_path, title="Add one", scope=tuple(ONE)))
     p.lead("work", "assign", create_planned_ticket(p, tmp_path, title="Add two", scope=tuple(TWO)))
     third = create_planned_ticket(p, tmp_path, title="Add three", scope=("calc/three.py",))
-    res = p.aew("work", "assign", third, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", third, env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "CONCURRENCY_LIMIT" and res.error["details"]["cap"] == cap, res.error
 
 
@@ -140,7 +140,7 @@ def test_at_the_default_cap_an_overlapping_pair_is_held_by_the_launch_conflict_c
     second = create_planned_ticket(p, tmp_path, title="Add two", scope=tuple(TWO))
     p.lead("work", "assign", first)
     rev = p.rev()
-    res = p.aew("work", "assign", second, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", second, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and res.error["code"] == "DISPATCH_REFUSED", res.error
     assert "FILES_CONFLICT" in res.error["details"]["reason_codes"], res.error  # E151's hold, not the cap's
     assert p.rev() == rev and p.ok("work", "show", second)["control"]["state"] == "READY"

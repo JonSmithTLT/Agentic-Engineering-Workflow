@@ -51,7 +51,7 @@ def engine(p) -> Engine:
 
 
 def validate(p, wid, **kw):
-    return engine(p).integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid, **kw)
+    return engine(p).integrate_validate(token=p.token, work_id=wid, **kw)
 
 
 def control(p) -> dict:
@@ -135,7 +135,7 @@ def test_a_committed_run_is_reused_only_for_the_exact_identity(calc, tmp_path, c
     assert again["noop"] and again["run"] == first["run"] and again["evidence"] == first["evidence"]
     # Same candidate, changed check definition: a new run, and publish refuses the old evidence meanwhile.
     policy(calc, checks={"smoke": {**SMOKE["smoke"], "timeout_s": 61}})
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     second = validate(calc, wid)
     assert not second.get("noop") and second["run"] != first["run"] and second["result"] == "pass"
@@ -203,7 +203,7 @@ def test_without_immutable_source_containment_checks_mode_is_refused_and_nothing
     policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
     wid = prepared(calc, tmp_path)
     rev, before = calc.rev(), entry(calc, wid)
-    res = calc.aew("integrate", "validate", wid, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew("integrate", "validate", wid, env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "VALIDATION_CONTAINMENT_UNAVAILABLE", res.stdout
     assert calc.rev() == rev and entry(calc, wid) == before and "current_validation_run" not in integ(calc, wid)
 
@@ -216,7 +216,7 @@ def test_a_diagnostic_run_is_advisory_only(calc, tmp_path):
     assert integ(calc, wid)["status"] == "prepared"
     assert integ(calc, wid)["diagnostic_run"]["state"] == "advisory"  # its own slot (PR #91 review, finding 4)
     assert not [e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"]
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0  # advisory results never satisfy validation
     assert_control_invariants(calc)
 
@@ -369,7 +369,8 @@ def test_a_diagnostic_run_abandoned_at_its_commit_keeps_the_containment_it_had(c
                         lambda self, state, work_id, unit, run: ("LEASE_LOST", "the lease moved (a stand-in)"))
     out = validate(calc, wid, diagnostic=True)
     assert out["abandoned"] == "LEASE_LOST" and not out["ok"] and len(started) == 1, out
-    assert out["containment"] == weaker and f"`aew integrate validate {wid} --diagnostic`" in out["next"], out
+    assert out["containment"] == weaker and out["next"] == VO.next_steps(wid)["abandoned_diagnostic"], out
+    assert f"`{VO.validate_command(wid, '--diagnostic')}`" in out["next"]  # whole, so it runs as given (E140)
     run = integ(calc, wid)["diagnostic_run"]
     assert run["state"] == "abandoned" and run["containment"] == weaker, run
     assert record_of(calc, run)["containment"] == weaker
@@ -423,7 +424,7 @@ def test_a_diagnostic_run_whose_executor_died_keeps_the_containment_it_had(calc,
     monkeypatch.setattr(VO, "executor_alive", lambda run: False)
     out = validate(calc, wid, diagnostic=True)
     assert out["abandoned"] == "VALIDATION_INTERRUPTED" and out["containment"] == weaker, out
-    assert out["next"] == f"`aew integrate validate {wid} --diagnostic` starts a new run", out
+    assert out["next"] == f"`{VO.validate_command(wid, '--diagnostic')}` starts a new run", out
     run = integ(calc, wid)["diagnostic_run"]
     assert run["state"] == "abandoned" and run["containment"] == record_of(calc, run)["containment"] == weaker
     assert_control_invariants(calc)
@@ -696,12 +697,12 @@ def test_publishing_through_the_verifier_ends_a_run_left_running(calc, tmp_path,
 def spawn_failure(monkeypatch, codes: list[int]):
     real = C.run
 
-    def run(cfg, workspace, *, policy, env=None, layout=None, trees=None):
+    def run(cfg, workspace, **kwargs):
         if codes:
             code = codes.pop(0)
             return {"exit_code": None, "duration_s": 0.0, "log": f"$ x\nfailed to start: [Errno {code}]",
                     "command": ["x"], "outcome": "spawn_failed", "spawn_errno": code}
-        return real(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees)
+        return real(cfg, workspace, **kwargs)
 
     monkeypatch.setattr(C, "run", run)
 
@@ -787,11 +788,12 @@ def test_clustered_failures_trip_the_breaker_and_only_the_operator_resets_it(cal
         spawn_failure(monkeypatch, [errno.ETXTBSY])
         out = validate(calc, wids[0])
         assert out["unavailable"] and out["breaker_open"], out
-    res = calc.aew("integrate", "breaker", "reset", "--reason", "fixed", "--expect-rev",
-                   str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew("integrate", "breaker", "reset", "--reason", "fixed", env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0  # no terminal here: the operator's typed-back confirmation is required
-    out = engine(calc).integrate_breaker_reset(token=calc.token, expect_rev=calc.rev(), reason="fixed",
-                                               authorization={"authorized_by": "operator-tty", "challenge_code": "T"})
+    e = engine(calc)
+    out = e.integrate_breaker_reset(token=calc.token, reason="fixed",
+                                    authorization={"authorized_by": "operator-tty", "challenge_code": "T"},
+                                    binding=e.integrate_breaker_status()["approval_digest"])
     assert out["was_open"] and not engine(calc).integrate_breaker_status()["open"]
     assert_control_invariants(calc)
 
@@ -805,7 +807,7 @@ def test_the_rebuild_retires_the_validation_and_validate_reruns_on_the_new_candi
     wid = prepared(calc, tmp_path)
     first = validate(calc, wid)
     outside_commit(calc)
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     # The custodian validates (M4-E E6a): the guidance never sends the Lead to `aew integrate validate`.
     assert res.json["rebuilt"] and "custodian validates" in res.json["next"], res.stdout
     assert "aew integrate validate" not in res.json["next"]
@@ -939,7 +941,7 @@ def test_checks_mode_with_no_checks_never_validates(calc, tmp_path, contained):
     with pytest.raises(GateUnsatisfied) as caught:
         validate(calc, wid)
     assert caught.value.details["code_reason"] == "VALIDATION_CHECKS_EMPTY"
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     assert control(calc)["work"][wid]["state"] == "COMMIT_READY"
 
@@ -1001,7 +1003,7 @@ def test_a_checks_validation_never_publishes_once_policy_lists_no_checks(calc, t
     wid = prepared(calc, tmp_path)
     assert validate(calc, wid)["result"] == "pass" and integ(calc, wid)["status"] == "validated"
     _gates(calc, verification=False, checks=[], validation="checks")
-    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
+    res = calc.aew(*calc.lead_args("integrate", "publish", wid), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.returncode != 0 and res.error["code"] == "GATE_UNSATISFIED", res.stdout
     assert res.error["details"]["code_reason"] == "VALIDATION_CHECKS_EMPTY", res.error
     assert control(calc)["work"][wid]["state"] == "COMMIT_READY"

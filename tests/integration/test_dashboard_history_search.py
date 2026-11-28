@@ -79,9 +79,17 @@ SEARCH = "/history/search"
 
 
 def switch_on(p: Project, *, adopt: bool = False) -> None:
+    """Set ``recall.raw_history_search: explicit`` in the execution policy, pinned as fixture setup or adopted, as
+    test_history_search's ``switch_on`` does, never writing a second ``recall:`` block. A new project's file holds it
+    already (register E185), and one that was switched off is switched back. ``adopt`` adopts the file even when it
+    holds the value already: a v1 project's file does, but nothing has adopted it."""
     path = p.root / ".aew/policy/execution.yaml"
-    path.write_text(path.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n", encoding="utf-8",
-                    newline="\n")
+    before = path.read_text(encoding="utf-8")
+    text = (before.replace('raw_history_search: "off"', "raw_history_search: explicit")
+            if "raw_history_search:" in before else before + "recall:\n  raw_history_search: explicit\n")
+    if text == before and not adopt:  # on already, as a new project is: nothing to pin
+        return
+    path.write_text(text, encoding="utf-8", newline="\n")
     if adopt:
         p.adopt_policy("switch raw-history search on")
     else:
@@ -424,7 +432,7 @@ def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, p):
     """Control committed, the tail not yet applied (R17's window): the snapshot's root is ahead of the tail file."""
     tail = p.root / ".aew" / M.TAIL_REL
     old = tail.read_bytes()
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})  # appends an entry
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})  # appends an entry
     new = tail.read_bytes()
     tail.write_bytes(old)
     before = capture(p)
@@ -444,7 +452,7 @@ def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(p, m
     def commit_first(self: History) -> bytes | None:
         if not landed:
             landed.append(True)
-            p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})  # a longer tail
+            p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})  # a longer tail
         return read(self)
 
     with served(p.root) as s:

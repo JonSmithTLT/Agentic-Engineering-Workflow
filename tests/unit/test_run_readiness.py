@@ -16,7 +16,6 @@ from notifier import RUN_READY, adopt, raise_to, recorder
 from aew import errors
 from aew.engine import steering as S
 from aew.engine.api import DOCTOR_PING_S, Engine
-from aew.harness import contract as K
 from aew.harness import operator_client
 
 RUNNING = {"running": True, "pid": 1, "started_at": "2026-11-11T00:00:00Z", "guarantee": "dev"}
@@ -49,7 +48,7 @@ def test_doctor_and_status_say_what_run_lacks_and_each_fix_then_that_it_is_ready
     check = run_ready(engine)
     assert check["status"] == "WARN", check
     assert "the execution policy is not configured" in check["detail"]
-    assert "end the Lead session first" in check["detail"], "the fixture's Lead holds the seat"
+    assert "Then raise to Run again" in check["detail"], "the fixture's Lead holds the seat, and keeps it (E331)"
     assert S.ENDPOINT_DOWN in check["detail"] and "the notifier cannot deliver" not in check["detail"]
     text = engine.render_status(engine.status())
     assert "  Run: not ready:" in text and f"    - {S.ENDPOINT_DOWN}" in text
@@ -109,29 +108,31 @@ def test_an_unconfigured_policy_is_said_to_be_one():
 
 
 def test_the_no_deadline_route_is_followed_from_where_it_is_shown_to_an_accepted_raise(project, tmp_path):
-    """The raise reaches the deadline only with a Lead in the seat, where `aew lead acquire` is refused, so its route
-    starts with the Lead session ending and names the quickstart's section for a pinned edit. With the seat vacant,
-    doctor names the commands, with the seat they hold and how it is given back. Followed: the operator acquires, edits,
-    adopts and releases, the Lead starts again, and the raise is accepted."""
+    """The raise reaches the deadline only with a Lead in the seat. The fix is a pinned edit the operator adopts at
+    their own terminal with no Lead credential (register E331), so the route names no seat step: the Lead keeps its
+    seat, and the raise is asked again. With the seat vacant, it ends with the Lead started. Followed: the operator
+    edits and adopts while the Lead holds the seat, and the raise is accepted for the same generation."""
     command, _ = recorder(tmp_path)
     engine = adopt(project, command=command, ready=False)
+    generation = engine.lead_show()["generation"]
     with pytest.raises(errors.IllegalTransition) as refused:
         engine.steering_raise_preview("run")
     said = refused.value.message
     assert refused.value.details["reason"] == "no_hard_deadline"
-    assert "end the Lead session first" in said and "aew lead acquire" not in said, said
-    assert f'"{S.PINNED_EDIT}"' in said and f"\n### {S.PINNED_EDIT}\n" in QUICKSTART.read_text(encoding="utf-8")
-    assert "start the Lead again with `aew opencode --acquire` and raise to Run again" in said
-    engine.lead_release(token=project.token, expect_rev=project.rev())  # the Lead session ends
-    detail = run_ready(Engine.discover(project.root))["detail"]
-    assert "aew lead acquire" in detail and K.HELD_SEAT in detail, detail
-    # the section's commands, at the operator's terminal
-    project.token = Engine.discover(project.root).lead_acquire(expect_rev=project.rev(), session_label="op")["token"]
-    profiles(project, RUN_READY)  # the edit, adopted
-    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
-    # the Lead starts again (`aew opencode --acquire`), and the raise is asked again
-    project.token = Engine.discover(project.root).lead_acquire(expect_rev=project.rev(), session_label="lead")["token"]
+    assert "aew lead" not in said and "aew manifest adopt" in said and "needs no Lead credential" in said, said
+    assert said.endswith("Then raise to Run again")
+    vacant = S.deadline_problem({"configured": False}, seat_held=False)
+    assert vacant is not None and vacant.endswith("start the Lead with `aew opencode --acquire` and raise to Run")
+    # the edit, adopted at the operator's terminal with no Lead credential: the seat stays the Lead's
+    path = project.root / ".aew" / "policy" / "execution.yaml"
+    policy = yaml.safe_load(path.read_text(encoding="utf-8"))
+    policy.update(RUN_READY)
+    path.write_text(yaml.safe_dump(policy, sort_keys=False), encoding="utf-8", newline="\n")
     engine = Engine.discover(project.root)
+    engine.manifest_adopt(reason="deadlines", authorization={"authorized_by": "operator-tty"},
+                          binding=engine.manifest_approval())
+    engine = Engine.discover(project.root)
+    assert engine.lead_show()["generation"] == generation
     raise_to(engine, "run")
     assert engine.steering_view()["effective"] == "run"
 
@@ -141,7 +142,7 @@ def test_doctor_and_status_never_say_run_is_ready_while_no_lead_holds_the_seat(p
     vacant seat is what Run lacks, with the command that fills it."""
     command, _ = recorder(tmp_path)
     adopt(project, command=command)
-    Engine.discover(project.root).lead_release(token=project.token, expect_rev=project.rev())
+    Engine.discover(project.root).lead_release(token=project.token)
     engine = Engine.discover(project.root)
     live(monkeypatch)
     check = run_ready(engine)

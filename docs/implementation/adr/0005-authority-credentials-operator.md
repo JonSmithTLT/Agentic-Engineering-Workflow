@@ -281,3 +281,41 @@ AEW session and non-writer process. The new generation fences the old Lead and c
 invocations and their credentials. If any invocation will be carried or any leftover process may still run,
 the operator types one code after seeing the generation move and the invocations and processes concerned.
 The commit rechecks the holder and the subjects shown under lock and accepts unrelated revision changes.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+The engine checks the active Lead generation and each operation's declared subject binding inside the control lock. Lead takeover rechecks the generation and occupied seat shown in the operator's authorization. A handoff acceptance uses the live offer secret. A settings adoption compares the bytes shown at the terminal. Other scoped approvals similarly bind the particular item or content shown. A handoff or takeover still fences the superseded writer.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).
+
+## E331 amendment — settings adopted at the operator's terminal, with no Lead credential
+
+The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`, part
+3(a)), decided by the operator the same day, and the operator's decision of the same day that the register of weaker
+contexts decides the code, change who adopts. `aew manifest adopt`, and `aew authority accept` and `reject` as the
+operator's decision (`--decided-by operator`, the default), take no Lead credential: the operator runs them at their
+own terminal whether a Lead holds the seat or not, and the seat dance (acquire, adopt, release) is gone. E164's
+`aew policy model allow` and `aew policy route` adopt through the same path (`operator_adopt.adopt`, with the bytes
+they write).
+
+- **No new write route.** Each runs the engine's own operation (`manifest.adopt`, `authority.accept`,
+  `authority.reject`) as the operator's own transaction (`Kernel.operator_txn`): the operator's terminal confirmation
+  admits it in place of the Lead credential, under the same lock, pins, v1 rule and finalizers.
+- **Where.** Refused inside an AEW session (a Lead session, by its broker's variables or, on Linux, its process
+  ancestry; a worker's run), from a non-writer process and without a terminal, before anything is shown. A Lead
+  session's broker still refuses the commands (`OPERATOR_DECIDED`).
+- **What is shown and bound.** The prompt shows each file's diff against the version its pin holds, and each digest
+  before and now; the commit compares the digests shown (a class C binding, as E327 built). The pinned bytes are kept
+  content-addressed under `.aew/local/pinned/` when a pin is written, read back only when they hash to their name, and
+  otherwise looked for in the file's recent git history; a display aid, never authority.
+- **The adoption's code is the register of weaker contexts'.** While it is clear on this host the operator confirms the
+  diff plainly (types `yes`); while a weaker context is live or recent, or the register cannot say, the typed-back code
+  is asked and the prompt names the weaker run.
+- **An authority decision always takes the typed-back code**, whatever the register says. The operator, 2026-11-27:
+  "Yup id say typed back cose or g3 for important authoeity items." A G3 approval replaces the code when the wire
+  track adds one for authority decisions; none is built.
+- **The record is the operator's own:** `kind: operator`, `authorized_by: operator-tty` and the form of confirmation,
+  with no Lead actor, generation or `recorded_by_lead`. A running Lead keeps its seat, and its next step bound to policy
+  that moved meets STALE_POLICY.
+- **What stays.** An authority decision recorded as the Lead's (`--decided-by lead`) still takes the Lead credential,
+  and the switch offer at `aew opencode`'s start still adopts in the Lead transaction it opens.

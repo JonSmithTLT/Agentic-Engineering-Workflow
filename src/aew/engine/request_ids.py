@@ -8,9 +8,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from aew.engine import hierarchy as H
 from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
-from aew.harness.contract import EXPECT_REV, invocation_of_run
+from aew.harness.contract import invocation_of_run
+from aew.knowledge import evidence as E
 from aew.maps import slices
 from aew.util import sha256_text
 
@@ -108,7 +110,8 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
             if not decisions:
                 raise IntegrityError(f"promotion of {wid} has no decision at revision {receipt['revision']}")
             ref = decisions[0]
-        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref}
+        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref,
+                         "carried_obligations": list(unit.get(H.CARRIED) or [])}
     if op == "plan.propose":
         plan = next(p for p in unit["plans"] if str(p["revision"]) == ref)
         return common | {"work_id": wid, "revision_number": plan["revision"], "path": plan["path"]}
@@ -127,7 +130,7 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
     if inv.get("runs") or inv["status"] != "active":
         credential["next_action"] = status
     else:
-        credential["rotate"] = f"aew harness launch {ref} {EXPECT_REV}"
+        credential["rotate"] = f"aew harness launch {ref} --prior-value none"
     identity = common | {"invocation": ref, "invocation_token": None, "credential_replay": credential}
     if op == "work.redispatch":
         return identity | {"work_id": wid, "observation": deepcopy(inv["observation"])} | metadata
@@ -135,6 +138,6 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root
               "evaluated_snapshot": deepcopy(inv.get("snapshot")), "pack": slices.for_lead(deepcopy(inv.get("pack")))}
     if inv["scope"] == "observation":
         result["subject"] = deepcopy(inv["subject"])
-    if inv["scope"] in {"observation", "parent"}:
+    if inv["scope"] in E.OBSERVER_SCOPES:
         result["observation"] = deepcopy(inv["observation"])
     return identity | result | metadata

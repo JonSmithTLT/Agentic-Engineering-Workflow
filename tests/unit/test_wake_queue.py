@@ -674,6 +674,26 @@ def test_a_superseded_broker_leaves_the_new_generations_serving_mark(lab: Lab) -
     assert Q.serving(lab.root) == 8
 
 
+def test_clearing_the_serving_mark_waits_out_a_reader_that_holds_it(lab: Lab) -> None:
+    """A reader holding the mark (a Lead's wait, `aew status`, an indexer) refuses its removal on Windows: the clear
+    waits it out as a replace does, never fails on the first refusal (main push run 45941273545, job 140316044983)."""
+    from windows_sharing import held_by_a_reader
+
+    Q.mark_serving(lab.root, 7)
+    with held_by_a_reader(lab.root / Q.SERVING_REL):
+        Q.clear_serving(lab.root, 7)
+    assert Q.serving(lab.root) is None
+
+
+def test_a_reader_that_outlasts_the_wait_leaves_the_mark_and_says_so(lab: Lab) -> None:
+    from windows_sharing import held_by_a_reader
+
+    Q.mark_serving(lab.root, 7)
+    with held_by_a_reader(lab.root / Q.SERVING_REL, release_after=None), pytest.raises(PermissionError):
+        Q.clear_serving(lab.root, 7)
+    assert Q.serving(lab.root) == 7
+
+
 # ---------------------------------------------------------------------------------------------- loop_waiting (CL-R07)
 
 
@@ -697,11 +717,12 @@ def test_a_stopped_loop_wakes_the_lead_once_in_the_wakes_own_slot_with_no_run(la
     assert len(lab.poster.posts) == 1
 
 
-def test_until_e7c_a_confirmation_stop_wakes_no_one_and_any_other_stop_still_does(lab):
-    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c): ``CONFIRMATION_UNAVAILABLE`` is held
-    from the Lead's wake until E7c (``steering_loop.HELD_UNTIL_E7C``), since nothing can act on it before then. The
-    hold is that code's only: the next stop, another reason on the same Ticket, is posted as ``loop_waiting``."""
-    lab.loop("CONFIRMATION_UNAVAILABLE", message="ticket_start on T-1 needs a confirmation")
+def test_the_leads_own_step_wakes_no_one_and_any_other_stop_still_does(lab):
+    """The operator's ruling on the quick check of E228's fourth PR, QC-1 (c), kept by register E183:
+    ``CONFIRMATION_UNAVAILABLE`` is the Lead's own step, which nothing but the Lead acts on, so it is kept from the
+    Lead's wake (``steering_loop.LEADS_OWN_STEP``). That is the code's only: the next stop, another reason on the same
+    Ticket, is posted as ``loop_waiting``."""
+    lab.loop("CONFIRMATION_UNAVAILABLE", message="`ticket_start` on T-1 is your step")
     q = lab.queue()
     q.tick()
     assert q.doc["wake"] is None and lab.poster.posts == []

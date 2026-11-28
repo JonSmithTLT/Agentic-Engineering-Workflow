@@ -22,6 +22,11 @@ from typing import Any, NamedTuple
 
 from aew import priority_levels
 from aew.coordination import layout as L
+from aew.harness.bridge import MAP_OPERATIONS
+from aew.knowledge import evidence as E
+from aew.maps import reads as map_reads
+from aew.maps import structural as map_structural
+from aew.owners import owner_of, whose
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
 # The catalog imports no engine code, so the MCP transport that renders it (`aew lead mcp`, which must hold no
@@ -99,7 +104,6 @@ def _strings(description: str, *, min_items: int = 0, max_items: int | None = No
 
 # Descriptions are presentation only, trimmed to keep the normal surface inside its budget with the M4-E tools
 # (plan v3 §2.6; semantics unchanged).
-EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result's revision (CAS)"}
 WORK_ID_PATTERN = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}
 WORK_ID = {**WORK_ID_PATTERN, "description": "e.g. T-0012"}
 TEXT = {"type": "string", "description": "free text"}
@@ -119,11 +123,24 @@ PLAN = _obj({"body": {**TEXT, "description": "the plan, Markdown"},
              "assurance": ASSURANCE, "reason": TEXT},
             ("body", "assurance"), description="a plan to propose (never accepted by this stage)")
 
-# The `steering` tool's actions and the arguments each needs, beyond expect_rev: required, then allowed (plan v3 E2).
-STEERING_ACTIONS = ("lower", "request_raise", "request_confirmation")
-STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale", "prior_value")),
-                      "request_raise": (("mode", "rationale"), ("mode", "rationale")),
-                      "request_confirmation": (("action_ref", "rationale"), ("action_ref", "rationale"))}
+# The `steering` tool's actions and the arguments each needs, beyond the action: required, then allowed (plan v3 E2).
+# The one owner of the tool's actions: the advertised enum and the schema's properties are derived from it, and the
+# runner checks a call's arguments against it. `request_confirmation` is not here: no confirmation exists for it to
+# ask for, so the catalog hides it and `request_raise` stays (register E183; the operator, 2026-11-06 and 2026-11-10).
+STEERING_ARGUMENTS = {"lower": (("mode", "prior_value"), ("mode", "prior_value", "rationale")),
+                      "request_raise": (("mode", "rationale"), ("mode", "rationale"))}
+STEERING_ACTIONS = tuple(STEERING_ARGUMENTS)
+STEERING_ARGUMENT_SCHEMAS = {"mode": {"enum": ["crawl", "walk", "run"]}, "prior_value": {"type": "string"},
+                             "rationale": TEXT}
+# What works, as a run receives it (register E183; the designer's ruling of 2026-11-11 on the tool's text): a lower
+# needs an effective mode above its target, and walk or run is effective only by the operator's raise at the endpoint
+# (``engine.steering``); a project whose policy names no `steering.mode` refuses every action (SteeringNotConfigured);
+# and in crawl and walk the loop stops at each step it could take, which stays the Lead's (``steering_loop``).
+# The crawl and walk step is the Lead's: said in the tool's text and in the Lead's system text, from here.
+STEERING_STEP = "In crawl and walk you take each step yourself."
+STEERING_TEXT = ("Lower your steering mode, or ask the operator to raise it; requests grant nothing. "
+                 f"{STEERING_STEP} Lowering needs the operator's raise first; with no steering.mode in policy, every "
+                 "action is refused.")
 
 # The `resolve` tool's choices (plan v3 E3): continue or abandon a stage, and (E5b) the dispositions of a finding,
 # claim or anomaly (plan v3 §2.4). Only `follow_up` takes the `follow_up` Ticket (checked by the adapter).
@@ -142,25 +159,34 @@ GATE_SUBJECTS = ("gate",)
 # A Ticket's scope, `<T>#scope:<path>` (register E126): `add_scope` adds one exact test path on the record, and
 # `add_scope_signed` does when the rationale carries the sign-off a stop asks for.
 SCOPE_SUBJECTS = ("scope",)
+# A unit's accepted plan, `<W>#plan` (register E160 slice 2b): `assess_plan` dispatches an independent assessor of it
+# and launches its run, so `resolve` dispatches (it expands to the launch too, ``RESOLVE_LAUNCH``).
+PLAN_SUBJECTS = ("plan",)
 RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
     **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
     **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
        for kind in DISPOSITION_SUBJECTS},
     **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
     **{(choice, kind): "work.scope_add" for choice in ("add_scope", "add_scope_signed") for kind in SCOPE_SUBJECTS},
+    **{(E.ASSESS_CHOICE, kind): "plan.assess" for kind in PLAN_SUBJECTS},
 }
+# The launch a dispatching choice's call starts in its own commit (``dispatch.launch``, covered by its decision): the
+# run's supervisor takes custody of the new credential, as every typed dispatch's does.
+RESOLVE_LAUNCH = ("dispatch.launch",)
 
 
-def _choices_running(*primitives: str) -> tuple[str, ...]:
+def choices_running(*primitives: str) -> tuple[str, ...]:
+    """The `resolve` choices whose call runs one of ``primitives`` (every choice, with none), in catalog order."""
     return tuple(dict.fromkeys(c for (c, _), p in RESOLVE_CHOICE_PRIMITIVE.items()
                                if not primitives or p in primitives))
 
 
-STAGE_CHOICES = _choices_running("stage.resolve")
-DISPOSITION_CHOICES = _choices_running("work.dispose")
-GATE_CHOICES = _choices_running("work.gate_replace")
-SCOPE_CHOICES = _choices_running("work.scope_add")
-RESOLVE_CHOICES = _choices_running()
+STAGE_CHOICES = choices_running("stage.resolve")
+DISPOSITION_CHOICES = choices_running("work.dispose")
+GATE_CHOICES = choices_running("work.gate_replace")
+SCOPE_CHOICES = choices_running("work.scope_add")
+PLAN_CHOICES = choices_running("plan.assess")
+RESOLVE_CHOICES = choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
 NOTE_MAX, NEXT_MAX = 8000, 500
@@ -168,7 +194,35 @@ NOTE_MAX, NEXT_MAX = 8000, 500
 # The dispatch entrypoints a decision can be asked of: every one that is not covered by another (tested to equal
 # aew.engine.dispatch.ENTRYPOINTS without the covered ones).
 EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.mutating", "invoke.create.non_mutating",
-                      "invoke.create.parent", "work.assign", "work.dispatch", "work.redispatch"))
+                      "invoke.create.parent", "plan.assess", "work.assign", "work.dispatch",
+                      "work.redispatch"))
+
+
+# The `map` tool's reads (PR A2): the worker bridge's map rows, each named without its prefix, so `read: search` is the
+# row `map.search`. Its arguments are those rows' arguments (strings, as the rows take them), each bounded by the map
+# reads' owner, and `work_id`, the Ticket whose scope `scope: ticket` reads (the CLI's `--work`; a worker's is its own
+# invocation's). Which read takes which argument is the rows' too (``validate``). No argument names a commit or a root:
+# the tool reads at the authoritative head, as `aew map search` does without `--commit`.
+MAP_PREFIX = "map."
+MAP_READS = tuple(op.removeprefix(MAP_PREFIX) for op in MAP_OPERATIONS)
+MAP_SHOW_EXTRA = ("work_id",)
+MAP_ARGUMENTS: dict[str, dict[str, Any]] = {
+    # Bounded by the longest section's name, not listed (about 190 B a request): `show` with no section lists them,
+    # and a wrong name is refused with the list.
+    "section": {"type": "string", "minLength": 1, "maxLength": max(map(len, map_structural.SECTIONS))},
+    "scope": {"enum": [s for s in map_reads.SCOPES if s]},
+    "text": {"type": "string", "minLength": 1, "maxLength": map_reads.TEXT_MAX},
+    "kind": {"enum": list(map_reads.KINDS)},
+    "limit": {"type": "string", "pattern": f"^[0-9]{{1,{len(str(map_reads.SEARCH_LIMIT_MAX))}}}$"},
+}
+
+
+def _map_schema() -> dict[str, Any]:
+    names = dict.fromkeys(a for args in MAP_OPERATIONS.values() for a in args)
+    if set(names) != set(MAP_ARGUMENTS):
+        raise ValueError("the map tool's arguments must be exactly the bridge's map rows' arguments")
+    return _obj({"read": {"enum": list(MAP_READS)}, **{a: MAP_ARGUMENTS[a] for a in names},
+                 "work_id": {**WORK_ID_PATTERN, "maxLength": 32}}, ("read",))
 
 
 # ---------------------------------------------------------------------------------------------- the catalog
@@ -176,7 +230,11 @@ EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.muta
 MESSAGING = "coordination.messaging"
 MESSAGE_BODY_CAP = L.UNSEEN_CAP  # one body budget across a StageResult's payload and projection, not per envelope
 MESSAGE_BODY_BYTES = L.UNSEEN_BODY_BYTES
-ALL_SWITCHES = frozenset({MESSAGING})
+# The Lead's typed map reads (register F15.8, the mapping series' PR A2): offered while the project's adopted
+# execution policy has ``maps.reads: structural``, the switch that offers a worker's run the same reads
+# (``context.switches_for``).
+MAPS = "maps.reads"
+ALL_SWITCHES = frozenset({MESSAGING, MAPS})
 ENV_SWITCHES = "AEW_LEAD_SURFACE_SWITCHES"
 _SWITCH_TOOLS: dict[str, Tool] = {}
 
@@ -212,15 +270,11 @@ TOOLS: dict[str, Tool] = _catalog(
          "Rebuild the Lead's context from durable state: objective, active work, runs, contradictions, next actions. "
          "Call it first after any restart.",
          _obj({})),
-    Tool("work_show", QUERY, MECHANICAL, "One work unit: its record, plans, evidence, gates and integration.",
-         _obj({"work_id": WORK_ID}, ("work_id",))),
-    # M4-E E4: with `stage` (and that stage's `arguments`, expect_rev aside), each of the stage's steps instead, from
-    # the guards its steps' commits evaluate. The adapter checks the stage, its arguments and that the call names a
-    # unit, an invocation or a stage (frozen decision 8), so the schema stays small (plan v3 §2.6).
-    Tool("explain", QUERY, MECHANICAL,
-         "What a dispatch, or each step of a stage, would be decided now (allowed or not, with every blocking "
-         "condition), by the predicate its commit uses.",
-         _obj({"work_id": WORK_ID,
+    # E157: fold the dispatch and stage explanations into the work read. The adapter checks which arguments each
+    # form takes, including a stage's own arguments (M4-E E4; plan v3 §2.6).
+    Tool("work_show", QUERY, MECHANICAL,
+         "Inspect a work unit, or set explain to true for dispatch or stage availability and blockers.",
+         _obj({"work_id": WORK_ID, "explain": {"type": "boolean"},
                "entrypoint": {"type": "string", "enum": EXPLAINABLE,
                               "description": "which dispatch; default: the unit's next one"},
                "role": {"type": "string", "enum": ["implementer", "reviewer", "verifier"]},
@@ -240,46 +294,43 @@ TOOLS: dict[str, Tool] = _catalog(
          _obj({"runs": {**_strings("run ids, e.g. R-INV-0003-1", min_items=1, max_items=16), "uniqueItems": True},
                "timeout_s": {"type": "integer", "minimum": 1, "maximum": 600,
                              "description": "default 600"}}, ("runs",))),
-    # ---- the one normal-profile mutation: a single engine transaction, so no stage intent (§3.4)
+    # ---- single engine transactions, without a stage intent (§3.4)
     Tool("checkpoint", STAGE, MECHANICAL,
          "Record a checkpoint note and your next intended action (before a pause or a handoff).",
-         _obj({"expect_rev": EXPECT_REV,
-               "note": {**TEXT, "maxLength": NOTE_MAX},
+         _obj({"note": {**TEXT, "maxLength": NOTE_MAX},
                "next": {**TEXT, "maxLength": NEXT_MAX, "description": "the next intended action"}},
-              ("expect_rev",)),
+              ()),
          expands_to=("checkpoint",), mutates=True),
+    Tool("report_write", STAGE, MECHANICAL, "Save a Lead report and return its read command.",
+         _obj({"title": TEXT, "body": TEXT}, ("title", "body")),
+         expands_to=("report.write",), mutates=True),
     # ---- steering (M4-E E2; A1 §1.2): the Lead lowers its own mode or asks the operator; one transaction, like the
     # checkpoint. The runner checks which arguments each action needs (plan v3 §2.6, frozen decision 8).
-    Tool("steering", STAGE, MECHANICAL,
-         "Lower your steering mode, or ask the operator to raise it or to confirm a pending action. Requests grant "
-         "nothing.",
-         _obj({"expect_rev": EXPECT_REV,
-               "action": {"enum": list(STEERING_ACTIONS)},
-               "mode": {"enum": ["crawl", "walk", "run"]},
-               "action_ref": {"type": "string", "minLength": 1},
-               "prior_value": {"type": "string"},
-               "rationale": TEXT},
-              ("expect_rev", "action")),
+    Tool("steering", STAGE, MECHANICAL, STEERING_TEXT,
+         _obj({"action": {"enum": list(STEERING_ACTIONS)},
+               **{name: STEERING_ARGUMENT_SCHEMAS[name] for name in dict.fromkeys(
+                   name for _, allowed in STEERING_ARGUMENTS.values() for name in allowed)}},
+              ("action",)),
          expands_to=("steering",), mutates=True),
     # ---- the Lead's explicit resolution of what `resume` or a stop lists (M4-E E3c; §3.4 rule 8): continue runs an
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Continue or abandon a stage, dispose, replace a gate, or add a test path to scope.",
-         _obj({"expect_rev": EXPECT_REV,
-               "subject": {"type": "string", "minLength": 1},
+         "Continue or abandon a stage, dispose, replace a gate, add a test path to scope, or assess a plan (W#plan).",
+         _obj({"subject": {"type": "string", "minLength": 1},
                "choice": {"enum": list(RESOLVE_CHOICES)},
                "follow_up": WORK_ID_PATTERN,
                "approval_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$",
                                    "description": "Shown SHA."},
                "replacement": {"type": "string"},  # not blank: checked by the adapter, as the rationale is
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
-              ("expect_rev", "subject", "choice", "rationale")),
+              ("subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
-         expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
-         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction"),
-         mutates=True, progression=True),
+         expands_to=(*dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values()), *RESOLVE_LAUNCH),
+         required_judgments=("stage_resolution", "disposition", "gate_replacement", "scope_correction",
+                             "plan_assessment_dispatch"),
+         dispatches=True, mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,
          "Recovery: run one `aew` command, arguments as a list (no shell). The session supplies Lead authentication.",
@@ -293,35 +344,37 @@ TOOLS: dict[str, Tool] = _catalog(
     # steps repeat per card, in order (aew.surface.availability.CARDS)
     Tool("ticket_draft", STAGE, JUDGMENT_BEARING,
          "Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted).",
-         _obj({"expect_rev": EXPECT_REV, "title": {"type": "string", "minLength": 1},
+         _obj({"title": {"type": "string", "minLength": 1},
                "risk_class": {"type": "integer", "minimum": 0, "maximum": 4},
                "scope": _strings("allowed change path globs"), "goal": _strings("goal-backwards criteria"),
                "contract": _strings("contract criteria"), "non_mutating": {"type": "boolean"},
                "parent": WORK_ID, "depends_on": _strings("ID or ID:mutating|evidence"),
                "rationale": TEXT, "body": TEXT, "card": {"type": "string", "minLength": 1},
                "plan": PLAN, "priority": {"enum": PRIORITY_LEVELS},
-               "priority_reason": {"type": "string", "description": "why; needed unless normal"}},
-              ("expect_rev", "title", "risk_class")),
+               "priority_reason": {"type": "string", "description": "why; needed unless normal"},
+               "review_ref": {"type": "string", "minLength": 1, "description":
+                              "with non_mutating: a local branch, tag or remote-tracking ref to review"}},
+              ("title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
          mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
     Tool("ticket_start", STAGE, POLICY_RESOLVED,
          "Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "execution": EXECUTION}, ("work_id",)),
          expands_to=("work.assign", "dispatch.launch", "work.transition"), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((DISPATCH, 1),), ((STATE, 1), (IMPLEMENTER, 1)))),
     Tool("ticket_request_review", STAGE, POLICY_RESOLVED,
          "Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "execution": EXECUTION,
-               "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "execution": EXECUTION,
+               "prior_value": {"const": "RUNNING"}}, ("work_id", "prior_value")),
          expands_to=("work.transition", "invoke.create.mutating", "dispatch.launch"), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
          produced_by=((), ((STATE, 1),), ((DISPATCH, 2),))),
     Tool("ticket_request_verification", STAGE, JUDGMENT_BEARING,
          "Accept the review report, if one is due, move the Ticket to VERIFY_PENDING and launch the verifiers policy "
          "requires.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "review_evidence": EVIDENCE_ID,
-               "execution": EXECUTION, "prior_value": {"type": "string"}}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "review_evidence": EVIDENCE_ID,
+               "execution": EXECUTION, "prior_value": {"const": "REVIEW_PASSED"}}, ("work_id",)),
          expands_to=("review.ingest", "work.transition", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("accept_review_evidence",), promotes=("execution",),
          dispatches=True, mutates=True, progression=True,
@@ -329,8 +382,8 @@ TOOLS: dict[str, Tool] = _catalog(
     Tool("ticket_prepare", STAGE, JUDGMENT_BEARING,
          "Accept the verification, if one is due, and prepare the integration candidate. Publication stays a separate "
          "decision.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID, "verification_evidence": EVIDENCE_ID,
-               "execution": EXECUTION}, ("expect_rev", "work_id")),
+         _obj({"work_id": WORK_ID, "verification_evidence": EVIDENCE_ID, "execution": EXECUTION,
+               "prior_value": {"enum": ["REVIEW_PASSED", "VERIFIED"]}}, ("work_id",)),
          expands_to=("verify.ingest", "work.transition", "integrate.prepare", "invoke.create.mutating",
                      "dispatch.launch"),
          required_judgments=("accept_verification",), promotes=("execution",),
@@ -343,33 +396,41 @@ TOOLS: dict[str, Tool] = _catalog(
     # Steps 3 and 4 (the rebuilt candidate's verifier and its launch) are planned in verifier mode on a moved head only,
     # and step 1 only when a report is named and no rebuild is due (``availability.APPLIES``).
     Tool("integration_publish", DECISION, JUDGMENT_BEARING,
-         "Publish the prepared integration candidate: calling this is your publication decision.",
-         _obj({"expect_rev": EXPECT_REV, "work_id": WORK_ID,
+         # Whose decision it carries out is the owner table's (register E335), never restated here.
+         f"Publish the prepared integration candidate: calling this carries out "
+         f"{whose(owner_of('integrate.publish'), to_lead=True)} publication decision.",
+         _obj({"work_id": WORK_ID,
                "prepared_candidate": {"type": "string", "minLength": 1},
                "verification_evidence": EVIDENCE_ID},  # verifier mode: the report accepted (plan v3 B2.5)
-              ("expect_rev", "work_id", "prepared_candidate")),
+              ("work_id", "prepared_candidate")),
          expands_to=("verify.ingest.integration", "integrate.publish", "invoke.create.mutating", "dispatch.launch"),
          required_judgments=("publish_candidate",), dispatches=True, mutates=True, progression=True,
          produced_by=((), ((VALIDATION, 1),), ((CANDIDATE, 2),), ((DISPATCH, 3),))),
     Tool(
         "message_send", STAGE, MECHANICAL,
         "Record a coordination message for an active worker, not a scope change. "
-        "Delivery not built; turn-end refused.",
-        _obj({"expect_rev": EXPECT_REV,
-              "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
+        "Deliver at next step (default), turn end or relaunch.",
+        _obj({"to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},
               "kind": {"enum": list(L.KINDS)},
               "in_reply_to": {"type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
               "refs": {"type": "array", "maxItems": L.MAX_REFS,
                        "items": {"type": "string", "minLength": 1, "maxLength": L.MAX_REF_CHARS}},
               "idempotency_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,64}$"},
-              "when": {"enum": ["next-step", "turn-end"]}}, ("expect_rev", "to", "body")),
+              "when": {"enum": ["next-step", "turn-end"]}}, ("to", "body")),
         expands_to=("message.send",), mutates=True, switch=MESSAGING,
     ),
+    # A read of the codebase map through `aew.maps.query`, the module `aew map search` and a worker's bridge rows answer
+    # from (register F15.8, PR A2). It never refreshes or selects a map.
+    Tool("map", QUERY, MECHANICAL,
+         "Read the codebase map at the authoritative head: show its status, a section, or a Ticket's directories "
+         "(scope ticket, work_id), or search for a path, exact first, then the workspace's text. Hits are candidates.",
+         _map_schema(), switch=MAPS),
 )
 
 
-NON_PROGRESSION_STAGES = {"checkpoint": "records a note", "steering": "changes the steering mode",
+NON_PROGRESSION_STAGES = {"checkpoint": "records a note", "report_write": "records a Lead report",
+                          "steering": "changes the steering mode",
                          "message_send": "records a message"}
 
 

@@ -1,0 +1,93 @@
+format: aew-skill-cases/v1
+skill: security-control-validation
+cases:
+- id: SCV-021-01
+  split: development
+  purpose: Assess the coverage of the existing authorized demo check.
+  worker:
+    task: Assess the coverage of the existing authorized demo check.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      record.txt: B2 ordinary allowed read returned expected demo value. Audit event exists. No delivery
+        receipt was supplied.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: use
+    required_findings:
+    - Report the observed read and event, and leave alert delivery unverified.
+    forbidden_findings:
+    - Give alert delivery credit solely from the audit event.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: SCV-021-02
+  split: development
+  purpose: Assess whether the captured check reached the control.
+  worker:
+    task: Assess whether the captured check reached the control.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      record.txt: B2 ordinary control check stopped at setup. The test principal fixture was unavailable.
+        No policy decision was collected.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: use
+    required_findings:
+    - Treat the outcome as inconclusive and identify the unavailable fixture.
+    forbidden_findings:
+    - Claim prevention from the missing downstream effect.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: SCV-021-03
+  split: holdout-candidate
+  purpose: Assess the repaired B3 control's audit coverage.
+  worker:
+    task: Assess the repaired B3 control's audit coverage.
+    context: Synthetic defensive review fixture.
+    artifacts:
+      record.txt: Only B2 evidence is available. Equivalence of the audit configuration is unresolved.
+    capabilities:
+    - read-files
+    constraints:
+    - Read only the supplied records. No live execution.
+  oracle:
+    activation: abstain
+    required_findings:
+    - Report the tested revision and the missing B3 evidence or equivalence.
+    forbidden_findings:
+    - Claim the repair is validated by the earlier test.
+    evidence_requirements:
+    - Cite the supplied record and state its applicable subject and limits.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.
+- id: SCV-021-04
+  split: development
+  purpose: Summarize ordinary test output.
+  worker:
+    task: Summarize ordinary test output.
+    context: Synthetic evaluator fixture.
+    artifacts:
+      ci.md: The formatter and documentation link checks passed.
+    capabilities:
+    - read-files
+    constraints:
+    - Use only the supplied records.
+  oracle:
+    activation: skip
+    required_findings:
+    - Report the ordinary check outcomes.
+    forbidden_findings:
+    - Treat lint results as a validation of a security control.
+    evidence_requirements:
+    - Cite the applicable supplied record.
+    allowed_alternatives:
+    - Equivalent evidence-backed reasoning.

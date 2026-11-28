@@ -383,3 +383,9 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **What holds:** publication, worktree sync and DONE stay a single locked transaction, so no other writer interleaves
   between publication and completion. Others' commits can land only between the intent and that transaction.
 - **Tests:** `tests/integration/test_integration_stages.py`.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+The Lead's publication decision binds the SHA of the candidate it saw. The locked publishing transaction checks the candidate, current authority and admission, and its finalize or reconcile transaction checks the recorded publishing intent, lease, pins and authoritative Git ref under the lock. This preserves ref compare-and-set and the one-rebuild bound. An unrelated control commit between publishing and finalization does not restart or strand publication.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

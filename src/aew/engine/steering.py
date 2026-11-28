@@ -47,6 +47,7 @@ from aew.errors import (
     MigrationRequired,
     PermissionDenied,
     StaleAuthority,
+    StalePolicy,
     SteeringNotConfigured,
     UsageError,
 )
@@ -223,6 +224,25 @@ def confirmation_reason(mode: str | None, primitives: list[str] | tuple[str, ...
     return None
 
 
+def check_stage_admission(state: dict[str, Any], digests: dict[str, str], attribution: dict[str, Any],
+                          plan: list[dict[str, Any]], effective_class: str) -> None:
+    """Check automation authority in the same lock that opens the stage intent."""
+    from aew.engine.primitives import JUDGMENT_BEARING
+
+    mode = effective(state)
+    bound = (attribution["mode"], attribution["mode_record"], attribution["mode_generation"])
+    current = (mode.get("mode"), mode.get("record"), mode.get("generation"))
+    if bound != current:
+        raise IllegalTransition("steering authority changed after the action was projected", reason="steering_moved")
+    for name in ("legality_digest", "operational_digest"):
+        if digests[name] != attribution[name]:
+            raise StalePolicy("steering policy changed after the action was projected", field=name,
+                              bound=attribution[name], current=digests[name])
+    refusal = confirmation_reason(mode["mode"], [step["primitive"] for step in plan])
+    if refusal or effective_class == JUDGMENT_BEARING:
+        raise IllegalTransition("the projected action requires a Lead decision", reason="confirmation_unavailable")
+
+
 def envelope(policy: dict[str, Any] | None) -> dict[str, int]:
     """The auto-run envelope in force: the adopted `execution.steering.envelope`, each bound defaulted."""
     given = (((policy or {}).get("steering") or {}).get("envelope")) or {}
@@ -249,7 +269,6 @@ ENDPOINT_DOWN = ("the operator endpoint is not running: start `aew operator serv
                  "deliver notifications")
 SEAT_VACANT = ("no Lead holds the seat: start the Lead session with `aew opencode --acquire`. A raise binds its "
                "generation, and the steering loop runs in that session")
-PINNED_EDIT = "Edit pinned settings or classify authority candidates"  # the quickstart's section for a pinned edit
 
 
 def endpoint_silent(why: str) -> str:
@@ -298,12 +317,11 @@ def deadline_problem(policy: dict[str, Any] | None, *, seat_held: bool = False) 
     begins), with the route to fix it, or ``None``. The raise to Run, each Run activation, ``doctor`` and ``status``
     give this one text.
 
-    The fix is an edit of a pinned file, which starts with the operator taking the seat. With ``seat_held`` (the raise
-    and the loop always: both need a Lead in the seat) that step is refused until the Lead session ends, so the route
-    starts there and names the quickstart section the operator follows; otherwise it names the commands. Either way it
-    ends with the Lead started again and the raise asked again, since a raise binds one Lead generation."""
+    The fix is an edit of a pinned file, which the operator adopts at their own terminal with no Lead credential and
+    the seat left with its holder (register E331). With ``seat_held`` (the raise and the loop always: both need a Lead
+    in the seat) the Lead keeps running, and the raise is asked again once adopted; otherwise the route ends with the
+    Lead started and the raise asked."""
     from aew.engine.first_configuration import post_pin_route
-    from aew.harness import contract as K
     from aew.policy import execution as X
 
     missing = profiles_without_deadline(policy)
@@ -316,12 +334,9 @@ def deadline_problem(policy: dict[str, Any] | None, *, seat_held: bool = False) 
     else:
         what = (f"execution profile(s) {', '.join(missing)} set no deadline_s, and routing can pick each: give each a "
                 "deadline_s (seconds)")
-    again = "start the Lead again with `aew opencode --acquire` and raise to Run again"
-    if seat_held:
-        return (f"{what}. That is an edit of .aew/{X.REL_PATH}, a pinned file: end the Lead session first, so it "
-                f"gives up the seat; then, at the operator's terminal, follow the quickstart's \"{PINNED_EDIT}\" "
-                f"(it ends with {K.MANIFEST_ADOPT} and the release of the seat); then {again}")
-    return f"{what}. To do that, {post_pin_route(X.REL_PATH)}. {K.HELD_SEAT}. Then {again}"
+    again = ("raise to Run again" if seat_held
+             else "start the Lead with `aew opencode --acquire` and raise to Run")
+    return f"{what}. To do that, {post_pin_route(X.REL_PATH)}. Then {again}"
 
 
 LOOP_REL = "local/steering/loop.json"  # the loop's running/stopped state and why (plan v3 §2.7: never control state)
@@ -420,8 +435,7 @@ class Steering:
                                "source": now["source"], "record": now["record"],
                                "override_record": approval.override_value(state)}
         if now["mode"] in ("walk", "run"):
-            out["lower_arguments"] = {"action": "lower", "expect_rev": state["revision"],
-                                      "prior_value": out["override_record"]}
+            out["lower_arguments"] = {"action": "lower", "prior_value": out["override_record"]}
         if now.get("ended"):
             out["ended_override"] = now["ended"]
         if default is not None and is_raise(default, now["mode"]):
@@ -549,12 +563,12 @@ class Steering:
 
     # ------------------------------------------------------------------ the Lead's own (A1 §1.2)
 
-    def lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+    def lower(self, *, token: str, mode: str, rationale: str = "",
               prior_value: str | None = None) -> dict[str, Any]:
         """The Lead lowers its effective mode for its own generation (a restriction, never authority)."""
         if mode not in ("crawl", "walk"):
             raise UsageError("a Lead lowers to crawl or walk")
-        with self.k.lead_txn(token, expect_rev, "steering.lower") as ctx:
+        with self.k.lead_txn(token, "steering.lower") as ctx:
             state = ctx.state
             self._require_configured()
             previous = approval.override_value(state)
@@ -577,10 +591,10 @@ class Steering:
         out = {"ok": True, "record": record, "previous": now, "mode": mode, "override_record": record,
                "revision": revision}
         if mode == "walk":
-            out["lower_arguments"] = {"action": "lower", "expect_rev": revision, "prior_value": record}
+            out["lower_arguments"] = {"action": "lower", "prior_value": record}
         return out
 
-    def request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
+    def request(self, *, token: str, kind: str, rationale: str, mode: str | None = None,
                 action_ref: str | None = None) -> dict[str, Any]:
         """Record the Lead's request for a raise or a confirmation. It grants nothing: only the operator, at the
         endpoint, can raise or confirm (A1 §1.3). One raise request is open at a time (a new one replaces it), and a
@@ -589,7 +603,7 @@ class Steering:
             raise UsageError("a request is for a raise or a confirmation")
         if not rationale.strip():
             raise UsageError("a request carries its rationale")
-        with self.k.lead_txn(token, expect_rev, "steering.request") as ctx:
+        with self.k.lead_txn(token, "steering.request") as ctx:
             state = ctx.state
             self._require_configured()
             generation = int(state["lead"]["generation"])

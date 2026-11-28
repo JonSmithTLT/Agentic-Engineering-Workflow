@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/coordination-message/v1",
+  "title": "AEW coordination message",
+  "description": "F9-A (ADR-0017; plan v4 D-1 to D-12): one Lead-worker coordination message, a line of its invocation's append-only thread (.aew/work/<T>/coordination/<INV>.jsonl). A message moves knowledge, never project state: recording it commits nothing, and no gate, transition or dispatch reads it.",
+  "type": "object",
+  "required": ["schema", "id", "thread", "seq", "sender", "recipient", "work_unit", "ticket_revision", "run", "channel",
+               "in_reply_to", "idempotency_id", "kind", "body", "refs", "created_at", "checked_rev"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/coordination-message/v1"},
+    "id": {"description": "MSG-<INV>-<n>: the thread's own sequence (D-2).", "type": "string", "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
+    "thread": {"description": "The invocation whose thread this is (D-1: one thread per invocation).", "type": "string", "pattern": "^INV-[0-9]+$"},
+    "seq": {"type": "integer", "minimum": 1},
+    "sender": {"description": "lead:<generation> or invocation:<INV> (F9-A1 §4).", "type": "string", "pattern": "^(lead:[0-9]+|invocation:INV-[0-9]+)$"},
+    "recipient": {"type": "string", "pattern": "^(lead:[0-9]+|invocation:INV-[0-9]+)$"},
+    "work_unit": {"type": "string", "minLength": 1},
+    "ticket_revision": {"description": "The Ticket revision the invocation records on an F4-enabled project; null on a dormant project or a non-Ticket unit (D-9).", "type": ["integer", "null"], "minimum": 1},
+    "run": {"description": "The thread invocation's latest harness run when the message was recorded; null before any run.", "type": ["string", "null"]},
+    "channel": {"enum": ["lead_mcp", "lead_broker", "cli", "run_bridge"]},
+    "in_reply_to": {"description": "An earlier message of the same thread; a worker message always names a Lead message (D-10).", "type": ["string", "null"], "pattern": "^MSG-INV-[0-9]+-[1-9][0-9]*$"},
+    "idempotency_id": {"description": "Scoped to (sender, thread). An explicit id, or sha256: of the canonical JSON of [sender, thread, in_reply_to, kind, body, refs] when the sender gave none (D-8).", "type": "string", "pattern": "^([A-Za-z0-9._:-]{1,64}|sha256:[0-9a-f]{64})$"},
+    "kind": {"description": "Presentation only (D-11).", "enum": ["instruction", "question", "clarification", "finding", "blocker", "status", "acknowledgement", "correction"]},
+    "body": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "refs": {"description": "kind:value strings (D-12). A ref grants no access and is never resolved for the recipient.", "type": "array", "maxItems": 8, "items": {"type": "string", "minLength": 3, "maxLength": 200}},
+    "created_at": {"type": "string"},
+    "checked_rev": {"description": "The control revision the message was recorded against: for a Lead message, the expect_rev it was checked against (D-4).", "type": "integer", "minimum": 0}
+  }
+}

@@ -205,9 +205,25 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
                 **({"admission_file": str(admission)} if s.get("timeout_after_file") else {})}
     if do == "check":
         return aew("check", "run", s["id"])
-    if do == "lead":  # a Lead command at the current revision (the Lead's harness, through the Lead bridge)
-        rev = json.loads(aew("lead", "show")["stdout"])["revision"]
-        return aew(*s["args"], "--expect-rev", str(rev), env=env, input_bytes=stdin)
+    if do == "lead":  # scripted decisions use the subject shown by the same Lead bridge
+        # A step the Lead asked the operator about goes on at their word (operator_confirms.asked).
+        if s.get("after_file") and not wait_file(s["after_file"], bounds.TEST_TIMEOUT_S):
+            raise RuntimeError("the operator never confirmed this step")
+        argv = list(s["args"])
+        if argv[:2] == ["work", "transition"] and "--prior-value" not in argv:
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
+            argv += ["--prior-value", shown["work_unit"]["state"]]
+        elif argv[:2] == ["plan", "accept"] and "--approval-digest" not in argv:
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
+            revision = argv[argv.index("--revision") + 1]
+            argv = shown["plan_accept_argv"][revision]
+        elif argv[:2] == ["integrate", "publish"] and "--candidate" not in argv:
+            shown = json.loads(aew("status", argv[2], "--json", env=env)["stdout"])
+            argv += ["--candidate", shown["approval_subjects"]["integrate.publishing"]["candidate"]]
+        elif argv[:2] == ["harness", "launch"] and "--prior-value" not in argv:
+            shown = aew("harness", "status", argv[2], env=env)["stdout_json"]
+            argv += shown["launch_argv"][3:]
+        return aew(*argv, env=env, input_bytes=stdin)
     if do == "submit_raw":  # whatever text the model produced, well-formed or not, written as its tools write it
         data = s["text"].encode(s.get("encoding", "utf-8"))  # e.g. "utf-8-sig" or "utf-16": Windows PowerShell 5.1
         if s.get("stdin"):

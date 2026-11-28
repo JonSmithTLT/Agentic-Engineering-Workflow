@@ -27,7 +27,7 @@ import copy
 import json
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -36,6 +36,7 @@ from aew import operator, process_kind
 from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge.manifest import DEFAULT_GATES, MANIFEST, default_manifest
+from aew.policy import execution as X
 from aew.util import atomic_write, load_yaml, safe_dump_yaml, sha256_bytes, utc_now
 
 REMEMBERED = "local/switch-offers.json"  # gitignored and never pinned: an answer is not policy
@@ -312,6 +313,27 @@ OFFERS: tuple[SwitchOffer, ...] = (
               legality=True, schema="execution", text=_maps_text,
               done=lambda o: (f"project maps are now {o.to}, adopted as your decision. To change it, edit "
                               f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
+    key_offer("coordination_messaging", label="Lead–worker messaging", file=_policy_rel("execution"),
+              policy_key="execution", key_path=("coordination", "messaging"), old_values=(),
+              to_value=lambda: X.NEW_PROJECT_MESSAGING, effective=lambda _: X.messaging(None),
+              legality=False, schema="execution",
+              text=lambda o: (f"New projects start with Lead–worker messaging {o.to}. This project keeps it {o.held} "
+                              "until you adopt it. Adopting it records sends and replies on their invocation thread. "
+                              "Existing runs keep their launch settings until relaunched."),
+              done=lambda o: (f"Lead–worker messaging is now {o.to}, adopted as your decision. To change it, "
+                              f"edit .aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
+    # Raw-history search (register E185; A-57 KP-R32): init has never written the key before it, so an absent key is
+    # offered, and an `off` the operator wrote is theirs.
+    key_offer("recall_raw_history_search", label="history search", file=_policy_rel("execution"),
+              policy_key="execution", key_path=("recall", "raw_history_search"), old_values=(),
+              to_value=lambda: X.NEW_PROJECT_RAW_HISTORY_SEARCH, effective=lambda _: X.raw_history_search(None),
+              legality=False, schema="execution",
+              text=lambda o: (f"AEW's default for history search has moved from {o.held} to {o.to}: `aew history "
+                              "search` finds archived records and the evidence they hold, credentials redacted, for "
+                              "you and the Lead, whose session reads it relayed to its broker. It is never offered "
+                              f"inside a worker's invocation. This project holds {o.held}."),
+              done=lambda o: (f"history search is now {o.to}, adopted as your decision. To change it, edit "
+                              f".aew/{_policy_rel('execution')}; {THEN_ADOPT}.")),
 )
 
 
@@ -573,11 +595,11 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
     try:
         for rel, new in edits.items():
             atomic_write(root / rel, new)
-        engine.manifest_adopt(token=token, expect_rev=engine.store.current()["revision"], authorization=authorization,
+        engine.manifest_adopt(token=token, authorization=authorization,
                               reason=f"switch offer: {offer.switch} {opening.held} -> {opening.to}", only=sorted(edits),
                               binding=binding)
     except Exception as exc:  # noqa: BLE001 (rules 3 and 5: whatever failed, nothing stays, and the start goes on)
-        left = _restore(root, edits, kept)
+        left = restore(root, edits, kept)
         message = getattr(exc, "message", None) or f"{type(exc).__name__}: {exc}"
         also = f" {'; '.join(left)}." if left else ""
         _say(out, f"{offer.label} is unchanged: {message}.{also}")
@@ -590,7 +612,7 @@ def _take(engine: Any, offer: SwitchOffer, opening: Opening, authorization: dict
             _say(out, f"{offer.label} is adopted, but its next step failed ({type(exc).__name__}: {exc}).")
 
 
-def _restore(root: Path, edits: dict[str, bytes], kept: dict[str, bytes | None]) -> list[str]:
+def restore(root: Path, edits: Mapping[str, bytes], kept: dict[str, bytes | None]) -> list[str]:
     """Each file back as it was, but only if it still holds what this wrote; a line for each that isn't."""
     left = []
     for rel, wrote in edits.items():

@@ -39,7 +39,7 @@ def unit(p, wid):
 
 def attempt(p, *args):
     """A Lead step whose refusal is an acceptable (safe) outcome; returns the CLI result."""
-    return p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    return p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
 
 
 def main_commit(p):

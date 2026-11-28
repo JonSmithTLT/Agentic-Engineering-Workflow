@@ -55,7 +55,7 @@ def lab(tmp_path):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -228,7 +228,7 @@ def test_a_role_is_told_only_the_aew_commands_it_may_use():
     verifier = preamble(LaunchContract(role="verifier", expected_kinds=["verification"],
                                        operations=["check.run", "submit.verification", "context.read"], **base))
     assert "aew check run" not in reviewer and "`aew submit --kind <kind> --file <file>`" in reviewer, reviewer
-    assert "`aew check run <check>`" in verifier, verifier
+    assert "`aew check run <check-id>`" in verifier, verifier
 
 
 def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab, tmp_path):

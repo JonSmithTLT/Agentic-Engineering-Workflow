@@ -150,8 +150,8 @@ def world(tmp_path_factory):
 
 def served_routes() -> list[str]:
     """The contract's routes this server always serves (a pending one is no route yet; register F20.8), less
-    /attention, which is 403 until F15.1. A conditional route is off here; its conditional requests are tested where
-    it is on (tests/integration/test_dashboard_history_search.py)."""
+    /attention, which is 403 until F15.1. A conditional route is excluded here; its conditional requests are tested on
+    and off in tests/integration/test_dashboard_history_search.py."""
     assert CONDITIONAL_ROUTES <= set(CONTRACT.paths)
     return sorted(r for r in CONTRACT.paths if r in ROUTES and r != "/attention")
 
@@ -281,7 +281,7 @@ def test_control_revision_alone_changes_the_validator(world):
     the revision is part of the representation."""
     p = world.lab.project
     tags = {path: world.client.ok(path) for path in ("/project", "/capabilities")}
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})
     for path, (tag, body) in tags.items():
         new_tag, new = world.client.ok(path, inm=tag)
         assert new_tag != tag and new["data"] == body["data"]
@@ -319,8 +319,7 @@ def test_the_frontends_two_diagnostics_hold_across_changes(world):
     client = Client(world.server.port)
     held = {route: client.ok(path_of(world, route))[0] for route in served_routes()}
     changes = [lambda: None, lambda: p.lead("work", "create", "ticket", "--title", "More work", "--class", "1"),
-               lambda: p.ok("history", "audit", "--expect-rev", str(p.rev()),
-                            env={"AEW_LEAD_TOKEN": p.token}), lambda: None]
+               lambda: p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token}), lambda: None]
     for change in changes:
         change()
         for route in served_routes():

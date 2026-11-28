@@ -34,6 +34,8 @@ SUMMARY_CHARS = 500
 SUMMARY_BYTES = 8 * 1024
 # A 600-byte line lets ten observed checks plus the inventory unknowns fit that budget even with wide characters.
 SUMMARY_LINE_BYTES = 600
+AFFECTED_TESTS_LIMIT = ("Coverage records which checks finished with the selection. "
+                        "The project determines which individual tests ran.")
 
 
 def inventory(checks: dict[str, Any], guardrails: dict[str, Any]) -> list[dict[str, Any]]:
@@ -79,6 +81,12 @@ def doctor_rows(policy: dict[str, Any], declaration: dict[str, Any], root: Path)
     configured = C.current_definitions(policy, {})
     rows.extend(("WARN", f"CI runs {_text(tool['name'])}; no configured check runs it")
                 for tool in declaration.get("ci_tools", []) if configured.keys().isdisjoint(tool["covered_by"]))
+    if "affected_tests" in declaration:
+        checks = policy.get("checks", {})
+        if not any(C.takes_selection(checks.get(name, {})) for name in configured):
+            fixed = ", ".join(_text(name) for name in sorted(configured)) or "none"
+            rows.append(("WARN", "The project's CI selects tests for each change; no check runs that selection. "
+                         f"Checks with a fixed scope: {fixed}"))
     return rows
 
 
@@ -128,10 +136,27 @@ def _ci_inventory(declared: list[dict[str, Any]], configured: list[dict[str, Any
     return items, completed_by
 
 
+def _affected_inventory(record: dict[str, Any], ref: dict[str, str], unit: str,
+                        checks: list[dict[str, Any]]) -> dict[str, Any]:
+    if record["result"] == "unknown":
+        return {"known": False, "reason": record["reason"]}
+    reasons_for: dict[str | None, str] = {"spawn_failed": "could_not_start", "timeout": "not_completed"}
+    cited = [c for c in checks if c.get("selection_sha256") == ref["sha256"]]
+    completed = sorted({c["check_id"] for c in cited if c.get("exit_code") is not None})
+    reasons = [] if completed else sorted({reasons_for.get(c.get("outcome"), "not_run_in_this_validation")
+                                          for c in cited} or {"not_run_in_this_validation"})
+    items = record["items"]
+    return {"known": True, "source": "selection:" + ref["sha256"], "unit": unit,
+            "items": [{"name": name, "ran": bool(completed), "reasons": reasons} for name in items[:MAX_PATHS]],
+            "completed_by": completed, "observation_limit": AFFECTED_TESTS_LIMIT,
+            "omitted": max(0, len(items) - MAX_PATHS)}
+
+
 def build(*, subject: dict[str, Any], configured: list[dict[str, Any]], checks: list[dict[str, Any]],
           changed_files: dict[str, Any], capabilities: dict[str, Any], result: str,
           declaration_pin: dict[str, Any] | None, checkless: bool = False,
-          complete: bool = True, limits: list[str] | None = None) -> dict[str, Any]:
+          complete: bool = True, limits: list[str] | None = None, selection_record: dict[str, Any] | None = None,
+          selection_ref: dict[str, str] | None = None) -> dict[str, Any]:
     """Freeze only supplied observed facts. Incomplete execution is not proof that every absent check was unrun.
     ``declaration_pin`` has no default: a site that omitted it would record "no project source" for a project that
     declared one, so each site says which pin it read, or ``None``."""
@@ -145,7 +170,11 @@ def build(*, subject: dict[str, Any], configured: list[dict[str, Any]], checks: 
     if complete and not checkless and declaration_pin is not None:
         declaration = declaration_pin["declaration"]
         if "affected_tests" in declaration:
-            affected_tests["reason"] = "selection_not_run"
+            if selection_record is not None and selection_ref is not None:
+                affected_tests = _affected_inventory(selection_record, selection_ref,
+                                                     declaration["affected_tests"]["unit"], checks)
+            else:
+                affected_tests["reason"] = "selection_not_run"
         if "ci_tools" in declaration:
             items, completed_by = _ci_inventory(declaration["ci_tools"], configured, checks)
             ci_tools = {"known": True, "source": "declared:" + declaration_pin["sha256"], "items": items}
@@ -157,6 +186,8 @@ def build(*, subject: dict[str, Any], configured: list[dict[str, Any]], checks: 
            "affected_tests": affected_tests, "ci_tools": ci_tools,
            "observation_limits": list(limits or []) + ([] if complete else ["execution_completion_not_recorded"]),
            "result": result}
+    if selection_ref is not None and complete and not checkless:
+        out["selection"] = selection_ref
     out["summary"] = summarize(out, completed_by=completed_by)
     return out
 
@@ -246,11 +277,21 @@ def summarize(value: dict[str, Any], *, completed_by: dict[str, list[str]] | Non
                 inventories.append("; ".join([line, *_listed(ran_tools)]))
             else:
                 unit = f", {_text(item['unit'])}" if item.get("unit") else ""
-                count = len(items) + item.get("omitted", 0)
-                detail = f"{count} selected, {len(missed)} not run" if count else "none selected"
+                omitted = item.get("omitted", 0)
+                count = len(items) + omitted
+                # A selection-consuming check receives the whole list, so omitted items have the same outcome.
+                total_missed = len(missed) + (omitted if missed else 0)
+                counts[f"{field}_not_run"] = total_missed
+                detail = f"{count} selected, {total_missed} without a completed check" if count else "none selected"
+                if completed := item.get("completed_by"):
+                    names = ", ".join(_listed([_text(c) for c in completed]))
+                    detail += f". Checks that finished with the selection: {names}"
                 inventories.append(f"{label} (per the project's selector{unit}): {detail}")
+                if limit := item.get("observation_limit"):
+                    inventories.append(_text(limit))
+            gap_label = "without a completed check" if field == "affected_tests" else "not run"
             inventory_gaps.extend(
-                f"{label}: {_text(i.get('name'))}: not run "
+                f"{label}: {_text(i.get('name'))}: {gap_label} "
                 f"({_text(', '.join(reason.replace('_', ' ') for reason in i.get('reasons', [])) or 'not run')})"
                 for i in missed)
         else:

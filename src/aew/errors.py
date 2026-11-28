@@ -1,7 +1,7 @@
 """AEW error taxonomy.
 
 Every rejection carries a stable machine-readable ``code`` so harness adapters can
-react deterministically (for example, re-read status after ``STALE_REVISION``).
+react deterministically (for example, read the affected record after ``CHANGED_SINCE_READ``).
 """
 
 from __future__ import annotations
@@ -48,6 +48,13 @@ class ProjectNotFound(NotFound):
     code = "PROJECT_NOT_FOUND"
 
 
+class OutageReadRefused(AEWError):
+    """A D-01 Problem on the independent read channel; reason is its D-01 code."""
+
+    code = "OUTAGE_READ_REFUSED"
+    exit_code = 2
+
+
 class ValidationFailed(AEWError):
     code = "VALIDATION_FAILED"
     exit_code = 2
@@ -69,7 +76,7 @@ class StalePolicy(AEWError):
 
 
 class StaleRevision(AEWError):
-    """The caller's expected control-state revision is not the current one."""
+    """The caller's expected map revision is not the current one."""
 
     code = "STALE_REVISION"
     exit_code = 3
@@ -129,7 +136,10 @@ class DependencyUnsatisfied(IllegalTransition):
 class ObligationsDropped(IllegalTransition):
     """A move or promotion that would lower a unit's inherited obligations is refused (EW-U05.g): its effective class,
     an inherited non-waivable gate, or its integration's validation by a verifier. ``details["dropped"]`` names each
-    unit and what it would lose, and ``details["instead"]`` what the Lead may do instead; nothing is changed."""
+    unit and what it would lose, and ``details["instead"]`` what the Lead may do instead; nothing is changed. A
+    promotion that would carry a gate that can never be satisfied is refused with this code too (reason
+    ``carried_gate_unsatisfiable``; register E87): ``details["stuck"]`` names each gate, the item to settle first and
+    its route."""
 
     code = "OBLIGATIONS_DROPPED"
 
@@ -223,19 +233,26 @@ class TurnEndNeedsMessaging(IllegalTransition):
     code = "TURN_END_NEEDS_MESSAGING"
 
 
-class HarnessSendNeedsStore(IllegalTransition):
-    """``aew harness send`` while coordination messaging is on, before this AEW can record it in the message store
-    (amendment 2 §3.1, G4: with messaging on every send is recorded, and it fails closed). Nothing is written."""
-
-    code = "HARNESS_SEND_NEEDS_STORE"
-
-
 class MessagingSnapshotMismatch(IllegalTransition):
     """``aew harness send`` to a run whose launch snapshot of the messaging switch disagrees with the project's switch
     (amendment 2 §3.1): neither the request-file path nor the store path is safe, so it is refused, nothing is written,
     and the Lead relaunches the run."""
 
     code = "MESSAGING_SNAPSHOT_MISMATCH"
+
+
+class PendingLeadMessage(IllegalTransition):
+    """The run submitted a report while a previously admitted Lead message remained unincorporated into
+    a subsequent worker result.
+
+    Admission is recording before the submission's thread sequence. Incorporation requires a delivered input on a
+    report by the same invocation. A forged unposted line, a superseded unposted message and a superseded post never
+    confirmed delivered do not count as admitted inputs for this guard.
+    """
+
+    code = "PENDING_LEAD_MESSAGE"
+    definition = ("The run submitted a report while a previously admitted Lead message remained unincorporated into "
+                  "a subsequent worker result.")
 
 
 class CoordinationLimit(IllegalTransition):

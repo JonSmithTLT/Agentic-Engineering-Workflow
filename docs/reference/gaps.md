@@ -103,7 +103,6 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.faults:pause`: open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.gate_ops:GateRepair._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.hierarchy_ops:Hierarchy.work_close`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.engine.integration_ops:Integration._finish_publish`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.lock:FileLock._join_queue`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.lock:FileLock._join_queue`: open of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.lock:FileLock._open`: Path.mkdir of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -111,6 +110,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.migrate_ops:Migration.discard_unreachable`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.engine.nonmutating_ops:NonMutating.work_accept`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.queue_ops:Queue._checkout_sync_lock`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.engine.reports:Reports.write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.scope_ops:ScopeCorrections._write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.stage_intents:StageIntents._end`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer
@@ -118,10 +118,14 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.engine.usage_ops:write_pricing_snapshot`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.engine.validation_ops:Validation.establish`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.work_ops:WorkUnits.propose`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.g3records:Writer._write`: Path.mkdir of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:Writer._write`: atomic_write of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.g3records:prune`: Path.unlink of a path this reading cannot place: the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.broker_liveness:write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.check_changes:remove_copy.writable`: os.rmdir of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
 - `aew.harness.check_changes:remove_copy.writable`: os.unlink of a path this reading cannot place: `name` of `remove_copy.writable`, which no static call binds
-- `aew.harness.check_changes:run_once`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
+- `aew.harness.check_changes:run_copy`: Path.unlink of a path this reading cannot place: a loop variable over `changed_paths`, which a call leaves out; a loop variable over `paths`, a list this reading cannot read
+- `aew.harness.check_changes:run_copy`: shutil.rmtree of a path this reading cannot place: a loop variable over `changed_paths`, which a call leaves out; a loop variable over `paths`, a list this reading cannot read; the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.containment:establish`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.layout:for_run`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow; the result of `stack.enter_context(...)`, a callee this reading cannot name
 - `aew.harness.containment.layout:for_run`: Path.write_bytes of a path this reading cannot place: the result of `stack.enter_context(...)`, a callee this reading cannot name
@@ -161,6 +165,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._retire`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.lead:deliver_lead_skills`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:StoredLogin._deciding_row`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.opencode.login:clear_aew_logins`: no static call chain from any entry point's declaring function reaches this writer
@@ -171,7 +176,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.runlog:_open_append`: os.open of a path this reading cannot place: `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
+- `aew.harness.runlog:_open_append`: os.open of a path this reading cannot place: `directory` of `end_supervisor`, which no static call binds; `directory` of `read_live`, which no static call binds; `root` of `OutageStore.__init__`, which no static call binds; `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:write_live`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
@@ -195,14 +200,15 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.kit:prepare`: Path.write_text of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit.receipt:write_receipt`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.kit.receipt:write_receipt`: atomic_write of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.operator_adopt:adopt`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here
 - `aew.profile:cli_finish`: open of a path this reading cannot place: the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect`: sqlite3.connect of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main`: Path.write_text of a path this reading cannot place: `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
-- `aew.switch_offer:_restore`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
-- `aew.switch_offer:_restore`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.switch_offer:_take`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:restore`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove`: shutil.rmtree of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

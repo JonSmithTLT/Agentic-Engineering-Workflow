@@ -48,12 +48,13 @@ A named switch must be enabled in adopted policy when the row is registered; ses
 |---|---|---|---|---|---|---|---|
 | `checkpoint` | stage | MECHANICAL | built | - | yes | no | `checkpoint` |
 | `cli` | primitive | JUDGMENT_BEARING | built | - | yes | no | - |
-| `explain` | query | MECHANICAL | built | - | no | no | - |
 | `harness_status` | query | MECHANICAL | built | - | no | no | - |
 | `harness_wait` | wait | MECHANICAL | built | - | no | no | - |
 | `integration_publish` | decision | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
+| `map` | query | MECHANICAL | built | `maps.reads` | no | no | - |
 | `message_send` | stage | MECHANICAL | built | `coordination.messaging` | yes | no | `message.send` |
-| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace`, `work.scope_add` |
+| `report_write` | stage | MECHANICAL | built | - | yes | no | `report.write` |
+| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | yes | `stage.resolve`, `work.dispose`, `work.gate_replace`, `work.scope_add`, `plan.assess`, `dispatch.launch` |
 | `resume` | query | MECHANICAL | built | - | no | no | - |
 | `status` | query | MECHANICAL | built | - | no | no | - |
 | `steering` | stage | MECHANICAL | built | - | yes | no | `steering` |
@@ -90,10 +91,12 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `plan` | `plan.schema.json` |
 | `pricing` | `pricing.schema.json` |
 | `project` | `project.schema.json` |
+| `report` | `report.schema.json` |
 | `role-archetype` | `role-archetype.schema.json` |
 | `role` | `role.schema.json` |
 | `run-usage` | `run-usage.schema.json` |
 | `scope-correction` | `scope-correction.schema.json` |
+| `selection` | `selection.schema.json` |
 | `spool-event` | `spool-event.schema.json` |
 | `stage-intent` | `stage-intent.schema.json` |
 | `surface` | `surface.schema.json` |
@@ -191,13 +194,16 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `lead session`
 - `lead show`
 - `lead takeover`
+- `lead telemetry`
 - `lead tool`
 - `manifest adopt`
 - `map diff`
 - `map generate`
+- `map search`
 - `map select-architecture`
 - `map show`
 - `message list`
+- `message lost`
 - `message read`
 - `message reply`
 - `message thread`
@@ -207,13 +213,18 @@ Each command is linked to its entry in the `commands` section of `docs/implement
 - `notify desktop`
 - `notify file`
 - `opencode`
+- `operator confirm`
 - `operator ping`
 - `operator serve`
 - `plan accept`
 - `plan adopt`
+- `plan assess`
 - `plan lint`
 - `plan propose`
 - `plan reconfirm`
+- `read`
+- `record body`
+- `report show`
 - `resume`
 - `review ingest`
 - `role list`

@@ -31,6 +31,7 @@ git_isolation.isolate(Path(__file__).resolve().parents[1])
 import autopsy  # noqa: E402  (a hang, a deadline or a marked failure leaves an autopsy: G3 H1)
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
+import module_heap  # noqa: E402  (no test module keeps more than its share of memory: register E363)
 import session_deadline  # noqa: E402  (--session-deadline: CI keeps the evidence before a job timeout: G3 H3)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
@@ -55,6 +56,7 @@ def pytest_configure(config: pytest.Config) -> None:
     session_deadline.configure(config)
     git_isolation.configure(config)
     lanes.configure(config)
+    module_heap.configure(config)
     config.addinivalue_line("markers", "fresh_world: build the project from scratch for this test")
     watchdog.configure(config)
     autopsy.configure(config)
@@ -214,16 +216,68 @@ class Project:
         return res.json
 
     def rev(self) -> int:
-        """The committed control revision, read as `aew lead show` reads it (``lead_show``: the store's ``current``,
-        under the control lock and after recovery, as any writer process reads it), but in this process: before every
-        Lead call, a second `aew` process cost about 1.4 s on Windows and a quarter of a Lead-heavy test's time."""
+        """Read the committed control revision for assertions about progress and atomicity."""
         from aew.engine.api import Engine
 
         return Engine.discover(self.root).lead_show()["revision"]
 
     def lead(self, *args: str) -> Any:
-        """Run a Lead mutation with the current token and revision."""
-        return self.ok(*args, "--expect-rev", str(self.rev()), env={"AEW_LEAD_TOKEN": self.token})
+        """Run a Lead fixture command using the scope a caller would have read before deciding."""
+        return self.ok(*self.lead_args(*args), env={"AEW_LEAD_TOKEN": self.token})
+
+    def lead_args(self, *args: str) -> list[str]:
+        """Fill scoped observations for workflow setup. Interface and race tests can call `aew` with their own args."""
+        from aew.engine.api import Engine
+        from aew.surface import stage
+
+        argv = list(args)
+        route = ".".join(args[:2])
+
+        def value(option: str) -> str | None:
+            return argv[argv.index(option) + 1] if option in argv else None
+
+        if route in {"work.transition", "work.move", "work.promote", "work.staff", "harness.launch",
+                     "integrate.defer", "integrate.requeue"} and value("--prior-value") is None:
+            engine = Engine.discover(self.root)
+            prior = engine.prior_value(route.replace(".", "_"), args[2])
+            return [*argv, "--prior-value", prior]
+        if route == "integrate.publish" and value("--candidate") is None:
+            engine = Engine.discover(self.root)
+            candidate = (engine.status(args[2])["work_unit"].get("integration") or {}).get("candidate")
+            return [*argv, "--candidate", candidate] if candidate else argv
+        if route == "history.audit" and "--record" not in argv:
+            return [*argv, "--record"]
+        if args[:3] == ("lead", "mode", "lower") and value("--prior-value") is None:
+            engine = Engine.discover(self.root)
+            return [*argv, "--prior-value", engine.steering_view()["override_record"]]
+        if value("--approval-digest") is not None:
+            return argv
+        if route == "plan.accept":
+            engine = Engine.discover(self.root)
+            plans = engine.status(args[2])["work_unit"].get("plans", [])
+            shown = next((r["sha256"] for r in plans if str(r["revision"]) == value("--revision")), None)
+        elif route in {"authority.accept", "authority.reject"}:
+            engine = Engine.discover(self.root)
+            shown = engine.authority_candidate(args[2])["digest"]
+        elif route == "stage.continue":
+            engine = Engine.discover(self.root)
+            shown = stage.assess(engine, engine.stage_intent(args[2]))["approval"]["digest"]
+        elif route == "work.dispose":
+            engine = Engine.discover(self.root)
+            shown = engine.disposition_approval(args[2])["digest"]
+        elif route in {"work.accept", "work.close", "work.cancel", "plan.reconfirm", "verify.classify",
+                       "work.acknowledge-input", "gate.waive"}:
+            if route == "gate.waive" and value("--finding") is not None:
+                return argv
+            engine = Engine.discover(self.root)
+            op = {"gate.waive": "waive", "work.acknowledge-input": "input.acknowledge"}.get(route, route)
+            evidence = value("--input") if op == "input.acknowledge" else value("--evidence")
+            result = engine.approval_subject(args[2], op, gate=value("--gate"),
+                                             evidence=evidence, source=value("--from"))
+            shown = result["digest"] if result else None
+        else:
+            return argv
+        return [*argv, "--approval-digest", shown] if shown else argv
 
     def adopt_policy(self, reason: str = "the operator's reviewed policy edit") -> Any:
         """Accept a manifest or policy edit made in the test, as the operator would: `aew manifest adopt`, confirmed at
@@ -249,9 +303,15 @@ class Project:
         it."""
         from aew.engine.api import Engine
 
-        return getattr(Engine.discover(self.root), method)(
-            token=self.token, expect_rev=self.rev(), authorization={"authorized_by": "operator-tty"},
-            **kwargs)
+        engine = Engine.discover(self.root)
+        if method == "manifest_adopt" and "binding" not in kwargs:
+            kwargs["binding"] = engine.manifest_approval()
+        elif method in {"authority_accept", "authority_reject"} and "binding" not in kwargs:
+            # Match the terminal's read of the candidate the operator confirms.
+            kwargs["binding"] = engine.authority_candidate(kwargs["candidate_id"])["digest"]
+        elif method == "work_staff" and "prior_value" not in kwargs:
+            kwargs["prior_value"] = engine.prior_value(method, kwargs["work_id"])
+        return getattr(engine, method)(token=self.token, authorization={"authorized_by": "operator-tty"}, **kwargs)
 
 
 def policy_pins(root: Path) -> dict[str, str | None]:
@@ -361,6 +421,40 @@ def weaker_contexts(weaker_register_dir, request):
     weaker_register.ROOT_OVERRIDE, weaker_register.scan = saved, scan
 
 
+@pytest.fixture(scope="session")
+def g3_records_session_dir(tmp_path_factory) -> Iterator[Path]:
+    """The sentinel on this host's own G3 approval records (A-44 BOY-05.a; register E101): at the session's end the
+    host's directory is as the session found it."""
+    from unittest import mock
+
+    from aew import g3client
+
+    with mock.patch.dict(os.environ, HOST_ENV, clear=True):
+        host = g3client.approval_records_dir()
+    before = _register_files(host)
+    yield tmp_path_factory.mktemp("g3-records")
+    after = _register_files(host)
+    assert after == before, (f"the session changed this host's own G3 approval records at {host}: "
+                             f"{sorted(set(after.items()) ^ set(before.items()))}")
+
+
+@pytest.fixture(autouse=True)
+def g3_records(g3_records_session_dir, request):
+    """No test reads or writes this host's own G3 approval records in process: each test has a directory of its own.
+    (Not through ``monkeypatch``, for the reason ``capability_register`` gives.) Its limit (#660 review, m5): a child
+    `aew` still resolves the host's directory, so a child `aew status` on a host with G3 installed reads, and prints,
+    that host's records; no test's child writes one, since only `aew g3 request` and the operator endpoint's G3 path
+    do, and the session's sentinel above checks it."""
+    import re
+
+    from aew import g3client
+
+    saved = g3client.RECORDS_OVERRIDE
+    g3client.RECORDS_OVERRIDE = g3_records_session_dir / re.sub(r"[^\w.-]+", "_", request.node.nodeid)[-120:]
+    yield g3client.RECORDS_OVERRIDE
+    g3client.RECORDS_OVERRIDE = saved
+
+
 @pytest.fixture(autouse=True)
 def capability_register(capability_register_dir):
     """No test reads or writes this host's own capability register (STG-15, CAP-1): in process the register is the
@@ -459,15 +553,15 @@ def copy_test_repository(dest: Path, variant: tuple[str, str], build: Callable[[
     return shutil.copytree(_template_cache[variant], dest)
 
 
-def acquire_test_lead(p: Project, expect_rev: int = 0) -> Project:
-    p.token = p.ok("lead", "acquire", "--expect-rev", str(expect_rev), "--session-label", "lead-a")["token"]
+def acquire_test_lead(p: Project) -> Project:
+    p.token = p.ok("lead", "acquire", "--session-label", "lead-a")["token"]
     return p
 
 
 def copy_released_world(root: Path, dest: Path) -> Project:
     """Give each copy of a released module world its own Lead."""
     p = Project(shutil.copytree(root, dest))
-    return acquire_test_lead(p, expect_rev=p.rev())
+    return acquire_test_lead(p)
 
 
 def fixture_repository(dest: Path, *, initialized: bool) -> Path:

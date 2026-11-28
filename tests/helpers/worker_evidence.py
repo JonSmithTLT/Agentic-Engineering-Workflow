@@ -17,7 +17,38 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import proctree
-from evidence_files import FRAME, FRESH_S, PREFIX, WATCHDOG_HEADER, entries, is_link, open_observation, test_frame
+from evidence_files import (
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
+    CANCEL_COLLECTION,
+    CONTROLLER,
+    FRAME,
+    FRESH_S,
+    INTERRUPTION_REASONS,
+    LANE_REPORT_SCHEMA,
+    NOT_SAMPLED,
+    OUTCOME_FILES,
+    OUTSIDE_TREE,
+    PREFIX,
+    SAMPLING_GAP,
+    SAMPLING_POLICY,
+    STACK_NOT_OWED,
+    WARNING,
+    WATCHDOG_HEADER,
+    WORKER_COUNT,
+    WORKER_PHASES,
+    entries,
+    finished_without_tests,
+    is_link,
+    lifecycle_receipt,
+    open_observation,
+    policy_samples,
+    pytest_phase,
+    receipt_phases,
+    sampling_failures,
+    test_frame,
+)
 
 RING_BYTES = 256 * 1024  # well inside the 4 MiB staging limit, including a full lane of recent samples
 DROPPED = "older snapshots dropped\n"
@@ -62,19 +93,26 @@ def _live_phase_writer(path: Path, pid: int, birth: int, fd: int) -> bool:
 
 
 def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
-    """Read only positive transitions from the same registered worker on this runner's monotonic clock."""
-    from session_deadline import WORKER_PHASES, session_directories
+    """Read only positive transitions from the same registered worker on the phase clock, whose owner is
+    ``session_deadline.phase_clock_ns``.
+
+    A serial session's controller runs its tests itself and keeps a worker's receipt, so it is read as one, under the
+    name CONTROLLER, once it has a receipt; an xdist session's controller keeps none and has no row (register E3)."""
+    from session_deadline import marker, session_directories
 
     rows = []
     for directory in session_directories(root):
-        for path in sorted(directory.glob("worker-gw*-pid.txt")):
+        registered = sorted(directory.glob("worker-gw*-pid.txt"))
+        if any(directory.glob(lifecycle_receipt(CONTROLLER, "*", "*"))):
+            registered.append(marker(directory, f"{CONTROLLER}-pid"))
+        for path in registered:
             row = {"session": directory.name, "worker": path.stem.removesuffix("-pid"), "phase": "indeterminate"}
             rows.append(row)
             try:
                 pid = int(_phase_file(path))
                 birth = int(_phase_file(path.with_name(path.name.replace("-pid.", "-start."))))
                 row.update(pid=pid, start=birth)
-                receipt = directory / f"worker-{pid}-{birth}-lifecycle.txt"
+                receipt = directory / lifecycle_receipt(row["worker"], pid, birth)
                 lines = _phase_file(receipt).splitlines()
                 if len(lines) > len(WORKER_PHASES):
                     continue
@@ -87,7 +125,11 @@ def phases_at_signal(root: Path, at_ns: int) -> list[dict]:
                     continue
                 prior = [phase for stamp, phase, _ in transitions if stamp <= at_ns]
                 if prior:
-                    row["phase"] = prior[-1]
+                    # How long the process had been collecting when its receipt is read here (`at_ns`: the signal
+                    # for the supervisor, the collection's own later instant for the cancellation collection), in
+                    # seconds since its first stamp. A collection that hangs is then visible in the before-tests
+                    # record, which otherwise carries no age (review of #616, m2).
+                    row.update(phase=prior[-1], collecting_s=round((at_ns - stamps[0]) / 1e9, 3))
             except (OSError, ValueError):
                 continue
     return rows
@@ -111,6 +153,99 @@ def workers(root: Path):
                                  controller=worker == "controller")
             except (OSError, ValueError):
                 continue
+
+
+def lane_reports(root: Path) -> list[dict]:
+    """The lane reports under the lane root and one level below it, where the lane commands write them."""
+    reports = []
+    for path in (*root.glob("*.json"), *root.glob("*/*.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and doc.get("schema") == LANE_REPORT_SCHEMA:
+            reports.append(doc)
+    return reports
+
+
+def before_tests(root: Path, at: float, phases: list[dict] | None, *, observer: str) -> bool:
+    """Record that the lane was cancelled before any of its sessions started a test, and return whether it was.
+
+    A lane cancelled while its sessions start has no worker in a test and no running name, so it has no worker
+    observation to give (register E3: superseded CI run 45590135545, ten lanes 37 to 96 s into their pytest step). The
+    claim rests on positive observations only: no registered process is in a test (no in-flight watchdog header) and no
+    running name is left; and each session either still starts, or has finished, gracefully interrupted, with its own
+    files and the lane report showing that no test began (``evidence_files.finished_without_tests``; review of #579,
+    M1). A session still starts when the lifecycle receipt of each process of it that runs tests, read from its live
+    writer (``phases``, from ``phases_at_signal``), stands before its first test: every registered worker of an xdist
+    session (whose controller runs no test), or the controller of a serial session, which runs its tests itself (the
+    serial lane of PR #608's run 45782924831, cancelled 2.4 s into its pytest step). A session with no worker roster
+    whose controller has no such receipt is not shown to be either. Anything else writes nothing, so the missing
+    evidence stays a defect.
+
+    A limit: the record says that no test had started, not that the start-up was healthy. A session stuck in its
+    collection (an import that hangs) and cancelled before its deadline is typed ``before tests`` with no defect and
+    no stack, a serial one now as an xdist one since #579. Each listed process's ``collecting_s`` is what shows a
+    long collection: the seconds since its ``collecting`` stamp when its receipt was read, which is the signal for
+    the supervisor's record and the collection's later instant for the cancellation collection's (review of #616, m2).
+
+    No session at all is recorded as such: pytest had not registered one under the lane root. That reading of an
+    absence rests on every lane command passing ``--session-deadline`` with its hang directory the lane root or one
+    level under it, where ``session_directories`` looks; ``test_every_lane_command_keeps_its_sessions_where_the_
+    collection_looks`` pins it (review of #579, m3)."""
+    from session_deadline import FINISHED, marker, session_directories
+    from watchdog import running_names
+
+    if next(workers(root), None) is not None or running_names(root):
+        return False
+    rows = phases or []
+    kept = ("worker", "pid", "start", "phase", "collecting_s")  # what the record keeps of each live process
+    sessions = []
+    for directory in session_directories(root):
+        session = {"session": directory.relative_to(root).as_posix()}
+        if marker(directory, FINISHED).is_file():
+            files = {}
+            for path in directory.iterdir():
+                with contextlib.suppress(OSError, UnicodeError):
+                    files[path.name] = path.read_text(encoding="utf-8")
+            if finished_without_tests(files, lane_reports(root)) is not None:
+                return False
+            listed = []
+            for name in sorted(files):
+                if re.fullmatch(r"worker-gw[0-9]+-pid\.txt", name):
+                    worker = name.removesuffix("-pid.txt")
+                    pid, start = int(files[name]), int(files[worker + "-start.txt"])
+                    phase = receipt_phases(files[lifecycle_receipt(worker, pid, start)])[-1]
+                    listed.append({"worker": worker, "pid": pid, "start": start, "phase": phase})
+            sessions.append({**session, "finished": True, "workers": listed})
+            continue
+        registered = sorted(path.stem.removesuffix("-pid") for path in directory.glob("worker-gw*-pid.txt"))
+        mine = [row for row in rows if row.get("session") == directory.name]
+        try:
+            count = int(marker(directory, WORKER_COUNT).read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            # No roster: a serial session, or an xdist one not yet set up. Only a live controller whose own receipt
+            # stands before its first test shows the first; an xdist controller keeps no receipt.
+            if (registered or [row.get("worker") for row in mine] != [CONTROLLER]
+                    or mine[0].get("phase") not in BEFORE_EXECUTION):
+                return False
+            sessions.append({**session, "serial": True,
+                             "workers": [{key: mine[0][key] for key in kept if key in mine[0]}]})
+            continue
+        if (len(registered) > count or sorted(row.get("worker") for row in mine) != registered
+                or any(row.get("phase") not in BEFORE_EXECUTION for row in mine)):
+            return False
+        sessions.append({**session, "worker_count": count,
+                         "workers": [{key: row[key] for key in kept if key in row} for row in mine]})
+    row = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": observer, "at": at, "sessions": sessions}
+    try:
+        with (root / BEFORE_TESTS).open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, ensure_ascii=True, sort_keys=True) + "\n")
+    except FileExistsError:
+        pass  # the first observation stands: the supervisor's, at the signal, before its collection's
+    except OSError:
+        return False
+    return True
 
 
 def ring_path(root: Path, worker: Worker) -> Path:
@@ -244,76 +379,175 @@ def ablated(mode: str) -> bool:
     return os.environ.get("AEW_EVIDENCE_PLANT") in PROOF_KINDS and os.environ.get("AEW_EVIDENCE_ABLATE") == mode
 
 
-def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed) -> set[tuple[int, int]]:
+def _marker(root: Path, path: Path, fallback: Path | None, text: str) -> None:
+    with contextlib.suppress(OSError):
+        if is_link(root):
+            return
+        path.parent.mkdir(exist_ok=True)
+        if is_link(path.parent):
+            return
+        try:
+            output = path.open("x", encoding="utf-8")
+        except FileExistsError:
+            if fallback is None:
+                return
+            # An earlier timeout snapshot may already have recorded a failure for this PID.
+            output = fallback.open("x", encoding="utf-8")
+        with output:
+            output.write(text)
+
+
+CAPTURE_BUDGET_S = 3  # the shared window for one capture's attaches, however many workers it has
+# PR 554's unavailable marker falls back to a per-identity file named for the interruption it answers.
+UNAVAILABLE_FALLBACK = {WARNING: "warning", CANCEL_COLLECTION: "cancel"}
+
+
+def _unavailable(root: Path, worker: Worker, reason: str, failures: list[str]) -> None:
+    path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
+    fallback = path.with_name(f"{worker.pid}-{worker.start}-{UNAVAILABLE_FALLBACK[reason]}-unavailable.txt")
+    attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
+    _marker(root, path, fallback, f"evidence defect: py-spy unavailable for {worker.node}{attempts}\n")
+
+
+def _row(worker: Worker, reason: str, failures: list[str], **facts) -> str:
+    row = {"reason": reason, "pid": worker.pid, "start": worker.start, "node": worker.node, **facts,
+           "attempts": failures}
+    return json.dumps(row, ensure_ascii=True) + "\n"
+
+
+def _outcome(root: Path, worker: Worker, outcome: str, failures: list[str], collect_at: float | None,
+             reason: str) -> None:
+    """Name why an interruption's capture kept no test stack for this worker, at this observation (register E3)."""
+    path = ring_path(root, worker).with_name(OUTCOME_FILES[reason](worker.pid, worker.start))
+    _marker(root, path, None, _row(worker, reason, failures, outcome=outcome, collect_at=collect_at))
+
+
+def sampling_policy(root: Path) -> dict:
+    try:
+        policy = json.loads((root / SAMPLING_POLICY).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return policy if isinstance(policy, dict) else {}
+
+
+def capture(root: Path, observed: list[Worker], attach, *, reason: str, allowed,
+            collect_at: float | None = None) -> dict[tuple[int, int], Worker]:
+    """Sample each allowed worker; return each sampled identity's worker as its retained sample labels it."""
     # A slow or inaccessible worker cannot multiply the pre-cleanup wait by the number of workers.
     # All attaches have their own three-second subprocess cutoff. After this common window expires,
     # queued workers are skipped; four concurrent readers bound the runner load.
-    until = time.monotonic() + 3
+    until = time.monotonic() + CAPTURE_BUDGET_S
+    retried = reason in INTERRUPTION_REASONS
+    # Both interruptions name every worker they kept no test stack for (register E3), in an outcome the evidence check
+    # reads: it accepts the few in STACK_NOT_OWED and names any other in its defect, so a sighting says a straddle, an
+    # exit or a dump without the test's frame (#561's quick check; the operator, 2026-11-26).
+    typed = reason in OUTCOME_FILES
+    collection = reason == CANCEL_COLLECTION
+    policy = sampling_policy(root) if collection else {}
 
     def sample(worker: Worker):
-        if time.monotonic() >= until or worker.identity not in allowed or not proctree.same(worker.identity):
+        failures: list[str] = []
+        current = worker  # the worker as it now runs: the cancellation collection follows it into its next test
+        crossed: list[Worker] = []
+
+        def outcome(name: str, of: Worker) -> None:
+            if typed:
+                _outcome(root, of, name, failures, collect_at, reason)
+
+        def live(candidate: Worker) -> bool:
+            return candidate in workers(root) and proctree.same(candidate.identity)
+
+        def follow() -> bool:
+            # A dump that straddled a test change labels neither test. The cancellation collection retries against
+            # the test the worker is in now, and records its observation for that test, so a stack of one test never
+            # answers an observation of another (register E3, the Windows cancel plant of 2026-11-24).
+            nonlocal current
+            if not collection or not proctree.same(worker.identity):
+                return False
+            fresh = next((w for w in workers(root) if w.identity == worker.identity and w != current), None)
+            if fresh is None:
+                return False
+            failures.append(f"straddled a test change; retried against {fresh.node}")
+            current = fresh
+            crossed.append(fresh)
+            return True
+
+        if worker.identity not in allowed:
+            outcome((SAMPLING_GAP if policy_samples(policy) else NOT_SAMPLED) if collection else OUTSIDE_TREE, worker)
             return None
-        warning = reason == "warning"
+        if not proctree.same(worker.identity):
+            outcome("exited before its attach", worker)
+            return None
         last = None
-        failures = []
-        matched = False
-        for attempt in range(3 if warning else 1):
-            if warning and (worker not in workers(root) or not proctree.same(worker.identity)):
-                return None
+        matched = moved = False
+        for attempt in range(3 if retried else 1):
+            if retried and not live(current) and not follow():
+                moved = True
+                break
             remaining = until - time.monotonic()
             if remaining <= 0:
                 if attempt == 0:
-                    return None
+                    failures.append("shared budget spent before its first attach")
                 break
             at = time.time()
-            elapsed = time.monotonic() - worker.began
-            result = attach(worker.pid, timeout=remaining, failures=failures) if warning else attach(worker.pid)
+            elapsed = time.monotonic() - current.began
+            limit = {"timeout": remaining} if retried else {}
+            result = attach(current.pid, failures=failures, **limit)
             # A stack straddling a test boundary has no trustworthy node label.
-            if worker not in workers(root) or not proctree.same(worker.identity):
-                return None
+            if not live(current):
+                moved = True
+                if follow():
+                    continue
+                break
+            moved = False
             if result:
                 # Nonblocking dumps may omit a live Python frame. Retry only
-                # this invocation inside the original shared pre-signal budget.
-                if warning and not FRAME.search(result[1]):
+                # this invocation inside the original shared budget.
+                if not FRAME.search(result[1]):
                     failures.append(f"{result[0]}: dump has no Python frames")
                     continue
-                last = (at, elapsed, result)
-                if not warning or test_frame(worker.node, result[1]):
+                last = (at, elapsed, result, current)
+                if not retried or test_frame(current.node, result[1]):
                     matched = True
                     break
                 failures.append(f"{result[0]}: dump has no active test frame")
-        if warning and not matched:
-            path = ring_path(root, worker).with_name(f"{worker.pid}-unavailable.txt")
-            message = f"evidence defect: py-spy unavailable for {worker.node}"
+                if pytest_phase(result[1]) in STACK_NOT_OWED[reason]:
+                    break  # a worker outside its test's call has no test frame to give, however often it is asked
+        # The observation stands for the test of the retained dump, or the one first observed when none is kept.
+        held = last[3] if last is not None else worker
+        if moved or (crossed and last is None):
+            # A straddle with no dump kept after it still owes its stack. An earlier dump of this attach was taken
+            # inside its own test, so it is kept (review of #561, m3).
+            outcome("straddled a test change" if proctree.same(worker.identity) else "exited during its attach", held)
+        elif retried and not matched and last is None:
+            _unavailable(root, worker, reason, failures)
+        elif reason == WARNING and not matched:
+            path = ring_path(root, worker).with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
+            attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
+            _marker(root, path, path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt"),
+                    f"py-spy sampled support frames for {worker.node}{attempts}\n")
             if last is not None:
-                path = path.with_name(f"{worker.pid}-{worker.start}-warning-attach.txt")
-                message = f"py-spy sampled support frames for {worker.node}"
-            with contextlib.suppress(OSError):
-                if is_link(root):
-                    return None
-                path.parent.mkdir(exist_ok=True)
-                if not is_link(path.parent):
-                    try:
-                        output = path.open("x", encoding="utf-8")
-                    except FileExistsError:
-                        # An earlier timeout snapshot may already have recorded a failure for this PID.
-                        output = path.with_name(f"{worker.pid}-{worker.start}-warning-unavailable.txt").open(
-                            "x", encoding="utf-8")
-                    with output:
-                        attempts = f" (attempts: {'; '.join(failures)})" if failures else ""
-                        output.write(f"{message}{attempts}\n")
+                outcome(pytest_phase(last[2][1]), held)
+        elif typed and not matched and last is not None:
+            # Setup, teardown and between tests are accepted only when the retained frames say so; a dump inside
+            # the call without the test's frame stays a live-stack defect.
+            outcome(pytest_phase(last[2][1]), held)
+        if not retried and not matched and not moved:
+            # A failed sampling attach refuses the not-sampled excuse to this identity (review of #561, M1).
+            path = ring_path(root, worker).with_name(sampling_failures(worker.pid, worker.start))
+            _marker(root, path, None, _row(worker, reason, failures))
         if last is None:
             return None
         # Retain a support-only stack as evidence of what was actually running.
         # The normal checker still reports a missing live test frame.
-        at, elapsed, result = last
+        at, elapsed, result, _ = last
         with contextlib.suppress(OSError):
-            if save_sample(root, worker, at, elapsed, result[0], result[1], reason=reason):
-                return worker.identity
+            if save_sample(root, held, at, elapsed, result[0], result[1], reason=reason):
+                return held
         return None
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        return {identity for identity in pool.map(sample, observed) if identity is not None}
+        return {held.identity: held for held in pool.map(sample, observed) if held is not None}
 
 
 def dmesg_victim() -> int | str:
@@ -380,8 +614,21 @@ class Monitor:
         mode = os.environ.get("AEW_WORKER_SNAPSHOTS")
         # The hosted cancellation control exercises the production switch.
         proof = plant in PROOF_KINDS and (plant != "cancel" or mode is None)
-        self.periodic = (proof or mode in {"1", "xdist"}) and not ablated("ring")
-        self.xdist_only = mode == "xdist" and not proof
+        sampled = proof or mode == "1"
+        self.periodic = sampled and not ablated("ring")
+        # The policy, not its ablation: the cancellation collection and the evidence check read it back (E3).
+        self.policy = {"periodic": sampled}
+        # Written by the supervisor before the lane starts (lane_step.supervise), so before any worker can reach the
+        # root, and replaced whole, so a file an earlier step left there is never read back as this lane's policy.
+        with contextlib.suppress(OSError):
+            if not is_link(root):
+                with NamedTemporaryFile("w", dir=root, suffix=".tmp", delete=False, encoding="utf-8") as temp:
+                    temp.write(json.dumps(self.policy) + "\n")
+                pending = Path(temp.name)
+                try:
+                    pending.replace(root / SAMPLING_POLICY)
+                finally:
+                    pending.unlink(missing_ok=True)
         self.interval = FRESH_S - 3  # one bounded attach before the 60s freshness boundary, including in proof lanes
         self.group = cgroup() if sys.platform == "linux" else None
         proof_group = os.environ.get("AEW_PROOF_OOM_GROUP")
@@ -418,8 +665,7 @@ class Monitor:
             if crossed:
                 self.high = False  # the first worker can still see pressure that began during startup
             return
-        due = [w for w in observed if self.periodic and not (self.xdist_only and w.controller)
-               and now >= self.next_sample.get(w.identity, 0)]
+        due = [w for w in observed if self.periodic and now >= self.next_sample.get(w.identity, 0)]
         if not crossed and not due:
             return
         allowed = self.scope()

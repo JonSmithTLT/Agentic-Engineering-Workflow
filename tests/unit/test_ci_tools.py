@@ -59,6 +59,18 @@ EXPECT = {"schema": check_assurance.SKIPS_SCHEMA, "skipped": {"win32": {SKIP_ID:
           "xfail": {}}
 
 
+@pytest.mark.parametrize(("change", "expected"), [("docs/README.md", "docs"), ("src/aew/engine/base.py", "full")])
+def test_requesting_lane_names_uses_the_same_tier_as_workflow_output(tmp_path, change, expected):
+    paths = tmp_path / "changed.txt"
+    paths.write_text(change + "\n", encoding="utf-8")
+    workflow, lanes = tmp_path / "workflow.txt", tmp_path / "lanes.txt"
+    assert tier.main(["--event", "pull_request", "--base-ref", "main", "--labels", "",
+                      "--paths-file", str(paths), "--lanes-out", str(lanes),
+                      "--github-output", str(workflow)]) == 0
+    assert workflow.read_text(encoding="utf-8").splitlines()[0] == f"tier={expected}"
+    assert lanes.read_text(encoding="utf-8").splitlines() == list(tier.LANES[expected])
+
+
 def report(platform: str, lane: str, results: dict[str, str], shard: str | None = None, **kw) -> dict:
     return {"schema": check_assurance.REPORT_SCHEMA, "platform": platform, "lane": lane, "shard": shard,
             "exitstatus": 0, "python": "3.x", "wall_s": 1.0, "collected": list(ALL),
@@ -970,6 +982,29 @@ def _cache_family(step: dict) -> str:
     return (step["with"].get("restore-keys") or step["with"]["key"]).split("${{")[0]
 
 
+def test_a_lane_restores_the_pinned_scanner_from_the_cache_before_installing_and_saves_only_a_verified_one():
+    """Run 46048405164 (register E3): one Linux lane's three scanner downloads were refused, so the lane withheld its
+    passing report and `main` went red. The lane action restores the archive from the Actions cache before the
+    installer runs, and saves it after a miss only once the installer reported the scanner available (so only bytes
+    that matched the pinned digest are kept). The path and key come from the installer, never restated here, and there
+    is no restore-keys prefix that could restore another version's archive."""
+    steps = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    index = {step.get("id") or step.get("uses") or step.get("name"): i for i, step in enumerate(steps)}
+    entry, restore, tools = steps[index["scanner-cache"]], steps[index["scanner-restore"]], steps[index["tools"]]
+    assert entry["run"] == "python tools/ci/install_evidence.py --cache-entry"
+    assert tools["run"] == "python tools/ci/install_evidence.py"
+    save = next(i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/cache/save"))
+    assert index["scanner-cache"] < index["scanner-restore"] < index["tools"] < save
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert restore["env"] == {"SEGMENT_DOWNLOAD_TIMEOUT_MINS": "1"}  # a stalled restore is a miss in 1 min, not 10
+    for step in (restore, steps[save]):
+        assert step["with"] == {"path": "${{ steps.scanner-cache.outputs.path }}",
+                                "key": "${{ steps.scanner-cache.outputs.key }}"}
+        assert step["continue-on-error"] is True  # the cache can save a download, never fail a lane
+    assert "steps.tools.outputs.scanner == 'true'" in steps[save]["if"]
+    assert "steps.scanner-restore.outputs.cache-hit != 'true'" in steps[save]["if"]
+
+
 def test_setup_caches_only_the_pinned_bubblewrap_and_bounds_a_cold_download():
     """setup-aew's bubblewrap cache (strategy §7): the key names the pinned version, the release and the architecture,
     and nothing else restores it, so a cached package is always the one a cold job would download; the install
@@ -1665,8 +1700,8 @@ _CONTRACT = "ROOT / CT.CONTRACT_REL"  # the dashboard contract: its literal path
 # which the guard reads (it is `full` through tier.SHARED)
 NONLITERAL_ALLOWED: dict[str, frozenset[str]] = {
     **{f"tests/integration/test_dashboard_{name}.py": frozenset({_CONTRACT})
-       for name in ("acceptance", "api", "conditional", "display_redaction", "history_search", "maps", "security",
-                    "session")},
+       for name in ("acceptance", "api", "attention", "conditional", "display_redaction", "history_search", "maps",
+                    "security", "session")},
     # DEBRIEF_ROOT is a directory under the system temp directory, not the repository
     "eval/m3/dogfood/dogfood.py": frozenset({"DEBRIEF_ROOT / name / 'lead-1'"}),
 }
@@ -2437,6 +2472,8 @@ HISTORY_READ_ALLOWED = {
         'm == commit or _git("merge-base", "--is-ancestor", commit, m, cwd=root).returncode == 0',
         'if not commit or _git("merge-base", "--is-ancestor", commit, ref, cwd=root).returncode != 0:',
         'return bool(commit and base) and _git("merge-base", "--is-ancestor", commit, base, cwd=root).returncode == 0',
+        'code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode',  # rule 65's (E168)
+        'return _git("cat-file", "-e", f"{commit}^{{commit}}", cwd=root).returncode == 0',  # rule 65's (E168)
     )},
 }
 
@@ -2780,7 +2817,9 @@ PRE_G3A_TIMEOUT_MIN = {
     "ci.yml": {"core": 20, "lanes": 30},
     "vertical.yml": {"vertical": 45},
     "discovery.yml": {"discovery": 15},  # G2's static-text lane (#218), merged after G3a: decided the same way
-    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 60, "crash-extended": 60},
+    # race-repeat: 60 until its serial passes outgrew it; its budget now fits their recorded time (register E75,
+    # tests/unit/test_repetition_fit.py).
+    "nightly.yml": {"reference": 60, "walk-extended": 60, "race-repeat": 77, "crash-extended": 60},
     "flake-dispatch.yml": {"regression": 30},
 }
 
@@ -3083,3 +3122,15 @@ def test_a_session_the_sentinel_ended_after_it_finished_is_named_as_its_own_prob
         "nightly-reference-Linux-1/autopsy/session-2405-439565f5/stuck-after-finish.txt"]
     assert ("nightly-reference-Linux-1/autopsy/session-2405-439565f5: the session finished, but its controller had "
             "not exited") in out
+
+
+def test_the_lane_and_its_collection_name_the_same_session_job():
+    """The collection opens the session's job by the name the lane step gave it, so the two steps must give one name:
+    a copy changed alone would stop the admission silently (register E3; review of #573, m2)."""
+    import session_deadline
+
+    lane = yaml.safe_load((ROOT / ".github/actions/lane/action.yml").read_text())["runs"]["steps"]
+    named = {step["id"]: step["env"].get(session_deadline.JOB_NAMESPACE_ENV)
+             for step in lane if step.get("id") in {"pytest", "collect"}}
+    assert set(named) == {"pytest", "collect"} and named["pytest"] == named["collect"]
+    assert named["pytest"] and "${{ inputs.artifact }}" in named["pytest"] and "${{ github.run_id }}" in named["pytest"]

@@ -17,6 +17,62 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### E367
+
+**Due by:** Now · **Owner:** designer · **Needs:** decision
+
+**What:** For the Lead's always-sent text: whether to make the four schema changes the audit of 2026-11-25 found worth about 3.1 KB per request, and whether the Lead MCP server's instructions count in the Lead's pool
+
+**Blocks:** -
+
+### E373
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q4: "On a project with no open Ticket, should the projection offer `ticket_draft`, with its judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"
+
+**Blocks:** -
+
+### E374
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q9: "For a stage the steering loop is running, is that decision offered at all, or is it the mechanism's until the loop stops?" E335's branch makes RESOLVE_STAGE the Lead's.
+
+**Blocks:** -
+
+### E378
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q2: "When an integration candidate conflicts with the moved head and its queue entry awaits disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and through which typed route?"
+
+**Blocks:** -
+
+### E379
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q3: "Does the operator's publish approval cover a compatible rebuild of the same change on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further question. The projection asks again. The operator owns the threshold.
+
+**Blocks:** -
+
+### E380
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** decision
+
+**What:** The V-01 burn-down's Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which decision does the projection offer, and is it the operator's?"
+
+**Blocks:** -
+
+### E381
+
+**Due by:** V-01 · **Owner:** designer · **Needs:** design
+
+**What:** The design of the V-01 wire track's actions that have none (the burn-down's Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`, which STG-03's closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381, E382 and E383 now hold their work; the shape of each is the designer's
+
+**Blocks:** E382, E383
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design
@@ -65,6 +121,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E349
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Where E349 (E7d's custodian half) sits against SYS-08's finish line, which does not name it, now that SYS-08 awaits the operator's sign-off; inside it, outside it (the operator's to place after SYS-08 finishes, as E359 is), or in another system
+
+**Blocks:** -
+
 ### E360
 
 **Due by:** Unscheduled · **Owner:** designer · **Needs:** adoption
@@ -73,4 +137,16 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### STG-15
+
+**Due by:** Unscheduled · **Owner:** designer · **Needs:** decision
+
+**What:** Whether SYS-09's serves_claims keeps its claim on the SPT records closing work (SPB), now that the operator has taken STG-15's later records (MCP servers and SPT's records) out of SYS-09's finish line
+
+**Blocks:** -
+
 ## Blocked until then
+
+- **E382** waits for E381 (design, designer, by V-01)
+
+- **E383** waits for E381 (design, designer, by V-01)

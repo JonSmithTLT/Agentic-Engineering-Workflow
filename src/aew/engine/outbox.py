@@ -62,9 +62,12 @@ SEGMENT_SCHEMA = "aew/transition-segment/v1"
 DERIVED_KINDS = ("lead.generation", "work.state", "invocation.status", "run.added", "credential.revoked",
                  "history.appended", "unit.archived", "queue.entry", "queue.lease", "work.binding")
 # `coordination.seal_fallback` is declared by the store on the operation's behalf: the commit sealed a thread the
-# operation's path missed (F9-A plan D-16, R3; ADR-0017 D7).
+# operation's path missed (F9-A plan D-16, R3; ADR-0017 D7). `confirmation.used`: the operator's confirmation a Lead
+# session's plan acceptance or publish used, and its provenance (``operator_decisions.consume``; ADR-0012's note of
+# 2026-11-26).
+CONFIRMATION_USED = "confirmation.used"
 DECLARED_KINDS = ("decision.recorded", "handoff.recorded", "evidence.ingested", "audit.recorded",
-                  "coordination.seal_fallback")
+                  "coordination.seal_fallback", CONFIRMATION_USED)
 
 
 # ---------------------------------------------------------------------------------------------- derivation (D2)
@@ -474,6 +477,29 @@ def read_transitions(aew_root: Path, since: int, through: int, *, outbox: dict[s
         out = dict(record)
         out["events"] = view.events(record)
         yield out
+
+
+def newest_transitions(aew_root: Path, state: dict[str, Any], *, events: bool = True) -> Iterator[dict[str, Any]]:
+    """Walk backward from the committed head, resolving sealed copies and checking each link as it is read. With
+    ``events`` false, each record is yielded without resolving its complete events (an overflow's sidecar is not
+    read): for a reader that needs only the chain and what a record itself holds, so a sidecar it never uses cannot
+    refuse it (the review of #650, F5)."""
+    start = (state.get("outbox") or {}).get("since")
+    revision: int = state["revision"]
+    if start is None or revision < start:
+        return
+    view = LogView(aew_root, start)
+    record = view.record(revision)
+    if record["h"] != state["last_transition"]["h"]:
+        raise IntegrityError(f"revision {revision}: the transition log does not match the committed head",
+                             revision=revision)
+    for rev in range(revision, start - 1, -1):
+        parent = view.record(rev - 1) if rev > start else None
+        if record["h"] != transition_hash(parent["h"] if parent else GENESIS_H, record):
+            raise IntegrityError(f"revision {rev}: the transition hash chain is broken", revision=rev)
+        yield dict(record, events=view.events(record)) if events else dict(record)
+        if parent is not None:
+            record = parent
 
 
 def matches(record: dict[str, Any], kinds: set[str] | None) -> dict[str, Any] | None:

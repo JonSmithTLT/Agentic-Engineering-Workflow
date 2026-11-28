@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew import process_kind, roles
+from aew.engine import ref_review as R
 from aew.engine import scope_ops as SC
 from aew.engine.archive_ops import evidence_reference, held_evidence, reference_summary
 from aew.engine.base import TxnContext
@@ -15,6 +18,7 @@ from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
 from aew.skills import pins as skill_pins
+from aew.snapshot import fingerprint
 from aew.util import atomic_write, parse_frontmatter, sha256_bytes, sha256_text
 from aew.workspace import git
 
@@ -53,10 +57,13 @@ class ContextPacks:
         chain = []
         for anc in reversed(H.ancestors(state, wid)):
             a = state["work"][anc]
-            meta = read_record(self.k.aew_root / a["record"], "work-unit").meta
+            record = read_record(self.k.aew_root / a["record"], "work-unit")
+            meta = record.meta
+            # The body and the whole acceptance: a plan assessor's preserved request (E160); no other pack shows them.
             chain.append({"id": anc, "kind": a["kind"], "title": a["title"], "risk_class": a["risk_class"],
                           "plan": (a.get("plan") or {}).get("accepted"),
-                          "goal_backwards": (meta.get("acceptance") or {}).get("goal_backwards", [])})
+                          "goal_backwards": (meta.get("acceptance") or {}).get("goal_backwards", []),
+                          "body": record.body, "acceptance": meta.get("acceptance") or {}})
         obligations = G.effective_obligations(state, wid, {"risk_paths": {str(c): [] for c in range(5)}})
         inherited: dict[str, Any] = {"non_waivable": obligations["non_waivable"], "floor": obligations["floor"]}
         # A gate replaced on the record is shown with its correction, so the replaced name never reads as current
@@ -68,21 +75,27 @@ class ContextPacks:
             inherited["corrections"] = corrections
         return chain, inherited
 
-    def _input_summaries(self, inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _input_summaries(self, inputs: list[dict[str, Any]], role: str) -> list[dict[str, Any]]:
+        """Each consumed input with what its record holds: the summary lines, each a mapping of a label to the recorded
+        value it prints, which the pack quotes and bounds (``ctxmod.recorded``; register E198), and for a role that
+        produces the work (``ctxmod.OPEN_ROLES``), under ``open``, what its author recorded as unresolved, uncertain or
+        a constraint (``ctxmod.open_items``). ``open`` is absent when the record holds none, and for an evaluator,
+        whose pack inputs are what they were."""
         out = []
         for i in inputs:
             ev = next((e for e in E.scan(self.k.aew_root, i["from"])[0] if e["id"] == i["id"]), None)
-            summary: list[str] = []
+            summary: list[dict[str, Any]] = []
+            left_open = ctxmod.open_items(ev) if ev and role in ctxmod.OPEN_ROLES else []
             if ev:
                 d, r, pr = ev.get("discovery") or {}, ev.get("research") or {}, ev.get("proposal") or {}
-                summary += [f"fact: {f['statement']}" for f in d.get("facts", [])]
-                summary += [f"hypothesis: {h['statement']}" for h in d.get("hypotheses", [])]
-                summary += [f"conclusion: {c}" for c in r.get("conclusions", [])]
-                summary += [f"subject: {s.get('name')} {s.get('version') or ''} ({s.get('source')})"
-                            for s in r.get("subjects", [])]
+                summary += [{"fact": f["statement"]} for f in d.get("facts", [])]
+                summary += [{"hypothesis": h["statement"]} for h in d.get("hypotheses", [])]
+                summary += [{"conclusion": c} for c in r.get("conclusions", [])]
+                summary += [{"subject": s.get("name"), **({"version": s["version"]} if s.get("version") else {}),
+                             "source": s.get("source")} for s in r.get("subjects", [])]
                 if pr:
-                    summary += [f"objective: {pr.get('objective')}", f"approach: {pr.get('approach')}"]
-            out.append({**i, "summary": summary})
+                    summary += [{"objective": pr.get("objective")}, {"approach": pr.get("approach")}]
+            out.append({**i, "summary": summary, **({"open": left_open} if left_open else {})})
         return out
 
     def _m2_pack_extras(self, state: dict[str, Any], inv: dict[str, Any], unit: dict[str, Any]) -> dict[str, Any]:
@@ -94,21 +107,31 @@ class ContextPacks:
         chain, inherited = self._hierarchy_context(state, wid)
         extras["hierarchy"] = chain
         extras["inherited"] = inherited if (inherited["non_waivable"] or inherited["floor"] is not None) else None
-        extras["inputs"] = self._input_summaries(inv.get("inputs") or [])
+        extras["inputs"] = self._input_summaries(inv.get("inputs") or [], inv["role"])
         execution = unit.get("execution") or {}
         if inv["role"] in {"investigator", "researcher", "planner"}:
             extras["expected_kind"] = execution.get("expected_kind")
             extras["attempt"] = inv.get("attempt")
+            # Register E168: the pin of this invocation's own attempt (current or history), never a later one's.
+            attempt = next((x for x in [execution, *unit.get("execution_history", [])]
+                            if x.get("attempt") == inv.get("attempt")), {})
+            if attempt.get("ref_pin"):
+                extras["ref_review"] = R.pack_view(self.k.repo_root, attempt["ref_pin"])
         if inv.get("subject"):
             s = inv["subject"]
             ev = next((e for e in E.scan(self.k.aew_root, wid)[0] if e["id"] == s["id"]), None)
             if ev:
-                content = {k: ev[k] for k in ("claim", "result", "discovery", "research", "proposal") if k in ev}
+                content = {k: ev[k] for k in ("claim", "result", "discovery", "research", "proposal", E.REF_REVIEW,
+                                              "reviewed_ref", "verdict") if k in ev}
                 _, body = parse_frontmatter((self.k.aew_root / ev["_path"]).read_text(encoding="utf-8"))
                 from aew.util import dump_yaml
                 extras["subject"] = {"id": s["id"], "sha256": s["sha256"], "kind": ev["kind"],
                                      "content": dump_yaml(content),
                                      "body": body, "observed_commit": ev["evaluated_snapshot"]["base_revision"]}
+                if ev.get("reviewed_ref"):  # a ref review's reviewer reads the change it reviewed (E168)
+                    extras["ref_review"] = R.pack_view(self.k.repo_root, ev["reviewed_ref"])
+        if inv.get("scope") == E.ASSESSMENT_SCOPE:  # the preserved request beyond the unit's own record (E160)
+            extras["request"] = [{k: a[k] for k in ("id", "kind", "title", "body", "acceptance")} for a in chain]
         if inv.get("scope") == "parent":
             baseline = unit.get("baseline_commit")
             commit = (inv.get("observation") or {}).get("commit")
@@ -199,6 +222,72 @@ class ContextPacks:
             head = None
         return slices.pin(self.k.aew_root, self.k.repo_root, base, scope_paths, lead=lead, head=head)
 
+    # ---- register F36: the recovery section of an invocation that replaces one (operator, 2026-11-26)
+
+    @staticmethod
+    def predecessor(state: dict[str, Any], inv_id: str) -> str | None:
+        """The invocation ``inv_id`` replaces: the unit's latest earlier invocation of the same role and scope, when it
+        ended without completing (cancelled, interrupted, superseded: any status but active or completed). Only for a
+        role that produces the work (``RECOVERY_ROLES``), each of which is completed when its report is taken: an
+        evaluator replaces nobody (a finished plan assessor is ended by `invoke cancel`, and a reviewer's verdict may
+        be recorded before it is ingested, so their status says nothing of completing; review of #614, M1 and M2).
+        None for a first invocation, and for one that follows completed work, such as a rework after a review."""
+        inv = state["invocations"][inv_id]
+        if inv.get("role") not in ctxmod.RECOVERY_ROLES:
+            return None
+        slot = (inv["role"], inv.get("scope") or "ticket")
+        latest = None
+        for other in (state["work"].get(inv["work_unit"]) or {}).get("invocations", []):
+            if other == inv_id:
+                break
+            earlier = state["invocations"].get(other) or {}
+            if (earlier.get("role"), earlier.get("scope") or "ticket") == slot:
+                latest = other
+        if latest is None or state["invocations"][latest]["status"] in {"active", "completed"}:
+            return None
+        return latest
+
+    def recovery(self, state: dict[str, Any], inv_id: str) -> dict[str, Any] | None:
+        """What a replacement invocation is told of the one it replaces, each fact read from its owner as it stands at
+        dispatch and cut to the section's bounds (``aew.knowledge.context``): the predecessor's status (its
+        invocation), why its credential ended (its token record), the evidence it produced (the evidence store, less
+        any verdict), and for an implementer the workspace's paths against its base
+        (``fingerprint.workspace_paths``). A role that works in a read-only observation inherits no workspace."""
+        previous = self.predecessor(state, inv_id)
+        if previous is None:
+            return None
+        inv, old = state["invocations"][inv_id], state["invocations"][previous]
+        produced = sorted((e for e in E.scan(self.k.aew_root, inv["work_unit"])[0]
+                           if e["producer"].get("invocation") == previous), key=lambda e: e.get("seq", 0))
+        reason = (state["tokens"].get(old.get("token_id") or "") or {}).get("revoke_reason")
+        out: dict[str, Any] = {
+            "predecessor": previous, "role": old["role"], "scope": old.get("scope") or "ticket",
+            "status": old["status"], "workspace_id": old.get("workspace_id"),
+            "reason": ctxmod.bounded_text(reason) if reason else None,
+            "evidence": ctxmod.recovery_evidence(produced)}
+        ws = state["work"][inv["work_unit"]].get("workspace") or {}
+        if inv["role"] != "implementer" or ws.get("id") != inv.get("workspace_id") or not ws.get("base_commit"):
+            return out
+        # Read straight after the dispatch's own snapshot of the same workspace: a workspace that cannot be read
+        # has already refused the dispatch there.
+        found = fingerprint.workspace_paths(Path(ws["path"]), ws["base_commit"], **self.k.check_cache_inputs())
+        marked = {mark: set(found[mark]) for mark in ctxmod.RECOVERY_MARKS}
+        paths = [{"path": ctxmod.bounded_text(path), **{mark: True for mark in ctxmod.RECOVERY_MARKS
+                                                        if path in marked[mark]}}
+                 for path in sorted({*found["changed"], *marked["staged"]})]
+        out["workspace"] = {"id": ws["id"], "base": ws["base_commit"],
+                            **{mark: len(marked[mark]) for mark in ctxmod.RECOVERY_MARKS},
+                            "paths": ctxmod.bounded(paths, ctxmod.RECOVERY_MAX_PATHS)}
+        return out
+
+    @staticmethod
+    def _recovery_sources(recovery: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """The pinned observation among the pack's sources, by its hash; nothing for a pack without the section."""
+        if not recovery:
+            return []
+        return [{"name": f"recovery:{recovery['predecessor']}", "path": None,
+                 "sha256": sha256_text(json.dumps(recovery, sort_keys=True, separators=(",", ":"))), "reference": True}]
+
     def _pack_base(self, inv: dict[str, Any], unit: dict[str, Any]) -> _PackBase:
         """The inputs both pack builders read first, with the policy files as adopted."""
         card = inv.get("card") or None
@@ -240,7 +329,7 @@ class ContextPacks:
                      ) -> tuple[ctxmod.PackInputs, list[dict[str, Any]]]:
         """``fresh_map``: the pack is being built now, so its map (if any) is the selected one (``build_pack``)."""
         inv = state["invocations"][inv_id]
-        if inv.get("scope") in {"observation", "parent"}:
+        if inv.get("scope") in E.OBSERVER_SCOPES:
             return self._m2_pack_inputs(state, inv_id, fresh_map=fresh_map, lead=lead)
         role, wid = inv["role"], inv["work_unit"]
         unit = state["work"][wid]
@@ -296,6 +385,7 @@ class ContextPacks:
             card=(card or {}).get("content"),
             history=history, codebase_map=map_lines, scope_added=SC.pack_entries(self.k.aew_root, unit),
             scope_lines_changed=lines_changed,
+            recovery=inv.get("recovery"),
             **{k: v for k, v in self._m2_pack_extras(state, inv, unit).items() if k in {"hierarchy", "inherited",
                                                                                         "inputs"}},
         )
@@ -306,6 +396,7 @@ class ContextPacks:
             *self._history_sources(history),
             *([dict(map_source)] if map_source is not None else []),
             *SC.pack_sources(unit),  # register E126: each correction the pack lists
+            *self._recovery_sources(inv.get("recovery")),
         ]
         return inputs, sources
 
@@ -332,7 +423,7 @@ class ContextPacks:
             authority=self.k.manifest["authority"]["accepted"],
             open_findings=[f for f in unit.get("findings", []) if f["status"] == "open"],
             card=(card or {}).get("content"), history=history,
-            codebase_map=map_lines, **extras)
+            codebase_map=map_lines, recovery=inv.get("recovery"), **extras)
         sources = [
             *self._base_sources(pb, role, unit, "current_work"),
             {"name": "observation", "path": None, "sha256": None,
@@ -348,6 +439,7 @@ class ContextPacks:
               for c in extras.get("children", [])],
             *self._history_sources(history),
             *([dict(map_source)] if map_source is not None else []),
+            *self._recovery_sources(inv.get("recovery")),
         ]
         return inputs, sources
 
@@ -360,6 +452,10 @@ class ContextPacks:
         refs = (ctx.state["work"].get(inv["work_unit"]) or {}).get("history_refs")
         if refs:  # pinned per invocation: a later load changes later packs only, and a regenerated pack matches
             inv["history_refs"] = [dict(r) for r in refs]
+        # Pinned once, as the map is: a second build in the dispatching transaction, and every regenerated pack, reads
+        # the observation the first build made, so the pack never differs because the workspace moved (register F36).
+        if "recovery" not in inv and (recovery := self.recovery(ctx.state, inv_id)) is not None:
+            inv["recovery"] = recovery
         # only a Lead's transaction refreshes the map: a custodian's dispatch, or anything a run starts, uses it as is
         lead = ctx.actor if (ctx.actor or {}).get("kind") == "lead" else None
         inputs, sources = self._pack_inputs(ctx.state, inv_id, fresh_map=True, lead=lead)

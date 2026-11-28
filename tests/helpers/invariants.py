@@ -28,7 +28,7 @@ from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control, retry_lock_free
 from aew.engine.workspace_ops import mutating_cap
-from aew.harness import seat
+from aew.harness import runlog, seat
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -61,6 +61,10 @@ def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str,
     state = dict(state)
     if "steering" not in schema["properties"]:
         state.pop("steering", None)
+    registration = schema["properties"].get("coordination_store", {})
+    registration_sources = registration.get("properties", {}).get("via", {}).get("enum", ())
+    if (state.get("coordination_store") or {}).get("via") == "init" and "init" not in registration_sources:
+        state.pop("coordination_store")
     lead = dict(state["lead"])
     properties = schema["properties"]["lead"]["properties"]
     for key in ("host_uid", "start"):
@@ -205,8 +209,8 @@ def control_violations(root: Path) -> list[str]:
         if unit.get("state") in {"DONE", "CANCELLED"}:
             problems.append(f"{inv_id} is active on terminal {inv['work_unit']}")
             continue
-        if inv.get("scope") in {"observation", "parent"}:
-            continue  # bound to their own read-only observation (rules 9 and 12)
+        if inv.get("scope") in E.OBSERVER_SCOPES:
+            continue  # bound to their own read-only observation (rules 9 and 12), a plan assessor's too (E160)
         if inv.get("scope") == "integration":
             integ = unit.get("integration") or {}
             if integ.get("workspace") != inv.get("workspace"):
@@ -295,6 +299,132 @@ def control_violations(root: Path) -> list[str]:
     problems += disposition_violations(root, hot, state)
     # 62. Register E126: the scope corrections.
     problems += scope_correction_violations(root, hot, state)
+    # 64. Register E87: obligations a promotion carried (63 is the StageIntent continue's, above).
+    problems += carried_obligation_violations(root, state)
+    # 65-67. Register E168: ref reviews, their pins and who observes what.
+    problems += ref_review_violations(root, state)
+    return problems
+
+
+def ref_review_violations(root: Path, state: dict[str, Any]) -> list[str]:
+    """65. A unit that names a ref (``review_ref``) is a non-mutating Ticket; every attempt of it (current and in
+        ``execution_history``) that started has a ``ref_pin`` whose ``name`` is the unit's ref, whose ``merge_base`` is
+        an ancestor of both its ``commit`` and its ``authoritative_commit`` (checked with git), whose executor's
+        observation is at ``commit``, and whose ``expected_kind`` is ``ref_review``. No unit without one has a pin or
+        expects a ref review.
+    66. Every ``ref_review`` record was produced by its unit's attempt executor (an investigator, at scope
+        ``observation``), its ``reviewed_ref`` equals that attempt's pin less what it noticed of uncommitted work, and
+        its ``evaluated_snapshot.base_revision`` is the pin's ``commit``.
+    67. Every reviewer or verifier of a ``ref_review`` record observes the pin's ``commit``."""
+    problems: list[str] = []
+    invocations = state["invocations"]
+
+    def held(commit: str) -> bool:
+        return _git("cat-file", "-e", f"{commit}^{{commit}}", cwd=root).returncode == 0
+
+    def ancestor(a: str, b: str) -> bool | None:
+        """None only when git cannot say because gc dropped the descendant after its ref was rewritten (review of #661,
+        M2) while the merge-base is a commit the repository holds; any other unreadable pair is a violation (#661's
+        quick check, m5)."""
+        code = _git("merge-base", "--is-ancestor", a, b, cwd=root).returncode
+        if code in (0, 1):
+            return code == 0
+        return None if held(a) and not held(b) else False
+
+    for wid, u in sorted(state["work"].items()):
+        attempts = [x for x in [u.get("execution") or {}, *u.get("execution_history", [])] if x]
+        ref = u.get("review_ref")
+        if not ref:
+            if any(x.get("ref_pin") or x.get("expected_kind") == E.REF_REVIEW for x in attempts):
+                problems.append(f"65: {wid} names no ref, yet an attempt of it is pinned to one or expects a ref "
+                                "review")
+            continue
+        if u["kind"] != "ticket" or u.get("mutating"):
+            problems.append(f"65: {wid} names a ref to review and is not a non-mutating Ticket")
+        by_attempt = {}
+        for x in attempts:
+            pin = x.get("ref_pin")
+            by_attempt[x.get("attempt")] = pin
+            if not pin or pin.get("name") != ref or x.get("expected_kind") != E.REF_REVIEW:
+                problems.append(f"65: {wid} attempt {x.get('attempt')} is not pinned to {ref} or does not expect a "
+                                "ref review")
+                continue
+            if False in (ancestor(pin["merge_base"], pin["commit"]),
+                         ancestor(pin["merge_base"], pin["authoritative_commit"])):
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s merge-base is not an ancestor of both commits")
+            obs = (invocations.get(x.get("invocation") or "") or {}).get("observation") or {}
+            if obs and obs.get("commit") != pin["commit"]:
+                problems.append(f"65: {wid} attempt {x.get('attempt')}'s executor observes {obs.get('commit')}, not "
+                                f"the pinned {pin['commit']}")
+        records = _evidence(root, wid)
+        for ev in records.values():
+            if ev["kind"] != E.REF_REVIEW:
+                continue
+            inv = invocations.get(ev["producer"]["invocation"], {})
+            pin = by_attempt.get(ev.get("attempt")) or {}
+            if inv.get("role") != "investigator" or inv.get("scope") != "observation" or \
+                    inv.get("attempt") != ev.get("attempt"):
+                problems.append(f"66: {ev['id']} was not produced by its attempt's executor")
+            if ev.get("reviewed_ref") != {k: v for k, v in pin.items() if k != "uncommitted"}:
+                problems.append(f"66: {ev['id']} reviewed {ev.get('reviewed_ref')}, not its attempt's pin")
+            if ev["evaluated_snapshot"].get("base_revision") != pin.get("commit"):
+                problems.append(f"66: {ev['id']} was evaluated at another commit than its attempt's pin")
+        for ev in records.values():
+            subject = records.get((ev.get("subject") or {}).get("id") or "")
+            if ev["kind"] in {"review", "verification"} and subject and subject["kind"] == E.REF_REVIEW:
+                obs = (invocations.get(ev["producer"]["invocation"], {}).get("observation") or {})
+                if obs.get("commit") != subject["reviewed_ref"]["commit"]:
+                    problems.append(f"67: {ev['id']} observed {obs.get('commit')}, not the reviewed commit")
+    return problems
+
+
+def carried_obligation_violations(root: Path, full: dict[str, Any]) -> list[str]:
+    """64. ``carried_obligations`` is held only by a Story or Epic a promotion created, written by that promotion: each
+    entry carries a floor or a gate, names known units as its origin and the ancestor it was taken from, and its
+    decision is the promotion of the carrier's ``promoted_from``. And an independent walk over every live unit's
+    ancestors, their own policies and what they carry, gives the floor and non-waivable gates
+    ``gates.effective_obligations`` reads (register E87), so that reader, or the accessor under it, missing a carried
+    obligation fails here; the other readers are proven by their own test. A carry is registered
+    (``obligation_carry``), so an engine that cannot read one refuses the file."""
+    from aew.engine import gates as G
+    from aew.knowledge.records import read_record
+
+    problems: list[str] = []
+    work = full["work"]
+    for wid, unit in sorted(work.items()):
+        carried = unit.get("carried_obligations")
+        if carried is None:
+            continue
+        if "obligation_carry" not in full:
+            problems.append(f"64: {wid} carries obligations but the project registers no carry (obligation_carry)")
+        if unit["kind"] == "ticket" or not unit.get("promoted_from") or not carried:
+            problems.append(f"64: {wid} carries obligations but is not a Story or Epic a promotion created, or "
+                            "carries none")
+        for entry in carried:
+            if entry["min_descendant_class"] is None and not entry["mandatory_gates"]:
+                problems.append(f"64: {wid} carries an entry from {entry['from']} with no floor and no gate")
+            if entry["from"] not in work or entry["via"] not in work:
+                problems.append(f"64: {wid} carries from {entry['from']} via {entry['via']}, not both known units")
+            path = Path(root) / ".aew" / "decisions" / f"{entry['decision']}.md"
+            meta = read_record(path, "decision").meta if path.is_file() else {}
+            if meta.get("type") != "promotion" or meta.get("work_unit") != unit.get("promoted_from"):
+                problems.append(f"64: {wid}'s carried entry from {entry['from']} cites {entry['decision']}, not the "
+                                f"promotion of {unit.get('promoted_from')}")
+    no_paths: dict[str, Any] = {"risk_paths": {str(c): [] for c in range(5)}}
+    archived = set(full.get("_archived") or [])
+    for wid in sorted(set(work) - archived):
+        floor, gates = None, set()
+        anc = work[wid].get("parent")
+        while anc:
+            for policy in [work[anc].get("policy") or {}, *(work[anc].get("carried_obligations") or [])]:
+                if policy.get("min_descendant_class") is not None:
+                    floor = max(floor or 0, policy["min_descendant_class"])
+                gates.update(policy.get("mandatory_gates") or [])
+            anc = work[anc].get("parent")
+        found = G.effective_obligations(full, wid, no_paths)
+        if (found["floor"], set(found["non_waivable"])) != (floor, gates):
+            problems.append(f"64: {wid} inherits floor {found['floor']} and gates {sorted(found['non_waivable'])}; "
+                            f"its ancestors and what they carry impose floor {floor} and gates {sorted(gates)}")
     return problems
 
 
@@ -424,7 +554,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         record that is terminal, valid and its own id, at the path its subject gives it. A unit's record is pinned by
         the unit's pointer (hot or in its bundle) or, when the unit was archived first, by a history annotation whose
         note carries the record's hash; a record with no unit (``records/``) is pinned by no hash.
-    51: its resolutions (E3c), hot and cold: see ``resolutions`` below."""
+    51: its resolutions (E3c), hot and cold: see ``resolutions`` below.
+    63: a continue over a launching step's run that has ended (E400): see ``taken_or_moved`` below."""
     from aew.engine import primitives as P
     from aew.engine import stage_intents as S
     from aew.schemas import validate
@@ -468,7 +599,8 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         revs = [si["opened"]["rev"], *(s["revision"] for s in si["steps"] if s.get("covered_by") is None)]
         if revs != sorted(set(revs)):
             problems.append(f"{where}: step revisions do not increase from its opening: {revs}")
-        if si["retried_after_stale_revision"] != any(s.get("retried_after_stale_revision") for s in si["steps"]):
+        retried = any(s.get("retried_after_stale_revision") for s in si["steps"])
+        if si.get("retried_after_stale_revision", False) != retried:
             problems.append(f"{where}: the intent's retry flag disagrees with its steps")
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
@@ -483,6 +615,46 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
             if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
                 problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
+        taken_or_moved(si, where)
+
+    def taken_or_moved(si: dict[str, Any], where: str) -> None:
+        """63 (register E400): what a continue took from its launching step's ended run is true. Its commit's summary
+        names each run it took and the evidence it took (``S.took``, read back by ``S.taken_in``; written when the
+        run's status was read, so no clock is compared: #651 review, m2): each such run is one the step launched, its
+        record says it ended with its evidence, and each id named is a sealed record that run produced. A
+        ``snapshot_moved`` stop is only ever over a run that ended with its evidence. The limit: a run the continue
+        found live is not checked here."""
+        resolution, closed, stop = si["resolution"], si["closed"], si.get("stopped")
+        last = si["steps"][-1] if si["steps"] else None
+        runs = ((last or {}).get("outputs") or {}).get("runs") or []
+        if not runs or not resolution or resolution["choice"] != "continue" or not closed \
+                or closed["rev"] != resolution["rev"]:
+            return
+        wid = si["subject"]["id"]
+        produced = {e["id"]: e["producer"].get("run") for e in E.scan(aew, wid)[0]} if wid else {}
+
+        def ended_with_evidence(run: str) -> bool:
+            record = runlog.read_record(runlog.run_dir(aew, run)) or {}
+            return record.get("status") == "ended_with_evidence" and run in produced.values()
+
+        if stop and stop["error"].get("reason") == "snapshot_moved" and not any(map(ended_with_evidence, runs)):
+            problems.append(f"63: {where}: stopped as snapshot_moved over {runs}, none of which left evidence")
+        if si["status"] != S.COMPLETED:
+            return
+        try:
+            [record] = outbox.read_transitions(aew, closed["rev"] - 1, closed["rev"], outbox=hot.get("outbox"))
+        except Exception as exc:  # noqa: BLE001 (the oracle reports, it does not crash)
+            problems.append(f"63: {where}: the continue's commit {closed['rev']} cannot be read: {exc}")
+            return
+        taken = S.taken_in(str(record.get("summary") or ""))
+        if taken is None:
+            problems.append(f"63: {where}: the continue's commit {closed['rev']} names what it took unreadably")
+            return
+        for run, named in taken.items():
+            if run not in runs or not ended_with_evidence(run) or not named \
+                    or any(produced.get(i) != run for i in named):
+                problems.append(f"63: {where}: a continue completed it taking {run}'s evidence {named}, which that "
+                                "run did not end with")
 
     def resolutions(si: dict[str, Any], where: str) -> None:
         """51 (E3c): every continue is an explicit rebind, chained generation to generation, each to one that held
@@ -953,7 +1125,8 @@ def _dispatch_binding_violations(root: Path, state: dict[str, Any]) -> list[str]
             attempt = u.get("execution") or {}
             if not attempt:
                 continue
-            base = attempt.get("observed_commit")
+            # a ref review observes its ref's commit; its dependencies were judged at the authoritative one (E168)
+            base = (attempt.get("ref_pin") or {}).get("authoritative_commit") or attempt.get("observed_commit")
         edges, anc = list(u.get("depends_on", [])), u.get("parent")
         while anc:
             edges += work[anc].get("depends_on", [])
@@ -1074,20 +1247,36 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
                     or ev.get("attempt") != execution.get("attempt")):
                 problems.append(f"{wid}: accepted record {rec['id']} is not the pinned output of attempt "
                                 f"{execution.get('attempt')}")
-            elif execution.get("expected_kind") != EXECUTE_KIND.get(execution.get("archetype")):
-                problems.append(f"{wid}: expected_kind does not match the executor archetype")
+            elif execution.get("expected_kind") != (E.REF_REVIEW if u.get("review_ref")
+                                                    else EXECUTE_KIND.get(execution.get("archetype"))):
+                problems.append(f"{wid}: expected_kind does not match the executor archetype (or the ref it reviews)")
         if u["state"] == "DONE":
             if not rec:
                 problems.append(f"{wid} is DONE without an accepted record")
             if not (root / ".aew" / (u.get("completion_record") or "missing")).exists():
                 problems.append(f"{wid} is DONE without a completion record")
-    # 11. Execute records come only from the matching archetype, on an observation snapshot.
+    # 11. Execute records come only from the matching archetype, on an observation snapshot (a ref review from an
+    #     investigator, E168).
     for wid in work:
         for ev in _evidence(root, wid).values():
-            if ev["kind"] in EXECUTE_KIND.values():
+            if ev["kind"] in E.EXECUTE_KINDS:
                 inv = invocations.get(ev["producer"]["invocation"], {})
-                if EXECUTE_KIND.get(inv.get("role")) != ev["kind"] or inv.get("scope") != "observation":
+                producer = "investigator" if ev["kind"] == E.REF_REVIEW else next(
+                    r for r, k in EXECUTE_KIND.items() if k == ev["kind"])
+                if inv.get("role") != producer or inv.get("scope") != "observation":
                     problems.append(f"{ev['id']} ({ev['kind']}) was produced by {inv.get('role')}/{inv.get('scope')}")
+    # 11a. A plan assessment comes only from a plan assessor (a reviewer dispatched at scope plan_assessment, never a
+    #      reviewer of a change), bound to the plan revision that assessor was pinned to (E160 slice 2).
+    for wid in work:
+        for ev in _evidence(root, wid).values():
+            if ev["kind"] == E.PLAN_ASSESSMENT:
+                inv = invocations.get(ev["producer"]["invocation"], {})
+                if inv.get("role") != E.ASSESSOR_ARCHETYPE or inv.get("scope") != E.ASSESSMENT_SCOPE:
+                    problems.append(f"{ev['id']} (plan_assessment) was produced by {inv.get('role')}/"
+                                    f"{inv.get('scope')}")
+                elif ev.get("plan_revision") != inv.get("plan_revision"):
+                    problems.append(f"{ev['id']} is bound to {ev.get('plan_revision')}, not the revision its assessor "
+                                    f"was pinned to ({inv.get('plan_revision')})")
     # 12. Retired observations belong to ended invocations; revoked credentials never wrote later evidence
     #     (rule 5 covers all invocations, including observation ones).
     for inv_id, inv in invocations.items():
@@ -1096,12 +1285,19 @@ def m2_violations(root: Path, state: dict[str, Any]) -> list[str]:
             problems.append(f"{inv_id} ended ({inv['status']}) but its observation is still marked active")
         if inv["status"] == "active" and obs and tokens.get(inv["token_id"], {}).get("revoked_at"):
             problems.append(f"{inv_id} observation invocation is active with a revoked credential")
-        # 13. Consumed inputs were CURRENT, external, or acknowledged by a recorded decision for exactly the
-        #     commit this invocation was dispatched against (dependency satisfied != input acceptable).
-        dispatched_at = obs.get("commit") or (inv.get("snapshot") or {}).get("base_revision")
-        acks = work.get(inv["work_unit"], {}).get("input_acknowledgements", [])
+        # 13. Consumed inputs were CURRENT, not source-bound (external research, a ref review: E168), or acknowledged
+        #     by a recorded decision for exactly the commit this invocation was dispatched against (dependency
+        #     satisfied != input acceptable). A ref review's inputs were judged at the authoritative commit its attempt
+        #     pinned, not at the ref's commit it observes.
+        unit_of = work.get(inv["work_unit"], {})
+        pins = {x.get("attempt"): x.get("ref_pin") for x in [unit_of.get("execution") or {},
+                                                             *unit_of.get("execution_history", [])]}
+        pin = pins.get(inv.get("attempt")) if inv.get("attempt") is not None else None
+        dispatched_at = (pin or {}).get("authoritative_commit") or obs.get("commit") or (
+            inv.get("snapshot") or {}).get("base_revision")
+        acks = unit_of.get("input_acknowledgements", [])
         for i in inv.get("inputs") or []:
-            if i.get("freshness") == "CURRENT" or i.get("basis") == "external":
+            if i.get("freshness") == "CURRENT" or i.get("basis") in {"external", "ref"}:
                 continue
             ack = next((a for a in acks if a["decision"] == i.get("acknowledgement")), None)
             if not ack or (ack["evidence"], ack["sha256"], ack["commit"]) != (i["id"], i["sha256"], dispatched_at):
@@ -1161,6 +1357,70 @@ def _thread_lines(raw: bytes, invocation: str) -> tuple[list[dict[str, Any]], in
     return entries, verified, None
 
 
+def _failed_turn_violations(aew: Path, runs: list[str], entries: list[dict[str, Any]]) -> list[str]:
+    """C5 checks a failed-turn category against the messages known when the successor built its continuation."""
+    problems = []
+    event_logs: dict[str, list[dict[str, Any]] | None] = {}
+    for index, run in enumerate(runs[1:], 1):
+        try:
+            record = json.loads(runlog.read_regular(runlog.run_dir(aew, run) / runlog.RECORD))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        continuation = (record.get("contract") or {}).get("continuation") or {}
+        categories = continuation.get("message_categories", {})
+        failed = [mid for mid, category in categories.items() if category == "failed_turn"]
+        if not failed:
+            continue
+        cutoff = continuation.get("message_thread_lines")
+        if not isinstance(cutoff, int) or isinstance(cutoff, bool) or not 0 < cutoff <= len(entries):
+            problems.append(f"56: {run}'s failed-turn continuation has no verifiable thread position")
+            continue
+        prefix = entries[:cutoff]
+        replies = {e["message"].get("in_reply_to") for e in prefix if e.get("type") == "message"
+                   and e["message"]["sender"].startswith("invocation:")}
+        delivered = {f["message"]: f for e in prefix if e.get("type") == "fact"
+                     and (f := e["fact"])["kind"] == "DELIVERED"}
+        for mid in failed:
+            fact = delivered.get(mid)
+            if fact is None or mid in replies or mid not in continuation.get("messages", []):
+                problems.append(f"56: {mid}'s failed-turn entry in {run} has no unanswered delivery")
+                continue
+            source = fact.get("transport_ref") if fact.get("via") == "wait" else fact.get("run")
+            if source not in runs[:index]:
+                problems.append(f"56: {mid}'s failed-turn entry in {run} has no earlier delivering run")
+                continue
+            if source not in event_logs:
+                try:
+                    raw = runlog.read_regular(runlog.run_dir(aew, source) / "events.jsonl")
+                    event_logs[source] = [row for line in raw.splitlines() if isinstance(row := json.loads(line), dict)]
+                except (OSError, ValueError):
+                    event_logs[source] = None
+            events = event_logs[source]
+            if events is None:
+                problems.append(f"56: {mid}'s failed-turn entry in {run} is unverifiable without {source}'s event log")
+            elif _oracle_step_after_delivery(events, fact):
+                problems.append(f"56: {mid}'s failed-turn entry in {run} follows a completed worker step")
+    return problems
+
+
+def _oracle_step_after_delivery(events: list[dict[str, Any]], fact: dict[str, Any]) -> bool:
+    ends = [(n, row) for n, row in enumerate(events) if row.get("event") == "opencode.session.step.ended"]
+    second = fact["at"][:19]
+    if fact.get("via") == "wait":
+        return any(
+            start.get("event") == "opencode.session.step.started" and str(start.get("at", ""))[:19] > second
+            and isinstance(handle := start.get("assistantMessageID"), str)
+            and any(n > i and row.get("assistantMessageID") == handle for n, row in ends)
+            for i, start in enumerate(events)
+        )
+    for i, row in enumerate(events):
+        if row.get("event") == "opencode.session.inbox.delivered" and row.get("inboxID") == fact.get("transport_ref"):
+            return any(n > i for n, _ in ends)
+    return any(str(row.get("at", ""))[:19] > second for _, row in ends)
+
+
 def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any], *,
                             fallback_allowed: bool = False) -> list[str]:
     """52-58 (F9-A plan v4 §7, C1 to C7), over every thread on disk and the full state (hot and archived units):
@@ -1204,7 +1464,7 @@ def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
     if any(str(op).startswith("message.") for op in ops.values()):
         problems.append("58: a transition records a message operation")
     if store is not None:
-        wrote = "migrate" if store.get("via") == "migrate" else "manifest.adopt"  # a v1 adoption registers at migrate
+        wrote = store.get("via", "manifest.adopt")
         if ops.get(store["since_rev"], wrote) != wrote:
             problems.append(f"58: coordination_store was written by {ops[store['since_rev']]}, not {wrote}")
     seen_lines: list[dict[str, Any]] = []
@@ -1266,12 +1526,39 @@ def coordination_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         if len(keys) != len(set(keys)):
             problems.append(f"55: {where} holds two messages with one (sender, idempotency id)")
         recorded: set[str] = set()
+        posted_by_run: dict[str, set[str]] = {}
+        live_delivered_by_run: dict[str, set[str]] = {}
+        final_checks: set[str] = set()
         for e in entries:
             if e.get("type") == "message":
                 recorded.add(e["message"]["id"])
-            elif e["fact"]["message"] not in recorded:
-                problems.append(f"56: {where}: a {e['fact']['kind']} fact precedes the message it names")
+            elif e.get("type") == "fact":
+                fact = e["fact"]
+                mid, run = fact["message"], fact.get("run")
+                if mid not in recorded:
+                    problems.append(f"56: {where}: a {fact['kind']} fact precedes the message it names")
+                if isinstance(run, str) and fact["kind"] == "POSTED":
+                    posted_by_run.setdefault(run, set()).add(mid)
+                if isinstance(run, str) and fact["kind"] == "DELIVERED" and fact.get("via") == "live":
+                    live_delivered_by_run.setdefault(run, set()).add(mid)
+            elif e.get("type") == "final_check":
+                run, delivered = e.get("run"), e.get("delivered")
+                if not isinstance(run, str) or not isinstance(delivered, list) or not all(
+                    isinstance(mid, str) for mid in delivered
+                ):
+                    problems.append(f"56: {where}: a final admission check is malformed")
+                    continue
+                posted_ids = posted_by_run.get(run, set())
+                confirmed = posted_ids & live_delivered_by_run.get(run, set())
+                if not posted_ids or run in final_checks or len(delivered) != len(set(delivered)) or not (
+                    set(delivered) <= confirmed
+                ):
+                    problems.append(f"56: {where}: {run}'s final admission check repeats or names unconfirmed offers")
+                final_checks.add(run)
+            else:
+                problems.append(f"56: {where}: unknown coordination entry {e.get('type')!r}")
         posted = {e["fact"]["message"] for e in entries if e.get("type") == "fact" and e["fact"]["kind"] == "POSTED"}
+        problems += _failed_turn_violations(aew, [r["run"] for r in inv.get("runs") or []], entries)
         for u in (seal or {}).get("undeliverable") or []:
             if u["message"] in posted or not by_id.get(u["message"], {}).get("sender", "").startswith("lead:"):
                 problems.append(f"56: {u['message']} is undeliverable but was posted, or is not a Lead message")

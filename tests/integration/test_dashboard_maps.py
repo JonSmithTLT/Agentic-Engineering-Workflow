@@ -42,6 +42,7 @@ from aew.dashboard import projections as P  # noqa: E402
 from aew.dashboard import reader as R  # noqa: E402
 from aew.dashboard.reasons import REASONS, codes_in  # noqa: E402
 from aew.dashboard.server import DashboardServer, error_body, pending_routes  # noqa: E402
+from aew.engine import recall  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
 from aew.engine.store import CONTROL_REL, LOCK_REL, ControlStore  # noqa: E402
@@ -253,7 +254,9 @@ def test_maps_is_a_capability_available_on_every_project(world):
     status, _, raw = world.client.get("/capabilities")
     caps = json.loads(raw)["data"]
     assert status == 200 and caps["maps"] == {"state": "AVAILABLE", "reasons": []}
-    assert "history_search" not in caps  # S2's key, absent until it serves the route
+    # S2's key exists exactly while the adopted policy switches the search on: a new project has it on (register E185)
+    on = recall.recall_search_enabled(world.p.root / ".aew")
+    assert on and ("history_search" in caps) is on
 
 
 def test_maps_shows_the_selected_map_its_freshness_and_the_architecture_reference(world):
@@ -393,7 +396,7 @@ def test_an_inputs_list_with_a_4_kib_path_at_a_page_boundary_pages_to_its_end(la
 def test_a_control_commit_does_not_expire_a_maps_cursor(world):
     cursor = world.client.data("/maps/structural?limit=1")["next_cursor"]
     p = world.p
-    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})
     assert world.client.data(f"/maps/structural?limit=1&cursor={cursor}")["items"]
 
 
@@ -1540,8 +1543,7 @@ def test_conditional_replays_and_what_changes_a_maps_validator(lab):
         after_select = tag("/maps")
         assert after_select != after_commit
         assert tag("/project") == project_tag and tag("/work") == work_tag  # 0.1.2 validators: a selection alone
-        p.ok("history", "audit", "--expect-rev", str(p.rev()),
-             env={"AEW_LEAD_TOKEN": p.token})  # an unrelated control commit
+        p.ok("history", "audit", "--record", env={"AEW_LEAD_TOKEN": p.token})  # an unrelated control commit
         after_audit = tag("/maps")
         assert after_audit != after_select
         registry = maps_dir(p) / "registry.json"

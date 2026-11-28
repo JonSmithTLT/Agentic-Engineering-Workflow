@@ -20,6 +20,7 @@ from aewflow import (
 )
 from conftest import run_aew
 
+from aew.knowledge.evidence import CHECK_CAPABILITY
 from aew.util import dump_yaml, load_yaml
 
 
@@ -50,6 +51,8 @@ def test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_la
     out = impl.check("unit")
     meta, _ = parse_frontmatter((calc.root / f".aew/evidence/{wid}/{out['evidence']}.md").read_text(encoding="utf-8"),
                                 source="evidence")
+    # A configured check's evidence names the capability a pack prints the check command beside (register E368)
+    assert meta["method"]["capability"] == CHECK_CAPABILITY
     import conftest
 
     left = list((calc.root / ".aew/local/harness/runs").glob("check-*"))
@@ -97,8 +100,8 @@ def test_relevant_uncommitted_change_makes_evidence_stale_but_keeps_history(calc
     assert stale["snapshot"]["relevant_inputs_fingerprint"] != before["snapshot"]["relevant_inputs_fingerprint"]
     for gate in ("local_checks", "self_review", "review_r1", "verification_goal_backwards", "verification_contract"):
         assert stale["unmet"][gate] == "STALE", stale["unmet"]
-    err = fail(calc.aew("work", "transition", wid, "--to", "COMMIT_READY",
-                        "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
+    err = fail(calc.aew(*calc.lead_args("work", "transition", wid, "--to", "COMMIT_READY"),
+                        env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
     assert set(err["details"]["unmet"]) >= {"review_r1", "verification_goal_backwards"}
     # History is preserved untouched and still listed.
     assert verification.read_bytes() == snapshot_bytes
@@ -124,7 +127,7 @@ def test_stale_review_cannot_be_ingested(calc, tmp_path):
     ev = review(calc, wid)
     impl.write({"calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "\n# late edit\n"})
     err = fail(calc.aew("review", "ingest", wid, "--evidence", ev,
-                        "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
+                        env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
     assert "stale" in err["message"]
 
 
@@ -143,7 +146,7 @@ def test_role_separation_negatives(calc, tmp_path):
     fail(res, "PERMISSION_DENIED", 4)
     # An invocation credential cannot drive control transitions.
     res = run_aew("-C", str(calc.root), "work", "transition", wid, "--to", "REVIEW_PENDING",
-                  "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": impl.token})
+                  env={"AEW_LEAD_TOKEN": impl.token})
     fail(res, "PERMISSION_DENIED", 4)
     # Engine-owned bindings cannot be supplied by a role.
     res = impl.submit("implementation_report",
@@ -183,8 +186,8 @@ def test_role_separation_negatives(calc, tmp_path):
         {"type": "contract", "claim": "ok", "result": "pass", "checks": [unit_ev]}]}}, expect_ok=False)
     fail(res, "VALIDATION_FAILED")
     # The Lead cannot declare VERIFIED; only ingesting the Verifier's result can.
-    err = fail(calc.aew("work", "transition", wid, "--to", "VERIFIED",
-                        "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token}), "ILLEGAL_TRANSITION")
+    err = fail(calc.aew(*calc.lead_args("work", "transition", wid, "--to", "VERIFIED"),
+                        env={"AEW_LEAD_TOKEN": calc.token}), "ILLEGAL_TRANSITION")
     assert err["details"]["required_operation"] == "verify.ingest"
 
 
@@ -212,8 +215,8 @@ def test_lead_classifies_verification_failures(calc, tmp_path, classification, e
     out = calc.lead("verify", "ingest", wid, "--evidence", ev)
     assert out["transition"]["to"] == "VERIFICATION_FAILED"
     # Nothing but classification (or cancellation) leaves VERIFICATION_FAILED.
-    fail(calc.aew("work", "transition", wid, "--to", "RUNNING", "--reason", "just fix it",
-                  "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token}), "ILLEGAL_TRANSITION")
+    fail(calc.aew(*calc.lead_args("work", "transition", wid, "--to", "RUNNING", "--reason", "just fix it"),
+                  env={"AEW_LEAD_TOKEN": calc.token}), "ILLEGAL_TRANSITION")
     res = calc.lead("verify", "classify", wid, "--as", classification, "--reason", "analysed failure evidence")
     assert res["to"] == expected
     decision = (calc.root / f".aew/decisions/{res['decision']}.md").read_text()
@@ -272,8 +275,8 @@ def test_guardrail_violation_blocks_progress(calc, tmp_path):
     wid = create_planned_ticket(calc, tmp_path)
     impl = assign(calc, wid)
     implement(impl, {**SUBTRACT_PATCH, "vendor/lib.py": "VENDORED = False\n"})
-    err = fail(calc.aew("work", "transition", wid, "--to", "REVIEW_PENDING",
-                        "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
+    err = fail(calc.aew(*calc.lead_args("work", "transition", wid, "--to", "REVIEW_PENDING"),
+                        env={"AEW_LEAD_TOKEN": calc.token}), "GATE_UNSATISFIED")
     assert err["details"]["violations"][0]["path"] == "vendor/lib.py"
     assert impl.check("guardrails")["result"] == "fail"
 

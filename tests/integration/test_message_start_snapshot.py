@@ -14,11 +14,16 @@ from aew.harness.opencode import lead, projection
 from aew.surface import contract, mcp
 
 
+@pytest.mark.parametrize("maps_reads", ["off", "structural"])
 @pytest.mark.parametrize("contained", [False, True])
 @pytest.mark.parametrize("adopted", [False, True])
 def test_post_offer_snapshot_is_shared_even_if_policy_changes_after_the_broker_takes_it(
-        tmp_path, monkeypatch, contained, adopted):
-    w = world(tmp_path, messaging="disabled")
+        tmp_path, monkeypatch, contained, adopted, maps_reads):
+    """The snapshot holds every Lead surface switch the adopted policy has on when the broker takes it: messaging,
+    adopted or not here, and ``maps.reads``, which offers the Lead's typed `map` tool (register F15.8, PR A2) and is
+    set explicitly so the expectation never leans on the fixture's template."""
+    w = world(tmp_path, messaging="disabled", maps_reads=maps_reads)
+    maps = frozenset({contract.MAPS}) if maps_reads == "structural" else frozenset()
     monkeypatch.setenv("AEW_LEAD_TOKEN", w.token)
     captured = {}
     holder = SimpleNamespace(guide="old pre-offer guide", surface_switches=frozenset()) if contained else None
@@ -27,16 +32,18 @@ def test_post_offer_snapshot_is_shared_even_if_policy_changes_after_the_broker_t
         assert token == w.token
         if adopted:
             set_messaging(w.root, "enabled")
-            w.e.manifest_adopt(token=token, expect_rev=w.rev(), reason="test the post-apply snapshot",
-                               authorization=OPERATOR)
+            w.e.manifest_adopt(token=token, reason="test the post-apply snapshot",
+                               authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
 
     original = lead.session_presentation(w.e, provider_env=[], contained=holder)
 
     def prepare(env, switches):
-        assert switches == (frozenset({"coordination.messaging"}) if adopted else frozenset())
+        assert switches == (frozenset({"coordination.messaging"}) if adopted else frozenset()) | maps
         # The adoption changed again after the broker's capture. Presentation must not split the two versions.
         set_messaging(w.root, "disabled" if adopted else "enabled")
-        w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="after capture", authorization=OPERATOR)
+        w.e.manifest_adopt(token=w.token, reason="after capture", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
         return original(env, switches)
 
     def harness(private_dir, env):
@@ -51,6 +58,7 @@ def test_post_offer_snapshot_is_shared_even_if_policy_changes_after_the_broker_t
     system = config["agents"][projection.LEAD_AGENT]["system"]
     listing = mcp.Server(lambda *args: {}, switches=selected).dispatch("tools/list", {})
     assert ("message_send" in {t["name"] for t in listing["tools"]}) == adopted
+    assert ("map" in {t["name"] for t in listing["tools"]}) == bool(maps) and (contract.MAPS in selected) == bool(maps)
     assert ("`message_send`" in system) == ("`worker_message`" in system) == adopted
     assert system.count(K.MESSAGE_READ_COST) == int(adopted)
     assert w.e.messaging_enabled() != adopted  # presentation didn't grant authority against the newer policy

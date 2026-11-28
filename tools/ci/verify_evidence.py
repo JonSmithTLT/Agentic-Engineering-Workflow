@@ -15,8 +15,19 @@ from pathlib import Path
 
 from cancel_evidence import REASON_FILE, observe
 from check_evidence_run import check_jobs, hosted_step_timeout
-from evidence_files import FRAME, entries, state, test_frame
-from evidence_problems import evidence_problems
+from evidence_files import (
+    BEFORE_EXECUTION,
+    BEFORE_TESTS,
+    BEFORE_TESTS_OUTCOME,
+    CANCEL_COLLECTION,
+    FRAME,
+    WARNING,
+    entries,
+    receipt_phases,
+    state,
+    test_frame,
+)
+from evidence_problems import evidence_problems, outcome_note, outside_call
 
 # Mutation names map to the exact rule they must trip. Multiple variants pin independent branches of one rule.
 STATE_TWINS = {
@@ -31,7 +42,7 @@ JOB_TWINS = {"no-evidence": "job-evidence", "missing-kind": "job-kind", "live-ab
 OTHER_TWINS = {"cancel": "false-cutoff", "ring": "snapshot", "unlabelled": "snapshot-label",
                "trigger": "pressure", "missing-death": "death-record", "stale": "snapshot-age",
                "missing-counter": "oom-event", "missing-peak": "pressure", "wrong-bundle": "file-class",
-               "live": "live-stack", "annotations-off": "cancel-reason"}
+               "live": "live-stack", "annotations-off": "cancel-reason", "before-tests": "before-tests"}
 ABRUPT = {"worker-kill": "worker-killed", "oom": "oom", "time-limit-github": "time-limit-github", "cancel": "cancel"}
 FAILURE_TWINS = {"invalid-json": "failure-report", "missing-exception": "failure-text",
                  "missing-result": "failure-report"}
@@ -147,6 +158,36 @@ def death_twins(root: Path, kind: str, job: dict | None = None) -> list[str]:
     return failures
 
 
+def before_tests_twin(root: Path) -> list[str]:
+    """A lane whose tests ran, claimed as cancelled before any test started, is a before-tests defect: the record lists
+    the bundle's own sessions and workers, so only what the hosted lane really did (its tests begun, its session
+    finished) contradicts it (register E3)."""
+    with tempfile.TemporaryDirectory() as temporary:
+        twin = Path(temporary) / "twin"
+        shutil.copytree(root, twin)
+        sessions = {}
+        for pid_file in twin.rglob("autopsy/session-*/worker-gw*-pid.txt"):
+            worker = pid_file.stem.removesuffix("-pid")
+            pid, start = int(pid_file.read_text()), int(pid_file.with_name(f"{worker}-start.txt").read_text())
+            receipt = pid_file.with_name(f"worker-{pid}-{start}-lifecycle.txt")
+            reached = receipt_phases(receipt.read_text(encoding="utf-8")) if receipt.is_file() else None
+            sessions.setdefault(pid_file.parent.name, {})[worker] = {
+                "worker": worker, "pid": pid, "start": start,
+                "phase": next((p for p in reversed(reached or []) if p in BEFORE_EXECUTION), "collecting")}
+        record = {"outcome": BEFORE_TESTS_OUTCOME, "observed_by": CANCEL_COLLECTION, "at": 0,
+                  "sessions": [{"session": name, "worker_count": len(rows), "workers": list(rows.values())}
+                               for name, rows in sessions.items()]}
+        # A passing lane publishes no priority (watchdog) bundle: any of its inventories will do, as for checker_twins.
+        inventory = next(iter(sorted(twin.rglob("inventory.txt"))), None)
+        if inventory is None:
+            return ["download has no inventory for the before-tests ablation"]
+        path = inventory.parent / BEFORE_TESTS
+        path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        label(inventory, path, "lane_step")
+        return expect_rule("before-tests", OTHER_TWINS["before-tests"],
+                           evidence_problems(twin, kind="cancel-before-tests"))
+
+
 def job_twins(root: Path, job: dict) -> list[str]:
     with tempfile.TemporaryDirectory() as temporary:
         twin = Path(temporary) / "twin"
@@ -202,14 +243,25 @@ def observe_cancel(root: Path, platform: str, jobs: list[dict], *, trigger_at: s
         interrupted = [row for row in observed if row.get("kind") == "interrupted" and row["alive_when_observed"]]
         if len(registered) != 4 or registered != {(row["pid"], row["start"]) for row in interrupted}:
             return ["Linux: cancellation did not observe all four registered workers alive"]
+        snapshots = {path: path.read_text(encoding="utf-8") for path in root.rglob("snapshots/*.txt")}
+        outside = 0
         for row in interrupted:
-            captures = ((sample, frames) for path in root.rglob(f"snapshots/{row['pid']}.txt")
-                        for sample, frames in entries(path.read_text()))
-            if not any(sample.get("reason") == "warning" and sample.get("pid") == row["pid"]
-                       and sample.get("start") == row["start"] and sample.get("node") == row["node"]
-                       and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]
-                       and test_frame(row["node"], frames) for sample, frames in captures):
-                return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"]
+            stacks = [(sample["reason"], frames) for path, text in snapshots.items() if path.name == f"{row['pid']}.txt"
+                      for sample, frames in entries(text)
+                      if sample.get("reason") == WARNING and sample.get("pid") == row["pid"]
+                      and sample.get("start") == row["start"] and sample.get("node") == row["node"]
+                      and row.get("collect_at", float("inf")) <= sample["at"] <= row["at"]]
+            if any(test_frame(row["node"], frames) for _, frames in stacks):
+                continue
+            # In place of the test's frame, exactly what the evidence check accepts: the plant's Linux cases spend
+            # half their time in a fixture's setup, where a worker has no test frame to give (register E3).
+            if outside_call(snapshots, row, stacks, sampled=True):
+                outside += 1
+                continue
+            return [f"Linux: no pre-signal test stack for worker {row['pid']} at {row['node']}"
+                    + outcome_note(snapshots, row)]
+        print(f"Linux: {outside} of {len(interrupted)} workers were outside their test's call at the signal, each "
+              "with its typed outcome and the retained stack that bears it out.")
     if platform == "Windows":
         ready = next((job for job in jobs if job["name"] == "cancel-ready-windows"), {})
         ended = trigger_at or ready.get("completed_at")
@@ -408,14 +460,15 @@ def main(root: Path) -> int:
                 failures.extend(abrupt_twins(merged, ABRUPT[kind], job))
             if kind == "normal":
                 failures.extend(checker_twins(merged))
+                failures.extend(before_tests_twin(merged))
             elif needs_stack and ablate == "none" and kind != "failure-in-death":
                 failures.extend(death_twins(merged, kind, job))
                 if kind == "deadline":
                     failures.extend(job_twins(merged, job))
             elif kind == "cancel":
                 for path in merged.rglob("snapshots/*.txt"):
-                    text = path.read_text().replace('"reason": "warning"', '"reason": "periodic"')
-                    path.write_text(text.replace('"reason": "cancel collection"', '"reason": "periodic"'))
+                    text = path.read_text().replace(f'"reason": "{WARNING}"', '"reason": "periodic"')
+                    path.write_text(text.replace(f'"reason": "{CANCEL_COLLECTION}"', '"reason": "periodic"'))
                 live_seen = any(row.get("alive_when_observed") for target in ("cancelled-*.txt", "interrupted-*.txt")
                                 for path in merged.rglob(target) for row in [json.loads(path.read_text())])
                 if live_seen:

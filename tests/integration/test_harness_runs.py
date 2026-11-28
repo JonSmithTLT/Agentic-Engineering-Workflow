@@ -19,9 +19,11 @@ from aewflow import (
 from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
+from aew import roles
 from aew.harness import contract as K
 from aew.harness import procs, runlog
 from aew.policy import execution as X
+from aew.stg02 import wire
 
 
 @pytest.fixture
@@ -273,9 +275,11 @@ def test_a_run_gets_a_copy_of_the_skills_its_card_is_offered_and_its_record_says
     lab.wait(run)
     record = lab.record(run)
     planned = record["contract"]["extra"]["skills"]
-    assert planned["requested"] == []
-    assert planned["offered"] == ["c-development", "debugging-root-cause-analysis", "python-development"]
-    assert planned["exposed"] == planned["offered"] and planned["unavailable"] == [] and planned["reasons"] == {}
+    engineer = roles.builtin_cards()["engineer"].meta  # the card owns its lists: its one skill, and what it offers
+    assert planned["requested"] == sorted(engineer["skills"])
+    assert planned["offered"] == sorted(engineer["optional_skills"])
+    assert planned["exposed"] == sorted(planned["requested"] + planned["offered"])
+    assert planned["unavailable"] == [] and planned["reasons"] == {}
     assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
     contained = record["containment"]["filesystem"] == "os_readonly_roots"
     assert planned["copy"] == ("read_only_bind" if contained else "rules_only")
@@ -320,7 +324,8 @@ def test_resume_shows_runs_only_when_there_are_some_and_a_lost_harness_is_not_an
     wid = create_planned_ticket(lab.project, tmp_path)
     assert "harness_runs" not in lab.ok("resume", "--json")
     lab.script("default", [{"do": "exit", "code": 3}])
-    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    launched = lab.lead("work", "assign", wid, "--launch")
+    run = launched["launch"]["run"]
     assert lab.wait(run)["status"] == "crashed"
     r = lab.ok("resume", "--json")
     [entry] = r["harness_runs"]
@@ -329,6 +334,13 @@ def test_resume_shows_runs_only_when_there_are_some_and_a_lost_harness_is_not_an
     assert lab.ok("work", "show", wid)["control"]["state"] == "ASSIGNED"  # not INTERRUPTED
     text = lab.aew("resume").stdout
     assert "## Harness runs" in text and f"{run} (INV-0001, implementer, {wid}): crashed" in text
+    [outage_run] = lab.ok("read", f"/v1/read/runs/{wire.b64url(launched['invocation'])}")["items"]
+    assert outage_run["data"]["phase"] == "REPORTED_FINISHED" and outage_run["data"]["started_at"]
+    phase_source = next(field["source"] for field in outage_run["field_sources"] if field["field_path"] == "data.phase")
+    assert phase_source["observation_state"] == "stale"
+    attention = lab.ok("read", "/v1/read/attention")["items"]
+    [crash] = [item for item in attention if item["ref"]["id"] == f"AT-{run}"]
+    assert crash["source"]["observation_state"] == "stale" and "crashed" in crash["data"]["narrative"]["text"]
 
 
 @pytest.mark.parametrize("n", [2, 4])
@@ -389,6 +401,40 @@ def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
     (runlog.run_dir(lab.aew_root, run) / "run.json").write_text(json.dumps(record), encoding="utf-8")
     [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
     assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])
+
+
+def test_the_site_and_harness_status_read_the_same_containment_label_for_every_record_age(lab, tmp_path):
+    """#649's review, F2: the site's E148 route and `harness status` read a run's network facts through one owner
+    (`containment.network_facts`, over `normalize`), so they agree on every record, whatever its age: today's label,
+    one before CS-3b (its network a string), one before M4-B (the string `workdir_separation_only`), and none."""
+    import json
+
+    from aew.dashboard.projections import Projector
+    from aew.dashboard.reader import StateReader
+    from aew.engine.api import Engine
+    from aew.harness import containment
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run, inv = out["launch"]["run"], out["invocation"]
+    lab.wait(run)
+    path = runlog.run_dir(lab.aew_root, run) / "run.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    today = {"filesystem": containment.CONTAINED, "network": {"mode": containment.PROXY_ONLY,
+                                                              "provider_relay": "configured",
+                                                              "relay_family": "matches"}}
+    ages = {"current": (today, ("proxy_only", "configured", "matches")),
+            "pre-CS-3b": ({"filesystem": containment.CONTAINED, "network": "shared"}, ("shared", "none", None)),
+            "pre-M4-B": (containment.WORKDIR_ONLY, (containment.network(), "none", None)),
+            "missing": (None, (containment.network(), "none", None))}
+    for age, (label, expected) in ages.items():
+        path.write_text(json.dumps({**record, "containment": label}), encoding="utf-8")
+        [listed] = lab.ok("harness", "status", inv)["runs"]
+        net = listed["containment"]["network"]
+        status = (net.get("mode"), net.get("provider_relay"), net.get("relay_family"))
+        [site] = Projector(StateReader(Engine.discover(lab.project.root)).snapshot()).run_provider_routes(inv)["runs"]
+        assert (site["network_mode"], site["provider_relay"], site["relay_family"]) == status == expected, age
 
 
 def test_the_leads_results_name_the_tools_a_run_went_without_in_aews_closed_words_only(lab, tmp_path):

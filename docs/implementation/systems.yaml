@@ -18,6 +18,9 @@ schema: aew/systems/v1
 wip_limit: 12
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
+  E363: the test suite's own hygiene (shared setup and the module heap guard), CI tooling rather than a product system
+  E369: the recurring audit of the always-sent context, a standing process the operator schedules; its findings become
+    rows on the systems they touch
 systems:
 - id: SYS-01
   name: Evaluation instrument (F19, M4-H)
@@ -63,22 +66,44 @@ systems:
       R+ arms, S10 deliverable and review, S12 seals
     row: F19
     estimate: about 7 PRs (estimate)
-  - slice: 'S13 the A arm: after M4-E''s E7c, or the G3-backed confirmation A-37 points it at (F15.5 is held in HOLD-19)'
+  - slice: 'S13 the A arm: planned after M4-E''s E7c, or the G3-backed confirmation A-37 points it at. No hold blocks it:
+      F15.5 closed on 2026-11-06, merged into STG-14 as a note, and SYS-04''s entry says E7c was superseded or lapsed that
+      day. What it stands on now is open for the designer'
     row: F19
-    estimate: 1-2 PRs (estimate), blocked on HOLD-19
-  - slice: 'S14 the F25 binding: after F25 L4 (F25 is held in HOLD-21)'
+    estimate: 1-2 PRs (estimate); frozen, and its footing is open for the designer
+  - slice: 'S14 the F25 binding: after F25 L4. No hold blocks it: HOLD-21 closed on 2026-11-06 and F25 was restored at
+      V-01'
     row: F19
-    estimate: 1 PR (estimate), blocked on HOLD-21
+    estimate: 1 PR (estimate), after F25 L4; frozen
   - slice: 'S15 to S18: scoring, audit and report; CF evidence; host image; the metering proxy as an evaluator client of
-      the gateway''s accounting hook (F18.15, held in HOLD-20)'
+      the gateway''s accounting hook. No hold blocks it: HOLD-20 closed on 2026-11-06 and F18.15 closed that day, merged
+      into E97, the relay''s meter, as a note'
     row: F19
-    estimate: 3-5 PRs (estimate)
-  decision: 'decided: frozen (operator, 2026-11-06 (design workspace decision record: board decisions))'
+    estimate: 3-5 PRs (estimate); frozen
+  - slice: 'Feature cells, unfrozen (operator, 2026-11-26): the role-run arm, the shared walker and report, and the cells.
+      The operator agreed the order of the cells, which F19''s note of 2026-11-26 records (the pack pilot, the E368 deciding
+      run, skills, the recovery section, maps, the verifier). The order of building is not decided. It is the suggestion
+      of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3: the role-run arm first, once the designer has
+      settled how a feature cell expresses its treatment, then the shared walker and report, then the first cell'
+    row: F19
+    estimate: 3 PRs to the first cell (the estimate of docs/research/f19-refinement-proposal-2026-11-26.md, section 4.3)
+  decision: 'decided: frozen except feature cells (operator, 2026-11-26: "Yes to all 7 on the F19 proposal"; the first
+    of the Lead''s seven questions was "Unfreeze F19 for feature cells only (the role-run arm, the shared walker and report),
+    leaving the large comparison and its slices frozen? I recommend yes."). The large comparison (Q7, M4-H) and its slices
+    stay frozen (operator, 2026-11-06 (design workspace decision record: board decisions); and the sixth question, same
+    answer: "The large comparison (Q7, M4-H): keep frozen and decide after three cells whether it is still wanted. I
+    recommend yes.")'
   recommendation: freeze
   who: operator
-  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. The critical path (S8b, S12,
-    S13) waits on rows held until the trace: E7c in HOLD-19 and F25 in HOLD-21 (BOARD v2 §4: "its next slices depend on
-    held rows (E7c, F25)"). M4-H is not on the Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
+  reason: 'The built slices (1-3, the raw arm, S4, S8a and S11) are self-contained and tested. When it was frozen on
+    2026-11-06, the board''s reason was that the critical path (S8b, S12, S13) waited on rows held until the trace (BOARD
+    v2 §4: "its next slices depend on held rows (E7c, F25)"). Corrected on 2026-11-26 from the register and this board:
+    no hold blocks those slices now. HOLD-20 and HOLD-21 closed on 2026-11-06; F25 was restored from HOLD-21 at V-01; F18.15
+    closed that day into E97, and F15.5 into STG-14, so HOLD-19 holds F46 only; and SYS-04''s entry says E7c was superseded
+    or lapsed that day. The large comparison''s slices stay frozen by the operator''s decision, not by a hold. Feature cells
+    are unfrozen (the decision above); the recommendation stays freeze, so this system is still not counted toward the
+    limit, and whether feature-cell work makes it a counted system has not been put to the operator. M4-H is not on the
+    Now list (future-work.yaml (the Now list; §1 text, at c11a61ea)). Nothing
     under src/aew imports aew_eval, so freezing it costs the product nothing. The as-built reference covers only src/aew,
     so eval/aew_eval has no reference records. That is why as_built is empty, not because nothing is built.'
   evidence:
@@ -97,16 +122,26 @@ systems:
   - 'docs/implementation/future-work.yaml (row HOLD-20, at c11a61ea) (F18.15: S18 is an evaluator client of the gateway''s
     accounting hook; a HOLD-20 member)'
   - docs/implementation/future-work.yaml (row HOLD-21, at c11a61ea) (HOLD-21, holding F25)
+  - 'docs/implementation/future-work.yaml (rows HOLD-20 and HOLD-21, at a21e49cd) (both closed 2026-11-06: every member
+    matched by the hold match of that day)'
+  - docs/implementation/future-work.yaml (row F25, at a21e49cd) (restored from HOLD-21 by the hold match, at V-01)
+  - docs/implementation/future-work.yaml (row F18.15, at a21e49cd) (closed 2026-11-06, merged into E97 as a note)
+  - 'docs/implementation/future-work.yaml (rows F15.5 and HOLD-19, at a21e49cd) (F15.5 closed 2026-11-06, merged into
+    STG-14 as a note; HOLD-19: 1 row still held, F46)'
+  - 'docs/implementation/systems.yaml (SYS-04, reason, at a21e49cd) ("Nothing is held: E7c and E6b were superseded or
+    lapsed on 2026-11-06"; the record it rests on is in the design workspace and was not read for this correction)'
+  - 'docs/implementation/notes.d/F19/2026-11-26-docs-f19-refinement-decisions.md (the operator''s answer of 2026-11-26
+    to the Lead''s seven questions on docs/research/f19-refinement-proposal-2026-11-26.md)'
 - id: SYS-02
-  name: Agent containment (Linux core on; Windows backend and follow-ons)
+  name: Agent containment (the Linux core; its follow-ons are SYS-49's)
   purpose: An OS-enforced sandbox (bubblewrap, a private network, masks, a launch self-test) for every worker run, check
     and Lead session, with an honest label wherever a context runs weaker.
   serves_claims:
     closing_works:
     - CS-4, the Lead contained (STG-05, on the Now list)
-    - 'The host assessor''s build and suite, and HEB''s, ADC''s, CNI''s and AEV''s holds to A-51 (AP5, STG-26): a row met
-      only by the assessor''s current qualified record read at each effect for the producing profile, the hold naming its
-      cause, HEB refusing its own activations under HEB-02.i, and HEB''s admission and switch records naming the assessment
+    - 'The host assessor''s build and suite, and HEB''s, ADC''s, CNI''s and AEV''s holds to A-51 (AP5, STG-26): a row
+      met only by the assessor''s current qualified record read at each effect for the producing profile, the hold naming
+      its cause, HEB refusing its own activations under HEB-02.i, and HEB''s admission and switch records naming the assessment
       and the activation entry'
     extra:
     - CB-02
@@ -124,13 +159,10 @@ systems:
   - STG-05
   - E100
   - E92
-  - E113
   - E118
-  - F48
   - E143
-  - E222
   - E247
-  - E250
+  - E394
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress
@@ -159,14 +191,16 @@ systems:
   depends_on: []
   switch:
     key: containment.mode (execution policy)
-    default: required on Linux; allow_weaker on Windows, even when required is set explicitly
-    default_evidence: 'src/aew/harness/containment/__init__.py:76 (Linux: explicit value or REQUIRED); :77-78 (win32 returns
-      ALLOW_WEAKER)'
+    default: required on Linux; allow_weaker elsewhere, Windows included, unless required is set explicitly, which then
+      refuses every launch
+    default_evidence: 'src/aew/harness/containment/__init__.py:85 (Linux: explicit value or REQUIRED); :86 (elsewhere:
+      REQUIRED only when explicit, else ALLOW_WEAKER)'
     owner: operator
-    turning_on_changes: Already on by default on Linux. Setting allow_weaker on Linux still contains every launch that can
-      be contained; only a launch whose containment fails then runs labelled workdir_separation_only, entered in the register
-      of weaker contexts, instead of being refused (and aew lead session runs uncontained instead of being refused). After
-      E100, an explicit required on a host that cannot meet it refuses the launch instead of running weaker.
+    turning_on_changes: Already on by default on Linux. Setting allow_weaker on Linux still contains every launch that
+      can be contained; only a launch whose containment fails then runs labelled workdir_separation_only, entered in the
+      register of weaker contexts, instead of being refused (and aew lead session runs uncontained instead of being refused).
+      An explicit required on a host that cannot meet it, Windows included, refuses the launch instead of running weaker
+      (E100).
   state:
     board_state: partly_built
     built: partly
@@ -180,92 +214,64 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'On Linux it is already built, wired, on and used: every worker run, check and Lead session runs contained
-    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list), E100 (explicit required refuses
-    on every platform) and E92 (plain http:// forwarded through the egress under R-6) are merged, and CS-4 addenda 12 to
-    14 have rows and are built. E113 (a headless contained Lead) is the Lead''s to place when needed. F48, the Windows backend,
-    stays held in HOLD-06 outside the release gate unless the operator places it, so Windows keeps its label and doctor''s
+    and self-tested. Finished when E118 (the contained Lead''s two fixes, on the Now list) is merged; E100 (an explicit
+    required refuses the launch on every platform), E92 (plain http:// forwarded through the egress under R-6) and E247
+    (ProcessTree.active() counts no zombie on Linux) are built and their rows closed. Narrowed to that Linux core
+    by the operator on 2026-11-25:
+    the CS-4 addenda 12 to 14, a headless contained Lead (E113) and the Windows work (F48''s backend, E222''s network
+    containment, E250''s std handles) are SYS-49''s, outside this finish line, so Windows keeps its label and doctor''s
     UNQUALIFIED line.'
   remaining:
-  - slice: 'E118: the contained Lead''s saved permissions cleared at start, and the Lead''s server moved out of the shell''s
-      reach (on the Now list, before first use)'
+  - slice: 'E118: the Lead''s server moved out of the shell''s reach, after the designer''s choice of mechanism (on the
+      Now list, before first use). Its other two parts are built: every contained start clears the Lead''s saved permissions,
+      and the login seed checks the credential table''s columns first (E118''s note of 2026-11-24)'
     row: E118
-    estimate: 1 small PR (estimate; BOARD v2 §0)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E100: change mode()''s win32 branch so an explicit required refuses the launch on every platform'
-    row: E100
-    estimate: 1 small PR (estimate; BOARD v2 §2)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E92: forward plain http:// requests through the contained egress under the same R-6 host check'
-    row: E92
-    estimate: 1 PR (estimate; BOARD v2 §2)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E113: a headless contained OpenCode Lead, so the live lane exercises containment'
-    row: E113
-    estimate: 1-2 PRs (estimate; census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      CS-4 addendum 12: the Lead credential''s input as a hidden prompt, never a command-line value (map v1.20:87; no register
-      row found)'
-    row: row owed
-    estimate: 1 PR (estimate; census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      CS-4 addendum 13: an AEW-projected, display-only status plugin in the Lead''s TUI (map v1.20:87; no register row found)'
-    row: row owed
-    estimate: 1 PR (estimate; census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      CS-4 addendum 14: the Lead edits a class 0 change in that Ticket''s workspace only (map v1.20:87; no register row
-      found)'
-    row: row owed
-    estimate: 1 PR (estimate; census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c)'
-    row: F48
-    estimate: 5+ PRs (estimate; census)
-  - slice: 'Windows network containment, with the Lead''s usage on Windows'
-    row: E222
-    estimate: not sized (estimate)
-  - slice: 'ProcessTree.active() with a group holding only a zombie, for checking'
-    row: E247
-    estimate: 1 small PR (estimate)
-  - slice: 'run_session_tree''s std handles on Windows'
-    row: E250
-    estimate: 1 small PR (estimate)
-  decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
-    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+    estimate: 1 small PR (estimate; BOARD v2 §0), after the designer's choice
+  decision: 'decided: E100 and E92 unfrozen as this system''s buildable slices, and the finish line narrowed to the Linux
+    core with E118, E100 and E92; the CS-4 addenda 12 to 14 and the Windows work moved to SYS-49 (the operator, 2026-11-25:
+    "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md). E118''s server move stays,
+    waiting on the designer''s choice of mechanism. Earlier: only its slot items finish, the rest frozen by the reset
+    of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E118 on the Now list; E100, E92 at Internal alpha; E113 to place); operator places F48 out of HOLD-06
-  reason: 'The Linux core is on, used and gating every launch; the owed items are small and placed (E118 on the Now list,
-    E100 and E92 at Internal alpha), and the code confirms E100 is still owed (containment/__init__.py:77). F48 stays held
-    (Windows is outside the release gate), and pinholes and run priority have no code. Readings for the designer to confirm,
-    not rulings: E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained Lead;
-    it may belong with SYS-05. Addendum 14 may overlap the 2026-11-06 Lead small-change design (SYS-42), to settle when
-    its row is filed.'
+  who: designer (E118's mechanism), then Lead (E118)
+  reason: 'The Linux core is on, used and gating every launch. What is left is small: E118''s server move once the
+    designer chooses its mechanism (its other two parts are built). E100 and E92, unfrozen on 2026-11-25, are merged and
+    their rows closed: an explicit required refuses the launch on every platform (containment/__init__.py:84-86), and
+    plain http:// is forwarded through the egress under CONNECT''s host check (egress.py:617-657,664). E247 is built and
+    closed too: on Linux a process tree whose group holds only zombies is not active (ProcessTree.active in procs.py).
+    The addenda have no rows and may overlap SYS-42''s Lead small change, so they are design
+    work, not finish work; they and the Windows work wait in SYS-49. Readings for the designer to confirm, not rulings:
+    E118 (harness ruling 11) is placed here because no other entry claims it and it changes the contained Lead; it may
+    belong with SYS-05.'
   evidence:
-  - src/aew/harness/containment/__init__.py:59-61 supported() is Linux only
-  - 'src/aew/harness/containment/__init__.py:70-79 mode(): Linux returns the explicit value or required (:76); win32 returns
-    allow_weaker even for an explicit required (:77-78), which is E100''s work'
-  - 'src/aew/harness/containment/__init__.py:168-172,202-208 establish(): under allow_weaker a launch is still contained
+  - src/aew/harness/containment/__init__.py:66-68 supported() is Linux only
+  - 'src/aew/harness/containment/__init__.py:77-86 mode(): Linux returns the explicit value or required (:85); every other
+    platform, Windows included, returns required only when it is explicit (:86), and establish() then refuses the launch
+    with reason unsupported_platform (:179-181; E100''s work)'
+  - 'src/aew/harness/containment/__init__.py:175-179,209-215 establish(): under allow_weaker a launch is still contained
     when it can be, and runs weaker only when containment is unavailable or its self-test fails'
-  - src/aew/harness/containment/__init__.py:101 the label records weaker_because
-  - src/aew/harness/containment/egress.py:1,416-421 the egress proxy serves CONNECT only and refuses plain http:// naming
-    the https form (E92's work)
+  - src/aew/harness/containment/__init__.py:108 the label records weaker_because
+  - 'src/aew/harness/containment/egress.py:1-2,27-50 the egress proxy tunnels CONNECT and forwards plain http://; :617-657
+    the plain request checked before any DNS, :664 the host check both share (E92''s work)'
   - src/aew/harness/supervisor.py:275-283 every worker run builds its egress allowlist and establishes its sandbox before
     the harness starts
   - src/aew/engine/validation_ops.py:196,201,266,281,487 validation runs read containment.mode under the execution policy
     and establish a sandbox
   - src/aew/policy/checks.py:105-110 a check that would run with no sandbox under required is refused
   - src/aew/engine/evidence_ops.py:848 aew check run (_check_run_direct, :831) establishes its sandbox
-  - src/aew/harness/lead_broker.py:763-766 aew lead session is refused under required and points to aew opencode
+  - src/aew/harness/lead_broker.py:1018-1027 aew lead session is refused under required; on Linux the refusal points to
+    aew opencode, and off Linux both Lead routes are refused with reason unsupported_platform
   - src/aew/harness/opencode/lead.py:492 aew opencode establishes the Lead's sandbox, self-tested before the TUI starts
   - 'src/aew/doctor.py:29,42 doctor prints Windows: UNQUALIFIED'
   - 'grep pinhole/setpriority/os.nice over src/aew: no hits'
-  - src/aew/knowledge/manifest.py has no containment key, so the generator that reads switch defaults from manifest.py needs
-    containment/__init__.py:76-77 as a second source
+  - src/aew/knowledge/manifest.py has no containment key, so the generator that reads switch defaults from manifest.py
+    needs containment/__init__.py:84-86 as a second source
   - 'docs/implementation/future-work.yaml (the Now list''s E118 line, at c11a61ea) E118 is on it, the contained Lead''s
     two fixes; :1422-1427 its row (harness ruling 11, When: Now)'
-  - 'map v1.20:87 (design workspace): CS-4 done 2026-10-30 after the operator''s trial; addenda 12 to 14 open'
+  - src/aew/harness/opencode/login.py:137 clear_saved_permissions, called at src/aew/harness/opencode/lead.py:822, a failed
+    clear refused CONTAINMENT_UNAVAILABLE reason saved_permissions (:827); login.py:95-108 the column check; tests/unit/test_lead_contained.py
+    (E118's built two parts)
   - docs/implementation/future-work.yaml (row STG-05, at c11a61ea) STG-05 CS-1 to CS-4 merged
-  - docs/implementation/future-work.yaml (row HOLD-06, at c11a61ea) F48 held in HOLD-06; Windows is outside the release
-    gate
   - 'used_in_default_flow partly: yes on Linux (every run and Lead session contained and self-tested), Windows only labelled'
 - id: SYS-03
   name: Read-only operator dashboard (server side)
@@ -376,27 +382,46 @@ systems:
       (E143''s follow-on) but nothing in src/aew/dashboard reads it. The web developer''s to place'
     row: E148
     estimate: 1 PR (estimate)
-  decision: 'decided: kept, not frozen (the operator: "Keep the dashboard"); next after slot 1 (the reset of 2026-11-06
-    (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
-  recommendation: finish
-  who: designer (the HOLD-12 match), then operator (release /attention and E73), then Lead
-  reason: 'Built and working on demand, but most of what is left is held in HOLD-12. /attention is blocked by a stale reason,
-    not a missing source: the typed surface''s projection module exists. The register already draws F20 out of the hold
-    with A-44''s S1 and S2 (E101 and E102 notes) and F20.6 in part with S2w (E103), which are SYS-21''s slices.'
+  - slice: '/attention answering from the typed surface''s action projection instead of 403 (TLS-25''s dashboard half):
+      E18 tracks it; E101''s correction of the stale 403 reason is SYS-21''s, frozen there'
+    row: E18
+    estimate: not sized (estimate)
+  - slice: 'F20.7''s event endpoint: tracked by a note on E18 (the hold match merged it there as a note, adding no scope
+      to E18''s build), outside that row''s build; it waits on S11''s adoption, and SYS-17 is signed off'
+    row: E18
+    estimate: not sized; outside E18's build (estimate)
+  - slice: 'F20.6''s browser acceptance against a real project''s live state: tracked by a note on E103 (the hold match
+      merged it there as a note, adding no scope to E103''s build), outside that row''s build; the web developer''s'
+    row: E103
+    estimate: an acceptance run, not sized (estimate)
+  decision: 'decided: keep, not counted, until after V-01 (the operator, 2026-11-25: "yes to the recommendations", on
+    the Lead''s finish plan of that day, finish-plan.md); kept, not frozen, by the operator''s earlier "Keep the dashboard"
+    (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
+  recommendation: keep
+  who: web developer (E94, after V-01 by its row; E148 and F20.6's acceptance, theirs to place); the Lead for /attention's
+    dashboard half and F20.7, once placed
+  reason: 'Built and working on demand, but nothing the Lead can build finishes it: E94 is the web developer''s and waits
+    until after V-01 by its row, E148 is theirs to place, and the rest rides on other systems'' rows. A board gap, found
+    by the lag sweep and stated here: the finish line names /attention, F20.7''s event endpoint and F20.6''s browser acceptance,
+    but until 2026-11-25 no slice carried them. They are now slices: /attention''s dashboard half is tracked by SYS-17''s
+    E18, and F20.7 and F20.6 by the hold match''s notes on E18 and E103, outside those rows'' builds. /attention is blocked
+    by a stale reason, not a missing source: the typed surface''s projection module exists.'
   evidence:
   - 'src/aew/dashboard/: 14 modules, 4,760 lines (wc -l at c11a61ea)'
   - src/aew/cli/dashboard_commands.py:32-57 the dashboard serve, open and status parsers (serve on 127.0.0.1)
-  - 'src/aew/harness/dashboard_autostart.py:1-6 aew opencode opens the operator''s first dashboard session itself, with
-    no typed-back code, and the server ends with that session; src/aew/harness/opencode/lead.py:398 the session enters it'
+  - src/aew/harness/dashboard_autostart.py:1-6 aew opencode opens the operator's first dashboard session itself, with
+    no typed-back code, and the server ends with that session; src/aew/harness/opencode/lead.py:398 the session enters
+    it
   - src/aew/dashboard/server.py:267-299 ROUTES, including /attention at :286 and the 0.1.3 maps routes
   - 'src/aew/dashboard/server.py:321-330 /history/search exists only while the adopted execution policy sets recall.raw_history_search:
     explicit'
   - src/aew/dashboard/server.py:552-561 GET and HEAD handled; every other do_* method answers 405 METHOD_NOT_ALLOWED
-  - src/aew/dashboard/projections.py:321-322 queue UNSUPPORTED (NOT_IN_CONTRACT_0_1_2), action_projection UNSUPPORTED (AWAITS_ACTION_PROJECTION)
+  - src/aew/dashboard/projections.py:321-322 queue UNSUPPORTED (NOT_IN_CONTRACT_0_1_2), action_projection UNSUPPORTED
+    (AWAITS_ACTION_PROJECTION)
   - 'src/aew/dashboard/projections.py:566-568 attention_list requires action_projection: ''UNSUPPORTED until F15.1: never
     reached today'''
-  - src/aew/dashboard/reasons.py:33-34 and projections.py:10-12 say the action projection arrives with F15.1; register row
-    F15.1 is closed (section 9)
+  - src/aew/dashboard/reasons.py:33-34 and projections.py:10-12 say the action projection arrives with F15.1; register
+    row F15.1 is closed (section 9)
   - src/aew/surface/projection.py:1-4 the ActionProjection module, naming the dashboard's /attention as a later consumer;
     :423 its project()
   - docs/implementation/future-work.yaml (row F15.1, at c11a61ea) F15.1's close leaves 'TLS-25's dashboard half' to E18;
@@ -406,16 +431,16 @@ systems:
   - 'src/aew/capability/status.py:38 capability status imports aew.stg02.adopted; src/aew/g3client.py:48-49 and src/aew/harness/g3_adapter.py:34
     import aew.stg02.wire: the vendored adopted half that shipped code loads'
   - 'src/aew/dashboard/static/BUILD.json: contract docs/design/dashboard-api-v1-provisional.yaml sha256 68b46527..., built_at
-    2026-10-06; that digest is contract 0.1.2''s (docs/design/proposals/dashboard-maps-and-history-search-v0.1.md:16), while
-    the file in the tree is version 0.1.3 (dashboard-api-v1-provisional.yaml:4); src/aew/dashboard/contract.py:35 BASE_VERSION
-    0.1.2 and :57 the 0.1.3 routes'
+    2026-10-06; that digest is contract 0.1.2''s (docs/design/proposals/dashboard-maps-and-history-search-v0.1.md:16),
+    while the file in the tree is version 0.1.3 (dashboard-api-v1-provisional.yaml:4); src/aew/dashboard/contract.py:35
+    BASE_VERSION 0.1.2 and :57 the 0.1.3 routes'
   - src/aew/harness/lead_broker.py:74-77 dashboard serve and open are credential-emitting and kept out of a Lead session;
     :175-176 dashboard status in the sandbox reports none running
   - src/aew/harness/supervisor.py:235-237 (E143's follow-on) the run label's containment.network.relay_family; :258-260
     the acknowledgement; src/aew/engine/harness_ops.py:782-784; grep for 'containment' and 'relay' in src/aew/dashboard/
     finds nothing, so E148 stays open (docs/implementation/future-work.yaml (row E148, at c11a61ea))
-  - 'docs/implementation/future-work.yaml (row HOLD-12, at c11a61ea) HOLD-12 members F20, F20.6, F20.7, F20.8 (F20.8: ''S1
-    and S2 are built'')'
+  - 'docs/implementation/future-work.yaml (row HOLD-12, at c11a61ea) HOLD-12 members F20, F20.6, F20.7, F20.8 (F20.8:
+    ''S1 and S2 are built'')'
   - 'docs/implementation/future-work.yaml (row E101, at c11a61ea) E101''s notes: it draws F20 (HOLD-12, with S2) out of
     its hold; :1291 E102''s notes the same; :1305 E103 draws F20.6 out of HOLD-12 in part'
   - docs/implementation/future-work.yaml (row E94, at c11a61ea) E94 held in HOLD-12, owned by the web developer
@@ -493,9 +518,10 @@ systems:
     turning_on_changes: 'The template''s crawl is already the standing mode in a project made by `aew init` (recorded at
       revision 0, engine/steering.py:148, seed_at_init); an older project gets it at the adoption that pins the template
       (engine/steering.py:343, on_adopt) or at its migration to v2 (:356, register_on_migrate). The loop thread in every
-      Lead broker therefore stops at CONFIRMATION_UNAVAILABLE on each step it could take, for the Lead; until E7c that
-      stop is recorded in loop.json and shown by status, but neither notified nor does it wake the Lead (E228''s fourth PR), and the
-      default desktop notifier shows each other stop once. RUN is opt-in: one `aew lead mode raise run` approved
+      Lead broker therefore stops at CONFIRMATION_UNAVAILABLE on each step it could take, naming the step as the Lead''s
+      (E183): a quiet stop, recorded in loop.json and shown by status, never notified, and kept from the Lead''s wake
+      (LEADS_OWN_STEP, the operator''s ruling QC-1 (c) on E228''s fourth PR, confirmed for E183 by the operator,
+      2026-11-25); the default desktop notifier shows each stop that needs attention once. RUN is opt-in: one `aew lead mode raise run` approved
       at the operator endpoint (auto-started by `aew opencode`, or `aew operator serve --dev`), which also needs a deliverable
       notifier (notifier_problem, :279) and a deadline_s on every routable profile. Every record stays guarantee: dev.'
   state:
@@ -519,10 +545,6 @@ systems:
       plan that sounds like session B SHOULD be validating that"); PR 4 has merged'
     row: E228
     estimate: a measured trial inside Session B (estimate)
-  - slice: 'The steering and Lead text fix, with the crawl and walk stop named as the Lead''s step, and request_confirmation
-      hidden from the steering tool''s enum and schema; request_raise stays advertised'
-    row: E183
-    estimate: 1 small PR (estimate)
   decision: 'decided: re-cut to RUN on and used (the operator, 2026-11-10: "yes to both, re-cut it and hide them"); then,
     on the designer''s questions, the operator''s answers of the same day: request_raise stays advertised and request_confirmation
     alone is hidden ("yyes record SYS-47 that way, 1. yes but tell me about 2 and 3"), and no held system is made ("yes
@@ -539,7 +561,7 @@ systems:
     row, released by a production-authority decision. lower takes no approval, but it needs an effective mode above its
     target, and walk or run becomes effective only by the operator''s raise at the endpoint, so lower does something only
     after a raise; a project made before the template wrote steering.mode refuses every action as not configured. The
-    text fix (E183) says so.'
+    text fix (E183, done) says so.'
   evidence:
   - src/aew/engine/steering.py:3 (the project default is execution policy's steering.mode; absent is legacy/manual)
   - 'src/aew/engine/steering.py:57 (RANK: absent and crawl rank together, 0)'
@@ -557,23 +579,27 @@ systems:
   - 'src/aew/policy/execution.py:76-89 (the execution template: steering.mode crawl and the default desktop notifier; first
     configuration writes deadline_s with deadline_scope run)'
   - src/aew/harness/steering_loop.py:73 and :455-456 (STEERING_OFF when no mode is in force)
-  - src/aew/harness/steering_loop.py:82 and :484-486 (CONFIRMATION_UNAVAILABLE)
+  - 'src/aew/harness/steering_loop.py:85-92 and :520 (CONFIRMATION_UNAVAILABLE: a quiet stop naming the Lead''s step,
+    kept from the wake by LEADS_OWN_STEP)'
   - src/aew/harness/lead_broker.py:283-285 and :299-300 (the loop is built and started with every Lead broker)
-  - 'src/aew/harness/lead_broker.py:219-222 (the Lead''s refusal text sends it to request_raise and to aew lead mode lower:
-    lead_text)'
+  - 'src/aew/harness/lead_broker.py:232-240 (the Lead''s refusal of the raise sends it to request_raise, says a lower
+    needs the operator''s raise, and ends with STEERING_STEP: lead_text)'
+  - 'src/aew/harness/opencode/projection.py:450 (the Lead''s system text: a Steering line from STEERING_STEP; lead_text)'
   - src/aew/harness/operator_endpoint.py:127-132 (starts only with --dev)
   - src/aew/harness/operator_endpoint.py:320-327 (offers only ping, mode_raise, capability_change)
   - src/aew/cli/operator_commands.py:30-34 (aew operator serve --dev) and :54 (aew lead mode lower)
-  - 'src/aew/surface/contract.py:123 (STEERING_ACTIONS: lower, request_raise, request_confirmation)'
-  - src/aew/surface/contract.py:246-255 (the steering tool and its text) and :71 (profiles default BOTH)
-  - 'src/aew/surface/run.py:180-192 (the tool''s adapter: lower or record a request)'
+  - 'src/aew/surface/contract.py:126-128 (STEERING_ARGUMENTS, the one owner: lower and request_raise; STEERING_ACTIONS
+    derived from it; request_confirmation hidden)'
+  - src/aew/surface/contract.py:136-139 (STEERING_STEP and STEERING_TEXT) and :266 (the steering tool, its enum and schema
+    derived) and :71 (profiles default BOTH)
+  - 'src/aew/surface/run.py:182-196 (the tool''s adapter: lower or record a raise request)'
   - src/aew/harness/notify.py:698-701 (not_configured when notify.command is absent)
   - 'docs/implementation/future-work.yaml (row F18.6): Unscheduled, restored from HOLD-17, which closed on 2026-11-06; (row
     HOLD-19): its one member still held is F46, the settings surface, not steering'
 - id: SYS-05
-  name: Harness currency and further harness adapters
-  purpose: Keep the one built harness adapter (OpenCode V2) current and qualified, and let further harnesses plug in behind
-    the same adapter seam.
+  name: Harness currency on the pin (OpenCode); qualification and further adapters are SYS-50's
+  purpose: Keep the one built harness adapter (OpenCode V2) current on its pinned version; its qualification seams, patch-release
+    currency, rate-limit resilience and further adapters are SYS-50's.
   serves_claims:
     closing_works: []
     extra: []
@@ -589,11 +615,7 @@ systems:
   - designer-decisions-2026-11-01-brief-gap-list.md
   register:
   - E35
-  - E149
-  - E150
-  - E152
   - E156
-  - F24
   - E235
   as_built:
   - modules:aew.harness.registry
@@ -635,98 +657,75 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: 'OpenCode kept current and qualified: E35''s probe and seams built (HarnessAdapter.capabilities(), the named
-    LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 re-probes compaction
-    (C1) on the pinned OpenCode 2.2.6, whose TESTED_VERSIONS entry and token-semantics row are in place, H-2 and H-3 land, and the qualified
-    version runs the default flow in a real run. E149 and E150 once placed. A second adapter (F24) is outside this finish
-    line until HOLD-06 releases it.'
+  finish_line: 'OpenCode current on the pin: E35''s probe (done), H-1''s C1 compaction re-probe on the pinned OpenCode
+    2.2.6 (whose TESTED_VERSIONS entry and token-semantics row are in place), E235''s default_binary finding OpenCode
+    Desktop 2.2.6''s copy (built, its row closed), and the qualified version running the default flow in a real run. Narrowed by the operator
+    on 2026-11-25: E35''s seams, H-2 and H-3 (open on E35''s row), E149, E150, E152 and a second adapter (F24) are SYS-50''s,
+    outside this finish line.'
   remaining:
-  - slice: 'E35''s probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known
-      layer (on the Now list, before first use)'
-    row: E35
-    estimate: 1 PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E35''s seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute
-      and browser denies, the ''nothing else loaded'' conformance scenario, tool_output limits (on the Now list)'
-    row: E35
-    estimate: 1 PR (estimate)
   - slice: 'H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics
       row are in place; no evidence the re-probe ran)'
     row: E35
     estimate: 1-2 PRs (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      H-2 (OpenCode qualification, absorbed F18.11) and H-3 (patch releases without a PR per release, absorbed E17 with
-      H-1''s part 2; H-3''s bundle import); shares its bundle import with F18.3 (SYS-33)'
-    row: E35
-    estimate: 2 PRs (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E149: the 429 re-drive in the turn-end path, with the relay classifying a 429 and setting x-should-retry; once placed'
-    row: E149
-    estimate: 1 PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E150: turn-ending continuation for workers, after E149'
-    row: E150
-    estimate: 1 PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E152: measure ruling 11''s W1 workaround (measurement only, before any patch to the harness)'
-    row: E152
-    estimate: a measurement, no product PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless,
-      after it); held in HOLD-06'
-    row: F24
-    estimate: 1-2 PRs once released; an adapter not sized (estimate)
-  - slice: 'default_binary finds OpenCode Desktop 2.2.6''s copy'
-    row: E235
-    estimate: 1 small PR (estimate)
-  decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
+  decision: 'decided: narrowed to currency on the pin, E235 and H-1 (the operator, 2026-11-25: "yes approve those four
+    too", on the Lead''s finish plan of that day, finish-plan.md); E35''s seams, H-2, H-3, E149, E150, E152 and F24 moved
+    to SYS-50. Earlier: only its slot items finish, the rest frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: 'Lead (E35''s probe; H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06
-    after the designer''s match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)'
-  reason: 'The OpenCode adapter is on and used every run; what is left (E35, H-1 to H-3) is on the Now list in the Lead''s
-    order, and the version ''pin'' is a label, not a gate (BOARD v2 §6), so currency work matters before a newer binary
-    is picked up unqualified. Partly built, not staged: its OpenCode adapter is on and used in every run (BOARD v2 §5);
-    the census''s ''staged'' described only the further adapters.'
+  who: Lead (H-1); operator (H-1's live re-probe and the real default-flow run)
+  reason: 'The OpenCode adapter is on and used every run, and the version ''pin'' is a label, not a gate (BOARD v2 §6),
+    so currency on the pin is what finishing needs. E35''s probe is done; H-1 probably needs a live model run, so it is
+    partly the operator''s check. E235 is built and its row closed: default_binary reads the pinned version''s folder
+    under the Desktop''s cli folder, named for the version alone or for the version, a hyphen and x64, the one architecture
+    name seen, and no other name (harness/opencode/adapter.py). The seams serve a second adapter (F24), and H-2 and H-3 share
+    a bundle import with F18.3 (SYS-33), so they moved to SYS-50 with the rate-limit rows. E35 stays this system''s row
+    while H-1 is open; its seams, H-2 and H-3 ride on it from SYS-50. Partly built, not staged: its OpenCode adapter is
+    on and used in every run (BOARD v2 §5).'
   evidence:
+  - 'tests/live/test_opencode_project_config_live.py, E35''s probe, measured 2026-11-24 on OpenCode 2.2.6 and 2.0.18:
+    the project-config switch excludes the project''s .opencode/ layers, plugins included, and no project path feeds the
+    remote .well-known layer (merged at f5912317; E35''s note of 2026-11-24); AEW sets both of OpenCode''s project-config
+    switches from capabilities.FIXED_SWITCHES (merged at 61f22f3e)'
   - src/aew/harness/registry.py:19-29 (BUILTIN names only opencode; AEW_HARNESS_ADAPTERS, read from the launching Lead's
     environment per :3-5, adds others; no CLI, tool or dashboard surface registers one)
   - src/aew/harness/supervisor.py:75, :332 (registry.load at every launch)
   - 'src/aew/policy/execution.py:30, :68, :247-248 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
     falls back to it)'
   - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.2.6',))
-  - src/aew/harness/opencode/capabilities.py:103-110 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
-    probe is the real gate)
+  - src/aew/harness/opencode/capabilities.py:103-110 (version_problems refuses only a non-2 major); :1-7 (the per-launch
+    /openapi.json probe is the real gate)
   - 'src/aew/harness/opencode/adapter.py:180-183 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
     :364-365 (token_semantics has 2.0.18 and 2.2.6 rows), :543 (the usage meter is labelled TESTED_VERSIONS[0])'
-  - 'src/aew/harness/opencode/adapter.py:230 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
-  - 'src/aew/harness/opencode/projection.py:152 (worker rules start rule(''*'', ''deny''): execute and browser denied by
-    default, not by an explicit rule)'
+  - 'src/aew/harness/opencode/adapter.py:230 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly
+    present)'
+  - 'src/aew/harness/opencode/projection.py:152 (worker rules start rule(''*'', ''deny''): execute and browser denied
+    by default, not by an explicit rule)'
   - 'src/aew/harness/opencode/projection.py:607 (Lead MCP server codemode: False)'
   - src/aew/harness/contract.py:266-284 (LaunchContract has no skills, tools_allowed or native_sandbox field)
   - src/aew/harness/base.py:77-121 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
   - grep of '429' under src/aew/harness matches only RFC 4291 comments at src/aew/harness/containment/peer.py:54-83 (no
     429 handling)
-  - src/aew/doctor.py:100-113 (doctor names the harness binary and the tested versions; the version is checked at each launch)
+  - src/aew/doctor.py:100-113 (doctor names the harness binary and the tested versions; the version is checked at each
+    launch)
   - src/aew/cli/work_commands.py:508-512 (aew harness config prints the projection an OpenCode harness receives)
   - 'src/aew/harness/base.py:22-50 (E143''s follow-on: the closed launch report, RELAY_FAMILY_SHOWN and LAUNCH_REFUSALS,
-    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:348-350, :355, :371-373 (E143''s follow-on:
-    the supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:57-60,
+    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:348-350, :355, :371-373 (E143''s follow-on: the
+    supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:57-60,
     :795-813 (the adapter''s relay-route family check, from E143, now names base''s constants)'
-  - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md:1742 (its 'Amendment 2026-11-06', the relay-route family
-    check and what a launch reports)
+  - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md:1742 (its 'Amendment 2026-11-06', the relay-route
+    family check and what a launch reports)
   - 'docs/implementation/future-work.yaml (the Now list''s E35 line; the Now list''s STG-15, E35 line, at c11a61ea) (on
     the Now list), :56-59 (the ''Contained and reconciled'' gate names harness currency: E35, H-1 to H-3), :1253 (H-3''s
     bundle import (E35))'
   - docs/implementation/future-work.yaml (row E35, at c11a61ea) (E35; its Source at :839-840 is the harness-native integration
     research v0.3), :1717-1727 (E149; its Source names the operator's decision of 2026-11-01 amending BOY-03.a), :1728-1736
     (E150, after E149), :1745-1751 (E152), :407-426 (HOLD-06 holds F24, F24.1, F24.2)
-  - docs/implementation/notes.d/E35/2026-10-24-docs-register-rebaseline.md (E35 absorbs E17 and F18.11; H-1, then H-2 and
-    H-3)
+  - docs/implementation/notes.d/E35/2026-10-24-docs-register-rebaseline.md (E35 absorbs E17 and F18.11; H-1, then H-2
+    and H-3)
   - docs/implementation/notes.d/E35/2026-10-25-docs-register-2026-10-25.md (H-1 repeats the C1 compaction probe on 2.1.4)
   - docs/implementation/future-work.yaml (row F18.12, at c11a61ea) (F18.12, Codex qualification, held in HOLD-17)
 - id: SYS-06
-  name: Typed agent surfaces (the Lead's catalog and transports; role-side MCP servers)
+  name: Typed agent surfaces (the Lead's catalog and transports)
   purpose: Give the Lead, and later the workers, typed, schema-closed tools over MCP instead of free shell, through one
     catalog, one runner and one result shape.
   serves_claims:
@@ -737,17 +736,15 @@ systems:
   - docs/design/typed-lead-surface-design-v0.2.md
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   register:
-  - F15.3
-  - F15.8
   - E130
   - E122
   - E139
-  - E162
-  - E163
   - E121
   - E231
   - E233
   - E241
+  - E367
+  - E368
   as_built:
   - modules:aew.surface
   - modules:aew.surface.contract
@@ -793,85 +790,68 @@ systems:
     - lead_text
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: The Lead's catalog stays built, wired (aew-lead MCP, aew lead tool, the derived Lead text), on and used,
-    as today. The rest is done when F15.3's aew-run server gives a worker whoami, check.run and submit as typed in-sandbox
-    tools over the existing bridge, F15.8's read half serves the map and evidence reads, the Lead families still reached
-    only through the `aew *` shell rule (maps, history, messages, settings, usage, g3) have typed rows or a recorded reason
-    not to, and each is exercised in a real run; or the operator leaves HOLD-06 held and this entry records it.
+  finish_line: 'The Lead''s catalog stays built, wired (aew-lead MCP, aew lead tool, the derived Lead text), on and used,
+    as today, with the Lead''s tool budget (E231), its exits (E233) and the worker route''s size check (E241) built and
+    exercised in a real run. Finished by this finish line''s own alternative: the operator leaves HOLD-06 held, and this
+    entry records it (2026-11-25). The work restored from it, F15.3''s aew-run server with aew-knowledge and F15.8''s
+    read half, with the typed Lead rows for maps, history, settings, usage and g3, the catalog''s DESIGNED loose end and
+    the Lead text fixes with a typed plan accept (E162, E163), are SYS-51''s, outside this finish line. With the operator''s
+    always-sent work order (2026-11-25): the always-sent text made true and smaller, the Lead''s system text and tool list
+    (E367) and the worker packs (E368), each with its truth test.'
   remaining:
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP
-      tools; the supervisor keeps the credential). Held in HOLD-06 until the designer''s match and the operator''s placement'
-    row: F15.3
-    estimate: 1-2 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation).
-      Waits on typed map and evidence reads'
-    row: F15.8
-    estimate: 2-3 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      aew-knowledge as its own capability namespace over the shared transport library: part of F15.3''s text, so held with
-      it in HOLD-06; what it serves waits on K-01''s increment'
-    row: F15.3
-    estimate: not sized (census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew
-      *`'
-    row: row owed
-    estimate: about 1 PR per family once filed (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      BOARD v2 §4 loose end and §6 stale text: drop the catalog''s unused DESIGNED status and correct the contract.py docstring
-      that says rows stay DESIGNED'
-    row: row owed
-    estimate: part of one small batched PR (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 3)'
-    row: E162
-    estimate: 1-2 PRs (estimate)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      Lead text fixes, and a typed `plan accept`'
-    row: E162
-    estimate: 1-2 PRs (estimate)
-  - slice: 'The Lead''s tool budget, decided before E158'
+  - slice: The Lead's tool budget, decided before E158
     row: E231
     estimate: a decision, then 0-1 PR (estimate)
-  - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
+  - slice: 'The Lead''s exits: four of E133''s eleven dead ends are left, each waiting on a decision (the plan route,
+      the wait at RUNNING, the queue disposition), and a project with no execution profile offers no dispatch. The
+      lands guard is E233''s other pull request, in the row''s notes'
     row: E233
-    estimate: not sized (estimate)
-  - slice: 'The worker route''s size check'
-    row: E241
-    estimate: 1 small PR (estimate)
-  decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
-    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+    estimate: decisions first, then 1-3 small PRs (estimate)
+  - slice: 'The Lead''s system text and tool list made true and smaller, with a Lead-text truth test, after the guide''s
+      core plus pointers (the operator, 2026-11-25)'
+    row: E367
+    estimate: 1-2 PRs (estimate)
+  - slice: 'Worker packs as a core plus pointers, with a size budget and the rest of the pack-truth extensions (the operator,
+      2026-11-25). Its false lines are fixed, with their truth tests (the operator, 2026-11-26: "ship truth fixes now").
+      The Lead''s plan, not an operator ruling: the rewrite is written as a draft and held unmerged until it can be measured;
+      whether it waits for the refined F19 is the operator''s to confirm'
+    row: E368
+    estimate: 1 PR (estimate)
+  decision: 'decided: finished by the finish line''s own alternative, HOLD-06 recorded as staying held (the operator,
+    2026-11-25: "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); the worker-side
+    role servers, typed Lead rows and Lead text fixes moved to SYS-51. Earlier: only its slot items finish, the rest frozen
+    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: operator (placing F15.3 and F15.8 out of HOLD-06, after the designer's match); then Lead. Lead for the DESIGNED-status
-    loose end
-  reason: 'The Lead''s catalog is on and used and needs nothing to work (BOARD v2 §5); the unbuilt half (F15.3, F15.8) is
-    held in HOLD-06 and the designer places it after first use (BOARD v2 §3). F15.3 changes the form of what workers already
-    have through the bridge (whoami, check.run, submit over the aew CLI), not the capability. Designer''s reading: no catalog
-    row uses DESIGNED, so the contract.py docstring is stale.'
+  who: Lead (E231's next part, E233, E367, E368)
+  reason: 'The Lead''s catalog is on and used and needs nothing to work (BOARD v2 §5). What is left inside the finish
+    line is unfrozen: E231''s next part (the guide''s core plus pointers, gating E158''s brief) and E233''s exits (E241''s
+    size check is built and its row closed: bridge.call refuses a request over MAX_REQUEST on every route, in harness/bridge.py),
+    then the operator''s always-sent work order of 2026-11-25: the Lead''s system text and tool list (E367),
+    then the worker packs (E368). The unbuilt worker half (F15.3, F15.8) stays held, as HOLD-06 placed it after first use (BOARD v2 §3),
+    and moved to SYS-51 with the other frozen slices. F15.3 changes the form of what workers already have through the
+    bridge (whoami, check.run, submit over the aew CLI), not the capability.'
   evidence:
   - 'src/aew/surface/contract.py:183-321: the catalog, 16 Tool rows; no row sets status= (grep finds none), so every row
     takes the default BUILT at :66'
-  - 'src/aew/surface/contract.py:35-36,167: DESIGNED declared and validated, unused; :10-14 docstring still describes DESIGNED
-    rows (stale, BOARD v2 §6)'
-  - 'src/aew/surface/contract.py:257-262: `cli` is the recovery profile only; src/aew/surface/context.py:12-14 the two profiles'
+  - 'src/aew/surface/contract.py:35-36,167: DESIGNED declared and validated, unused; :10-14 docstring still describes
+    DESIGNED rows (stale, BOARD v2 §6)'
+  - 'src/aew/surface/contract.py:257-262: `cli` is the recovery profile only; src/aew/surface/context.py:12-14 the two
+    profiles'
   - 'src/aew/surface/contract.py:330-332: exposed() lists built rows only'
   - 'src/aew/surface/__init__.py:14: SERVER_NAME = "aew-lead"; aew-run and aew-knowledge appear only in this comment (grep
     over src/aew)'
   - src/aew/cli/commands.py:211-213 (`aew lead tool`) and :226-228 (`aew lead mcp`)
-  - 'src/aew/harness/opencode/projection.py:209-221: the aew-lead server and the `aew-lead_*` allow rule beside shell `aew
-    *` allow at :216'
+  - 'src/aew/harness/opencode/projection.py:209-221: the aew-lead server and the `aew-lead_*` allow rule beside shell
+    `aew *` allow at :216'
   - 'src/aew/harness/opencode/projection.py:228-238: the Lead''s tool line derived from the catalog (E130, merged before
     the census)'
   - 'src/aew/harness/opencode/projection.py:359-360: the default Lead TUI config spawns `aew lead mcp` with codemode false'
   - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
     through the aew CLI, not MCP tools'
-  - 'docs/implementation/future-work.yaml (row F15.3, at c11a61ea) (F15.3) and :2535-2543 (F15.8): closed 2026-10-24, held
-    in HOLD-06; :419 and :422 list them as HOLD-06 members'
-  - 'docs/implementation/future-work.yaml (row E133, at c11a61ea),1615,1626: the real tool-call log of 2026-11-04 the register
-    cites'
+  - 'docs/implementation/future-work.yaml (row F15.3, at c11a61ea) (F15.3) and :2535-2543 (F15.8): closed 2026-10-24,
+    held in HOLD-06; :419 and :422 list them as HOLD-06 members'
+  - 'docs/implementation/future-work.yaml (row E133, at c11a61ea),1615,1626: the real tool-call log of 2026-11-04 the
+    register cites'
   - 'docs/implementation/future-work.yaml (row E130, at c11a61ea): E130''s row still says it is open; it merged as 80a2360c
     (git log), a stale record (BOARD v2 §6)'
   - 'docs/implementation/future-work.yaml (row F15.3, at c11a61ea): F15.3 names `aew-knowledge` as a separate capability
@@ -978,20 +958,16 @@ systems:
     manual step, and each pack''s added bytes measured; no site map view in V-01 (register V-01 milestone, future-work.yaml
     (§1 text, at c11a61ea)).'
   remaining:
-  - slice: 'E293, V-01''s maps profile: the built maps held against A-14''s obligations, the profile written, each divergence
-      fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code'
-    row: E293
-    estimate: 1-2 PRs (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
     E293 placed now by the operator (the Lead''s reading of the question; 2026-11-11: "we can do the maps profile since maps is mostly done right?")'
   recommendation: finish
-  who: Lead (E293's maps profile next, 1-2 PRs); decided by the operator
+  who: Lead (F22.2 and F22.3 after their benchmark); decided by the operator
   reason: 'On for a new project and offered to an existing one (ADR-0015, amended 2026-11-11, second; register E62
-    and E184), as the reset of 2026-11-06 decided. Left: V-01''s maps profile (E293), then the semantic layer after its
-    benchmark.'
+    and E184), as the reset of 2026-11-06 decided. V-01''s maps profile (E293) is written and its divergences fixed. Left:
+    the semantic layer after its benchmark.'
   evidence:
   - src/aew/policy/execution.py NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL, and the template's maps.pack_slices
     line written from it
@@ -1002,8 +978,7 @@ systems:
   - 'src/aew/maps/slices.py wanted(): switch structural AND the role''s context names codebase_map'
   - src/aew/engine/context_ops.py the pack slice is pinned only when slices.wanted()
   - src/aew/engine/resume_ops.py the resume row behind the same switch
-  - src/aew/roles/archetypes/investigator.yaml the only archetype naming codebase_map
-  - src/aew/roles/archetypes/planner.yaml the planner's knowledge omits codebase_map (E62)
+  - src/aew/roles/archetypes/*.yaml every worker archetype's knowledge names codebase_map (E184)
   - src/aew/knowledge/context.py the codebase-map section rendered last and cuttable
   - src/aew/knowledge/context.py KNOWLEDGE_SECTIONS has no architecture_map key
   - src/aew/maps/service.py select_architecture records a discovery-evidence id
@@ -1093,8 +1068,8 @@ systems:
   - SYS-06
   - SYS-39
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - cli:lead mcp
     - cli:lead tool
@@ -1106,49 +1081,50 @@ systems:
     used_in_default_flow: partly
   finish_line: 'Every stage the Lead''s main path takes ends in a typed result it can act on: no publish stranded after
     a STALE_REVISION (E137, done), no escaping defect without its class and stage result (E138, done), a typed exit from
-    REVIEW_PASSED, VERIFIED and COMMIT_READY (E133, done), and the auto-run set declared and pinned (E83), each exercised
-    in a real Lead run. Dispositions are done as built: the review half of `requires_disposition` marks a listed non-required
-    finding and is tested; its verification half was dropped by AIR-08 (2026-10-11). The custody publish (E6b) lapsed into
-    STG-14.'
-  remaining:
-  - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test
-      that classify.auto_runnable''s set equals it; it rides the scheduler''s PR 4 (E228)'
-    row: E83
-    estimate: 1 small PR (estimate)
+    REVIEW_PASSED, VERIFIED and COMMIT_READY (E133, done), and the auto-run set declared and pinned (E83, done), each
+    exercised in a real Lead run. Dispositions are done as built: the review half of `requires_disposition` marks a listed
+    non-required finding and is tested; its verification half was dropped by AIR-08 (2026-10-11). The custody publish
+    (E6b) lapsed into STG-14.'
+  remaining: []
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); E138 unfrozen into the finish (the operator, 2026-11-11: "yes unfreeze E138")'
   recommendation: finish
-  who: Lead (E83)
+  who: operator (the real Lead run, then the sign-off)
   reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log. E133, E137 and E138 have
-    merged, leaving E83. E83''s behaviour already holds in code (only ticket_start and ticket_request_review are POLICY_RESOLVED
-    progression rows, and a call that supplies `execution` is promoted to JUDGMENT_BEARING); its gap is the declaration
-    and the pinning test. "Under RUN only" is the steering loop''s mode gate, not classify''s. D4 blocks nothing: AIR-08
-    dropped the verification half on 2026-10-11, and removing its dead readers is E359, outside the finish line, the operator''s
-    to place once this system has finished (the designer''s ruling of 2026-11-11). HOLD-10 closed on 2026-11-06. E7d''s
-    custodian half is E349. The custody refusal does not block publishing: the Lead''s integration_publish publishes a
-    VALIDATED entry outside custody.'
+    merged, and E83 merged with the scheduler''s fourth PR (E228): classify.py declares AUTO_RUN and a test holds the
+    set the contract derives equal to it, so nothing the finish line names is left to build. E349 (E7d''s custodian half),
+    an open Unscheduled row this entry owns, is not named by the finish line either: the designer''s ruling of 2026-11-11
+    on SYS-04''s held items made it custody''s row and not steering''s, but places it neither inside nor outside this
+    finish line, so its placement is pending the designer, as the decisions-due item on E349 records. What is left is
+    the finish line''s "each exercised in a real Lead run", the operator''s check before the sign-off. "Under RUN only"
+    is the steering loop''s mode gate, not classify''s. D4 blocks nothing: AIR-08 dropped the verification half on 2026-10-11,
+    and removing its dead readers is E359, outside the finish line, the operator''s to place once this system has finished
+    (the designer''s ruling of 2026-11-11). HOLD-10 closed on 2026-11-06. The custody refusal does not block publishing:
+    the Lead''s integration_publish publishes a VALIDATED entry outside custody.'
   evidence:
-  - 'src/aew/surface/contract.py:259 (resolve), :285-335 (ticket_draft to integration_publish), the stage and decision
-    tools'
+  - src/aew/surface/contract.py:259 (resolve), :285-335 (ticket_draft to integration_publish), the stage and decision
+    tools
   - 'src/aew/surface/contract.py:298,304: ticket_start and ticket_request_review are POLICY_RESOLVED; :259,285,310,319,335
     are JUDGMENT_BEARING'
   - 'src/aew/surface/classify.py:26-44: effective_class promotion over expands_to and auto_runnable (progression, built,
     AVAILABLE, not JUDGMENT_BEARING)'
   - 'src/aew/harness/steering_loop.py:69,405-406: no steering mode in force, the loop does nothing; :24-27 CONFIRMATION_UNAVAILABLE;
     :437 the RUN branch'
-  - grep over src and tests finds no declared auto-run set (E83 open)
+  - src/aew/surface/classify.py:47 AUTO_RUN (ticket_start, ticket_request_review), :50 auto_run_set derived from the contract
+    by calling auto_runnable (E83, merged at 5c51e388)
+  - tests/unit/test_surface_contract.py:258 test_only_the_two_declared_steps_auto_run_each_called_without_execution (E83)
   - 'src/aew/engine/base.py:440-445 and src/aew/engine/authority.py:245-251: custody publish refused with reason no_publication_envelope
     (E6b)'
-  - 'src/aew/engine/validation_ops.py:757-762: a custodian''s validation releases the entry VALIDATED for the Lead''s later
-    integration_publish'
+  - 'src/aew/engine/validation_ops.py:757-762: a custodian''s validation releases the entry VALIDATED for the Lead''s
+    later integration_publish'
   - 'src/aew/engine/disposition_ops.py:3-7: requires_disposition empty by default; its docstring still says the verification
     half waits for D4, which AIR-08 dropped (E359 rewords it)'
   - 'src/aew/schemas/gates.schema.json:98-99: gates.requires_disposition, empty by default (a policy property, not a switch:
     BOARD v2 §1 lists no switch)'
-  - 'src/aew/surface/mcp.py:180-189: an unexpected exception is answered INTERNAL_ERROR (-32603, :46) naming where it failed
-    and its class; src/aew/surface/run.py:280-288 the runner''s defect and its stage result; src/aew/harness/defects.py:68
+  - 'src/aew/surface/mcp.py:180-189: an unexpected exception is answered INTERNAL_ERROR (-32603, :46) naming where it
+    failed and its class; src/aew/surface/run.py:280-288 the runner''s defect and its stage result; src/aew/harness/defects.py:68
     the local defects record (E138, closed)'
-  - docs/implementation/future-work.yaml (row E83) (E83, open; rows E133, E137 and E138 closed)
+  - 'docs/implementation/future-work.yaml (row E83): closed 2026-11-25; rows E133, E137 and E138 closed'
   - 'docs/implementation/future-work.yaml (row HOLD-10): closed on 2026-11-06, every member matched'
   - 'src/aew/surface/contract.py:298-309: ticket_start and ticket_request_review are POLICY_RESOLVED, each promoted by
     `execution`; classify.py:33-34 promotes over each primitive''s class'
@@ -1210,8 +1186,8 @@ systems:
   depends_on:
   - SYS-02
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - cli:capability list
     - cli:capability check
@@ -1224,36 +1200,36 @@ systems:
     used_in_default_flow: partly
   finish_line: 'Linux only: the whole base bundle (ripgrep, fd, jq, yq, ast-grep, Universal Ctags) is shipped as records
     and bound into every contained Linux context; an agent and the Lead are told when a tool is missing; the operator''s
-    fetch exists, and `aew init` can decline every download up front (E191); role-card capabilities resolve against the
-    register instead of printing ''workbench resolution pending''; the code''s text says what main does (E196); exercised
-    in a real contained run. The Windows bind waits for Windows containment (E358), outside this finish line.'
-  remaining:
-  - slice: '`aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered'
-    row: E191
-    estimate: part of 1 small PR with E196 (estimate)
-  - slice: 'The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings
-      only'
-    row: E196
-    estimate: part of 1 small PR with E191 (estimate)
-  - slice: 'Later: MCP servers and SPT''s records (A-54, SPB), host placement and network; designed only'
-    row: STG-15
-    estimate: unsized (estimate)
+    fetch exists, and `aew init` can decline every download up front (E191, done); role-card capabilities resolve against
+    the register instead of printing ''workbench resolution pending''; the code''s text says what main does (E196, done);
+    exercised in a real contained run. The Windows bind waits for Windows containment (E358), outside this finish line.
+    STG-15''s later records (MCP servers and SPT''s records under A-54, SPB, host placement and network; designed only)
+    are outside this finish line too, on STG-15''s row (the operator, 2026-11-25).'
+  remaining: []
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
-    the finish line is Linux only (the operator, 2026-11-11: "Yes linux only for now until we get time for windos contaiment")'
+    the finish line is Linux only (the operator, 2026-11-11: "Yes linux only for now until we get time for windos contaiment");
+    STG-15''s later records dropped from the finish line, so it awaits the operator''s sign-off on a real contained run
+    (the operator, 2026-11-25: "yes to the recommendations", on the Lead''s finish plan of that day, finish-plan.md)'
   recommendation: finish
-  who: Lead (E191 with E196, placed on 2026-11-11 for the near-finish push); the operator for the real contained run
-  reason: CAP-1 PR 1 to PR 3 are merged, and the first bundle's six tools are shipped as records and bound into every contained
-    Linux launch. The tool-consent prompt and the operator's fetch (E171) are merged, agents are told their tools by name,
-    and card capabilities resolve against the shipped map. What is left on Linux is E191 and E196 in one small PR, a real
-    contained run with all six tools (the operator's yes of 2026-11-10), and the later records. Windows contexts get no
-    tools until Windows containment (E358).
+  who: operator (the real contained run with all six tools, then the sign-off)
+  reason: 'CAP-1 PR 1 to PR 3 are merged, and the first bundle''s six tools are shipped as records and bound into every
+    contained Linux launch. The tool-consent prompt and the operator''s fetch (E171) are merged, agents are told their
+    tools by name, and card capabilities resolve against the shipped map. E191 and E196 merged together, closed 2026-11-25,
+    so nothing the finish line names is left to build. What is left is the operator''s check, a real contained run with
+    all six tools (the operator''s yes of 2026-11-10). STG-15''s later records stay on its row, outside this finish line
+    (E197: no MCP servers for now, since SPT isn''t ready), and Windows contexts get no tools until Windows containment
+    (E358). Whether serves_claims keeps the SPT records closing work (SPB), now outside this finish line, is the designer''s,
+    recorded as the decisions-due item on STG-15.'
   evidence:
   - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
     six shipped records'
-  - src/aew/capability/__init__.py:8-10 docstring still says the bind 'comes in the next' PR (stale)
+  - 'src/aew/capability/__init__.py:8-9 docstring says what main does: contained runs bind the payloads read-only (E196,
+    merged at 83d68093)'
+  - src/aew/cli/commands.py:110-112 `aew init --fetch-tool none` (E191, merged at 83d68093); tests/unit/test_capability_consent.py,
+    tests/unit/test_first_configuration.py, tests/integration/test_init_first_configuration.py
   - src/aew/harness/containment/layout.py:1116 _tool_fields binds the register; win32 returns {} at :1126
   - src/aew/harness/containment/layout.py:1248 every contained layout calls _tool_fields
-  - 'src/aew/harness/containment/__init__.py:70 mode(), containment defaults to required on Linux, allow_weaker on Windows'
+  - src/aew/harness/containment/__init__.py:70 mode(), containment defaults to required on Linux, allow_weaker on Windows
   - src/aew/harness/containment/__init__.py:218 the run label carries missing_tools
   - src/aew/harness/containment/probe.py:648,716 the self-test settles each provider's entry (health checks inside the
     sandbox, CAPR-13)
@@ -1326,21 +1302,19 @@ systems:
     - cli:doctor
     on_by_default: true
     used_in_default_flow: partly
-  finish_line: The design's R9 surface (`aew usage show` and `aew usage runs`) and the bounded `aew status --json` summary
-    total each run, Ticket and project from the existing projections, with cost when a price table is adopted. The surface
-    has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
+  finish_line: The design's R9 surface (`aew usage show`, whose `show <invocation>` rows stand in for `aew usage runs`)
+    and the bounded `aew status --json` summary total each run, Ticket and project from the existing projections, with cost
+    when a price table is adopted, and `aew usage show` also shows requests, tokens in the declared rate basis and the largest
+    request. The surface has its surface-map entry, and a real run's usage is read back through it. The Lead's own usage (U4, `aew usage lead`)
     is built as the designer's Lead part says.
   remaining:
-  - slice: R9's `aew usage show [WORK-ID] [--all]` and `aew usage runs`, and the status summary, over the existing projections
-      (unit_projection, project_projection, Reader.invocation), with the surface-map entry; it shows requests, tokens in
-      the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 2)
+  - slice: 'R9''s last part: `aew usage show` (built with the status summary and its surface-map entry: F25''s note of 2026-11-07,
+      and its requests: F25''s note of 2026-11-27) also shows tokens in the declared rate basis, after provider profiles declare
+      `rate_basis` (STG-14), and the largest request, after the run-usage record carries it (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 2), and, if the designer rules that ruling 2''s requests include them, compaction, title and retried calls, after the record
+      carries them (F25''s note of 2026-11-27); `aew usage runs` is covered by `show <invocation>` and is not built as its own command (F25''s note of 2026-11-07)'
     row: F25
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Until R9 merges, the two texts that name `aew usage show --all` as if it existed say it is designed, not built:
-      implementation-status.md:247 (listed in BOARD v2 §6''s docs PR) and the code comment at engine/api.py:349 (not listed
-      there)'
-    row: row owed
-    estimate: part of BOARD v2 §6's docs PR (estimate)
+    estimate: 1-2 small PRs (estimate), the basis after STG-14's rate_basis
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
     row: F25
     estimate: not sized
@@ -1354,9 +1328,10 @@ systems:
     item 6'
   recommendation: freeze
   who: designer (the HOLD-21 match), then operator (release the CLI and status line), then Lead
-  reason: The write side runs on every launch and every Lead transaction, and nothing totals or shows it. The read side's
-    projections exist with no caller, so a CLI and status line over them is small. It is held in HOLD-21, so the operator
-    decides after the designer's match.
+  reason: The write side runs on every launch and every Lead transaction, and the read side is built over its projections
+    (`aew usage show` and the status line, F25's note of 2026-11-07; the price table at init and `/aew-usage`, its note of
+    2026-11-08; requests in `aew usage show`, its note of 2026-11-27). Left are ruling 2's basis and largest request in
+    `aew usage show`, the Lead's own usage (U4) and the live-lane proof (E239).
   evidence:
   - src/aew/harness/usage.py (262 lines), src/aew/engine/usage_ops.py (705), src/aew/harness/usage_live.py (751) (wc -l
     at c11a61ea)
@@ -1370,13 +1345,11 @@ systems:
   - src/aew/harness/supervisor.py:543, :584-592 result.usage_record recorded with wall time
   - src/aew/harness/runlog.py:33 LIVE_FILE; :119 write_live; :125-133 read_live checks only the schema tag (:133)
   - src/aew/schemas/__init__.py:35-37 run-usage, usage-live and pricing schemas registered
-  - unit_projection, project_projection and runlog.read_live have no caller in src/aew (grep); Reader.invocation is called
-    only inside them (usage_ops.py:664, :687)
-  - 'grep -rn ''add_parser("usage"'' src/aew/cli finds nothing: no usage command'
+  - src/aew/engine/usage_read.py calls Reader.invocation, unit_projection and project_projection (`aew usage show`'s read);
+    runlog.read_live has no caller in src/aew (grep)
+  - src/aew/cli/usage_commands.py registers `aew usage show`; src/aew/engine/api.py Engine.usage_show is its one projection
   - docs/design/cost-usage-ledger-design-v0.2.md:311 R9 names `aew usage show [WORK-ID] [--all]`, `aew usage runs` and `aew
     usage lead`; :422 the surface names and the bounded `aew status --json` summary
-  - docs/implementation/implementation-status.md:247 and src/aew/engine/api.py:349 name `aew usage show --all`, which is
-    designed (R9) and not built
   - docs/implementation/implementation-status.md:243 only OpenCode 2.0.18 with openai qualified; every other provider unknown
     and never priced
   - 'docs/implementation/implementation-status.md:251 slice 2b''s rest: `aew usage`, the status summary, H2 re-measure;
@@ -1414,12 +1387,12 @@ systems:
   switch:
     key: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test
       holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
-    default: O-SECRET enforce; O-CMD shadow
+    default: O-SECRET enforce; O-CMD enforce
     default_evidence: tests/helpers/discovery/modes.py:20,23
     owner: operator
     turning_on_changes: A new (rule, output-site) key under an enforced rule fails the CI run on every pull request and
-      on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19;
-      O-CMD still only reports.
+      on main, and a listed key no longer observed fails a complete full-tier run. O-SECRET does so from 2026-11-19,
+      and O-CMD from its flip after its triage (E140's third PR).
   state:
     board_state: built_off
     built: 'yes'
@@ -1431,10 +1404,10 @@ systems:
     gaps closed. The other four rules stay in shadow until the operator decides. No product surface: it is done when CI
     fails on a new violation of an enforced rule.'
   remaining:
-  - slice: 'E140 PR 3, its O-CMD half: the flip of O-CMD to enforce, once a full-tier run with the triage''s fixes shows
-      no O-CMD key new, with the keys that run shows stale removed first (O-SECRET was flipped alone on 2026-11-19)'
+  - slice: 'E140''s last condition after the O-CMD flip: each pull request open at the flip runs once on the flipped base
+      before it merges, and the first nightly on the flipped base shows neither rule new or stale'
     row: E140
-    estimate: 1 PR (estimate)
+    estimate: no PR (the runs themselves)
   - slice: 'E141: scan the worker preamble, role cards, MCP text and readable.py, and judge a bare command named in a sentence'
     row: E141
     estimate: 1-2 PRs (estimate, census)
@@ -1445,8 +1418,9 @@ systems:
     item 6 (stays in shadow); then O-SECRET enforced alone and the D2 machinery kept, on the operator''s decisions: E140
     (2026-11-04, "enforce those two") and 2026-11-19 (triage the discovery rules once, then switch them on). The nightly
     reference run applies D2; its run 44567041398 found 0 O-SECRET findings in 47,192 captured outputs, at a commit older
-    than the flip''s base, and the flip''s own full-tier PR run is the proof at the base. The other five rules stay in
-    shadow'
+    than the flip''s base, and the flip''s own full-tier PR run is the proof at the base. O-CMD was enforced after its
+    triage (E140): its keys new against the allow-list fixed at their source, and the keys a full-tier run showed stale
+    removed. The other four rules stay in shadow'
   recommendation: freeze
   who: operator (E140, 2026-11-04; 2026-11-19), every rule's mode; the Lead builds each flip
   reason: 'The operator''s order is on the record: "enforce those two" (docs/implementation/future-work.yaml (row E140,
@@ -1476,8 +1450,7 @@ systems:
     O-CMD judge what a reader is really asked" and 92003836 "test(D2): remove the 32 keys no longer observed, with --remove"'
 - id: SYS-13
   name: Lead-worker coordination messaging
-  purpose: 'Let the Lead and a running worker exchange recorded, hash-chained messages (questions and replies) without moving
-    control state. (Thread messaging: `aew work send` already delivers to a running agent outside it.)'
+  purpose: Let the Lead and a running worker exchange recorded, hash-chained messages without moving control state.
   serves_claims:
     closing_works: []
     extra:
@@ -1495,7 +1468,6 @@ systems:
   register:
   - E131
   - E175
-  - E248
   as_built:
   - tools:message_send
   - modules:aew.engine.coordination_ops
@@ -1505,6 +1477,7 @@ systems:
   - cli-commands:message thread
   - cli-commands:message list
   - cli-commands:message unseen
+  - cli-commands:message lost
   - cli-commands:harness send
   - control-keys:coordination_store
   - control-keys:coordination_unseen
@@ -1535,85 +1508,58 @@ systems:
   switch:
     key: coordination.messaging
     default: disabled
+    new_project_default: enabled
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
-    owner: operator (read from the adopted execution policy only, src/aew/policy/execution.py:172-174)
-    turning_on_changes: 'Today: the typed message_send records without delivery, and `aew message thread|list|unseen` register.
-      Every `aew harness send` is refused MESSAGING_SNAPSHOT_MISMATCH,
-      because no run can yet record a messaging-on launch snapshot (the refusal says to switch messaging off), so the one
-      live send path stops. HARNESS_SEND_NEEDS_STORE is unreachable until MS4. After MS3-MS5b: the Lead sends recorded messages
-      and workers reply on their thread.'
+    owner: operator (adopted execution policy, src/aew/policy/execution.py messaging)
+    turning_on_changes: 'Registers the Lead and worker messaging surfaces. Live and continuation delivery use the thread,
+      including both timings and recorded `aew harness send`. Result ingest checks whether a report accounts for Lead
+      messages recorded before submission. Existing projects with the key absent may adopt the offer.'
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - tool:message_send
     - cli:message thread
     - cli:message list
     - cli:message unseen
+    - cli:message lost
     - cli:harness send
-    on_by_default: false
+    on_by_default: true
     used_in_default_flow: partly
-  finish_line: 'After MS3''s record-only typed send: worker reply/read/wait bridge ops and real launch snapshots (MS4),
-    Lead attention (MS6), delivery (MS5), finality and store-recorded harness send (MS5b), with messaging on by default
-    and an absent-key-only operator offer for existing projects; and a real recorded exchange (MS7, owed separately).'
+  finish_line: 'MS5 live delivery and continuation, plus MS5b finality, both timings, recorded harness send and default-on.
+    The operator qualifies the feature with a real recorded exchange in MS7. The progress digest is already built and
+    the operator moved typed harness_interrupt (E248) and standalone off/compact surface.presentation to SYS-52.'
   remaining:
-  - slice: 'Steering''s progress digest (slot 3, first): harness_wait wakes with a short digest from the worker''s live
-      record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time;
-      it wakes early on a failing test, an out-of-scope file or a worker''s message. It takes SYS-11''s live-sample reader'
-    row: row owed
-    estimate: 1-2 PRs (estimate; the designer's reading, the reset record)
-  - slice: 'MS4+MS6: worker reply/read/wait, launch snapshot, one Lead wake and local told-ID consumption'
-    row: E175
-    estimate: 1 PR
-  - slice: 'MS5: live delivery and continuation'
-    row: E175
-    estimate: 1 PR
-  - slice: 'MS5b: finality, both timings, recorded harness send and default-on'
-    row: E175
-    estimate: 1 PR
-  - slice: 'MS7: separately approved real-provider qualification; not a default-on gate'
+  - slice: 'MS7: operator real-provider qualification and sign-off'
     row: E175
     estimate: not sized
-  - slice: 'Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer'
-    row: row owed
-    estimate: 1 small PR (estimate, BOARD v2 §4)
-  - slice: 'A typed harness_interrupt'
-    row: E248
-    estimate: 1 PR (estimate)
-  decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
+  decision: 'decided: narrowed to MS5 and MS5b, with MS7 as the operator''s live check (the operator, 2026-11-25, agreeing
+    with Codex''s reading, on the Lead''s finish plan of that day, finish-plan.md: "I''d take the narrower finish line.
+    The digest already works through harness_wait, and the existing aew harness interrupt command gives the Lead an interrupt
+    path while E248 waits."); E248 and the presentation policy moved to SYS-52. Earlier: finished and switched on in slot
+    3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
-  who: operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
-  reason: 'MS3 builds the typed record-only send and compact on-catalog; delivery and reply/attention are still unbuilt,
-    and harness send refuses every send while messaging is on. The operator placed E131/E175 and withdrew the consult
-    gate on 2026-11-10: finish the remaining three implementation slices with default-on at MS5b. Required Linux
-    qualification can hold the affected implementation and usable release; Windows qualification remains held/not run.'
+  who: operator (MS7, the real recorded exchange and sign-off)
+  reason: 'MS5 delivered the live and continuation paths. MS5b adds next-step and turn-end timing, records harness send,
+    pins the report''s coordination snapshot, and provides a read-only lost-message command. Fresh projects enable the
+    feature at init, while an operator can take the offer when an existing project has no setting. The remaining live
+    qualification and sign-off belong to the operator.'
   evidence:
-  - src/aew/policy/execution.py:138,149-150 (coordination.messaging and surface.presentation enums)
-  - 'src/aew/policy/execution.py:171-176 (messaging(): disabled unless the adopted policy says enabled)'
-  - src/aew/policy/execution.py:179-182 (presentation(); grep finds no caller of presentation() in src)
-  - src/aew/surface/contract.py (catalog and switch-registered message_send)
-  - src/aew/surface/run.py (_message_send, record-only result and turn-end refusal)
-  - src/aew/engine/coordination_ops.py:902 (_require_recordable)
-  - src/aew/engine/api.py (message_record_lead/worker, message_mark_shown and messaging_enabled passthroughs)
-  - src/aew/engine/primitives.py:136,176-177 (message.send declared, listed in NOT_STEPS)
-  - src/aew/engine/harness_ops.py:562 (harness_send, the HS1 path)
-  - src/aew/engine/harness_ops.py:827-838 (SNAPSHOT_RECORDED = False; run_messaging_snapshot always returns disabled)
-  - 'src/aew/engine/harness_ops.py:841-866 (send_route: with messaging on, project and snapshot always disagree, so :850-859
-    refuses MESSAGING_SNAPSHOT_MISMATCH with the ''cannot yet launch a run with coordination messaging on'' remedy at :855;
-    the HARNESS_SEND_NEEDS_STORE raise at :860-863 is unreachable until MS4)'
-  - src/aew/engine/store.py:313,320-375 (the seal check; acts only where a thread file exists, :331)
-  - src/aew/engine/api.py:542-544 (coordination.finalize among the commit finalizers)
-  - src/aew/cli/commands.py:150-153 and src/aew/cli/main.py:84 (aew message registered only while messaging is on or a thread
-    exists)
-  - 'grep: no message_send or harness send tool under src/aew/surface'
-  - docs/implementation/implementation-status.md:255-269 (MS0-MS2 and HS1 built; later slices on F9)
-  - 'docs/implementation/future-work.yaml (row E131, at c11a61ea) (E131: unscheduled, the operator''s to place, depends
-    on HOLD-09)'
-  - docs/implementation/future-work.yaml (row HOLD-09, at c11a61ea) (HOLD-09 members include F9, F9.1, F9.2, E55, E60)
+  - src/aew/policy/execution.py (messaging and the new-project switch table)
+  - src/aew/switch_offer.py (absent-key-only coordination_messaging offer)
+  - src/aew/surface/contract.py (switch-registered message_send)
+  - src/aew/engine/harness_ops.py (harness_send records while messaging is enabled)
+  - src/aew/harness/worker_messages.py (next-step and turn-end delivery, worker wait, and continuation admission)
+  - src/aew/engine/coordination_ops.py (report_snapshot, report_finality and message_lost)
+  - src/aew/cli/message_commands.py (message thread, list, unseen and lost)
+  - tests/integration/test_message_finality.py (finality, recovery and historical report compatibility)
+  - tests/integration/test_message_delivery.py (live and continuation receipts)
+  - docs/implementation/notes.d/E175/2026-11-25-feat-sys13-ms5-live-delivery.md
+  - docs/implementation/notes.d/E175/2026-11-25-feat-sys13-ms5b.md
 - id: SYS-14
   name: Knowledge system (Arm B raw-history search; M6b capture, admission and recall)
-  purpose: Capture, admit and recall project knowledge for agents; today only an explicit, switched full-text search over
-    archived history.
+  purpose: Capture, admit and recall project knowledge for agents; today only an explicit full-text search over archived
+    history, on for a new project, which the Lead reads through a relayed command.
   serves_claims:
     closing_works:
     - K-01's own increment, after V-01 (the operator's selection before I-7, 2026-10-25)
@@ -1668,25 +1614,25 @@ systems:
     key: recall.raw_history_search
     default: 'off'
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: explicit
     owner: operator
     turning_on_changes: explicit, once adopted, registers `aew history search` for an operator terminal or a Lead shell
-      (refused inside an invocation) and serves the dashboard's /history/search route and its web page; nothing becomes
-      visible to a model
+      (refused inside an invocation; the contained Lead's read is relayed to its broker, lead_broker.RELAYED_READS) and
+      serves the dashboard's /history/search route and its web page; no typed tool serves it. A new project holds explicit
+      (`aew init`'s template); an existing one without the key reads off and is offered it at the operator's terminal (the
+      switch offer's recall_raw_history_search row)
   state:
-    board_state: built_off
+    board_state: partly_built
     built: partly
     wired:
     - cli:history search
     - dashboard:/history/search
-    on_by_default: false
+    on_by_default: true
     used_in_default_flow: 'no'
   finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the Lead''s relayed read of
     it on by default (E185, A-57 KP-B1). After V-01: K-01''s L profile (Lessons nominated,
     admitted and served) and F35''s pack serving, built, on and exercised in a real run.'
   remaining:
-  - slice: 'The Lead''s read of Arm B, on by default: a relayed `aew` command, not a typed tool (A-57, KP-B1)'
-    row: E185
-    estimate: 1 PR (estimate)
   - slice: 'After V-01: K-01''s L profile and F35''s pack serving'
     row: F35
     estimate: 4-8 PRs (estimate)
@@ -1723,15 +1669,19 @@ systems:
   recommendation: freeze
   who: Lead (the Lead's relayed read, E185); workers with F15.3 (HOLD-06, the match places it)
   reason: Arm B is what the register's V-01 milestone selects for knowledge (history and source lookup only, K-01's H profile,
-    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off. The operator has answered whether agents
-    reach H. The Lead reads it through a relayed command, on by default (E185, A-57 KP-B1), and workers' search is part of
-    E253. The rest is after V-01.
+    future-work.yaml (§1 text, at c11a61ea)), on for a new project and absent while off. The operator has answered whether
+    agents reach H. The Lead reads it through a relayed command, on by default (E185, closed; A-57 KP-B1), and workers'
+    search is part of E253. The rest is after V-01.
   evidence:
-  - src/aew/engine/recall.py:1-8 off by default and absent while off; refused inside an invocation
-  - src/aew/engine/recall.py:97-108,140-151 the switch read from adopted bytes only, failing closed
-  - src/aew/engine/recall.py:149 on only when the adopted policy's raw_history_search == explicit
-  - src/aew/policy/execution.py:148 STRING_SWITCHES row for recall.raw_history_search, first value (the default) off
-  - src/aew/schemas/execution.schema.json:103 the schema default off
+  - src/aew/engine/recall.py module docstring on for a new project and absent while off; refused inside an invocation
+  - src/aew/engine/recall.py:recall_search_enabled, search_enabled the switch read from adopted bytes only, failing closed;
+    on only when the adopted policy's raw_history_search == explicit
+  - src/aew/policy/execution.py:STRING_SWITCHES row for recall.raw_history_search, first value (an absent key) off;
+    TEMPLATE writes NEW_PROJECT_RAW_HISTORY_SEARCH, explicit
+  - src/aew/switch_offer.py:OFFERS the recall_raw_history_search row offers an absent key explicit
+  - src/aew/harness/lead_broker.py:RELAYED_READS history search, relayed for the contained Lead; HistoryCommands.history_search
+    takes the lock-free committed path in a non-writer
+  - src/aew/schemas/execution.schema.json the schema default off
   - src/aew/cli/history_commands.py:17-20,88-99 `history search` registered only when recall_search is true
   - src/aew/cli/main.py:55-81,175 recall_search_for() decides registration from the adopted policy
   - src/aew/dashboard/server.py:321-330 /history/search is a conditional route
@@ -1793,10 +1743,7 @@ systems:
   finish_line: 'Frozen, not finished: `aew settings show` stays as the configuration read, and `aew init`''s first-configuration
     flags (E119) are the fresh-project path. No further F46 slice is built here: the settings write path (F46.2) and the
     web settings page (F46.4) retire into I-6 (SYS-29), and the unread project.profile field is dropped (E259).'
-  remaining:
-  - slice: Drop the unread project.profile field; placed on 2026-11-11 in the near-finish small fixes
-    row: E259
-    estimate: 1 small PR (estimate)
+  remaining: []
   decision: 'decided: the settings write path (F46.2) retires into I-6 (SYS-29); `settings show` and `aew init`''s flags
     stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations);
     the web settings page (F46.4) retires into I-6 too (operator, 2026-11-11: "yes the web seetings comes with teh rest
@@ -1846,7 +1793,6 @@ systems:
   - modules:aew.engine.assurance_ops
   - cli-commands:dispatch explain
   - cli-commands:plan lint
-  - tools:explain
   touches:
   - src/aew/engine/dispatch.py
   - src/aew/engine/assurance.py
@@ -1860,7 +1806,7 @@ systems:
     wired:
     - cli:dispatch explain
     - cli:plan lint
-    - tool:explain
+    - tool:work_show
     on_by_default: true
     used_in_default_flow: 'yes'
   finish_line: 'M4-A''s part is done (the guards are on and run on every mutating dispatch). The rest: the Workflow Contract
@@ -1891,7 +1837,7 @@ systems:
   - src/aew/engine/api.py:463,516-517 (Assurance built; every owner's dispatch guards registered)
   - src/aew/engine/api.py:782-800 (plan lint)
   - src/aew/cli/work_commands.py:305 (dispatch explain), :353 (plan lint), :327-339 (--assurance none, --review, --verify)
-  - src/aew/surface/contract.py:195 (explain tool); src/aew/surface/run.py:102,194; src/aew/surface/projection.py:315 (dispatch_explain)
+  - src/aew/surface/contract.py (work_show with explain true), src/aew/surface/run.py (_explain), src/aew/surface/projection.py (dispatch_explain)
   - 'grep: ''ASSURED'' appears in src only at src/aew/engine/dispatch.py:17'
   - docs/implementation/implementation-status.md:391-393 (Partly implemented (M4-A); gating dispatch on ASSURED needs a
     Workflow Contract amendment)
@@ -2006,15 +1952,6 @@ systems:
   as_built:
   - modules:aew.engine.ticket_fields
   - schemas:ticket-field-registry
-  - control-keys:unit:recorded_digests
-  - control-keys:unit:revisions
-  - control-keys:unit:revision_events
-  - control-keys:unit:revision_impact_holds
-  - control-keys:unit:revision_pending
-  - control-keys:unit:revision_refusals
-  - control-keys:unit:ticket_revision
-  - control-keys:unit:hierarchy_baseline
-  - control-keys:unit:coverage_obligations
   touches:
   - src/aew/engine/ticket_fields.py
   - src/aew/schemas/ticket-field-registry.v1.json
@@ -2031,29 +1968,16 @@ systems:
     on_by_default: false
     used_in_default_flow: 'no'
   finish_line: F4 per ADR-0016 and plan v8, slices S1 to S7, built and enabled for a project, with a revision recorded and
-    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe, and E126, E88 and
-    E87 done on their own rows.
+    confirmed in a real run, after HOLD-08's release. Until then the finish line is S1 dormant and safe; E87 is done on its own row.
   remaining:
-  - slice: 'E126: the Lead adds one exact test path to a Ticket''s scope, a pre-F4 correction F4 absorbs (on the Now list;
-      on its own row, not an F4 slice)'
-    row: E126
-    estimate: 1 PR (estimate, census)
-  - slice: 'E88: remove the nine reserved keys from the registry, after checking the coordination-message schema''s required
-      ticket_revision (on its own row)'
-    row: E88
-    estimate: 1 PR (estimate, census)
-  - slice: 'E87: a promotion carries a dropped parent''s obligations (carried_obligations) instead of being refused (on
-      its own row)'
-    row: E87
-    estimate: 1-2 PRs (estimate, census)
   - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds'
     row: F4
     estimate: about 15 PRs if released (estimate, census)
   decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
     stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: Lead for E126 (the freeze is decided)
-  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 proceed on their own rows. No
+  who: Lead (the freeze is decided; E87 is done)
+  reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 are complete. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
   evidence:
@@ -2063,14 +1987,12 @@ systems:
   - src/aew/schemas/__init__.py:41 (registry schema registered)
   - src/aew/engine/coordination_ops.py:80,942-944 (CONFIRMER_SCOPE = 'revision', RecipientIndependent); src/aew/schemas/control.schema.json:272-278
     (scope enum has no 'revision')
-  - src/aew/engine/coordination_ops.py:1009-1013 (a revision ref is refused, reason no_ticket_revisions), :1120 (ticket_revision
+  - src/aew/engine/coordination_ops.py:1666 (a revision ref is refused, reason no_ticket_revisions), :1773 (ticket_revision
     written as None)
   - src/aew/engine/stage_intents.py:527 (TRA-25 waits for F4)
-  - src/aew/schemas/ticket-field-registry.v1.json:71,81,100-105,109 (the nine reserved keys E88 removes)
-  - src/aew/engine/hierarchy_ops.py:54,667 (PROMOTION and the promotion check E87 changes)
-  - 'grep: no scope_correction or effective_scope in src (E126 unbuilt)'
-  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), :1111 (E87), :1122 (E88), :1490
-    (E126, on the Now list)'
+  - src/aew/engine/hierarchy_ops.py:58,172,827-828 (PROMOTION, and the carry E87 built); src/aew/engine/hierarchy.py:111 (ancestor_obligations)
+  - src/aew/engine/scope_ops.py effective_meta, the one accessor for a Ticket's effective scope (E126, built)
+  - 'docs/implementation/future-work.yaml (row HOLD-08, at c11a61ea) (HOLD-08: F4, F5), rows E87 (closed), E88 (closed), and E126'
 - id: SYS-19
   name: Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
   purpose: Make a validation record say exactly what was evaluated and what it did not check, and name setup problems before
@@ -2096,12 +2018,17 @@ systems:
   as_built:
   - modules:aew.snapshot.fingerprint
   - modules:aew.engine.validation_ops
+  - modules:aew.engine.coverage
+  - modules:aew.engine.selection
   - cli-commands:check run
+  - cli-commands:doctor
   - writers:work/{}/validation-runs/{}.yaml
   - schemas:evidence
   - dashboard-routes:/evidence/{id}
   touches:
   - src/aew/engine/validation_ops.py
+  - src/aew/engine/coverage.py
+  - src/aew/engine/selection.py
   - src/aew/engine/evidence_ops.py
   - src/aew/snapshot/fingerprint.py
   - src/aew/engine/workspace_ops.py
@@ -2111,10 +2038,15 @@ systems:
   - docs/implementation/vertical-uat.md
   depends_on: []
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
     wired:
     - cli:check run
+    - cli:integrate validate
+    - cli:status
+    - cli:doctor
+    - cli:harness status
+    - cli:harness wait
     - dashboard:/evidence/{id}
     on_by_default: true
     used_in_default_flow: partly
@@ -2123,37 +2055,34 @@ systems:
     lines reach the worker (E120); all exercised by the
     vertical driver and a real run. artifact_digests is dropped from the engine and working_diff removed (done). The remote
     validation provider stays Designed until it has acceptance.'
-  remaining:
-  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), with E243''s source for
-      the two lists its record now says are not known'
-    row: E120
-    estimate: 1-2 PRs (estimate)
-  - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 1 (the coverage declaration,
-      the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor)'
-    row: E243
-    estimate: 2 PRs (estimate)
+  remaining: []
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); unfrozen for the drop of artifact_digests and working_diff, and E243 placed inside the finish line (the operator,
     2026-11-11: "1. sire. 2. yup if it knows it tehn yes statre it", the Lead''s reading: "sure" and "state")'
   recommendation: finish
-  who: Lead (E120, E243)
-  reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
-    closed, and the two loose ends are gone (artifact_digests dropped from the engine, working_diff removed, ADR-0002 amended).
-    E243's contract is the designer's, about 2 PRs to first use. The
-    remote provider stays Designed only.
+  who: operator (adopt the project's declaration, exercise the real flow and sign off)
+  reason: 'Checks-mode validation records the adopted selector''s affected items and declared CI tools. Status and
+    completion carry the same recorded coverage. The worker sees failing lines, and harness status and wait disclose
+    undelivered skills. E125 and E153 supply the local setup checks. For first use, apply the reviewed declaration to
+    `.aew/policy/checks.yaml`, run `aew manifest adopt`, and exercise the real validation flow for sign-off. The remote
+    validation provider remains Designed.'
   evidence:
-  - src/aew/snapshot/fingerprint.py:383 (evaluated_snapshot carries no artifact_digests); :31 working_diff removed (2026-11-11,
-    no caller; packs diff the snapshot tree)
-  - src/aew/engine/workspace_ops.py:54 (its only caller)
-  - src/aew/dashboard/projections.py:662,678 (the dashboard keeps artifact_digests [] for contract 0.1.3)
-  - src/aew/engine/evidence_ops.py:900,1048 (evaluated_snapshot on every evidence record), :1060 (mutated_inputs)
-  - 'src/aew/engine/coverage.py:77-78: affected_tests and ci_tools are {known: false, reason: no_project_source} (E243)'
-  - src/aew/engine/validation_ops.py:50,314,398 (the coverage record E120's slices added)
-  - src/aew/engine/workspace_ops.py:269,303 ('readiness' is dependency readiness, not setup readiness)
-  - tests/acceptance/test_vertical_path.py:83 (seeded check-changes-snapshot cause), :94-97 (model-not-listed seed), :723
-    (V3_CASES), :729 and :731 (the model-not-listed and check-changes-snapshot cases, detected since E153 closed)
-  - 'docs/implementation/implementation-status.md:323-327 (Remote validation provider: Designed, no acceptance)'
-  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now)
+  - 'src/aew/engine/coverage.py, src/aew/policy/checks.py, src/aew/schemas/checks.schema.json: the operator-adopted CI
+    coverage declaration (E243 PR 1, merged at a31c6118); tests/unit/test_validation_coverage.py and tests/integration/test_validation_coverage_disclosure.py'
+  - src/aew/snapshot/fingerprint.py (`evaluated_snapshot` carries no `artifact_digests`, and the module docstring records
+    the removal of `working_diff` on 2026-11-11 because it had no caller and packs diff the snapshot tree)
+  - src/aew/engine/workspace_ops.py (`Invocations.snapshot_of`, the only caller of `evaluated_snapshot`)
+  - src/aew/dashboard/projections.py (`Projector.evidence_item` keeps `artifact_digests` empty for contract 0.1.3)
+  - 'src/aew/schemas/evidence.schema.json (`evaluated_snapshot` required on every evidence record) and
+    src/aew/engine/evidence_ops.py (`EvidenceCommands.check_run` records `mutated_inputs`)'
+  - 'src/aew/engine/selection.py and src/aew/engine/coverage.py: the pinned selector and declaration (E243)'
+  - 'tests/integration/test_validation_coverage_disclosure.py: known gaps and unknowns in the record, status and completion'
+  - 'tests/integration/test_worker_check_disclosure.py: failing check excerpt and unavailable skill across the real bridge'
+  - src/aew/engine/workspace_ops.py (`Assignment._g_readiness` checks dependency readiness)
+  - tests/acceptance/test_vertical_path.py (`configure` seeds `check-changes-snapshot` and `model-not-listed`, and
+    `test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket` verifies the `V3_CASES` diagnostics since E153 closed)
+  - 'docs/implementation/implementation-status.md, Remote validation provider (Designed, no acceptance)'
+  - docs/implementation/future-work.yaml (closed row E120 and its evidence note)
 - id: SYS-20
   name: G3 trusted operator origin (approvals)
   purpose: 'One trusted origin for the operator''s approvals: a PIN typed in a confirmer outside every sandbox approves
@@ -2373,8 +2302,9 @@ systems:
     the operator places it)
   - docs/implementation/future-work.yaml (row HOLD-10, at c11a61ea) HOLD-10 members
 - id: SYS-22
-  name: Specialist skills delivered to runs
-  purpose: Give worker runs the skills their role cards request, from AEW's own install, hash-pinned and labelled.
+  name: Specialist skills delivered to runs and the Lead
+  purpose: Give worker runs the skills their role cards request, and the Lead the skills of the manifest's `lead` list,
+    from AEW's own install, hash-pinned and labelled, by one exposure and copy mechanism.
   serves_claims:
     closing_works: []
     extra: []
@@ -2384,11 +2314,15 @@ systems:
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   - docs/skills/specification.md
   - docs/skills/evaluation-guide.md
+  - docs/implementation/adr/0006-role-archetypes-and-cards.md
+  design_unpublished:
+  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md
   register:
   - E127
   - E142
   - E136
   - E135
+  - E161
   as_built:
   - modules:aew.skills
   touches:
@@ -2401,10 +2335,17 @@ systems:
   - src/aew/knowledge/context.py
   - src/aew/surface/lead_text.py
   - docs/skills/**
+  - src/aew/harness/opencode/lead.py
+  - src/aew/engine/guide.py
   touches_new:
   - src/aew/skills/**
+  - tests/unit/test_lead_skills.py
+  - eval/skill_eval/**
+  - tests/unit/test_skill_eval.py
+  - tests/integration/test_skill_eval_opencode.py
   depends_on:
   - SYS-09
+  - SYS-01
   state:
     board_state: staged
     built: partly
@@ -2412,41 +2353,63 @@ systems:
     - pack
     on_by_default: false
     used_in_default_flow: partly
-  finish_line: 'E127''s four skills, then E142''s two (merged) and E136''s eleven, ship from AEW''s install with
-    a hash manifest, labelled unevaluated; a card''s requested and optional skills are offered and loaded; the run''s record
-    says what was offered and loaded; exercised in a real run; E135''s qualification before anything beyond the personal
-    alpha.'
+  finish_line: 'E127''s four skills, then E142''s two (merged) and E136''s eleven, ship from AEW''s install with a hash
+    manifest, labelled unevaluated; a card''s requested and optional skills are offered and loaded; the run''s record
+    says what was offered and loaded; exercised in a real run; E135''s evaluation runner built. E135''s qualification
+    is a release gate before anything beyond the personal alpha, kept on E135''s row, not a condition of finishing this
+    system (the operator, 2026-11-25). The Lead is one more recipient (E161): a `lead` list in the manifest (engineering-planning,
+    requirements-clarification, delegation-handoffs and, from E136''s fourth batch, ci-evidence-triage, all optional) read by `lead_config` through the same helper that
+    decides exposure for a run; the contained Lead gets its own rule list (allow each exposed id, deny every other, compatibility
+    plugin off, skills copied into a folder of each start''s own, bound read-only); the uncontained Lead gets AEW''s path
+    and ids with other skills left at ask; exposed and loaded skills recorded in the Lead session''s own record, with
+    listing and loaded-body cost measured; the Lead''s text names its skills, derived from the list; a live Windows test
+    checks the absolute `skills` path and a colliding id; exercised in a real Lead run. AEW-declared MCP servers are not
+    in the Lead''s alpha.'
   remaining:
-  - slice: 'E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text
-      check; after E142'
-    row: E136
-    estimate: about 3 batched PRs (estimate)
-  - slice: 'E135: the evaluation runner, and qualification before anything beyond the personal alpha'
-    row: E135
-    estimate: 1 PR for the runner (estimate), plus operator-approved spend
+  - slice: 'the Lead''s skills (E161), built: the `lead` list and its skills, delegation-handoffs among them, the
+      per-mode rules, a copy in a folder of each start''s own, the Lead''s text and the exposed skills in its record.
+      Left: the operator''s live checks, tests/live/test_lead_skills_live.py on Windows (the absolute `skills` path, a
+      colliding id, the listing''s and a loaded body''s cost, and which skills were loaded) and a real Lead run; the Lead''s
+      record does not count loads, since its server ends with its TUI, so the live test counts them'
+    row: E161
+    estimate: no build PR; the operator's live session
   decision: 'decided: E142 at the end of slot 3 (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md));
-    E136 unfrozen (the operator, 2026-11-11: "Also yes serve the skills.")'
+    E136 unfrozen (the operator, 2026-11-11: "Also yes serve the skills."); the Lead''s skills are part of this system
+    (the operator, 2026-11-25: "To me this is part of the overarching skills system and isnt a seperate system from other
+    skills work only difference is who is getting a skill"); E135''s qualification is a release gate, not a condition
+    of finishing (the operator, 2026-11-25: "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md)'
   recommendation: finish
   who: Lead
-  reason: 'E127 and E142 ship six skills from AEW''s install, E142''s two, with every built-in card''s requested
-    skill shipping; E136''s first batch adds two optional ones, so eight ship (as of 9930f167). The system stays staged
-    for the rest of the rollout; E136''s other nine optional skills follow, and E135''s qualification is still owed.'
+  reason: E127 and E142 ship six skills from AEW's install, E142's two, with every built-in card's requested skill shipping;
+    E136's first batch adds two optional ones, E161 the Lead's three, E136's second batch two more and its third `technical-writing`,
+    with the `technical_writer` card that requests it (E167); what ships is what the manifest lists. The system stays
+    staged for the rest of the rollout. E136's fourth batch adds `empirical-evaluation` and `ci-evidence-triage`, the
+    second also on the Lead's list. E136's final delivery adds both optional security skills to `security_reviewer`.
+    Every installed card requests one foundational skill, including the dedicated `source-research`, `general-implementation`
+    and `plan-review` (E396, E397, E398). E395 tracks the Frontend Engineer proposal and its designer sign-off. Also
+    E135's evaluation runner is built (eval/skill_eval, on SYS-01's instrument); its qualification
+    is a release gate on E135's row, outside the finish line. The Lead's skills (E161) are built and wait on the operator's
+    live checks.
   evidence:
-  - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
-    verifier.yaml:11 cards request skills
+  - src/aew/roles/cards/code_reviewer.yaml:16, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
+    verifier.yaml:11 cards request skills, as technical_writer.yaml does (`technical-writing`); after E396–E398
+    every built-in card requests exactly one
   - 'src/aew/skills/__init__.py:1-25 the skills AEW''s install ships (E127): a hash manifest, plan() and deliver(); src/aew/skills/manifest.json
-    lists eight as of 9930f167, each labelled unevaluated (acceptance-verification, adversarial-review, c-development,
-    python-development, E142''s c-review and security-review, and E136''s codebase-investigation and debugging-root-cause-analysis),
+    lists what ships, each labelled unevaluated (acceptance-verification, adversarial-review, c-development, python-development,
+    E142''s c-review and security-review, E136''s codebase-investigation, debugging-root-cause-analysis, test-design,
+    mechanical-enumeration, technical-writing, empirical-evaluation and ci-evidence-triage, and E161''s delegation-handoffs,
+    engineering-planning and requirements-clarification),
     with every built-in card''s requested skill shipping'
   - src/aew/engine/harness_ops.py:61, :407-408 the pinned card's skills and optional skills go on the launch contract
   - src/aew/harness/opencode/projection.py:125-133 skills() takes the launch contract's plan from aew.skills
   - src/aew/knowledge/context.py:217-221 the pack names the card's skills and its optional skills
   - docs/skills/README.md:3-5 the candidates are documentation, 'not ... an installed skill catalog'
   - 'docs/implementation/future-work.yaml (the Now list''s E127 line, at c11a61ea): E127, E142 and E136'
-  - 'docs/implementation/future-work.yaml (row E127, at c11a61ea) E127 runs ''after CAP-1 PR 2, since both change the same
-    binds''; BOARD v2 §7: E127 and E123 both touch containment/layout.py'
-  - 'docs/implementation/future-work.yaml (row E135, at c11a61ea) E135: runner not built; earlier result no detectable benefit
-    at about 1.5 times the cost'
+  - 'docs/implementation/future-work.yaml (row E127, at c11a61ea) E127 runs ''after CAP-1 PR 2, since both change the
+    same binds''; BOARD v2 §7: E127 and E123 both touch containment/layout.py'
+  - 'eval/skill_eval/__init__.py:1-25 E135''s evaluation runner: a shipped skill''s paired runs on the evaluation instrument
+    (cases, the two arms, the paired plan''s checks, the budgeted schedule, the report), proved offline in tests/unit/test_skill_eval.py
+    and against the fake OpenCode server in tests/integration/test_skill_eval_opencode.py; no model has run it'
 - id: SYS-23
   name: Declared-but-unenforced policy and role-card fields
   purpose: Keep designed policy and role features (dependency-direction rules, card path limits, typed output contracts,
@@ -2660,12 +2623,13 @@ systems:
     it running. Only E123 is live work, the gate before a provider that requires a client certificate; BOARD v2 §4 freezes
     the rest (gateway, usage convergence, routing policy, reference profiles) in HOLD-20.'
   evidence:
-  - src/aew/harness/containment/relay.py:1-23 (credential swap for a sentinel, one fixed upstream; a host-local upstream
+  - src/aew/harness/containment/relay.py:1-83 (credential swap for a sentinel, one fixed upstream; a host-local upstream
     such as F18.8's gateway is allowed)
-  - 'src/aew/harness/containment/relay.py:449-454 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor and no
-    load_cert_chain); a grep of src/ for load_cert_chain, client_cert, certfile, keyfile and mTLS finds nothing'
-  - 'src/aew/schemas/execution.schema.json: no certificate, key or CA field (a case-insensitive grep for ''cert'' and ''tls''
-    finds none)'
+  - 'src/aew/harness/containment/relay.py:1570-1575 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor, for
+    a provider with no client certificate); the client certificate is E123''s, SYS-47: src/aew/harness/containment/client_cert.py:185-196
+    (context: load_cert_chain from the policy''s files). The gateway itself is not built: no other load_cert_chain in src/'
+  - 'src/aew/schemas/execution.schema.json:73 (client_certs, E123''s, SYS-47): the gateway, usage convergence and routing
+    policy have no field of their own'
   - src/aew/harness/containment/__init__.py:70-78 (containment mode is 'required' unless the policy says otherwise where
     containment is supported; Windows runs allow_weaker)
   - 'src/aew/harness/containment/netns.py:82-87 (network mode defaults to proxy_only on Linux, the relay''s route; Windows:
@@ -3229,10 +3193,15 @@ systems:
   serves_pending: []
   design:
   - docs/contracts/A-45/O02-POSITION.md
-  - docs/contracts/A-12/A-12__AEW-D01-shared-read-wire-contract-candidate-v0.3.2.md
+  - docs/contracts/A-25/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml
   register:
   - E108
-  as_built: []
+  as_built:
+  - cli-commands:read
+  - entry-points:aew read
+  - modules:aew.stg02.outage
+  - modules:aew.stg02.outage_store
+  - modules:aew.stg02.outage_host
   touches:
   - src/aew/cli/commands.py
   - src/aew/process_kind.py
@@ -3241,41 +3210,41 @@ systems:
   - docs/implementation/surface-map.yaml
   touches_new:
   - src/aew/cli/read_commands.py
+  - src/aew/stg02/outage.py
+  - src/aew/stg02/outage_store.py
+  - src/aew/stg02/outage_host.py
+  - docs/implementation/outage-reader-host-gate.md
   - tests/unit/test_outage_reader.py
   depends_on:
   - SYS-02
   - SYS-29
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired:
+    - cli:read
+    on_by_default: true
     used_in_default_flow: 'no'
   finish_line: aew read <route> answers all twenty reads (twelve served, eight unsupported each naming where to read instead),
     with no stamp present_current or qualified and an empty list reading 'none committed as of'; it is declared a non-writer
     and tested to take no lock, run no recovery and write nothing; its surface-map entry ships in the same PR; and O02-Q01
     to O02-Q08 pass on a Linux host where containment holds, which is that host's G4 record. Windows never qualifies.
   remaining:
-  - slice: 'E108: the aew read command over the store, reusing the D-01 wire''s stamps without the server; the eight served
-      reads not yet built anywhere; the non-writer declaration and tests; the surface-map entry'
-    row: E108
-    estimate: 2-3 PRs (estimate; BOARD v2 §2)
   - slice: 'G4: O02-Q01 to O02-Q08 run host by host on Linux once containment holds there'
     row: E108
     estimate: a per-host run, no PR (estimate)
   decision: none
   recommendation: finish
   who: Lead
-  reason: Adopted (A-45), exempt from the hold, and needing no new wire or principal, so it is the least blocked of BOARD
-    v2 §2's V-01 builds; it is placed at V-01, not on the Now list. Nothing named a reader exists; the STG-02 slice serves
-    four of the twenty reads, only through its running server.
+  reason: The independent read command is built over the committed store. Linux host qualification awaits the operator's
+    live O02-Q01 to O02-Q08 results on each host where G3-12 containment holds.
   evidence:
-  - src/aew/cli/main.py:43-44 the top-level parsers come from commands.register; no add_parser("read") exists anywhere under
-    src/aew/cli
-  - src/aew/stg02/reads.py:1-8 the slice's four D-01 0.3.4 reads, served by its HTTP producer (src/aew/stg02/server.py:7-12)
-  - src/aew/stg02/adopted/aew-d01-read-v0.3.4-FULL.schema.json the adopted read schema the reader would reuse
-  - src/aew/process_kind.py:34-54 the entry-point registry where the reader would be declared NON_WRITER
-  - docs/implementation/future-work.yaml (row E108, at c11a61ea) E108's work, source and V-01 target
+  - src/aew/cli/read_commands.py (operator command and renderings)
+  - src/aew/stg02/outage.py (the D-01 profile and response semantics)
+  - src/aew/stg02/outage_store.py (committed readers and integrity reporting)
+  - src/aew/process_kind.py (aew read declares itself a non-writer)
+  - tests/unit/test_outage_reader.py (D-01 route conformance, non-writing and degradation cases)
+  - docs/implementation/outage-reader-host-gate.md (live gate and host evidence location)
 - id: SYS-33
   name: Offline install bundle, release signing, upgrade and recovery
   purpose: Install AEW with no network from one signed, verified bundle, and upgrade, roll back or move an installation
@@ -3757,13 +3726,10 @@ systems:
     used_in_default_flow: 'yes'
   finish_line: 'Built, on, and used every time a Ticket integrates, and E151''s launch conflict check merged. mutating_concurrency
     is 2 for a new project, proven by a scripted test, two scripted workers integrating one after the other (tests/regression/test_concurrency_two.py),
-    and an existing project is offered the default at the operator''s terminal (the shared switch offer, built). Still owed:
-    E225, and a real run with two mutating workers, which the operator''s sign-off needs.'
-  remaining:
-  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in
-      the near-finish small fixes'
-    row: E225
-    estimate: 1 PR (estimate)
+    and an existing project is offered the default at the operator''s terminal (the shared switch offer, built). AEW''s git
+    wrapper never acts on the wrong repository from inside a git operation (E225). Still owed: a real run with two mutating
+    workers, which the operator''s sign-off needs.'
+  remaining: []
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
   who: Lead
@@ -3802,14 +3768,17 @@ systems:
   - designer-decisions-2026-11-06-lead-small-changes-and-reports-v2.md
   register:
   - E157
-  as_built: []
+  as_built:
+  - tools:report_write
+  - cli-commands:report show
+  - modules:aew.engine.reports
+  - schemas:report
   touches:
   - src/aew/surface/contract.py
   - src/aew/surface/run.py
   - src/aew/engine/resume_ops.py
   - src/aew/engine/guide.py
   - src/aew/cli/commands.py
-  - src/aew/dashboard/**
   - docs/implementation/surface-map.yaml
   touches_new:
   - src/aew/engine/reports.py
@@ -3818,39 +3787,29 @@ systems:
   depends_on:
   - SYS-06
   state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired:
+    - tool:report_write
+    - cli:report show
+    on_by_default: true
     used_in_default_flow: 'no'
-  finish_line: A `report_write` tool on the Lead's MCP server, carried out by AEW as `checkpoint` is, writing a report record
-    kind held outside evidence (refused by every evidence, plan and gate resolver, kept out of worker packs and derived
-    knowledge, each pinned by a test), with a size bound per report and a count bound per session stated in the code, listed
-    by id and title only in `resume` and the Lead's projection, its body shown on an explicit read with control sequences
-    escaped (terminal) and no raw HTML or remote fetches (site), labelled a Lead-authored, unreviewed report and not evidence;
-    the Lead's text says when to write one; exercised in a real Lead run.
-  remaining:
-  - slice: 'report_write: the tool, the report record kind and its store, the resolver refusals and pack exclusion, the
-      size and count bounds, the show command and the site view, the label, and the Lead''s text (small-changes design §4;
-      first in the alpha list, §7 item 5)'
-    row: E157
-    estimate: 1 PR (estimate; the designer's reading, small-changes design §6)
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-    pointer on item 4)'
+  finish_line: In a real Lead session, ask the Lead to use `report_write` for a short explanation. Follow the returned
+    `aew report show <id>` command, check the body and provenance label, then confirm that `resume` lists the id and title.
+  remaining: []
+  decision: 'decided: ship the backend and reusable plain-text read in E157. The dashboard route, C0 approval, UI and
+    browser verification belong to the separate frontend build (operator, 2026-11-26).'
   recommendation: finish
   who: Lead
-  reason: Adopted 2026-11-06 (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md item 4) and placed in the
-    alpha after the first-use list (item 8); first in the designer's alpha order (consult design, Placement); the register
-    row is the Lead's to file (the designer's reading, workspace record, 'How it is applied').
+  reason: The typed operation records an immutable report in one transaction under the existing Lead credential. Reports
+    have their own bounded store and explicit reads. The Lead receives the id and title in its summaries. The operator
+    retains the live Lead and CLI sign-off.
   evidence:
   - designer-decisions-2026-11-06-lead-small-changes-and-reports-v2.md §4 (the design), §6 (cost), §7 item 5 (order)
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 4 and 8 (adoption and placement)
-  - 'src/aew/surface/contract.py:218-225: `checkpoint` is the one normal-profile mutation, a single engine transaction;
-    no `report_write` tool exists (no match for report_write anywhere in the tree at c11a61ea)'
-  - 'src/aew/surface/contract.py:153-154: NOTE_MAX = 8000, the handoff-text bound whose reasons the report''s size bound
-    is to follow'
-  - 'src/aew/harness/opencode/projection.py:217: the Lead''s rules deny `edit`, which report_write leaves unchanged'
+  - src/aew/engine/reports.py (bounded store, provenance and snapshot-scoped plain-text accessor)
+  - tests/unit/test_report_write.py (bounds, record identity, resolver and pack isolation, explicit read)
+  - tests/integration/test_lead_mcp.py (the broker session writes a report and the returned CLI command reads it)
 - id: SYS-41
   name: Lead consult (spawn a non-mutating agent for the Lead's own question)
   purpose: Let the Lead spawn a read-only agent (investigator, researcher, planner, later branch_reviewer) for its own question
@@ -4057,6 +4016,7 @@ systems:
   - designer-decisions-2026-11-06-planner-staffing-and-plan-assessor-v2.md
   register:
   - E160
+  - E366
   as_built: []
   touches:
   - src/aew/knowledge/evidence.py
@@ -4079,8 +4039,8 @@ systems:
   depends_on:
   - SYS-08
   state:
-    board_state: designed_only
-    built: 'no'
+    board_state: partly_built
+    built: partly
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
@@ -4092,12 +4052,6 @@ systems:
     a `plan_assessor` card; the Lead's staffing text names the two planner triggers, tested in the text a run receives;
     exercised in a real class 1 run. The Lead-change route is exempt at class 1.
   remaining:
-  - slice: the `plan_assessment` kind, its schema and the revision binding
-    row: E160
-    estimate: 'about 1 PR (estimate; the designer''s reading, planner design Q3: 3-4 PRs in all)'
-  - slice: the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule
-    row: E160
-    estimate: about 1 PR (estimate; same source)
   - slice: the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with
       the waiver refusal, and the operator's dismissal
     row: E160
@@ -4117,10 +4071,9 @@ systems:
   - designer-decisions-2026-11-06-planner-staffing-and-plan-assessor-v2.md Q1 (planner triggers), Q2 (the ruled gate, kind,
     binding and card), Q3 (cost and placement), adoption pointer
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 5 and 8
-  - 'src/aew/knowledge/evidence.py:24: the reviewer archetype''s only evidence kind is `review`; no `plan_assessment` kind
-    exists'
-  - 'src/aew/roles/archetypes/reviewer.yaml:13: engine_operations are submit.review and context.read only'
-  - 'src/aew/roles/archetypes/reviewer.yaml:28: `requires_distinct_invocation_from` is card data; no Python module in src/
+  - 'E160 slice 1: the `plan_assessment` kind, its schema and the revision binding (`aew.knowledge.evidence`);
+    a plan assessor dispatched with `aew plan assess` (E160 slice 2a) submits one, and no gate reads it yet'
+  - 'src/aew/roles/archetypes/reviewer.yaml:30: `requires_distinct_invocation_from` is card data; no Python module in src/
     or tests/ reads it'
   - 'src/aew/knowledge/manifest.py:29-39: no class path carries a plan assessment gate'
   - 'src/aew/engine/evidence_ops.py:1491-1492: a gate is waivable only when listed in the policy''s waivable_gates (:1489-1490
@@ -4128,76 +4081,6 @@ systems:
   - 'src/aew/roles/cards/planner.yaml:13-14: the planner card exists (skills [], outputs plan_proposal)'
   - 'src/aew/engine/guide.py:291 and :412: the Lead''s text names the planner without saying when to staff it'
   - no match for plan_assessment or plan_assessor in src/ at c11a61ea
-- id: SYS-44
-  name: Lead skills (a lead list in the skill manifest; no MCP servers in the alpha)
-  purpose: Give the Lead optional skills by fit through E127's exposure mechanism, from a `lead` list in AEW's skill manifest,
-    with per-mode rules and recorded exposure and cost.
-  serves_claims:
-    closing_works: []
-    extra: []
-  serves_pending: []
-  design: []
-  design_unpublished:
-  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md
-  register:
-  - E161
-  as_built: []
-  touches:
-  - src/aew/harness/opencode/projection.py
-  - src/aew/harness/opencode/lead.py
-  - src/aew/engine/guide.py
-  touches_new:
-  - src/aew/skills/**
-  - tests/unit/test_lead_skills.py
-  depends_on:
-  - SYS-22
-  state:
-    board_state: designed_only
-    built: 'no'
-    wired: []
-    on_by_default: false
-    used_in_default_flow: 'no'
-  finish_line: A `lead` list in E127's skill manifest (engineering-planning, requirements-clarification, delegation-handoffs,
-    all optional) read by `lead_config` through the same helper that decides exposure for a run; the contained Lead gets
-    its own rule list (allow each exposed id, deny every other, compatibility plugin off, skills copied to the session's
-    private state); the uncontained Lead gets AEW's path and ids with other skills left at ask; exposed and loaded skills
-    recorded in the Lead session's own record, with listing and loaded-body cost measured; the Lead's text names its skills,
-    derived from the list; a live Windows test checks the absolute `skills` path and a colliding id; exercised in a real
-    Lead run. AEW-declared MCP servers are not in the alpha.
-  remaining:
-  - slice: 'the Lead''s skills: the `lead` list, per-mode rule lists in `lead_config`, the records and cost measures, the
-      Lead''s text and the live tests (skills design (a)); after E127'
-    row: E161
-    estimate: 1 PR (estimate; the designer's reading, skills design (e))
-  - slice: 'deliver the skill bodies the list names that E136 carries: engineering-planning and requirements-clarification
-      (rides on SYS-22''s E136)'
-    row: E136
-    estimate: inside SYS-22's estimate
-  - slice: 'deliver delegation-handoffs, which is not among E136''s eleven: unevaluated, alpha only, labelled (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
-      item 6)'
-    row: E161
-    estimate: not estimated in the design
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
-    pointer on item 4)'
-  recommendation: finish
-  who: Lead
-  reason: 'Adopted 2026-11-06: delegation-handoffs added for the Lead, no MCP servers beyond AEW''s own in the alpha, placed
-    in the alpha after the first-use list (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 6-8);
-    last in the designer''s alpha order, after E127; the row is the Lead''s to file (the designer''s reading, workspace
-    record, ''How it is applied'').'
-  evidence:
-  - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md (a), (b), (e) and the adoption pointer
-  - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md items 6-8
-  - 'src/aew/harness/opencode/projection.py:212-221: LEAD_RULES is one constant with no skill rule, so skills fall to the
-    `*` ask rule at :213'
-  - 'src/aew/harness/opencode/projection.py:340-363: `lead_config` sets no skills entry'
-  - 'src/aew/harness/opencode/projection.py:104-105: the invocation rules deny `skill` and allow each exposed id, the shape
-    the Lead''s contained rules would take'
-  - 'src/aew/harness/opencode/lead.py:55: the operator''s own config file passes through for the uncontained Lead; :124
-    disables project config'
-  - 'no match for optional_skills in src/ at c11a61ea: E127''s mechanism is not built yet'
-  - register row D3 (closed 2026-10-24, absorbed into STG-15) held 'Skills for AEW agents (Lead and role skills)'
 - id: SYS-45
   name: Branch review and document work (ref_review, technical_writer)
   purpose: 'Make documents and branch reviews work AEW can do: a `technical_writer` card for delegated docs, a raw-body
@@ -4221,6 +4104,7 @@ systems:
   - src/aew/engine/authority.py
   - src/aew/roles/archetypes/investigator.yaml
   - src/aew/roles/cards/code_reviewer.yaml
+  - src/aew/roles/cards/technical_writer.yaml
   - src/aew/engine/history_ops.py
   - src/aew/cli/main.py
   - src/aew/cli/commands.py
@@ -4228,15 +4112,28 @@ systems:
   - src/aew/cli/history_commands.py
   - src/aew/dashboard/**
   - docs/implementation/surface-map.yaml
-  touches_new:
+  - src/aew/workspace/git.py
+  - src/aew/workspace/worktrees.py
+  - src/aew/engine/assurance_ops.py
+  - src/aew/engine/dispatch.py
+  - src/aew/engine/dependencies.py
+  - src/aew/engine/context_ops.py
+  - src/aew/engine/role_ops.py
+  - src/aew/engine/work_ops.py
+  - src/aew/knowledge/context.py
+  - src/aew/surface/contract.py
+  - src/aew/surface/availability.py
+  - src/aew/schemas/ticket-field-registry.v1.json
   - src/aew/roles/cards/branch_reviewer.yaml
-  - src/aew/roles/cards/technical_writer.yaml
+  - src/aew/engine/ref_review.py
   - tests/unit/test_ref_review.py
+  - tests/integration/test_ref_review_flow.py
+  touches_new: []
   depends_on:
   - SYS-22
   state:
-    board_state: designed_only
-    built: 'no'
+    board_state: partly_built
+    built: partly
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
@@ -4247,29 +4144,35 @@ systems:
     moved' without gating, under a `branch_reviewer` card on the investigator archetype; exercised in a real run that ends
     with a document the operator reads.
   remaining:
-  - slice: the `technical_writer` card and `technical-writing` on `code_reviewer`, as data through the skills batches (skills
-      design (c)) (rides on SYS-22's E136) (rides on SYS-22's E136 batches)
-    row: E167
-    estimate: inside SYS-22's estimate
-  - slice: raw-body retrieval of any record, CLI and site, with its surface-map entry (skills design (c))
+  - slice: 'the site''s half of the raw-body read (skills design (c)); the CLI half is built, `aew record body` with its
+      surface-map entry, for a work unit''s record, an evidence record, a plan revision and a decision record (E170''s
+      notes of 2026-11-26 and 2026-11-27)'
     row: E170
-    estimate: 1 small PR (estimate; the designer's reading, skills design (e))
-  - slice: 'a review of a named ref: ref pinning and merge-base at dispatch, the `ref_review` kind and its freshness, the
-      archetype''s new kind, the `branch_reviewer` card and its skill-fit check (skills design (d))'
+    estimate: 1 small PR, the web developer's (estimate; the designer's reading, skills design (e))
+  - slice: 'a review of a named ref, its Lead-facing read side: `work show`, `status` and `resume` say the ref has moved
+      with the redispatch, the dashboard projection gains `review_ref` and the pin, the Lead guide names `branch_reviewer`
+      (skills design (d)); the pin, the `ref_review` kind, its freshness and the card are built (E168 PR 1, its note of
+      2026-11-27)'
     row: E168
-    estimate: 1-2 PRs (estimate; the designer's reading, skills design (e))
-  decision: 'decided: waits until the limit''s count is under N = 12; build slots go to finishing, switching on and testing
-    whole features first (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
+    estimate: 1 PR (estimate; E168's plan, PR 2)
+  decision: 'decided: it holds a slot while it is worked toward testing and sign-off (the operator, 2026-11-26, on its
+    move to partly_built: "Sure thats fine as long as its being actively worked towards being ready to be tested and signed
+    off on and not just partially built and left in that state."). Before that it waited until the limit''s count was
+    under N = 12 (operator, 2026-11-06, relayed by the Lead; design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md,
     pointer on item 4)'
   recommendation: finish
   who: Lead
-  reason: Placed in the alpha after the first-use list with the Lead's other items (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
+  reason: The writer card landed through SYS-22's third skills batch (E167); the raw-body read (E170) and the review of
+    a named ref (E168) are what is left. Placed in the alpha after the first-use list with the Lead's other items (2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md
     item 8; BOARD v2 §2); the writer card rides the skills batches; the other rows are the Lead's to file (the designer's
     reading, workspace record, 'How it is applied'). The skills design (e) had recommended the ref review after first use
     unless wanted for the alpha's SPT work; BOARD v2 §2 places it with the other 11-06 designs, in the alpha after first
     use.
   evidence:
   - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md (c), (d), (e)
+  - 'src/aew/roles/cards/technical_writer.yaml: the card, on the implementer archetype with `skills: [technical-writing]`;
+    src/aew/roles/cards/code_reviewer.yaml offers `technical-writing` in `optional_skills` (E167, closed with E136''s
+    third batch); no run has used the card'
   - 2026-11-06-operator-Lead-leeway-Lead-change-planner-and-tooling.md item 8
   - 'src/aew/engine/nonmutating_ops.py:250-260: `dispatch_observer` already allocates a read-only observation at any given
     commit'
@@ -4281,7 +4184,7 @@ systems:
   - 'src/aew/engine/history_ops.py:132-164: `history_show` returns the record inside a structured result, found through
     the archive index (:107-119)'
   - 'src/aew/cli/main.py:25-27: `emit` prints any non-string result as JSON, so a body comes out as an escaped string'
-  - src/aew/roles/cards/ holds no technical_writer or branch_reviewer card at c11a61ea; no match for ref_review in src/
+  - src/aew/roles/cards/ holds no branch_reviewer card; no match for ref_review in src/
 - id: SYS-46
   name: The V-01 command wire after I-6 (I-7's O-01 0.9, and the I-1 to I-5 commands in O-01 0.7 and 0.8)
   purpose: Give every operator and Lead action V-01 needs a typed O-01 command with its refusals, so the slice is driven
@@ -4392,18 +4295,18 @@ systems:
     through as the upstream sent it; how OpenCode backs off on it is not measured (E123''s note of 2026-11-09). Split from
     the frozen gateway (SYS-25) so the freeze does not stop it.'
   evidence:
-  - 'src/aew/harness/containment/client_cert.py:49-50 (the policy field containment.network.client_certs and its cert,
-    key and ca files), :184 (context: the relay''s TLS context presents the certificate)'
-  - 'src/aew/schemas/execution.schema.json:65 (client_certs, legality_affecting)'
-  - 'src/aew/harness/containment/relay.py:487-499 (a handshake failure answers 502 client_cert_required or client_cert_refused,
+  - 'src/aew/harness/containment/client_cert.py:50-51 (the policy field containment.network.client_certs and its cert,
+    key and ca files), :185-196 (context: the relay''s TLS context presents the certificate)'
+  - 'src/aew/schemas/execution.schema.json:73 (client_certs, legality_affecting)'
+  - 'src/aew/harness/containment/relay.py:1586-1609 (a handshake failure answers 502 client_cert_required or client_cert_refused,
     naming the policy field)'
   - 'src/aew/engine/workspace_ops.py:225-227 (a launch with no relay refuses the provider, client_cert.NO_RELAY); src/aew/engine/readiness.py:65-67
     (aew doctor''s client-cert row)'
   - 'docs/implementation/future-work.yaml (row E123): closed'
 - id: SYS-48
   name: Build board and systems generator (E182)
-  purpose: 'Keep the build board''s data in the repository and checked by CI: one entry per system, ownership checked both
-    ways against the register, the views rendered, and state read from the code.'
+  purpose: 'Keep the build board''s data in the repository and checked by CI: one entry per system, ownership checked
+    both ways against the register, the views rendered, and state read from the code.'
   serves_claims:
     closing_works: []
     extra: []
@@ -4413,6 +4316,7 @@ systems:
   - the build board's FORMAT.md (draft 3)
   register:
   - E182
+  - E365
   as_built: []
   touches:
   - tools/systems.py
@@ -4421,21 +4325,417 @@ systems:
   - docs/implementation/systems.md
   depends_on: []
   state:
-    board_state: partly_built
-    built: partly
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired: []
+    on_by_default: true
+    used_in_default_flow: 'no'
+  finish_line: CI fails on an unowned register row, a line citation in a hand-kept field, or a count above N; systems.md
+    is rendered and compared; switch and wired state are read from the code (E182's done line, done). Deriving serves
+    and lanes, E182's own later work, is E365's, outside this finish line (the operator, 2026-11-25), until the requirements
+    trace is in the repository.
+  remaining: []
+  decision: 'decided: placed now, PR 1 first (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-generator-placement.md);
+    serves and lanes dropped from the finish line, so it awaits the operator''s sign-off (the operator, 2026-11-25: "yes
+    to the recommendations", on the Lead''s finish plan of that day, finish-plan.md)'
+  recommendation: finish
+  who: operator (the sign-off)
+  reason: 'E182''s done line holds, so it closed on 2026-11-25: `python tools/systems.py check` fails on an unowned Now
+    row, a line citation in a hand-kept field, or a count above N without the operator''s allowance; it renders and compares
+    systems.md, and reads table-owned switch defaults and wiring from the code. It is on in the fast lane for every pull
+    request; it is repository tooling, not a step of AEW''s default flow. Nothing the finish line names is left to build:
+    serves and lanes, which wait for the requirements trace, are E365, an open Unscheduled row this entry owns outside
+    its finish line.'
+  evidence:
+  - design workspace 00-governance/decisions/2026-11-06-operator-board-generator-placement.md
+  - tools/systems.py:1-48 (the check's rules, render and show); tests/unit/test_systems.py in the fast lane
+  - 'docs/implementation/future-work.yaml (row E182): closed 2026-11-25; row E365, its later work'
+- id: SYS-49
+  name: Containment follow-ons (Windows containment, CS-4 addenda 12 to 14, a headless contained Lead)
+  purpose: 'The containment work moved out of SYS-02''s finish line on 2026-11-25: Windows containment (the backend, its
+    network with the Lead''s usage there, and the std handles fix), the CS-4 addenda 12 to 14, and a headless contained
+    Lead for the live lane.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/contracts/A-33/BUILD-BRIEF-PROPOSED.md
+  - docs/design/network-containment-design-v0.2.md
+  register:
+  - E113
+  - F48
+  - E222
+  - E250
+  as_built: []
+  touches:
+  - src/aew/harness/containment/__init__.py
+  - src/aew/harness/procs.py
+  - src/aew/harness/opencode/lead.py
+  - src/aew/doctor.py
+  depends_on:
+  - SYS-02
+  state:
+    board_state: designed_only
+    built: 'no'
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
-  finish_line: CI fails on an unowned register row, a line citation in a hand-kept field, or a count above N; systems.md
-    is rendered and compared; switch and wired state are read from the code (E182's done line).
+  finish_line: 'Windows contained as Linux is: F48''s backend, E222''s network containment with the Lead''s usage on Windows,
+    and E250''s std handles, with Windows qualified in a real run; CS-4 addenda 12 to 14 filed as rows and built; E113''s
+    headless contained Lead exercising containment in the live lane. Until the operator places it, Windows keeps its label
+    and doctor''s UNQUALIFIED line.'
   remaining:
-  - slice: Derive serves and lanes (E182's later work).
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      E113: a headless contained OpenCode Lead, so the live lane exercises containment'
+    row: E113
+    estimate: 1-2 PRs (estimate; census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      CS-4 addendum 12: the Lead credential''s input as a hidden prompt, never a command-line value (map v1.20:87; no
+      register row found)'
     row: row owed
+    estimate: 1 PR (estimate; census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      CS-4 addendum 13: an AEW-projected, display-only status plugin in the Lead''s TUI (map v1.20:87; no register row
+      found)'
+    row: row owed
+    estimate: 1 PR (estimate; census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      CS-4 addendum 14: the Lead edits a class 0 change in that Ticket''s workspace only (map v1.20:87; no register row
+      found)'
+    row: row owed
+    estimate: 1 PR (estimate; census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c)'
+    row: F48
+    estimate: 5+ PRs (estimate; census)
+  - slice: Windows network containment, with the Lead's usage on Windows
+    row: E222
     estimate: not sized (estimate)
-  decision: 'decided: placed now, PR 1 first (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-generator-placement.md)'
-  recommendation: finish
-  who: Lead
-  reason: Data, views, code-owned switch defaults and wiring, stale slices and the limit are checked; serves and lanes remain.
+  - slice: run_session_tree's std handles on Windows
+    row: E250
+    estimate: 1 small PR (estimate)
+  decision: 'decided: moved here from SYS-02, so that SYS-02 finishes on its Linux core (the operator, 2026-11-25: "yes
+    approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen by
+    the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+  recommendation: keep
+  who: 'operator (places F48 and the Windows work, E222 and E250); Lead (places E113 when a headless Lead is needed);
+    designer (the CS-4 addenda 12 to 14: their rows, and addendum 14 against SYS-42)'
+  reason: 'Split from SYS-02 by the operator''s decision of 2026-11-25. None of it is built: Windows runs labelled allow_weaker
+    with doctor''s UNQUALIFIED line, the addenda have no rows, and E113 is the Lead''s to place when a headless Lead is
+    needed. Addendum 14 may overlap SYS-42''s Lead small change, to settle when its row is filed. Kept, not counted, until
+    the operator places it.'
   evidence:
-  - design workspace 00-governance/decisions/2026-11-06-operator-board-generator-placement.md
-  - E182's row (on the Now list)
+  - src/aew/harness/containment/__init__.py:59-61 supported() is Linux only; :77-78 win32 returns allow_weaker
+  - 'src/aew/doctor.py:29,42 doctor prints Windows: UNQUALIFIED'
+  - src/aew/harness/procs.py:494 run_session_tree (E250's std handles on Windows)
+  - 'map v1.20:87 (design workspace): CS-4 done 2026-10-30 after the operator''s trial; addenda 12 to 14 open'
+  - 'docs/implementation/future-work.yaml (row F48): restored from HOLD-06 by the hold match; Internal alpha'
+- id: SYS-50
+  name: Harness qualification and further adapters (E35's seams, H-2, H-3, rate-limit resilience, F24)
+  purpose: 'The harness work moved out of SYS-05''s finish line on 2026-11-25: the adapter seams a second harness needs,
+    OpenCode qualification and patch releases (H-2, H-3), the 429 re-drive and turn-ending continuation, the W1 measurement,
+    and a second adapter.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
+  - docs/research/harness-native-integration-research-v0.3.md
+  design_unpublished:
+  - designer-decisions-2026-11-01-harness-ruling-11.md
+  register:
+  - E149
+  - E150
+  - E152
+  - F24
+  as_built: []
+  touches:
+  - src/aew/harness/base.py
+  - src/aew/harness/contract.py
+  - src/aew/harness/opencode/adapter.py
+  - src/aew/harness/containment/relay.py
+  - tests/integration/test_harness_conformance.py
+  depends_on:
+  - SYS-05
+  state:
+    board_state: designed_only
+    built: 'no'
+    wired: []
+    on_by_default: false
+    used_in_default_flow: 'no'
+  finish_line: E35's seams built (HarnessAdapter.capabilities(), the named LaunchContract fields, explicit execute and
+    browser denies, the 'nothing else loaded' scenario, tool_output limits), H-2 and H-3 landed, E149 and E150 once placed,
+    E152 measured before any harness patch, and a second adapter (F24) through the conformance suite once the operator
+    places it; each exercised in a real run.
+  remaining:
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      E35''s seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute
+      and browser denies, the ''nothing else loaded'' conformance scenario, tool_output limits (on the Now list)'
+    row: E35
+    estimate: 1 PR (estimate); rides on SYS-05's E35
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      H-2 (OpenCode qualification, absorbed F18.11) and H-3 (patch releases without a PR per release, absorbed E17 with
+      H-1''s part 2; H-3''s bundle import); shares its bundle import with F18.3 (SYS-33)'
+    row: E35
+    estimate: 2 PRs (estimate); rides on SYS-05's E35
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      E149: the 429 re-drive in the turn-end path, with the relay classifying a 429 and setting x-should-retry; once placed'
+    row: E149
+    estimate: 1 PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      E150: turn-ending continuation for workers, after E149'
+    row: E150
+    estimate: 1 PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      E152: measure ruling 11''s W1 workaround (measurement only, before any patch to the harness)'
+    row: E152
+    estimate: a measurement, no product PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless,
+      after it); held in HOLD-06'
+    row: F24
+    estimate: 1-2 PRs once released; an adapter not sized (estimate)
+  decision: 'decided: moved here from SYS-05, so that SYS-05 finishes on currency on the pin (the operator, 2026-11-25:
+    "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen
+    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
+  recommendation: keep
+  who: operator (placing it, E149 and F24); then Lead
+  reason: 'Split from SYS-05 by the operator''s decision of 2026-11-25. Not built: one seam is partly present in SYS-05''s
+    adapter (OPENCODE_DISABLE_PROJECT_CONFIG), LaunchContract has no skills, tools_allowed or native_sandbox field, and
+    no 429 handling exists. E149 and E150 wait for first use unless 429s recur; F24 waits for the operator''s placement.
+    Kept, not counted, until the operator places it.'
+  evidence:
+  - src/aew/harness/contract.py:266-284 (LaunchContract has no skills, tools_allowed or native_sandbox field)
+  - src/aew/harness/base.py:77-121 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
+  - 'src/aew/harness/opencode/adapter.py:230 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly
+    present)'
+  - 'docs/implementation/future-work.yaml (rows E149, E150, E152, F24): E149 and E150 after first use unless 429s recur;
+    F24 Unscheduled'
+- id: SYS-51
+  name: Typed surface follow-ons (worker-side role servers, typed Lead rows, Lead text fixes)
+  purpose: 'The typed-surface work moved out of SYS-06''s finish line on 2026-11-25: the aew-run role server and its read
+    half, aew-knowledge, typed Lead rows for the families still reached through the shell rule, and the Lead''s text fixes
+    with a typed plan accept.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/design/typed-lead-surface-design-v0.2.md
+  register:
+  - F15.3
+  - F15.8
+  - E162
+  - E163
+  as_built:
+  - modules:aew.maps.query
+  - modules:aew.maps.reads
+  - cli-commands:map search
+  - tools:map
+  touches:
+  - src/aew/maps/query.py
+  - src/aew/harness/supervisor.py
+  - src/aew/cli/map_commands.py
+  - src/aew/surface/contract.py
+  - src/aew/surface/lead_text.py
+  - src/aew/harness/bridge.py
+  - docs/implementation/surface-map.md
+  depends_on:
+  - SYS-06
+  switch:
+    key: maps.reads
+    default: 'off'
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
+    new_project_default: structural
+    owner: operator
+    turning_on_changes: structural offers each worker run whose role reads context `aew map show` and `aew map search`
+      through its run's bridge (map.show, map.search), answered by aew.maps.query at the invocation's base, and one
+      preamble line naming them; a run reads it once, into its launch snapshot. A new project holds structural (`aew
+      init`'s template; the operator, 2026-11-25, O1); an existing one without the key reads off and keeps it
+  state:
+    board_state: partly_built
+    built: partly
+    wired:
+    - cli:map search
+    on_by_default: true
+    used_in_default_flow: 'no'
+  finish_line: F15.3's aew-run server gives a worker whoami, check.run and submit as typed in-sandbox tools over the existing
+    bridge, with aew-knowledge beside it; F15.8's read half serves the map and evidence reads; the Lead families still
+    reached only through the `aew *` shell rule (maps, history, messages, settings, usage, g3) have typed rows or a recorded
+    reason not to; the catalog's unused DESIGNED status goes; E162's Lead text fixes and E163's typed plan accept land;
+    each exercised in a real run.
+  remaining:
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP
+      tools; the supervisor keeps the credential). Held in HOLD-06 until the designer''s match and the operator''s placement'
+    row: F15.3
+    estimate: 1-2 PRs (estimate, census)
+  - slice: 'F15.8''s map reads, unfrozen by the operator after E293 (2026-11-25: "unfreeze 15.8 after E293"): the shared
+      query module, `aew map search` and the worker bridge rows map.show and map.search are built (the mapping series''
+      PR A), and so is the Lead''s typed map tool under maps.reads (PR A2); outline, symbol, callers and callees over
+      F22.4''s facts (PR C) remain'
+    row: F15.8
+    estimate: 1 PR (the mapping series' plan, revision 2)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      F15.8''s other items: evidence.show, check.suggest, tools.presentation and the in-sandbox aew-run server'
+    row: F15.8
+    estimate: 1-2 PRs (estimate, census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      aew-knowledge as its own capability namespace over the shared transport library: part of F15.3''s text, so held
+      with it in HOLD-06; what it serves waits on K-01''s increment'
+    row: F15.3
+    estimate: not sized (census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew
+      *`'
+    row: row owed
+    estimate: about 1 PR per family once filed (estimate, census)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      BOARD v2 §4 loose end and §6 stale text: drop the catalog''s unused DESIGNED status and correct the contract.py
+      docstring that says rows stay DESIGNED'
+    row: row owed
+    estimate: part of one small batched PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
+      ruling 3)'
+    row: E162
+    estimate: 1-2 PRs (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      Lead text fixes'
+    row: E162
+    estimate: 1 PR (estimate)
+  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
+      a typed `plan accept` on the Lead''s MCP server, with its surface-map entry'
+    row: E163
+    estimate: 1 PR (estimate)
+  decision: 'decided: moved here from SYS-06, which finished by recording HOLD-06 as staying held (the operator, 2026-11-25:
+    "yes approve those four too", on the Lead''s finish plan of that day, finish-plan.md); its frozen slices stay frozen
+    by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md), item 6, apart
+    from F15.8''s map reads, which the operator unfroze after E293 (2026-11-25: "unfreeze 15.8 after E293"), with
+    maps.reads on for new projects (O1)'
+  recommendation: finish
+  who: operator (placing F15.3 and F15.8 after first use, and the frozen Lead text work); then Lead
+  reason: 'Split from SYS-06 by the operator''s decision of 2026-11-25. Partly built: F15.8''s map reads, which the operator
+    unfroze after E293, are built (aew.maps.query, `aew map search`, the worker bridge rows map.show and map.search, on
+    for new projects), so the system is partly built and counted, as this row said starting a slice would. The rest
+    stays as it was: the aew-run server and aew-knowledge appear only in a comment, F15.8''s other items stay frozen, and
+    E162 and E163 stay frozen by the reset unless the operator rules otherwise.'
+  evidence:
+  - 'src/aew/maps/query.py: the shared map query module; src/aew/harness/bridge.py MAP_OPERATIONS: map.show and map.search;
+    src/aew/policy/execution.py maps.reads, written structural by `aew init`'
+  - 'src/aew/surface/contract.py: the Lead''s typed `map` row behind the maps.reads switch (PR A2), its schema from
+    MAP_OPERATIONS and src/aew/maps/reads.py; src/aew/surface/run.py `_map` answers through aew.maps.query at
+    service.read_context, the context `aew map search` reads at'
+  - 'src/aew/harness/bridge.py:12,52-56: the worker side is three bridge operations (whoami, check.run, submit) reached
+    through the aew CLI, not MCP tools'
+  - 'src/aew/surface/__init__.py:14: SERVER_NAME = "aew-lead"; aew-run and aew-knowledge appear only in this comment (grep
+    over src/aew)'
+  - 'src/aew/surface/contract.py:35-36,167: DESIGNED declared and validated, unused'
+  - 'docs/implementation/future-work.yaml (rows F15.3, F15.8): restored from HOLD-06 by the hold match; after first use'
+- id: SYS-52
+  name: Coordination follow-ons (a typed harness_interrupt, the presentation policy)
+  purpose: 'The coordination work moved out of SYS-13''s finish line on 2026-11-25: a typed harness_interrupt on the Lead''s
+    catalog, and the standalone off/compact surface.presentation policy.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/implementation/adr/0017-coordination-messages.md
+  register:
+  - E248
+  as_built: []
+  touches:
+  - src/aew/surface/contract.py
+  - src/aew/surface/run.py
+  - src/aew/policy/execution.py
+  - docs/implementation/surface-map.md
+  depends_on:
+  - SYS-13
+  state:
+    board_state: designed_only
+    built: 'no'
+    wired: []
+    on_by_default: false
+    used_in_default_flow: 'no'
+  finish_line: E248's typed harness_interrupt on the Lead's catalog with its surface-map entry, and the off/compact surface.presentation
+    policy with a named consumer, each exercised in a real run.
+  remaining:
+  - slice: Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer
+    row: row owed
+    estimate: 1 small PR (estimate, BOARD v2 §4)
+  - slice: A typed harness_interrupt
+    row: E248
+    estimate: 1 PR (estimate)
+  decision: 'decided: moved here from SYS-13 (the operator, 2026-11-25, agreeing with Codex''s reading, on the Lead''s
+    finish plan of that day, finish-plan.md: "I''d take the narrower finish line. The digest already works through harness_wait,
+    and the existing aew harness interrupt command gives the Lead an interrupt path while E248 waits.")'
+  recommendation: keep
+  who: operator (placing E248); the presentation policy waits for F19 to thaw with a named consumer; then Lead
+  reason: Split from SYS-13 by the operator's decision of 2026-11-25. Until E248, the Lead interrupts a run with the existing
+    `aew harness interrupt` command. The presentation policy has an enum and no caller, and waits for F19 (SYS-01, frozen)
+    to thaw with a named consumer. Kept, not counted, until the operator places it.
+  evidence:
+  - src/aew/cli/work_commands.py:502 (aew harness interrupt, the interim path)
+  - src/aew/policy/execution.py:179-182 (presentation(); grep finds no caller of presentation() in src)
+  - 'docs/implementation/future-work.yaml (row E248): Unscheduled'
+- id: SYS-53
+  name: Per-operation revision check (replacing the project-wide expect_rev)
+  purpose: 'Replace the project-wide revision compare that every control mutation carries (`expect_rev`) with a check per
+    operation: the engine''s guards (class A), the prior value the caller read (class B) or the digest of what the approver
+    was shown (class C), so an unrelated commit never stales a legal change.'
+  serves_claims:
+    closing_works: []
+    extra: []
+  serves_pending: []
+  design:
+  - docs/implementation/adr/0005-authority-credentials-operator.md
+  register:
+  - E326
+  - E327
+  - E328
+  - E329
+  - E330
+  as_built:
+  - modules:aew.engine.primitives
+  touches:
+  - src/aew/engine/primitives.py
+  - src/aew/engine/base.py
+  - src/aew/engine/lead_ops.py
+  - src/aew/harness/lead_broker.py
+  - src/aew/harness/contract.py
+  - src/aew/errors.py
+  depends_on: []
+  state:
+    board_state: awaiting_signoff
+    built: 'yes'
+    wired: []
+    on_by_default: true
+    used_in_default_flow: partly
+  finish_line: 'Every class B and C binding required and a B or C operation without its binding refused; the project-wide
+    compare dropped at every site; `expect_rev` removed outright, with no release of grace (the operator, 2026-11-25:
+    "Yup. ill have it removed outright"); open stage intents migrated; the amendments the designer''s ruling of 2026-11-10 lists landed with it; and an unrelated commit never
+    staling a Lead mutation, checked at every class A admission boundary and through four direct writers, and exercised
+    in a real run.'
+  remaining: []
+  decision: 'decided: finish, so that `expect_rev` goes away entirely (the operator, 2026-11-25: "my goal was expect rev
+    goes away entirely. Aew knows what revision is taking place and expect rev doesnt really save us from anything")'
+  recommendation: finish
+  who: operator (the real run, then the sign-off)
+  reason: 'The designer''s decision of 2026-11-10 (design workspace ab975c1), decided by the operator the same day ("Yes,
+    all three"), split the replacement into four PRs and seat resume. The specs and guards (E326), the class C bindings
+    (E327), the class B bindings with CHANGED_SINCE_READ (E328) and seat resume (E330) are built, all optional beside the
+    project-wide check until the switch-on (E329). Recorded on the board when the operator placed E329 on 2026-11-25;
+    it was partly built and unrecorded before. The switch-on has merged and E329 closed on 2026-11-27 on the vertical
+    re-measure (evidence: the burn-down''s C4). What is left is the finish line''s real run, the operator''s check before
+    the sign-off.'
+  evidence:
+  - 'src/aew/engine/primitives.py CONTROL_OP_SPECS: a revision class and binding for each checked control operation'
+  - 'src/aew/errors.py ChangedSinceRead: code CHANGED_SINCE_READ, the class B and C refusal'
+  - 'src/aew/engine/approval.py and src/aew/engine/stage_intents.py: required scoped bindings and refusal before an intent opens'
+  - 'tests/integration/test_scoped_binding_cutover.py: class A admission, direct writers and historical stage migration'
+  - 'docs/implementation/v01-burn-down.md: the re-measure at 8c85f377, revision_args and stale_retries 0 in all 8 cases (C4)'
+  - 'docs/implementation/adr/0005-authority-credentials-operator.md: the E329 scoped-binding and E330 seat-resume amendments'
+  - 'docs/implementation/future-work.yaml (rows E326 to E330): closed'

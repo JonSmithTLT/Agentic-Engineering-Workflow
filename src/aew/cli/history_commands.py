@@ -3,15 +3,42 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, add_token
 
 
 def _audit(a: argparse.Namespace):
-    """Advisory unless it is recorded: recording is a Lead mutation, so it names the revision it is based on."""
-    if a.expect_rev is None:
+    """Advisory unless it is recorded: recording is a Lead mutation, so it needs the Lead credential."""
+    if not a.record:
         return _engine(a).history_audit(full=a.full)
-    return _engine(a).history_audit(full=a.full, token=_lead_token(a), expect_rev=a.expect_rev)
+    return _engine(a).history_audit(full=a.full, token=_lead_token(a))
+
+
+# What `aew record body` prints and how (register E170), as its own help says it.
+BODY_HELP = ("Print the body of a work unit's record, of one of its plan revisions (--plan N), of an evidence record "
+             "(a report, a review, a research or discovery record) or of a decision record (D-0001), current or "
+             "archived, as it was recorded: line breaks and quotes as they are, not as an escaped string inside "
+             "JSON. As recorded is not always as typed: AEW stores a body with LF line "
+             "endings (a CR LF pair becomes LF) and a final line break. The body is its author's text, not AEW's, so "
+             "a character that could steer a terminal (an escape sequence, a carriage return, another control "
+             "character, a bidi override) is printed visibly as \\uXXXX; tabs and line breaks are kept. Invisible "
+             "characters that steer nothing are printed as they are and stay unseen: zero-width and soft-hyphen "
+             "characters, direction marks, line and paragraph separators, tag characters. --json shows every one of "
+             "them as an escape: it gives the recorded text exactly, with the record's kind and unit; for a plan "
+             "revision, its number, its status, whether it is the accepted one and what it supersedes; for a "
+             "decision, its type and summary. A decision without a body prints its record itself, its fields as "
+             "written (--json: `record`, with the parsed `fields`). Each is checked against what AEW recorded for "
+             "it, and a record that does not match is refused, not printed. A read: it takes no credential.")
+
+
+def _body(a: argparse.Namespace) -> Any:
+    """Show terminal controls visibly in the text view and preserve the exact body in JSON."""
+    from aew.util import escape_display_controls
+
+    found = _engine(a).record_body(a.record_id, plan=a.plan)
+    # A decision without a body answers with its record itself, its fields as written (E170).
+    return found if a.json else escape_display_controls(found["body"] if "body" in found else found["record"])
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) -> None:
@@ -69,15 +96,14 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
     q.add_argument("--into", required=True, metavar="WORK-ID", help="the hot unit whose later packs carry it")
     q.add_argument("--reason", required=True)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).history_load(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                            record_id=a.record_id, into=a.into, reason=a.reason))
+    q.set_defaults(handler=lambda a: _engine(a).history_load(
+        token=_lead_token(a), record_id=a.record_id, into=a.into, reason=a.reason))
 
-    q = hsub.add_parser("audit", help="verify the history incrementally (or --full); with --expect-rev the Lead "
+    q = hsub.add_parser("audit", help="verify the history incrementally (or --full); with --record the Lead "
                                       "records it and advances the verified root")
     q.add_argument("--full", action="store_true", help="verify everything, not only what is new since the last audit")
     add_token(q)
-    q.add_argument("--expect-rev", type=int, help="control revision: records the audit (a Lead mutation, with the "
-                                                  "Lead credential)")
+    q.add_argument("--record", action="store_true", help="record the audit with the Lead credential")
     _add_json(q)
     q.set_defaults(handler=_audit)
 
@@ -98,3 +124,20 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
         _add_json(q)
         q.set_defaults(handler=lambda a: _engine(a).history_search(a.terms, kinds=a.kind, since=a.since,
                                                                   until=a.until, limit=a.limit))
+
+    # Register E170 (SYS-45): any record's body, current or archived, printed as written. A read: it takes no
+    # credential and grants nothing. `aew evidence show`, the structured and bounded Evidence read the designer's
+    # decision of 2026-10-06 names, is a follow-on and keeps its name.
+    p = sub.add_parser("record", help="a record's body, as it was written")
+    rsub = p.add_subparsers(dest="record_cmd", required=True)
+    q = rsub.add_parser("body", help="print a work unit's, a plan revision's, an evidence record's or a decision's "
+                                     "body as recorded, current or archived; what could steer a terminal is shown as "
+                                     "\\uXXXX",
+                        description=BODY_HELP)
+    q.add_argument("record_id", help="a work unit's id (T-0001), an evidence id (INV-0001-review-1) or a decision id "
+                                     "(D-0001)")
+    q.add_argument("--plan", type=int, metavar="N",
+                   help="the unit's plan revision N instead of its record: the number `aew plan accept --revision` "
+                        "takes and `aew work show` lists")
+    _add_json(q)
+    q.set_defaults(handler=_body)

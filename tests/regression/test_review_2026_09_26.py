@@ -24,6 +24,7 @@ from aewflow import (
 )
 from conftest import IS_WINDOWS, Project, git, make_git_repo
 
+from aew.engine.api import Engine
 from aew.workspace import integration as integration_git
 
 
@@ -39,8 +40,7 @@ def pending_publish(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
-    result = p.aew('integrate', 'publish', wid,
-                   '--expect-rev', str(p.rev()),
+    result = p.aew(*p.lead_args('integrate', 'publish', wid),
                    env={"AEW_LEAD_TOKEN": p.token, 'AEW_FAULT': 'integrate.after_publishing_record'})
     assert result.returncode == 86
     assert main(p) == integ['base']
@@ -78,7 +78,7 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
     u = unit(p, wid)
     assert (u['commit_ready_snapshot']['relevant_inputs_fingerprint']
             != old['candidate_snapshot']['relevant_inputs_fingerprint'])
-    result = p.aew('integrate', 'publish', wid, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    result = p.aew(*p.lead_args('integrate', 'publish', wid), env={"AEW_LEAD_TOKEN": p.token})
     if result.returncode != 0:
         assert impl.workspace.exists()
         return
@@ -88,13 +88,16 @@ def test_old_candidate_cannot_discard_newly_verified_implementation(tmp_path):
         result.json, impl.workspace.exists())
 
 
-def test_stale_reconcile_cannot_move_authoritative_ref(tmp_path):
-    p, wid, impl, integ = pending_publish(tmp_path)
-    revision = p.rev()
-    result = p.aew('integrate', 'reconcile', wid,
-                   '--expect-rev', str(revision - 1), env={"AEW_LEAD_TOKEN": p.token})
-    assert result.error['code'] == 'STALE_REVISION'
-    assert main(p) == integ['base'], 'Rejected stale-revision command nevertheless published its candidate'
+def test_a_superseded_leads_reconcile_cannot_move_the_authoritative_ref(tmp_path, monkeypatch):
+    from aew.engine.api import Engine
+
+    p, wid, _, integ = pending_publish(tmp_path)
+    old = p.token
+    monkeypatch.setattr("aew.operator.authorize", lambda *_: {"authorized_by": "operator-tty"})
+    Engine.discover(p.root).lead_takeover(reason="replace the departed Lead")
+    result = p.aew('integrate', 'reconcile', wid, env={"AEW_LEAD_TOKEN": old})
+    assert result.error['code'] == 'STALE_AUTHORITY'
+    assert main(p) == integ['base'], 'The superseded Lead nevertheless published its candidate'
 
 
 # On Windows the probe's text-mode write_text() stores CRLF, which the pre-fix code also refused;
@@ -106,7 +109,7 @@ def test_reconcile_preserves_independent_staged_edit(tmp_path):
     path.write_text(staged)
     git('add', 'calc/core.py', cwd=p.root)
     path.write_text(git('show', f"{integ['candidate']}:calc/core.py", cwd=p.root) + '\n')
-    result = p.aew('integrate', 'reconcile', wid, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    result = p.aew('integrate', 'reconcile', wid, env={"AEW_LEAD_TOKEN": p.token})
     assert git('show', ':calc/core.py', cwd=p.root) == staged.strip(), (
         'Reconciliation destroyed a staged edit made after publication intent', result.stdout, result.stderr)
 
@@ -136,7 +139,7 @@ def test_a_workspace_counts_against_the_serial_cap_until_its_replan_is_accepted(
     assign(p, first)
     p.lead('work', 'transition', first, '--to', 'REPLAN_REQUIRED', '--reason', 'revise approach')
     second = create_planned_ticket(p, tmp_path, title='Second mutating ticket')
-    result = p.aew('work', 'assign', second, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    result = p.aew('work', 'assign', second, env={"AEW_LEAD_TOKEN": p.token})
     assert result.returncode == 5 and result.error['code'] == 'CONCURRENCY_LIMIT', result.stderr
     assert result.error['details']['holding'] == [first]
     accept_revised_plan(p, first, tmp_path)
@@ -174,7 +177,7 @@ def test_explicit_dispatch_cannot_bypass_operator_pin(tmp_path):
     assign(p, wid)
     p.lead('invoke', 'cancel', unit(p, wid)['implementer_invocation'], '--reason', 'fresh bounded attempt')
     result = p.aew('invoke', 'create', wid, '--card', 'python_engineer',
-                   '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                   env={"AEW_LEAD_TOKEN": p.token})
     assert result.returncode != 0, 'Dispatch silently bypassed the operator pin without reason or decision'
 
 
@@ -186,8 +189,8 @@ def test_assume_unchanged_source_invalidates_verified_gates(tmp_path):
     before = p.ok('gate', 'show', wid)['snapshot']['relevant_inputs_fingerprint']
     (impl.workspace / 'calc/core.py').write_text('def subtract(a, b):\n    return 999\n')
     after = p.ok('gate', 'show', wid)
-    result = p.aew('work', 'transition', wid, '--to', 'COMMIT_READY',
-                   '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    result = p.aew(*p.lead_args('work', 'transition', wid, '--to', 'COMMIT_READY'),
+                   env={"AEW_LEAD_TOKEN": p.token})
     assert after['snapshot']['relevant_inputs_fingerprint'] != before and result.returncode != 0, (
         'Broken source retained CURRENT evidence and reached COMMIT_READY', after['unmet'], result.stdout)
 
@@ -213,9 +216,10 @@ def test_first_resume_after_manifest_crash_exposes_recovered_authority(tmp_path)
     p = Project(repo)
     candidates = p.ok('init')['authority_candidates']
     candidate = next(c for c in candidates if c['path'] == 'docs/adr/')
-    p.token = p.ok('lead', 'acquire', '--expect-rev', '0')['token']
+    p.token = p.ok('lead', 'acquire')['token']
+    shown = Engine.discover(repo).authority_candidate(candidate['id'])
     result = p.aew('authority', 'accept', candidate['id'], '--class', 'decisions', "--decided-by", "lead",
-                   '--expect-rev', str(p.rev()),
+                   "--approval-digest", shown["digest"],
                    env={"AEW_LEAD_TOKEN": p.token, 'AEW_FAULT': 'txn.after_replace'})
     assert result.returncode == 86
     first = p.ok('resume', '--json')
@@ -238,9 +242,9 @@ def test_interruption_does_not_bypass_failure_classification(tmp_path):
     assert unit(p, wid)['state'] == 'VERIFICATION_FAILED'
     offer = p.lead('lead', 'handoff', 'offer')['offer']
     p.token = p.ok('lead', 'handoff', 'accept', '--offer', offer,
-                   '--expect-rev', str(p.rev()))['token']
+                   )['token']
     result = p.aew('work', 'reconcile', wid, '--to', 'RUNNING', '--reason', 'inspect after interruption',
-                   '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                   env={"AEW_LEAD_TOKEN": p.token})
     after = unit(p, wid)
     assert result.returncode != 0 or after['classifications'], (
         'Verification failure returned to mutation without classification', after['state'], after['classifications'])

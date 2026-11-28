@@ -218,7 +218,9 @@ VECTOR_DIGESTS = {
     "check_definition": "7a7dee86fd74df27b1870de84bc483b9498882d24fa9094aea9c2ae3abeb2e37",
     "dependencies": "7f485b4dc214054d836176099903a16aaccff65dd0c437f04787f32fd896f84a",
     "gate_set": "834116fdb82bfaf8a396a013b7ed02b08dc598170ab4a79104b40ac93d0509e7",
-    "kind": "5b48c10c4491d4b413dec0e88c57dc53c97c20050c20e00d0aead6585c273f93",
+    # register E168: a non-mutating Ticket's `review_ref` joins the kind group (absent hashes as null), added to v1 in
+    # place before S3 binds evidence (ADR-0016 §1.5)
+    "kind": "a2acbc951e0bc4e1de057dd59439822b12b5e0f4d5bfaf937dbecb4523ed1568",
     "parent": "ef044331ae4e60709a32b9323d3060a012366936738f04e565241304cc2461a0",
     # register E227: the non-material group a Ticket's priority hashes into, added to v1 in place before S3 binds
     # evidence (ADR-0016 §1.5); every other vector is unchanged

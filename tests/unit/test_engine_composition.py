@@ -36,7 +36,7 @@ ENGINE_DIR = Path(api.__file__).parent
 COLLABORATOR_ATTRS = ("_units", "_roles", "_invocations", "_inputs", "_packs", "_gates", "_work", "_assignment",
                       "_nm", "_hierarchy", "_evidence", "_integration", "_harness", "_lead", "_views", "_resume",
                       "_project", "_archive", "_history", "_migration", "_dispatch", "_assurance", "_queue",
-                      "_coordination")
+                      "_coordination", "_reports")
 
 
 @pytest.fixture
@@ -211,6 +211,9 @@ KIND_TABLE = {
     ("ingest", MUTATING): "EvidenceCommands._ingest_ticket_report",
     ("ingest", NON_MUTATING): "NonMutating.ingest_evidence_unit_report",
     ("ingest", PARENT): "Hierarchy.ingest_evidence_unit_report",
+    ("ingest_query", MUTATING): "EvidenceCommands._query_ticket_report",
+    ("ingest_query", NON_MUTATING): "NonMutating._query_ingest_report",
+    ("ingest_query", PARENT): "Hierarchy._query_ingest_report",
     ("classify_verification", MUTATING): "EvidenceCommands._classify_ticket_verification",
     ("classify_verification", NON_MUTATING): "EvidenceCommands._classify_ticket_verification",
     ("classify_verification", PARENT): "Hierarchy.classify_parent_verification",

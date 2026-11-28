@@ -75,7 +75,6 @@ def add_token(p: argparse.ArgumentParser) -> None:
 
 def _add_lead(p: argparse.ArgumentParser) -> None:
     add_token(p)
-    p.add_argument("--expect-rev", type=int, required=True, help="control revision this decision is based on")
 
 
 # ---------------------------------------------------------------------- registration
@@ -83,13 +82,16 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
              coordination_reads: bool = False, worker_messaging: bool = False) -> None:
+    from aew.cli import read_commands
+
+    read_commands.register(sub)
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",
                    help="read the harness's model list again instead of the cached one")
     p.add_argument("--run-checks", action="store_true",
                    help="run the project's checks once on a disposable copy of the project, contained as a worker's "
-                        "check, and name each path they change")
+                        "check, name each path they change, and probe the adopted affected-test selector")
     p.set_defaults(handler=_doctor)
 
     p = sub.add_parser("init", help="initialize AEW in the current git repository")
@@ -127,23 +129,30 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     _add_json(p)
     p.set_defaults(handler=_resume)
 
-    p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
-                                     "requires, the Ticket lifecycle and the tool or command for each step (read-only)")
+    p = sub.add_parser("guide", help="how work flows in AEW for this project, from its own policy: with no section, "
+                                     "the guide's sections; `core` is what every Lead request carries (read-only)")
+    p.add_argument("section", nargs="?", help="the section to print: `core`, or one `aew guide` lists")
     _add_json(p)
     p.set_defaults(handler=_guide)
+
+    p = sub.add_parser("report", help="read a Lead-authored report")
+    rsub = p.add_subparsers(dest="report_cmd", required=True)
+    q = rsub.add_parser("show", help="show a Lead-authored report by id")
+    q.add_argument("report_id")
+    _add_json(q)
+    q.set_defaults(handler=_report_show)
 
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
     p.add_argument("--note-file", action=fields.FileInput, help="checkpoint notes (file or - for stdin)")
     p.add_argument("--next", dest="next_action", help="the Lead's next intended action")
     _add_lead(p)
-    p.set_defaults(handler=lambda a: _engine(a).checkpoint(token=_lead_token(a), expect_rev=a.expect_rev,
-                                                          note=_read_text_arg(a.note_file),
+    p.set_defaults(handler=lambda a: _engine(a).checkpoint(token=_lead_token(a), note=_read_text_arg(a.note_file),
                                                           next_action=a.next_action))
 
     p = sub.add_parser("migrate", help="move a v1 project's control state to v2: finished work leaves the hot state "
                                        "(the operator, at their own terminal; ADR-0011)")
     _add_lead(p)
-    p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a), expect_rev=a.expect_rev))
+    p.set_defaults(handler=lambda a: _engine(a).migrate(token=_lead_token(a)))
 
     _register_lead(sub)
     _register_stage(sub)
@@ -152,7 +161,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p = sub.add_parser("manifest", help="project manifest maintenance")
     msub = p.add_subparsers(dest="manifest_cmd", required=True)
     q = msub.add_parser("adopt", help="accept a reviewed manual edit of project.yaml or of the policy files it names "
-                                         "(the operator, confirmed at their own terminal)")
+                                         "(the operator, confirmed at their own terminal after its diff; no Lead "
+                                         "credential, and the Lead seat stays with its holder)")
     _add_lead(q)
     q.add_argument("--reason", required=True)
     q.set_defaults(handler=_manifest_adopt)
@@ -194,10 +204,8 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _engine(a).lead_show())
 
     q = lsub.add_parser("acquire", help="take the vacant Lead seat")
-    q.add_argument("--expect-rev", type=int, required=True)
     q.add_argument("--session-label")
-    q.set_defaults(handler=lambda a: _engine(a).lead_acquire(expect_rev=a.expect_rev,
-                                                            session_label=a.session_label))
+    q.set_defaults(handler=lambda a: _engine(a).lead_acquire(session_label=a.session_label))
 
     hp = lsub.add_parser("handoff", help="cooperative Lead handoff")
     hsub = hp.add_subparsers(dest="handoff_cmd", required=True)
@@ -206,32 +214,30 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--note-file", action=fields.FileInput, help="handoff notes (file or - for stdin)")
     q.add_argument("--carry", action="append", default=[], metavar="INV", help="in-flight invocation to carry")
     q.set_defaults(handler=lambda a: _engine(a).lead_handoff_offer(
-        token=_lead_token(a), expect_rev=a.expect_rev, note=_read_text_arg(a.note_file),
+        token=_lead_token(a), note=_read_text_arg(a.note_file),
         carry_invocations=a.carry))
     q = hsub.add_parser("accept")
     q.add_argument("--offer", required=True, help="the one-time offer secret from the outgoing Lead")
-    q.add_argument("--expect-rev", type=int, required=True)
     q.add_argument("--session-label")
     q.set_defaults(handler=lambda a: _engine(a).lead_handoff_accept(
-        offer=a.offer, expect_rev=a.expect_rev, session_label=a.session_label))
+        offer=a.offer, session_label=a.session_label))
     q = hsub.add_parser("cancel")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).lead_handoff_cancel(token=_lead_token(a),
-                                                                   expect_rev=a.expect_rev))
+                                                                   ))
 
     q = lsub.add_parser(
         "takeover",
         help="operator-authorized takeover when the prior Lead is lost (interactive terminal required)",
     )
-    q.add_argument("--expect-rev", type=int, required=True)
     q.add_argument("--reason", required=True, help="recorded for provenance; never authorizes")
     q.add_argument("--session-label")
     q.set_defaults(handler=lambda a: _engine(a).lead_takeover(
-        expect_rev=a.expect_rev, reason=a.reason, session_label=a.session_label))
+        reason=a.reason, session_label=a.session_label))
 
     q = lsub.add_parser("release", help="vacate the Lead seat cleanly")
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a), expect_rev=a.expect_rev))
+    q.set_defaults(handler=lambda a: _engine(a).lead_release(token=_lead_token(a)))
 
     q = lsub.add_parser("session", help="run a Lead harness session that never sees the Lead credential (ADR-0009)")
     q.add_argument("--acquire", action="store_true",
@@ -255,6 +261,12 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     from aew.cli import operator_commands
 
     operator_commands.register_lead_mode(lsub)
+
+    q = lsub.add_parser("telemetry", help="per Lead session, from its broker's local log: typed calls and their "
+                                          "stops (by error code), defects and invalid arguments, guide reads and "
+                                          "help lookups (read-only; E231)")
+    _add_json(q)
+    q.set_defaults(handler=_lead_telemetry)
 
     q = lsub.add_parser("mcp", help="the Lead's MCP server, aew-lead (F15.1): spawned by the Lead's harness in a Lead "
                                     "session; it holds no credential and forwards every call to the session's broker")
@@ -293,6 +305,8 @@ def _register_stage(sub: argparse._SubParsersAction) -> None:
         q = ssub.add_parser(choice, help=text)
         q.add_argument("intent", help="the stage intent id, e.g. SI-0003")
         q.add_argument("--rationale", required=True, help="why (recorded on the intent)")
+        if choice == "continue":
+            q.add_argument("--approval-digest", help="bind the unfinished intent shown by resume")
         _add_lead(q)
         q.set_defaults(handler=_stage_resolve, choice=choice)
 
@@ -300,19 +314,47 @@ def _register_stage(sub: argparse._SubParsersAction) -> None:
 def _guide(args: argparse.Namespace) -> Any:
     from aew.surface import lead_text
 
-    text = lead_text.guide_for(_engine(args))
-    return {"guide": text} if args.json else text
+    doc = lead_text.document_for(_engine(args))
+    if args.section is None:
+        if not args.json:
+            return doc.listing()
+        return {"sections": [{"name": doc.names()[0], "topic": "the core, which every Lead request carries",
+                              "when": "always: it comes with every request"},
+                             *({"name": s.name, "topic": s.topic, "when": s.when} for s in doc.sections.values())]}
+    text = doc.read(args.section)
+    return {"section": args.section, "text": text} if args.json else text
+
+
+def _lead_telemetry(args: argparse.Namespace) -> Any:
+    from aew.harness import tool_calls
+
+    lines, skipped = tool_calls.read_counted(_engine(args).aew_root)
+    sessions = tool_calls.counters(lines)
+    if args.json:
+        return {"sessions": [{"session": name, **row} for name, row in sessions.items()], "skipped_lines": skipped}
+    return tool_calls.render_counters(sessions, skipped)
 
 
 def _stage_resolve(args: argparse.Namespace) -> Any:
-    from aew.surface import run
+    from aew.surface import run, stage
     from aew.surface.context import SurfaceContext
     from aew.surface.errors import AdapterInputError
 
-    arguments = {"expect_rev": args.expect_rev, "subject": args.intent, "choice": args.choice,
+    arguments = {"subject": args.intent, "choice": args.choice,
                  "rationale": args.rationale}
+    engine = _engine(args)
+    if args.choice == "continue":
+        binding = args.approval_digest
+        if _approval_terminal(args):
+            shown = stage.assess(engine, engine.stage_intent(args.intent))["approval"]
+            print(f"Continue {args.intent}: {shown['subject']}\nShown SHA-256 {shown['digest']}",
+                  file=sys.stderr, flush=True)
+            if binding is None:
+                binding = shown["digest"]
+        if binding is not None:
+            arguments["approval_digest"] = binding
     try:
-        return run.run_tool(_engine(args), SurfaceContext.outside_session(), "resolve", arguments,
+        return run.run_tool(engine, SurfaceContext.outside_session(), "resolve", arguments,
                             token=_lead_token(args))
     except AdapterInputError as exc:
         err = UsageError(exc.message, **exc.details)
@@ -330,8 +372,8 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--class", dest="klass", required=True,
                    choices=["contracts", "decisions", "schemas", "source", "orientation"])
     q.add_argument("--decided-by", choices=["lead", "operator"], default="operator",
-                   help="operator: recorded as the operator's decision, confirmed at their own terminal (a code "
-                        "typed back)")
+                   help="operator (the default): the operator's own decision, confirmed at their own terminal "
+                        "with no Lead credential; lead: recorded as the Lead's, with the Lead credential")
     q.add_argument("--reason")
     _add_lead(q)
     q.add_argument("--approval-digest", help="the authority candidate digest shown in the last result")
@@ -344,43 +386,39 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
 
 
 def _manifest_adopt(a: argparse.Namespace) -> Any:
-    engine = _engine(a)
-    token = _lead_token(a)
-    binding = engine.manifest_approval()
-    files = "\n".join(f"  {rel}@{sha if sha is not None else 'missing'}" for rel, sha in sorted(binding.items()))
-    authorization = operator_attribution("operator", f"ADOPT as YOUR decision: project settings\n{files}")
-    return engine.manifest_adopt(token=token, expect_rev=a.expect_rev, reason=a.reason,
-                                 authorization=authorization, binding=binding)
+    """The operator's own adoption at their terminal, with no Lead credential (register E331): ``operator_adopt``."""
+    from aew import operator_adopt
+
+    return operator_adopt.adopt(_engine(a), reason=a.reason)
 
 
 def _authority_decide(a: argparse.Namespace) -> Any:
     engine = _engine(a)
+    action = a.authority_cmd
+    binding = getattr(a, "approval_digest", None)
+    if a.decided_by == "operator":  # the operator's own decision, with no Lead credential (register E331)
+        from aew import operator_adopt
+
+        return operator_adopt.decide_authority(engine, action=action, candidate=a.candidate,
+                                               klass=getattr(a, "klass", None), reason=a.reason, binding=binding)
     token = _lead_token(a)
     subject = engine.authority_candidate(a.candidate)
-    action = a.authority_cmd
     digest = subject["digest"]
     if action == "accept" and subject["kind"] == "file, missing":
         from aew.errors import NotFound
-        from aew.harness.contract import EXPECT_REV
 
         raise NotFound(f"authority candidate file {subject['path']} is missing. "
-                       f"The operator can reject it with `aew authority reject {a.candidate} {EXPECT_REV}`.",
+                       f"The operator can reject it with `aew authority reject {a.candidate}`.",
                        path=subject["path"])
     summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
     if action == "accept":
         summary += f" as {a.klass} authority"
-    authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
-    binding = getattr(a, "approval_digest", None)
-    if a.decided_by == "lead":
-        if _approval_terminal(a):
-            print(summary, file=sys.stderr, flush=True)
-            if binding is None:
-                binding = digest
-    elif binding is None:
-        binding = digest
-    args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
-                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
-                            "authorization": authorization}
+    if _approval_terminal(a):
+        print(summary, file=sys.stderr, flush=True)
+        if binding is None:
+            binding = digest
+    args: dict[str, Any] = {"token": token, "candidate_id": a.candidate,
+                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding}
     if action == "accept":
         return engine.authority_accept(klass=a.klass, **args)
     return engine.authority_reject(**args)
@@ -404,7 +442,6 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
-    from aew.harness import contract as K
     from aew.harness import doctor_relay
     from aew.harness.containment import netns
     from aew.policy import execution
@@ -428,8 +465,8 @@ def _init(args: argparse.Namespace) -> Any:
         **({"first_configuration": configuration.report()} if configuration is not None else {}),
         "next": configuration.next_step() if configuration is not None
         else (f"this project still has no check command or model. To set both, "
-              f"{first_configuration.post_pin_route(first_configuration.CHECKS_REL, execution.REL_PATH, fresh=True)}. "
-              f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`"),
+              f"{first_configuration.post_pin_route(first_configuration.CHECKS_REL, execution.REL_PATH)}. "
+              "Then start the Lead with `aew opencode --acquire`"),
         "provider_key": netns.FIRST_USE_LINE,
         "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }
@@ -482,6 +519,7 @@ def _lead_tool(args: argparse.Namespace) -> Any:
 def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     """Outside a Lead session: the runner in this process, with the operator's own credential (ADR-0005)."""
     from aew import lead_credential
+    from aew.engine import dispatch
     from aew.harness import lead_broker
     from aew.surface import contract, run
     from aew.surface.context import SurfaceContext, switches_for
@@ -494,7 +532,7 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     token = (lead_credential.optional() if reads else lead_credential.required()) or ""
 
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
-        return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
+        return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel=dispatch.CLI)
 
     result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
                           args.name, arguments, token=token or None, run_cli=cli)
@@ -545,9 +583,20 @@ def _resume(args: argparse.Namespace) -> Any:
     return report if args.json else engine.render_resume(report)
 
 
+def _report_show(args: argparse.Namespace) -> Any:
+    from aew.engine import reports
+
+    report = _engine(args).report_show(args.report_id)
+    return report if args.json else reports.render(report)
+
+
 def _status(args: argparse.Namespace) -> Any:
+    from aew.engine import attention
+
     engine = _engine(args)
     report = engine.status(args.work_id)
+    if args.work_id is None:  # what waits on the operator, from the overview's own module, site up or not (BOY-02.a)
+        report["attention"] = attention.for_engine(engine, contradictions=report["contradictions"])
     return report if args.json else engine.render_status(report)
 
 

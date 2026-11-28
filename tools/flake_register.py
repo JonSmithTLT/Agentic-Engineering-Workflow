@@ -33,6 +33,8 @@ WINDOW = timedelta(days=7)
 THRESHOLD = 3
 CHECK_BATCH_SIZE = 25
 CHECK_CONCURRENCY = 4
+# The ci workflow's path, as a run's `path` gives it: the one statement its readers here and in tools/ci derive from.
+CI_WORKFLOW = ".github/workflows/ci.yml"
 CHECK_QUERY = """query($ids: [ID!]!) {
   nodes(ids: $ids) {
     ... on WorkflowRun {
@@ -451,7 +453,7 @@ def check_annotations(repo: str, job: int) -> list[dict[str, Any]]:
 
 
 def _own_ci_run(repo: str, run: dict[str, Any]) -> bool:
-    return (run.get("path") == ".github/workflows/ci.yml" and run.get("head_branch") == "main"
+    return (run.get("path") == CI_WORKFLOW and run.get("head_branch") == "main"
             and run.get("event") in {"push", "workflow_dispatch"}
             and all(((run.get(key) or {}).get("full_name") or "").casefold() == repo.casefold()
                     for key in ("repository", "head_repository")))

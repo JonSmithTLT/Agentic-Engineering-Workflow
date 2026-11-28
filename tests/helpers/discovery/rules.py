@@ -221,7 +221,7 @@ def _id_options() -> frozenset[str]:
 
 def is_id_action(action: argparse.Action) -> bool:
     """Whether an argument takes an id of O-IDS's kinds: a word of its dest, an option string or its metavar names
-    one (``expect_rev``, ``--carry INV``, ``--since REVISION``)."""
+    one (``--revision``, ``--carry INV``, ``--since REVISION``)."""
     if action.nargs == 0 or isinstance(action, argparse._SubParsersAction) or action.choices:
         return False
     metavar = action.metavar if isinstance(action.metavar, str) else ""

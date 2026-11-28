@@ -32,6 +32,7 @@ from conftest import git
 from invariants import assert_control_invariants
 from test_at1_serial_lifecycle import operator_takeover
 
+from aew.engine import transitions as T
 from aew.util import parse_frontmatter
 
 
@@ -40,7 +41,7 @@ def show(p, wid):
 
 
 def err(p, *args, token=None):
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": token or p.token})
+    res = p.aew(*p.lead_args(*args), env={"AEW_LEAD_TOKEN": token or p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -126,7 +127,7 @@ def test_parent_risk_policy_propagation(tmp_path):
 
     # An explicit minimum descendant class raises the effective minimum only with a recorded rationale.
     res = p.aew("work", "create", "story", "--title", "Billing", "--class", "3", "--min-descendant-class", "2",
-                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 2
     floored = create_unit(p, "story", "Billing", cls=3, extra=("--min-descendant-class", "2", "--rationale",
                                                               "money moves through every child"))
@@ -218,7 +219,9 @@ def test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_
     assert execution["attempt"] == 1 and execution["expected_kind"] == "discovery_record"
     assert work[build]["state"] == "BLOCKED" and work[build]["blocked_by"][0]["id"] == survey
     assert work[later]["blocked_by"][0]["inherited_from"] == later_story
-    assert f"{survey}: ingest record {rec} (`aew evidence ingest`)" in resume["next_actions"]
+    # Whole, so it runs as given (E140's O-CMD flip).
+    assert f"{survey}: ingest record {rec} (`{T.operation_command('evidence.ingest', survey, rec)}`)" \
+        in resume["next_actions"]
     assert resume["contradictions"] == []
 
     p.token = operator_takeover(p, "Lead session destroyed (AT-11)")
@@ -266,10 +269,9 @@ def test_read_only_work_runs_concurrently_and_stays_read_only(tmp_path):
         assert submit_record(role, wrong, expect_ok=False).error["code"] == "PERMISSION_DENIED"
     for role in (investigator, researcher, planner):
         denied = role.aew("work", "transition", survey, "--to", "CANCELLED", "--reason", "x",
-                          "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": role.token})
+                          env={"AEW_LEAD_TOKEN": role.token})
         assert denied.error["code"] == "PERMISSION_DENIED"
         assert role.aew("plan", "accept", planning, "--revision", "1",
-                        "--expect-rev", str(p.rev()),
                         env={"AEW_LEAD_TOKEN": role.token}).error["code"] == "PERMISSION_DENIED"
     assert researcher.aew("check", "run", "unit").error["code"] == "PERMISSION_DENIED"  # not in its grant
     (investigator.workspace / "calc/core.py").write_text("broken\n", encoding="utf-8", newline="\n")

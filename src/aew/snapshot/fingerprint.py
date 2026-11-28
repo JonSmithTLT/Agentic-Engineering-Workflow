@@ -42,6 +42,7 @@ honest snapshot of it exists.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import sys
 import tempfile
@@ -457,3 +458,25 @@ def changed_paths(workspace: Path, base: str, *, stores: bool | None = None,
                         include_ignored=include_ignored) as idx:
         raw = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
     return [p for p in raw.split(NUL) if p]
+
+
+def workspace_paths(workspace: Path, base: str, *, stores: bool | None = None,
+                    cache_patterns: tuple[tuple[str, ...], ...] = (),
+                    include_ignored: list[str] | None = None) -> dict[str, list[str]]:
+    """What a workspace holds beyond ``base``, for a worker who inherits it (register F36, the recovery section):
+    ``changed`` is :func:`changed_paths`; ``staged`` the paths whose entry in the workspace's own index differs from
+    ``base``; ``deleted`` the changed or staged paths with no file there now (removed, or the old name of a move);
+    ``untracked`` the changed paths that neither that index nor ``base`` holds. The index is read from a copy, as
+    :func:`index_tree_id` reads it. A contained run stages into its own private index, which ends with the run, so
+    ``staged`` is never what such a run staged."""
+    changed = changed_paths(workspace, base, stores=stores, cache_patterns=cache_patterns,
+                            include_ignored=include_ignored)
+    workspace = workspace.resolve()
+    with _staged_index(workspace) as idx:
+        staged = [p for p in git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace,
+                                     env=idx.env).split(NUL) if p]
+        tracked = set(git.out("ls-files", "-z", cwd=workspace, env=idx.env).split(NUL))
+    tracked |= set(git.out("ls-tree", "-r", "--name-only", "-z", base, cwd=workspace).split(NUL))
+    return {"changed": changed, "staged": staged,
+            "deleted": [p for p in sorted({*changed, *staged}) if not os.path.lexists(workspace / p)],
+            "untracked": [p for p in changed if p not in tracked]}

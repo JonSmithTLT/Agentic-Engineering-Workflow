@@ -16,7 +16,7 @@ from store_model import check_invariants, init, make_store, one_transaction  # n
 
 from aew.engine.faults import InjectedFault  # noqa: E402
 from aew.engine.store import Transition  # noqa: E402
-from aew.errors import IntegrityError, ProjectNotFound, StaleRevision  # noqa: E402
+from aew.errors import IntegrityError, ProjectNotFound  # noqa: E402
 
 FAULT_POINTS = [
     "txn.before_stage",
@@ -46,15 +46,13 @@ def test_missing_project(tmp_path):
         make_store(tmp_path).read()
 
 
-def test_stale_expected_revision_rejected(tmp_path):
+def test_transactions_compute_the_next_revision_under_the_store_lock(tmp_path):
     store = init(tmp_path)
+    writer = make_store(tmp_path)
+    assert writer.read()["revision"] == 0
     one_transaction(store)
-    before = (tmp_path / "state/control.yaml").read_bytes()
-    with pytest.raises(StaleRevision) as exc:
-        one_transaction(store, expect_rev=0)
-    assert exc.value.details == {"expected": 0, "current": 1}
-    assert (tmp_path / "state/control.yaml").read_bytes() == before
-    assert check_invariants(tmp_path) == 1
+    assert one_transaction(writer) == 2
+    assert check_invariants(tmp_path) == 2
 
 
 def test_immutable_record_never_overwritten(tmp_path):
@@ -145,13 +143,18 @@ def test_the_windowed_oracle_checks_the_newest_log_records_and_their_chain_link(
     assert ranges == [(4, 6)]  # from the link, not from the start of history
 
 
+# The merge gate's iterations. The nightly crash-extended job raises the count, and its fit pin scales the recorded time
+# by the ratio (tests/unit/test_repetition_fit.py).
+CRASH_ITERATIONS_DEFAULT = 200
+
+
 def test_randomized_crash_iterations(tmp_path, monkeypatch):
     # Merge gate: seed 20260925, 200 iterations. The nightly crash-extended job rotates the seed and raises the count.
     rng = random.Random(int(os.environ.get("AEW_CRASH_SEED", "20260925")))
     init(tmp_path)
     monkeypatch.setenv("AEW_FAULT_MODE", "raise")
     expected = 0
-    iterations = int(os.environ.get("AEW_CRASH_ITERATIONS", "200"))
+    iterations = int(os.environ.get("AEW_CRASH_ITERATIONS", str(CRASH_ITERATIONS_DEFAULT)))
     for i in range(iterations):
         point = rng.choice(FAULT_POINTS + [None, None])
         if point:

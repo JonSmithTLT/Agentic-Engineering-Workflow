@@ -45,7 +45,24 @@ class SurfaceContext:
 
 def switches_for(engine: Any) -> frozenset[str]:
     """Read the adopted policy through its engine owner, never the presentation environment."""
-    from aew.surface.contract import MESSAGING
+    from aew.surface.contract import MAPS, MESSAGING
 
     enabled = getattr(engine, "messaging_enabled", None)
-    return frozenset({MESSAGING}) if enabled is not None and enabled() else frozenset()
+    messaging = {MESSAGING} if enabled is not None and enabled() else set()
+    return frozenset(messaging | ({MAPS} if _maps_reads(engine) else set()))
+
+
+def _maps_reads(engine: Any) -> bool:
+    """Whether the adopted execution policy has ``maps.reads: structural`` (register F15.8), read through its owner
+    (``execution.maps_reads``), as a worker's launch snapshot reads it. A policy that cannot be read turns nothing
+    on."""
+    from aew.policy import execution as X
+
+    read = getattr(engine, "execution_policy", None)
+    if read is None:
+        return False
+    try:
+        policy, _ = read()
+    except Exception:  # noqa: BLE001 - an unreadable policy offers no map reads, as an absent key reads
+        return False
+    return X.maps_reads(policy) == X.MAPS_READS_STRUCTURAL

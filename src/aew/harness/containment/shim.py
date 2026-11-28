@@ -8,7 +8,9 @@ the layout binds in (``layout.Layout.net_dir``):
   supervisor reaches the harness server this way: the server listens on the sandbox's loopback, which the host
   cannot reach (F28 §1, P3).
 * **out:** ``127.0.0.1:<port>`` inside -> a socket file outside, served by the supervisor: the provider relay
-  (``relay.py``) and, when the run has one, the egress proxy (``egress.py``).
+  (``relay.py``) and, when the run has one, the egress proxy (``egress.py``). A relay leg's spec carries the relay's
+  own fixed answer (``unreachable``), which the shim sends when the relay takes no connection, so the harness gets a
+  ``502`` that names the cause rather than a bare reset; any other leg's connection is closed then (:func:`_leg`).
 
 It holds no credential and no authority: it moves bytes, both ways, as they come (a ``sendall`` that blocks is the
 backpressure; one side's end of stream is passed on as a half-close, and the connection ends when both have ended).
@@ -98,22 +100,41 @@ def splice(a: socket.socket, b: socket.socket) -> None:
     b.close()
 
 
-def _serve(listener: socket.socket, connect: Any) -> None:
+def _serve(listener: socket.socket, connect: Any, refusal: dict[str, Any] | None = None) -> None:
     while True:
         try:
             conn, _ = listener.accept()
         except OSError:
             return
-        threading.Thread(target=_leg, args=(conn, connect), daemon=True).start()
+        threading.Thread(target=_leg, args=(conn, connect, refusal), daemon=True).start()
 
 
-def _leg(conn: socket.socket, connect: Any) -> None:
+def _leg(conn: socket.socket, connect: Any, refusal: dict[str, Any] | None = None) -> None:
     try:
         target = connect()
     except OSError:
+        if refusal is not None:  # a relay leg: the relay's own answer, then the request read and dropped (unread, a
+            _answer(conn, str(refusal["unreachable"]), float(refusal["drain_s"]))  # close would reset it away)
+            return
         conn.close()  # nothing listens there (yet): the client sees the connection end, as with a refused one
         return
     splice(conn, target)
+
+
+def _answer(conn: socket.socket, answer: str, drain_s: float) -> None:
+    """Send ``answer``, end the writes, and read what the client still sends until it closes or ``drain_s`` is up."""
+    try:
+        conn.sendall(answer.encode("latin-1"))
+        conn.shutdown(socket.SHUT_WR)
+        end = time.monotonic() + drain_s
+        while (wait := end - time.monotonic()) > 0:
+            conn.settimeout(wait)
+            if not conn.recv(CHUNK):
+                break
+    except OSError:
+        pass
+    finally:
+        conn.close()
 
 
 def _to_port(port: int) -> Any:
@@ -146,7 +167,8 @@ def listen(spec: dict[str, Any]) -> list[socket.socket]:
     for leg in spec.get("out") or []:
         sock = socket.create_server((LOOPBACK, int(leg["port"])), backlog=BACKLOG)
         out.append(sock)
-        threading.Thread(target=_serve, args=(sock, _to_file(str(leg["unix"]))), daemon=True).start()
+        refusal = {"unreachable": leg["unreachable"], "drain_s": leg["drain_s"]} if "unreachable" in leg else None
+        threading.Thread(target=_serve, args=(sock, _to_file(str(leg["unix"])), refusal), daemon=True).start()
     return out
 
 

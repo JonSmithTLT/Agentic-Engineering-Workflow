@@ -29,12 +29,14 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from aew.engine.reasons import REASONS, require_known
 from aew.errors import AEWError, DispatchRefused, DispatchUndecided, IntegrityError, NotFound, UsageError
+from aew.knowledge import evidence as E
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
 
 # Who carried the dispatch to the engine: the CLI, the Lead broker's relay, or a direct engine call (tests).
-_CHANNEL: contextvars.ContextVar[str] = contextvars.ContextVar("aew_dispatch_channel", default="direct")
+DIRECT, CLI = "direct", "cli"
+_CHANNEL: contextvars.ContextVar[str] = contextvars.ContextVar("aew_dispatch_channel", default=DIRECT)
 
 
 @contextlib.contextmanager
@@ -45,6 +47,12 @@ def channel(name: str) -> Iterator[None]:
         yield
     finally:
         _CHANNEL.reset(token)
+
+
+def current_channel() -> str:
+    """The channel carrying the call in progress (:func:`channel`): who asks the operator to confirm is read from it
+    (``operator_decisions.required``)."""
+    return _CHANNEL.get()
 
 
 # --------------------------------------------------------------------------------------------- the registry
@@ -72,12 +80,12 @@ ENTRYPOINTS: dict[str, Entrypoint] = {e.name: e for e in (
                 "card.implementer", "inputs.current", "gates.satisfiable", *MUTATION),
                "READY -> ASSIGNED for a mutating Ticket: a mutation workspace and an implementer"),
     Entrypoint("work.dispatch", "cli", ("work", "dispatch"),
-               ("nm.kind", "transition.assign", "source.commit", "readiness", "plan.binding", "dependencies",
+               ("nm.kind", "transition.assign", "source.commit", "ref.pin", "readiness", "plan.binding", "dependencies",
                 "inputs.current", "card.executor", "cap.non_mutating", "gates.satisfiable", "git.drivers"),
                "READY -> ASSIGNED for a non-mutating Ticket: an executor and its observation"),
     Entrypoint("work.redispatch", "cli", ("work", "redispatch"),
-               ("nm.kind", "redispatch.state", "source.commit", "plan.binding", "dependencies", "inputs.current",
-                "card.executor", "cap.non_mutating", "gates.satisfiable", "git.drivers"),
+               ("nm.kind", "redispatch.state", "source.commit", "ref.pin", "plan.binding", "dependencies",
+                "inputs.current", "card.executor", "cap.non_mutating", "gates.satisfiable", "git.drivers"),
                "a non-mutating Ticket's next attempt, superseding the current one"),
     Entrypoint("invoke.create.mutating", "cli", ("invoke", "create"),
                ("invoke.slot", "card.slot", "inputs.current", "workspace.live", "gates.satisfiable", *MUTATION),
@@ -89,6 +97,9 @@ ENTRYPOINTS: dict[str, Entrypoint] = {e.name: e for e in (
                ("parent.acceptance", "card.parent", "dependencies.parent", "inputs.current", "gates.satisfiable",
                 "git.drivers"),
                "a reviewer or verifier of a Story's or Epic's acceptance"),
+    Entrypoint("plan.assess", "cli", ("plan", "assess"),
+               ("assess.unit", "assess.card", "assess.once", "git.drivers"),
+               "a plan assessor of a Ticket's or a parent's accepted plan revision, with its own observation (E160)"),
     Entrypoint("harness.launch", "cli", ("harness", "launch"),
                ("launch.launchable", "launch.pack", "launch.not_live", "gates.satisfiable", *MUTATION),
                "a harness run for an active invocation (launch or relaunch): the credential is rotated to it"),
@@ -116,7 +127,8 @@ INVOKE_ENTRYPOINT = {"mutating": "invoke.create.mutating", "non_mutating": "invo
 # Ticket's role chooses the Ticket or its integration candidate). Admission requires it (PR #32 review, P2).
 CREATES_SCOPE: dict[str, str | None] = {
     "work.assign": "ticket", "work.dispatch": "observation", "work.redispatch": "observation",
-    "invoke.create.mutating": None, "invoke.create.non_mutating": "observation", "invoke.create.parent": "parent"}
+    "invoke.create.mutating": None, "invoke.create.non_mutating": "observation", "invoke.create.parent": "parent",
+    "plan.assess": E.ASSESSMENT_SCOPE}
 
 
 # --------------------------------------------------------------------------------------------- the decision

@@ -86,7 +86,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     elif op == "plan.accept":
         wid = create_unit(project, "story", "Review a plan")
         args = {"work_id": wid, "revision": 1}
-        proposal = engine.plan_propose(token=project.token, expect_rev=project.rev(), work_id=wid,
+        proposal = engine.plan_propose(token=project.token, work_id=wid,
                                        body="The plan shown.", no_assurance=True)
         entry = engine.status(wid)["work_unit"]["plans"][0]
         binding = entry["sha256"]
@@ -109,8 +109,8 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     elif op == "lead.resume":
         from aew.harness import procs, seat
 
-        engine.lead_release(token=project.token, expect_rev=project.rev())
-        old = engine.lead_acquire(expect_rev=project.rev(), kind=seat.VACANT_START)
+        engine.lead_release(token=project.token)
+        old = engine.lead_acquire(kind=seat.VACANT_START)
         generation = old["generation"]
         seat.write_leftovers(engine.aew_root, generation, None)
         monkeypatch.setattr(procs, "same_process", lambda *_: False)
@@ -119,8 +119,8 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
 
         def replace_shown_holder(prompt):
             assert f"generation     : {generation} -> {generation + 1}" in prompt
-            engine.lead_release(token=old["token"], expect_rev=project.rev())
-            engine.lead_acquire(expect_rev=project.rev(), kind=seat.VACANT_START)
+            engine.lead_release(token=old["token"])
+            engine.lead_acquire(kind=seat.VACANT_START)
             after_writer.append((project.rev(), control_bytes(project)))
             return {"authorized_by": "operator-tty"}
 
@@ -143,12 +143,12 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
 
         if not changed:
             monkeypatch.setattr(operator, "authorize", lambda _: {"authorized_by": "operator-tty"})
-            assert engine.lead_takeover(expect_rev=project.rev(), reason="Replace the holder shown")["ok"]
+            assert engine.lead_takeover(reason="Replace the holder shown")["ok"]
             assert project.rev() == before_rev + 1
             return
         monkeypatch.setattr(operator, "authorize", change_generation)
         with pytest.raises(ChangedSinceRead) as failure:
-            engine.lead_takeover(expect_rev=project.rev(), reason="Replace the holder shown")
+            engine.lead_takeover(reason="Replace the holder shown")
         assert failure.value.details["op"] == op
         assert int(failure.value.details["current"]) == int(failure.value.details["expected"]) + 1
         assert project.rev() == before_rev + 1 and control_bytes(project) == after_writer[0]
@@ -168,7 +168,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
         binding = engine.status(wid)["approval_subjects"][op]["digest"]
         if changed:
             git("commit", "--allow-empty", "-m", "new authoritative revision", cwd=project.root)
-            rebuilt = engine.integrate_publish(token=project.token, expect_rev=project.rev(), work_id=wid)
+            rebuilt = engine.integrate_publish(token=project.token, work_id=wid, candidate=binding)
             assert rebuilt["rebuilt"]
             project.lead("verify", "ingest", wid, "--evidence", verify(project, wid, scope="integration"))
             assert engine.status(wid)["approval_subjects"][op]["digest"] != binding
@@ -185,7 +185,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     elif op == "stage.continue":
         digest = "0" * 64
         plan = [{"primitive": "checkpoint"}] * 2
-        intent = engine.stage_open(token=project.token, expect_rev=project.rev(), tool="probe",
+        intent = engine.stage_open(token=project.token, tool="probe",
                                    contract_digest=digest, arguments={}, judgment_inputs=[], base_class="MECHANICAL",
                                    effective_class="MECHANICAL", plan=plan, subject=None, ingress="test")["intent"]
         binding = engine.stage_recheck(intent, contract_digest=digest, plan=plan)["approval"]["digest"]
@@ -193,7 +193,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
 
         if changed:
             with step(intent, 1, final=False):
-                engine.checkpoint(token=project.token, expect_rev=project.rev(), note="completed another step")
+                engine.checkpoint(token=project.token, note="completed another step")
         args = {"intent": intent, "contract_digest": digest, "plan": plan, "rationale": "continue reviewed steps"}
     elif op == "verify.classify":
         wid = create_unit(project, "story", "Parent", cls=1)
@@ -211,7 +211,7 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
         ev = submit_record(worker, "discovery_record")["evidence"]
         project.lead("evidence", "ingest", wid, "--evidence", ev)
         binding = engine.status(wid)["approval_subjects"][op]["digest"]
-        new_attempt = engine.work_redispatch(token=project.token, expect_rev=project.rev(), work_id=wid,
+        new_attempt = engine.work_redispatch(token=project.token, work_id=wid,
                                              reason="recheck the findings")
         worker = Role(project, new_attempt["invocation_token"], Path(new_attempt["observation"]["path"]))
         revised = submit_record(worker, "discovery_record")["evidence"]
@@ -267,17 +267,24 @@ def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     operator_ops = {"authority.accept", "authority.reject", "manifest.adopt", "integrate.breaker_reset"}
     if op in operator_ops:
         args["authorization"] = {"authorized_by": "operator-tty"}
+    binding_key = "candidate" if op == "integrate.publishing" else "binding"
+    with pytest.raises(ChangedSinceRead) as missing:
+        getattr(engine, method)(token=project.token, **{k: v for k, v in args.items() if k != binding_key})
+    assert missing.value.details["op"] == op and missing.value.details["reason"] == "missing_binding"
+    assert project.rev() == rev and control_bytes(project) == before
     if op != "integrate.publishing":
         args["binding"] = binding
     if not changed:
-        result = getattr(engine, method)(token=project.token, expect_rev=rev, **args)
+        result = getattr(engine, method)(token=project.token, **args)
         assert result.get("ok", result.get("status") == "ACTIVE"), result
         assert project.rev() > rev
         return
     with pytest.raises(ChangedSinceRead) as failure:
-        getattr(engine, method)(token=project.token, expect_rev=rev, **args)
+        getattr(engine, method)(token=project.token, **args)
     assert boundary_of(failure.value) == "refused"
     assert failure.value.details["op"] == op
+    assert failure.value.details["reason"] == (
+        "candidate_mismatch" if op == "integrate.publishing" else "changed_since_read")
     assert failure.value.details["expected"] != failure.value.details["current"]
     assert project.rev() == rev and control_bytes(project) == before
     assert manifest.read_bytes() == manifest_before
@@ -315,13 +322,14 @@ def test_authority_prompts_for_the_operator_and_binds_the_directory_record(proje
     subject = engine.authority_candidate(candidate["id"])
     prompts = []
 
-    def authorize(prompt):
-        prompts.append(prompt)
+    def authorize(text, **_):
+        prompts.append("\n".join(text))
         return {"authorized_by": "operator-tty"}
 
-    monkeypatch.setattr(operator, "authorize", authorize)
-    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
-    args = ["-C", str(project.root), "authority", action, candidate["id"], "--expect-rev", str(project.rev())]
+    # The operator's own decision at their terminal, with no Lead credential (register E331), in-process.
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator, "confirm", authorize)
+    args = ["-C", str(project.root), "authority", action, candidate["id"], ]
     if action == "accept":
         args += ["--class", "decisions"]
     assert main(args) == 0
@@ -374,13 +382,14 @@ def test_reject_of_a_candidate_whose_file_is_gone(project, monkeypatch, capsys, 
         path.mkdir()
     prompts = []
 
-    def confirm(prompt):
-        prompts.append(prompt)
+    def confirm(text, **_):
+        prompts.append("\n".join(text))
         return {"authorized_by": "operator-tty"}
 
-    monkeypatch.setattr(operator, "authorize", confirm)
-    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
-    argv = ["-C", str(project.root), "authority", "reject", candidate["id"], "--expect-rev", str(project.rev())]
+    # The operator's own decision at their terminal, with no Lead credential (register E331), in-process.
+    monkeypatch.setattr(operator, "has_terminal", lambda: True)
+    monkeypatch.setattr(operator, "confirm", confirm)
+    argv = ["-C", str(project.root), "authority", "reject", candidate["id"], ]
     assert main(argv) == 0
     import json
 
@@ -401,5 +410,5 @@ def test_authority_accept_requires_an_explicit_decider(project, facade):
     candidate = engine.authority_list()["candidates"][0]
     target = engine if facade else engine._project
     with pytest.raises(TypeError, match="decided_by"):
-        target.authority_accept(token=project.token, expect_rev=project.rev(), candidate_id=candidate["id"],
+        target.authority_accept(token=project.token, candidate_id=candidate["id"],
                                 klass="orientation")

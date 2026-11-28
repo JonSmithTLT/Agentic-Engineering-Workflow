@@ -551,9 +551,11 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
     """The property of §7 slice 1, over seeded random worlds: the unit total equals the sum of its invocation totals
     equals the sum of its run figures, and the counts, every unpriced reason included, partition the runs."""
     rng = random.Random(20261005)
+    # Its own draws, so the worlds the other draws make are unchanged (#644 review, m2: a floor through the roll-ups).
+    truncation = random.Random(20261127)
     semantics = [*U.TOKEN_SEMANTICS]
     models = [GPT, MINI, {"provider": "anthropic", "model": "x", "effort": None}]
-    priced, seen = 0, set()
+    priced, seen, floors = 0, set(), 0
     for world in range(25):
         root = tmp_path / str(world)
         work = {"E-1": {"kind": "epic", "parent": None}, "S-1": {"kind": "story", "parent": "E-1"},
@@ -572,7 +574,7 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
                 counters = {k: rng.choice([0, rng.randint(1, 10**6)]) for k in R}
                 eff = rng.sample(models, rng.randint(0, 2))
                 rec = record(**counters, semantics=rng.choice(semantics), effective=eff,
-                             cost=rng.choice([None, 0, round(rng.random(), 4)]))
+                             cost=rng.choice([None, 0, round(rng.random(), 4)]), truncated=truncation.random() < 0.2)
                 run_record(runlog.run_dir(root, run), rec)
             invs.append((f"I-{i}", rng.choice(["E-1", "S-1", "T-1", "T-2"]), runs))
         state = hand_state(*invs, work=work)
@@ -599,12 +601,18 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
             priced_rows = [r[name]["usd"] for r in rows if "usd" in r[name]]
             assert fig["usd"] == (sum(priced_rows, Decimal(0)) if priced_rows else None)  # never a zero (#368, M1)
         assert total["invocations"] == len(invs)
+        # Requests (the rate-limit unit's ruling 2): the unknown runs are the rows with no count, `steps` is the sum of
+        # the rows that have one, and a floor run stays a floor at every level (#644 review, m2).
+        assert total["requests_unknown_runs"] == sum(1 for r in rows if r["requests"]["count"] is None)
+        assert total["steps"] == sum(r["requests"]["count"] for r in rows if r["requests"]["count"] is not None)
+        assert total["requests_floor_runs"] == sum(1 for r in rows if r["requests"].get("at_least"))
+        floors += total["requests_floor_runs"]
         assert total["invocations_without_runs"] == sum(1 for _, _, runs in invs if not runs)
         priced += total["estimated_under_current_prices"]["priced"] + total["estimated_at_record"]["priced"]
         for name in ("estimated_at_record", "estimated_under_current_prices"):
             seen.update(r.split(":")[0] for r in total[name]["reasons"])
     # The worlds exercised what the property is about: priced runs, and every way of being unpriced they can reach.
-    assert priced > 0
+    assert priced > 0 and floors > 0
     assert seen >= {O.UNPRICED_SEMANTICS_UNKNOWN, O.UNPRICED_INCONSISTENT, O.UNPRICED_CATEGORY, O.UNPRICED_MIX,
                     O.UNPRICED_MODEL, O.UNPRICED_NO_TABLE, O.UNPRICED_NOT_RECORDED, O.UNPRICED_USAGE_MISSING}, seen
 
@@ -686,6 +694,82 @@ def test_the_status_line_prints_the_exact_sum_never_its_json_number(tmp_path):
     exact = Decimal(123456789) * Decimal(987654321) / Decimal(1_000_000)  # 18 significant digits
     assert f"${exact} USAGE_OBSERVED_COOPERATIVE" in summary["line"]
     assert str(float(exact)) != str(exact)  # its JSON number is not the exact sum
+
+
+def test_a_run_whose_requests_are_unknown_says_why_and_never_shows_zero(tmp_path):
+    """The rate-limit unit's ruling 2 (designer, 2026-11-06): `aew usage show` gives each run's requests and their sum.
+    A run that reported nothing (its harness gone) and a run with no record at all have unknown requests, counted beside
+    the sum and never as a zero in it, in the JSON and the text alike; each row gives its own cause (#644 review, m1:
+    a missing run's usage was lost, not unreported)."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), U.normalize({"tokens": {"input": 10}}, [{}, {}, {}], [GPT], U.DISJOINT,
+                                                            source="harness:opencode"))
+    run_record(runlog.run_dir(tmp_path, "R-2"), U.absent_record(source="harness:opencode"))
+    state = hand_state(("I-1", "T-0001", ["R-1", "R-2", "R-3"]))  # R-3: no run directory
+    projected = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])
+    assert [r["requests"] for r in projected["rows"]] == [
+        {"count": 3, "at_least": False}, {"count": None, "unknown": O.REQUESTS_NOTHING_REPORTED},
+        {"count": None, "unknown": O.REQUESTS_USAGE_LOST}]
+    t = json.loads(json.dumps(O.to_json(projected["totals"])))
+    assert (t["steps"], t["requests_unknown_runs"], t["requests_floor_runs"]) == (3, 2, 0)
+    text = "\n".join(O._invocation_lines(projected, ""))
+    assert ("; requests 3 model call(s) in its messages (compaction, title and retried calls not counted)\n"
+            in text)  # R-1's row
+    assert text.count("; requests unknown (the run reported nothing), not zero") == 1  # R-2
+    assert text.count("; requests unknown (usage lost), not zero") == 1  # R-3
+    assert ("requests: 3 model call(s) in the messages of 1 run(s) (compaction, title and retried calls not counted), "
+            "and 2 run(s) whose requests are unknown, not counted as zero") in text
+    alone = O.Reader(tmp_path, PRICES).invocation("I-2", {"runs": [{"run": "R-2", "harness": "opencode"}]})
+    assert O.requests_text(alone["totals"]) == "unknown for 1 run(s), not counted as zero"
+
+
+def test_a_run_whose_only_calls_were_uncounted_never_shows_an_exact_zero_beside_its_tokens(tmp_path):
+    """#644 review, M1: `steps` counts the run's assistant messages, so a run whose only calls were compaction or title
+    calls has tokens and no counted call. Its requests are unknown, never an exact 0; a run with no call and no token
+    keeps its 0, which is then a count."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), U.normalize({"tokens": {"input": 10}}, [], [GPT], U.DISJOINT,
+                                                            source="harness:opencode"))
+    run_record(runlog.run_dir(tmp_path, "R-2"), U.normalize({"tokens": {"input": 0}}, [], [GPT], U.DISJOINT,
+                                                            source="harness:opencode"))
+    state = hand_state(("I-1", "T-0001", ["R-1", "R-2"]))
+    projected = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])
+    uncounted, idle = projected["rows"]
+    assert uncounted["usage"]["steps"] == 0 and uncounted["usage"]["tokens"]["input"] == 10
+    assert uncounted["requests"] == {"count": None, "unknown": O.REQUESTS_ONLY_UNCOUNTED}
+    assert idle["requests"] == {"count": 0, "at_least": False}
+    head = O._row_lines(uncounted, "")[0]
+    assert head.endswith("; requests unknown (tokens, but no call in its messages; "
+                         f"{O.REQUESTS_NOT_COUNTED}), not zero")
+    assert (projected["totals"]["steps"], projected["totals"]["requests_unknown_runs"]) == (0, 1)
+    assert O.requests_text(projected["totals"]) == (
+        "0 model call(s) in the messages of 1 run(s) (compaction, title and retried calls not counted), and 1 run(s) "
+        "whose requests are unknown, not counted as zero")
+
+
+def test_a_run_whose_calls_were_not_all_read_shows_its_requests_as_a_floor(tmp_path):
+    """The rate-limit unit's ruling 2: when the adapter stopped paging a run's calls (``truncated``), its count is a
+    floor, and so is every sum it goes into."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10, truncated=True))
+    run_record(runlog.run_dir(tmp_path, "R-2"), record(input=10))
+    state = hand_state(("I-1", "T-0001", ["R-1", "R-2"]))
+    projected = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])
+    assert projected["rows"][0]["requests"] == {"count": 1, "at_least": True}
+    assert (projected["totals"]["requests_floor_runs"], projected["totals"]["requests_unknown_runs"]) == (1, 0)
+    assert O.requests_text(projected["totals"]) == (
+        "at least 2 model call(s) in the messages of 2 run(s) (compaction, title and retried calls not counted; "
+        "1 run(s) not read to the end)")
+    head = O._row_lines(projected["rows"][0], "")[0]
+    assert head.endswith("; requests at least 1 model call(s) in its messages (compaction, title and retried calls not "
+                         "counted; not read to the end)")
+
+
+def test_requests_leave_the_status_summary_and_its_existing_keys_as_they_were(tmp_path):
+    """UAT care for the rate-limit unit's ruling 2: the request fields are added beside the totals; `aew status`'s
+    summary keys, and `steps`'s meaning (the calls counted), are unchanged."""
+    assert "requests_unknown_runs" not in O.SUMMARY_KEYS and "requests_floor_runs" not in O.SUMMARY_KEYS
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=10))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    summary = O.status_summary(state, O.Reader(tmp_path, PRICES))
+    assert "requests_unknown_runs" not in summary and "requests" not in summary["line"]
 
 
 def test_a_window_says_what_it_counts_and_only_the_bounds_given():

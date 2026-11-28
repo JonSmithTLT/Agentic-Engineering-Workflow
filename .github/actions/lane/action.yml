@@ -26,12 +26,44 @@ outputs:
 runs:
   using: composite
   steps:
+    # The pinned scanner's archive comes from the Actions cache when it can, so one refused download from the release
+    # host does not leave a passing lane without a scanner and its report withheld (run 46048405164, register E3). The
+    # installer names the path and key and checks the cached bytes against the pinned digest before it uses them.
+    - name: Name the evidence scanner's cache entry
+      id: scanner-cache
+      if: always()
+      continue-on-error: true
+      shell: bash
+      run: python tools/ci/install_evidence.py --cache-entry
+    - name: The evidence scanner from the cache
+      id: scanner-restore
+      if: always() && steps.scanner-cache.outcome == 'success'
+      continue-on-error: true
+      # actions/cache waits up to 10 minutes on a stalled segment by default, and this time comes out of the job's
+      # test deadline like the download's bound (install_evidence.py); a timed-out restore is a miss, so the installer
+      # downloads instead (review of #659).
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.scanner-cache.outputs.path }}
+        key: ${{ steps.scanner-cache.outputs.key }}
     - name: Install evidence tools
       id: tools
       if: always()
       continue-on-error: true
       shell: bash
       run: python tools/ci/install_evidence.py
+    - name: "Cache miss: keep the verified scanner for the next jobs"
+      if: >-
+        always() && steps.scanner-cache.outcome == 'success' && steps.scanner-restore.outputs.cache-hit != 'true' &&
+        steps.tools.outputs.scanner == 'true'
+      # Another job of the same run may save the same key first; that is no failure of this one.
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.scanner-cache.outputs.path }}
+        key: ${{ steps.scanner-cache.outputs.key }}
     - name: Probe hosted attachment
       id: probe
       if: env.AEW_EVIDENCE_PROBE == 'true'
@@ -49,15 +81,19 @@ runs:
         SOURCE: ${{ inputs.source }}
         LANE_SHELL: ${{ inputs.shell }}
         AEW_RUNNING_TESTS_DIR: ${{ inputs.source }}
-        # Hosted Windows CI and its cancellation control sample xdist workers only.
+        # Hosted CI samples every worker periodically, a serial lane's controller included; on Windows, the ci workflow
+        # and its cancellation control. Every attach is --nonblocking, so it never suspends its target (operator,
+        # 2026-11-25, register E3; a Windows serial lane regression reverts it).
         AEW_WORKER_SNAPSHOTS: >-
           ${{ env.AEW_WORKER_SNAPSHOTS ||
               (runner.environment == 'github-hosted' && (!env.AEW_EVIDENCE_PLANT || env.AEW_EVIDENCE_PLANT == 'cancel') &&
-               (runner.os == 'Linux' && '1' ||
-                runner.os == 'Windows' && (github.workflow == 'ci' || env.AEW_EVIDENCE_PLANT == 'cancel') && 'xdist'))
+               (runner.os == 'Linux' ||
+                runner.os == 'Windows' && (github.workflow == 'ci' || env.AEW_EVIDENCE_PLANT == 'cancel')) && '1')
               || '0' }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
         AEW_LANE_STEP: ${{ inputs.artifact }}
+        # The session job's name, the same in the collection step below, which opens the job by it (register E3).
+        AEW_SESSION_JOB_NAMESPACE: aew-session-${{ github.run_id }}-${{ inputs.artifact }}
       run: |
         script="$RUNNER_TEMP/lane-command-${{ github.action }}.sh"
         printf '%s\n' "$COMMAND" > "$script"
@@ -75,6 +111,7 @@ runs:
         AEW_PYTEST_OUTCOME: ${{ inputs.recovery-outcome || steps.pytest.outcome }}
         AEW_LANE_RECOVERY_OUTCOME: ${{ inputs.recovery-outcome }}
         AEW_LANE_JOB_LABEL: ${{ inputs.job-label }}
+        AEW_SESSION_JOB_NAMESPACE: aew-session-${{ github.run_id }}-${{ inputs.artifact }}
       run: python tools/ci/lane_step.py --collect --root "$SOURCE"
     - name: Read the hosted cancellation annotation after cleanup
       if: always() && (cancelled() || inputs.recovery-outcome == 'cancelled' || steps.pytest.outcome == 'cancelled')

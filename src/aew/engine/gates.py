@@ -239,18 +239,10 @@ def _verification_passes(e: dict[str, Any]) -> bool:
             and all(c["result"] == "pass" for c in e["verification"]["claims"]))
 
 
-def ancestors(state: dict[str, Any], work_id: str) -> list[str]:
-    out = []
-    parent = state["work"][work_id].get("parent")
-    while parent:
-        out.append(parent)
-        parent = state["work"][parent].get("parent")
-    return out
-
-
 def effective_class(state: dict[str, Any], work_id: str) -> int:
-    """A unit's risk class raised to the highest min_descendant_class floor of its ancestors."""
-    floors = [(state["work"][anc].get("policy") or {}).get("min_descendant_class") for anc in ancestors(state, work_id)]
+    """A unit's risk class raised to the highest min_descendant_class floor of its ancestors (their own, or carried
+    onto one by a promotion: ``hierarchy.ancestor_obligations``)."""
+    floors = [policy.get("min_descendant_class") for _, _, policy in H.ancestor_obligations(state, work_id)]
     return max([state["work"][work_id]["risk_class"], *(f for f in floors if f is not None)])
 
 
@@ -262,12 +254,13 @@ def effective_obligations(
     local = unit["risk_class"]
     floor = None
     inherited: dict[str, list[str]] = {}
-    for anc in ancestors(state, work_id):
-        policy = state["work"][anc].get("policy") or {}
+    # A carried obligation is named by its origin, so a promotion that carries it changes no source (register E87).
+    for _, origin, policy in H.ancestor_obligations(state, work_id):
         if policy.get("min_descendant_class") is not None:
             floor = max(floor or 0, policy["min_descendant_class"])
-        for gate in policy.get("mandatory_gates", []):
-            inherited.setdefault(gate, []).append(anc)
+        for gate in policy.get("mandatory_gates") or []:
+            if origin not in inherited.setdefault(gate, []):
+                inherited[gate].append(origin)
     effective_class = max(local, floor) if floor is not None else local
     gates = list(gates_policy["risk_paths"][str(effective_class)])
     sources = {g: [f"class {effective_class} path"] for g in gates}
@@ -301,10 +294,15 @@ def effective_obligations(
     }
 
 
+def bound_to(e: dict[str, Any], fingerprint: str | None) -> bool:
+    """Whether evidence ``e`` was evaluated on the snapshot whose fingerprint is ``fingerprint``: the one test of a
+    record's snapshot binding, which the gates and a stage's continue over an ended run both use (register E400)."""
+    return fingerprint is not None and e["evaluated_snapshot"]["relevant_inputs_fingerprint"] == fingerprint
+
+
 def _matches(e: dict[str, Any], fingerprint: str | None, plan_rev: int | None) -> bool:
-    snap = e["evaluated_snapshot"]["relevant_inputs_fingerprint"]
     rev = (e.get("plan_revision") or {}).get("revision")
-    return fingerprint is not None and snap == fingerprint and rev == plan_rev
+    return bound_to(e, fingerprint) and rev == plan_rev
 
 
 def _latest_status(

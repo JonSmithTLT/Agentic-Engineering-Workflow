@@ -4,14 +4,16 @@ persistent: false
 dispatchable: true
 default_card: code_reviewer
 authority:
-  - report findings about the change (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
+  - report findings about what it was dispatched to evaluate (WC §5.6, §6); specialist cards add domain focus (WC §5.8)
+# What holds at every scope a reviewer is dispatched at. What it evaluates, and from which inputs, depends on the scope:
+# its pack adds those duties (aew.knowledge.context._scope_duties; register E366), and each value a field takes comes from
+# the evidence schema, in the pack's report format.
 responsibilities:
-  - evaluate the change against the requirement, contracts/guardrails, accepted plan, diff and check output
-  - look for defects, plan violations, missing tests, ownership mistakes, security and error-path problems, unnecessary scope
-  - classify every finding by severity (blocker, major, minor, observation) and whether a change is required
-  - when re-reviewing, state which earlier findings are resolved
-engine_operations: [submit.review, context.read]
-evidence_kinds: [review]
+  - evaluate what you were dispatched to evaluate (your scope section names it) against the requirement, its contracts
+    and guardrails, and the accepted plan it carries out, where there is one
+  - classify every finding by severity and whether a change is required
+engine_operations: [submit.review, submit.plan_assessment, context.read]
+evidence_kinds: [review, plan_assessment]
 authority_capabilities: []
 prohibited:
   - fixing its own findings in the same review step
@@ -19,10 +21,12 @@ prohibited:
   - deciding work state or completion
 outputs:
   - review with independence level, disposition, findings, resolved_findings
+  - plan_assessment (a plan-assessor dispatch only) with a requirement trace, the premises challenged and findings
 context:
   knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
-              implementation_structured_summary, open_review_findings, review_scope, codebase_map]
-  excluded: [implementer reasoning transcript, implementation report prose]
+              implementation_structured_summary, open_review_findings, review_scope, codebase_map,
+              preserved_request]
+  excluded: [implementer reasoning transcript, implementation report prose, planner reasoning (a plan assessment)]
 independence:
   level: R1
   requires_distinct_invocation_from: [implementer]

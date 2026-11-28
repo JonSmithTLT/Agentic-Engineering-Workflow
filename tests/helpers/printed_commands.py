@@ -68,9 +68,13 @@ SRC = ROOT / "src" / "aew"
 # Every placeholder a printed command may hold, and what a reader puts there. A placeholder names where its value comes
 # from; one not listed here fails the check.
 PLACEHOLDERS: dict[str, str] = {
-    K.REVISION: "17",
     K.NAMED_RUN: "R-0003",  # a steering step over several runs: one of the runs it lists
+    "<shown digest>": "a" * 64,
+    "<shown candidate commit>": "b" * 40,
+    "<current queue state>": "AWAITING_DISPOSITION",
+    "<current state>": "RUNNING",
     "<invocation from aew harness status>": "INV-0012",
+    "<run from aew harness status>": "R-INV-0012-1",
     "<message from aew message read>": "MSG-INV-0007-1",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
     "<T>": "T-0007",  # a Ticket
@@ -84,7 +88,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<card>": "default",  # a role card
     "<check id>": "unit",  # the same, as each text spells it
     "<check-id>": "unit",
-    "<check>": "unit",
     "<kind>": "implementation_report",  # an expected output's kind
     "<file>": "report.md",  # a report file, as each text spells it
     "<that file>": "report.md",
@@ -106,7 +109,7 @@ PLACEHOLDERS: dict[str, str] = {
 }
 
 # The printed text's owners (``aew.harness.contract``): a replacement field naming one is its value, not a slot.
-OWNED: dict[str, str] = {"EXPECT_REV": K.EXPECT_REV, "REVISION": K.REVISION, "MANIFEST_ADOPT": K.MANIFEST_ADOPT}
+OWNED: dict[str, str] = {"MANIFEST_ADOPT": K.MANIFEST_ADOPT}
 
 TEXT_KEYWORDS = frozenset({"help", "description", "epilog", "usage"})  # argparse's own text, not a printed command
 ADOPT_REFERENCE = re.compile(r"(?<!\{)\{(?:K\.)?MANIFEST_ADOPT\}(?!\})")

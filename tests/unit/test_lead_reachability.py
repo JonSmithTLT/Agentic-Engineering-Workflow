@@ -14,7 +14,9 @@ import time
 import pytest
 
 from aew import errors
+from aew.cli import main as cli_main
 from aew.cli.main import build_parser
+from aew.engine import recall
 from aew.harness import bridge, lead_broker
 from aew.harness import contract as K
 from aew.surface import contract
@@ -43,9 +45,13 @@ def test_every_lead_authenticated_command_is_classified_exactly_once():
     operator = {p for p in lead_broker.OPERATOR_ONLY if p in commands}
     transports = set(lead_broker.NOT_RELAYED) & commands
     reachable = set(lead_broker.LEAD_REACHABLE)
-    assert not reachable & operator and not reachable & transports and not operator & transports
-    unclassified = commands - reachable - operator - transports
-    assert not unclassified, f"classify these (LEAD_REACHABLE or OPERATOR_ONLY): {sorted(map(sorted, unclassified))}"
+    typed = set(lead_broker.TYPED_ONLY)  # reached through a typed tool only, never relayed (E160 slice 2b)
+    groups = [reachable, operator, transports, typed]
+    assert all(not a & b for i, a in enumerate(groups) for b in groups[i + 1:])
+    assert typed <= commands
+    unclassified = commands - reachable - operator - transports - typed
+    assert not unclassified, (f"classify these (LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY): "
+                              f"{sorted(map(sorted, unclassified))}")
     assert reachable <= commands, f"no such commands: {sorted(map(sorted, reachable - commands))}"
 
 
@@ -65,6 +71,7 @@ def test_every_command_is_classified_once_for_the_contained_lead():
     classes = {"LEAD_REACHABLE": set(lead_broker.LEAD_REACHABLE), "RELAYED_READS": set(lead_broker.RELAYED_READS),
                "OPERATOR_ONLY": set(lead_broker.OPERATOR_ONLY), "NOT_RELAYED": set(lead_broker.NOT_RELAYED),
                "LEAD_KEPT_OUT": {frozenset(words) for words in custody_ops.LEAD_KEPT_OUT},
+               "TYPED_ONLY": set(lead_broker.TYPED_ONLY),
                "CONTAINED_LOCAL": set(lead_broker.CONTAINED_LOCAL)}
     placed = {path: [name for name, members in classes.items() if path in members] for path in commands}
     assert {" ".join(sorted(p)): c for p, c in placed.items() if len(c) != 1} == {}
@@ -92,7 +99,7 @@ def test_the_surface_map_marks_exactly_the_relayed_reads_and_each_is_a_read():
 @pytest.mark.parametrize(("argv", "reason"), [
     (["history", "compact"], "not_relayed"),
     (["work", "list"], "not_relayed"),  # a read the sandbox runs itself
-    (["plan", "accept", "T-0001", "--revision", "1", "--expect-rev", "3"], "not_relayed"),  # a Lead command
+    (["plan", "accept", "T-0001", "--revision", "1", ], "not_relayed"),  # a Lead command
     (["--print-credential", "status"], "relayed_option"),
     (["status", "--json"], "relayed_option"),  # with `json` taken from status's options below
     (["map", "show", "--root", "/; touch x"], "relayed_value"),  # a stored map's sha256, never a path or a shell
@@ -100,13 +107,22 @@ def test_the_surface_map_marks_exactly_the_relayed_reads_and_each_is_a_read():
     (["map", "show", "--commit=--output=/tmp/x"], "relayed_value"),  # never an option for git
     (["harness", "wait", "../../../etc", "--timeout", "0"], "relayed_value"),  # a run id, never a path
     (["harness", "status", "INV-0001/.."], "relayed_value"),
+    # E185, review of #662 m2: a search term is never an option and is bounded (RELAYED_VALUES["terms"]), and the
+    # filters are names, never a path or an option
+    (["history", "search", "--", "-x"], "relayed_value"),
+    (["history", "search", "x" * (recall.MAX_QUERY_CHARS + 1)], "relayed_value"),
+    (["history", "search", "x", "--kind", "../x"], "relayed_value"),
+    (["history", "search", "x", "--since", "/etc/passwd"], "relayed_value"),
+    (["history", "search", "x", "--until=--x"], "relayed_value"),
 ])
 def test_a_read_outside_the_relayed_set_or_with_another_option_or_value_is_refused_before_anything_runs(
         argv, reason, monkeypatch):
     """Conditions 3 and 5: the broker parses the request against the command's own parser. A command outside the set
     is refused, naming the operator's route; a relayed one with an option it may not carry, or a value that could name
-    a directory, an output path or an option, is refused. None starts a process (the engine is never reached)."""
+    a directory, an output path or an option, is refused. None starts a process (the engine is never reached).
+    `history search` is registered as if its switch were on (that reading is test_history_search's)."""
     monkeypatch.setitem(lead_broker.RELAYED_READS, frozenset({"status"}), frozenset({"work_id"}))
+    monkeypatch.setattr(cli_main, "recall_search_for", lambda *_, **__: True)
     with pytest.raises(errors.PermissionDenied) as refused:
         lead_broker.run_read(object(), argv, ".")
     assert refused.value.details["reason"] == reason, refused.value.details
@@ -139,24 +155,34 @@ def test_a_relayed_wait_at_the_stated_bound_passes_it_and_one_second_more_is_ref
         in refused.value.message
 
 
+@pytest.mark.parametrize("terms", [["subtract implemented"], ["two words", "x" * recall.MAX_QUERY_CHARS]])
+def test_a_relayed_history_search_passes_a_phrase_with_a_space_and_a_term_at_the_bound(terms, monkeypatch, tmp_path):
+    """E185, review of #662 m2: a search term is a phrase, not a name, so one with a space, and one of exactly
+    ``recall.MAX_QUERY_CHARS``, pass the value check and go on to the project check, which finds no project in an empty
+    directory (so nothing runs)."""
+    monkeypatch.setattr(cli_main, "recall_search_for", lambda *_, **__: True)
+    with pytest.raises(errors.ProjectNotFound):
+        lead_broker.run_read(object(), ["history", "search", *terms, "--limit", "3"], str(tmp_path))
+
+
 def _ns(*argv: str) -> argparse.Namespace:
     return build_parser().parse_args(list(argv))
 
 
 def test_an_unclassified_lead_command_is_refused_until_someone_classifies_it(monkeypatch):
-    ns = _ns("plan", "accept", "T-0001", "--revision", "1", "--expect-rev", "3")
+    ns = _ns("plan", "accept", "T-0001", "--revision", "1")
     assert lead_broker.refuses_locally(ns) is None
     monkeypatch.setattr(lead_broker, "LEAD_REACHABLE", lead_broker.LEAD_REACHABLE - {frozenset({"plan", "accept"})})
     refusal = lead_broker.refuses_locally(ns)
     assert refusal and "not classified" in refusal
     with pytest.raises(errors.PermissionDenied):  # the broker applies the same check before anything runs
-        lead_broker.run_cli(object(), "token", ["plan", "accept", "T-0001", "--revision", "1", "--expect-rev", "3"],
+        lead_broker.run_cli(object(), "token", ["plan", "accept", "T-0001", "--revision", "1", ],
                             ".", "", channel="lead_broker")
 
 
 def test_operator_only_commands_are_refused_and_read_only_commands_are_not_relayed():
-    for argv in (("lead", "release", "--expect-rev", "1"), ("lead", "handoff", "offer", "--expect-rev", "1"),
-                 ("lead", "acquire", "--expect-rev", "1"), ("lead", "takeover", "--expect-rev", "1", "--reason", "x"),
+    for argv in (("lead", "release", ), ("lead", "handoff", "offer", ),
+                 ("lead", "acquire", ), ("lead", "takeover", "--reason", "x"),
                  ("dashboard", "open")):
         assert lead_broker.refuses_locally(_ns(*argv)), argv
     assert "operator's own shell" in lead_broker.refuses_locally(_ns("credentials", "--json"))
@@ -166,21 +192,20 @@ def test_operator_only_commands_are_refused_and_read_only_commands_are_not_relay
 def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_validate_is_reachable():
     """M4-D5: resetting the validation breaker is the operator's, confirmed at their terminal; validating a candidate
     is the Lead's."""
-    refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed",
-                                              "--expect-rev", "1"))
+    refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed"))
     assert refusal and "confirmed by the operator" in refusal and "credential" not in refusal
     assert refusal.startswith("`aew integrate breaker reset`"), refusal  # as typed, never sorted (re-review R4)
-    offer = lead_broker.refuses_locally(_ns("lead", "handoff", "offer", "--expect-rev", "1"))
+    offer = lead_broker.refuses_locally(_ns("lead", "handoff", "offer"))
     assert offer and offer.startswith("`aew lead handoff offer`"), offer
-    assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001", "--expect-rev", "1")) is None
+    assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001")) is None
 
 
 @pytest.mark.parametrize("argv", [
-    ("authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "operator", "--expect-rev", "1"),
-    ("authority", "accept", "C-0001", "--class", "decisions", "--expect-rev", "1"),
-    ("authority", "reject", "C-0001", "--expect-rev", "1"),
-    ("manifest", "adopt", "--reason", "reviewed", "--expect-rev", "1"),
-    ("migrate", "--expect-rev", "1"),
+    ("authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "operator", ),
+    ("authority", "accept", "C-0001", "--class", "decisions", ),
+    ("authority", "reject", "C-0001", ),
+    ("manifest", "adopt", "--reason", "reviewed", ),
+    ("migrate", ),
 ])
 def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
     """Operator, 2026-10-06: a Lead session may not accept authority (or record the operator's sign-off), approve an
@@ -196,7 +221,7 @@ def test_the_operators_decisions_are_refused_in_a_lead_session(argv):
 
 def test_a_bound_lead_attributed_authority_accept_is_refused():
     argv = ["authority", "accept", "C-0001", "--class", "decisions", "--decided-by", "lead",
-            "--approval-digest", "a" * 64, "--expect-rev", "1"]
+            "--approval-digest", "a" * 64, ]
     assert lead_broker.refuses_locally(_ns(*argv)).startswith("`aew authority accept` is the operator's decision")
     with pytest.raises(errors.PermissionDenied):
         lead_broker.run_cli(object(), "token", argv, ".", "", channel="lead_broker")
@@ -230,21 +255,21 @@ def test_a_lead_session_never_records_a_decision_as_the_operators():
     """`work staff` stays the Lead's, but `--by operator` records the operator's selection: only the operator, at their
     own terminal. The broker refuses it before anything runs."""
     argv = ("work", "staff", "T-0001", "--review", "security_reviewer", "--by", "operator", "--pin",
-            "--expect-rev", "1")
+            )
     refusal = lead_broker.refuses_locally(_ns(*argv))
     assert refusal and refusal.startswith("`aew work staff` with `--by operator`"), refusal
     with pytest.raises(errors.PermissionDenied):
         lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
     assert lead_broker.refuses_locally(_ns(*(a for a in argv if a not in {"--by", "operator"}))) is None
     refusal = lead_broker.refuses_locally(_ns("authority", "accept", "C-0001", "--class", "decisions",
-                                              "--decided-by", "operator", "--expect-rev", "1"))
+                                              "--decided-by", "operator"))
     assert refusal and "operator" in refusal  # authority accept is the operator's in any form
 
 
 @pytest.mark.parametrize("argv", [
-    ("gate", "waive", "T-0001", "--gate", "review", "--reason", "x", "--expect-rev", "1"),
-    ("history", "load", "R-0001", "--into", "T-0001", "--reason", "x", "--expect-rev", "1"),
-    ("history", "audit", "--expect-rev", "1"),
+    ("gate", "waive", "T-0001", "--gate", "review", "--reason", "x", ),
+    ("history", "load", "R-0001", "--into", "T-0001", "--reason", "x", ),
+    ("history", "audit", "--record", ),
 ])
 def test_waivers_history_loads_and_audits_stay_the_leads(argv):
     assert lead_broker.refuses_locally(_ns(*argv)) is None
@@ -339,8 +364,9 @@ def _messages(tree):
 
 
 # Machine-readable fields that hold a command and nothing else; the message beside each names the operator.
-# MigrationRequired's next_action (base.py, coordination_ops.py): f"aew migrate {EXPECT_REV}", read without its field.
-BARE_COMMAND_FIELDS = {"aew migrate "}
+# MigrationRequired's next_action (base.py, coordination_ops.py): f"aew migrate", read without its field.
+# operator_adopt.MANIFEST_COMMAND: the command a refusal names as the one refused, each refusal naming the operator.
+BARE_COMMAND_FIELDS = {"aew migrate", "aew manifest adopt"}
 
 
 def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
@@ -357,7 +383,7 @@ def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
     for path in src.rglob("*.py"):
         for line, text in _messages(ast.parse(path.read_text(encoding="utf-8"))):
             # The shared command span only reaches a reader inside a message. Check the rendered use sites above.
-            if path == src / "harness/contract.py" and text == K.MANIFEST_ADOPT.replace(K.EXPECT_REV, ""):
+            if path == src / "harness/contract.py" and text == K.MANIFEST_ADOPT:
                 continue
             for command in commands:
                 if f"aew {command}" in text and "operator" not in text and text not in BARE_COMMAND_FIELDS:

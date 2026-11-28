@@ -43,6 +43,7 @@ from aew.harness import agentenv
 from aew.harness.containment import client_cert, egress, relay
 from aew.harness.containment.layout import ISOLATED, NET_SHIM, NETWORK_MODES, PROXY_ONLY, SHARED, Layout
 from aew.harness.opencode import login
+from aew.http_close import REFUSAL_DRAIN_S
 
 NOT_PROVIDED = "not_provided"  # AEW cannot characterize a run's network on this platform
 # Loopback ports inside the sandbox. A fresh network namespace holds nothing else, so any port is free there; they are
@@ -414,13 +415,21 @@ def relay_tls(provider: str | None,
 def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | None = None,
               egress_sock: str | None = None, server_port: int = SERVER_PORT) -> dict[str, Any]:
     """The shim's legs for a run whose network sockets are in ``directory``: the server in, and the relay and the
-    egress proxy out where the run has them."""
+    egress proxy out where the run has them. A relay leg carries the answer the shim gives when its relay takes no
+    connection (:func:`relay_leg`)."""
     out = []
     if relay_sock:
-        out.append({"port": PROVIDER_PORT, "unix": os.path.join(directory, relay_sock)})
+        out.append(relay_leg(PROVIDER_PORT, os.path.join(directory, relay_sock)))
     if egress_sock:
         out.append({"port": EGRESS_PORT, "unix": os.path.join(directory, egress_sock)})
     return {"in": [{"unix": os.path.join(directory, server), "port": server_port}] if server else [], "out": out}
+
+
+def relay_leg(port: int, path: str) -> dict[str, Any]:
+    """A shim out-leg to a provider relay's socket file, with the relay's fixed answer for when it takes no connection
+    (``relay.unreachable_answer``) and how long the shim then waits for the request it did not read
+    (``http_close.REFUSAL_DRAIN_S``), so the answer is not lost to a reset."""
+    return {"port": port, "unix": path, "unreachable": relay.unreachable_answer(), "drain_s": REFUSAL_DRAIN_S}
 
 
 def _relay_sock(provider: str) -> str:
@@ -498,7 +507,7 @@ class RunNetwork:
         self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
         self.server_leg = True    # the harness server is reached through the shim: a worker's, and the Lead's (E210)
         self.lead = False         # the Lead's network: its relays are per provider
-        self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
+        self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, which forwards plain http (E92)
         self.provider: str | None = None  # a worker's provider, and whether its key reached its relay: kept from the
         self.key_relayed = False          # start for the record's note (:meth:`refused`), as close() clears the values
         self.key_source: str | None = None
@@ -684,8 +693,7 @@ class RunNetwork:
         assert self.dir is not None
         spec = shim_spec(self.dir, server=SERVER if self.server_leg else None, relay_sock=RELAY if self.relay else None,
                          egress_sock=EGRESS if self.egress else None)
-        spec["out"] += [{"port": port, "unix": os.path.join(self.dir, _relay_sock(p))}
-                        for p, (port, _) in self.relays.items()]
+        spec["out"] += [relay_leg(port, os.path.join(self.dir, _relay_sock(p))) for p, (port, _) in self.relays.items()]
         return spec
 
     def shim_argv(self, argv: list[str]) -> list[str]:
@@ -696,9 +704,10 @@ class RunNetwork:
     def harness_env(self, env: dict[str, str]) -> dict[str, str]:
         """The harness's environment with each provider variable's value replaced by its sentinel, the operator's
         proxy variables (the relay's) removed, and, with an egress proxy, ``HTTPS_PROXY`` set to the shim's egress
-        port, loopback excepted. Only the HTTPS one: the egress proxy serves CONNECT only (CS-3a), and the provider's
-        ``baseURL`` is plain HTTP to loopback, which must never be sent to it. The values are never in what is
-        returned."""
+        port, loopback excepted. Only the HTTPS one for a worker: the provider's ``baseURL`` is plain HTTP to loopback,
+        which must never be sent to the egress proxy, and a worker's allowlist names what it needs by ``host:port``.
+        The Lead's ``HTTP_PROXY`` names it too (:attr:`http_proxy`), which forwards plain http (register E92). The
+        values are never in what is returned."""
         out = {k: v for k, v in env.items() if k.upper() not in PROXY_NAMES}
         for name, value in self.sentinels.items():
             for key in [k for k in out if k == name or (sys.platform == "win32" and k.upper() == name.upper())]:
@@ -762,7 +771,7 @@ class RunNetwork:
             if self.key_source:
                 out["provider_key_source"] = self.key_source
         else:  # the Lead's: each relayed provider's fixed upstream
-            out["provider_relay"] = "configured" if self.relays else "none"
+            out["provider_relay"] = relay.RELAY_CONFIGURED if self.relays else relay.RELAY_NONE
             out["provider_relays"] = {p: r.upstream.url for p, (_, r) in self.relays.items()}
         if self.egress is not None:
             policy = self.egress.policy.describe()

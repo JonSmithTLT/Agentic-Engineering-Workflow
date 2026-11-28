@@ -333,8 +333,15 @@
               "ticket",
               "integration",
               "observation",
-              "parent"
+              "parent",
+              "plan_assessment"
             ]
+          },
+          "plan_revision": {
+            "description": "E160: a plan assessor's (scope plan_assessment) pin, the accepted plan revision and sha256 it was dispatched to assess; its assessment is refused once the accepted plan is another",
+            "type": "object",
+            "required": ["revision", "sha256"],
+            "properties": {"revision": {"type": "integer"}, "sha256": {"type": "string"}}
           },
           "specialty": {
             "type": [
@@ -402,6 +409,11 @@
                   "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
                   "type": "object", "additionalProperties": false, "required": ["messaging"],
                   "properties": {"messaging": {"const": "enabled"}}
+                },
+                "maps": {
+                  "description": "The worker map-reads switch's immutable launch snapshot (register F15.8); absent on old runs and on runs launched with it off.",
+                  "type": "object", "additionalProperties": false, "required": ["reads"],
+                  "properties": {"reads": {"const": "structural"}}
                 },
                 "provider_key_admission": {
                   "description": "Stored credential admission metadata. API keys carry the SQLite row ID and update time. Plan logins carry their kind.",
@@ -506,6 +518,20 @@
           "title": {"type": "string"},
           "at": {"type": "string"},
           "parent": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "recent_lead_reports": {
+      "description": "Recent Lead-authored report titles, newest first. Report bodies are stored separately.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string", "maxLength": 120}
         }
       }
     },
@@ -628,17 +654,31 @@
       "propertyNames": {"pattern": "^ANM-[0-9]{4,}$"},
       "additionalProperties": {"$ref": "#/$defs/anomaly"}
     },
-    "coordination_store": {
-      "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Written once, by the operator's `manifest adopt` that leaves `coordination.messaging: enabled`, and never removed: threads may exist after the switch is turned off. An engine built before thread sealing refuses a control state holding it, so it cannot end a messaged invocation without a seal.",
+    "obligation_carry": {
+      "description": "Register E87: the project holds obligations a promotion carried (`carried_obligations` on a unit). Registered by the first promotion that carries, and retained, so that an engine that cannot read a carry refuses the file instead of opening it and lowering the carried work (the downgrade rule; #658's review, M1).",
       "type": "object",
       "required": ["since_rev", "decision"],
       "additionalProperties": false,
       "properties": {
-        "since_rev": {"description": "The revision of the adoption (or of the migration) that registered the project.", "type": "integer", "minimum": 1},
-        "decision": {"description": "The adoption's decision record; null when the migration of a v1 project that had adopted messaging registered it.", "oneOf": [{"type": "string", "pattern": "^D-[0-9]+$"}, {"type": "null"}]},
-        "via": {"description": "Present only for a registration by `aew migrate` (the key is v2-only, so a v1 adoption could not write it).", "const": "migrate"}
+        "since_rev": {"type": "integer", "minimum": 1},
+        "decision": {"type": "string", "pattern": "^D-[0-9]+$"}
+      }
+    },
+    "coordination_store": {
+      "description": "F9-A (ADR-0017 D12; plan v4 D-39): the project is registered for coordination messaging. Registered once, at init, at adoption of enabled messaging, or at migration of a v1 project with enabled messaging. Threads may exist after the switch is turned off, so the registration is retained.",
+      "type": "object",
+      "required": ["since_rev", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "since_rev": {"type": "integer", "minimum": 0},
+        "decision": {"description": "The adoption decision record, or null for init or migration.", "oneOf": [{"type": "string", "pattern": "^D-[0-9]+$"}, {"type": "null"}]},
+        "via": {"enum": ["init", "migrate"]}
       },
-      "if": {"required": ["via"]}, "then": {"properties": {"decision": {"type": "null"}}}, "else": {"properties": {"decision": {"type": "string"}}}
+      "oneOf": [
+        {"required": ["via"], "properties": {"via": {"const": "init"}, "since_rev": {"const": 0}, "decision": {"type": "null"}}},
+        {"required": ["via"], "properties": {"via": {"const": "migrate"}, "since_rev": {"minimum": 1}, "decision": {"type": "null"}}},
+        {"not": {"required": ["via"]}, "properties": {"since_rev": {"minimum": 1}, "decision": {"type": "string"}}}
+      ]
     },
     "coordination_unseen": {
       "description": "F9-A (ADR-0017 D11; plan v4 D-38): worker messages of sealed threads that no Lead generation has been shown. Entries are added only by the commit that seals their thread and removed once `.aew/coordination/lead-seen.jsonl` records them; at most 20, with the further ones counted in `omitted` and the range of their sealing revisions in `omitted_revs` (each omitted message stays listed in its seal record). Absent while there is none.",
@@ -689,7 +729,8 @@
             {"required": ["queue"]},
             {"required": ["steering"]}, {"required": ["stage_intents"]},
             {"required": ["coordination_store"]}, {"required": ["coordination_unseen"]},
-            {"required": ["anomalies"]}, {"required": ["control_requests"]}
+            {"required": ["anomalies"]}, {"required": ["control_requests"]},
+            {"required": ["obligation_carry"]}
           ]
         }
       }
@@ -888,6 +929,23 @@
             }
           }
         },
+        "carried_obligations": {
+          "description": "Register E87: what a promotion carried onto the Story or Epic it created from the ancestors it left behind, which binds that unit's descendants exactly as its own policy does (aew.engine.hierarchy.imposed). Written by the promotion only; each entry names its origin (`from`), the ancestor left behind that held it (`via`) and the promotion decision.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "via", "decision", "min_descendant_class", "mandatory_gates"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"type": "string"},
+              "via": {"type": "string"},
+              "decision": {"type": "string"},
+              "min_descendant_class": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+              "mandatory_gates": {"type": "array", "items": {"type": "string"}},
+              "rationale": {"type": ["string", "null"]}
+            }
+          }
+        },
         "scope_corrections": {
           "description": "Register E126: the test paths the Lead added to this mutating Ticket's scope on the record, each with its immutable correction record at `record`. The effective scope is the record's paths and these (aew.engine.scope_ops.effective_meta); archival carries the list into the unit's bundle, which pins each record.",
           "type": "array",
@@ -1017,6 +1075,11 @@
         },
         "mutating": {
           "type": "boolean"
+        },
+        "review_ref": {
+          "description": "Register E168: the full name of the local ref a non-mutating Ticket reviews, fixed at creation (refs/heads/, refs/tags/ or refs/remotes/); each attempt pins its commit (execution.ref_pin).",
+          "type": "string",
+          "pattern": "^refs/(heads|tags|remotes)/."
         },
         "depends_on": {
           "type": "array",

@@ -8,6 +8,7 @@ answer."""
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 import threading
@@ -21,6 +22,7 @@ from fake_harness import contains_credential, credential_hits
 from invariants import assert_control_invariants
 from lead_text import lead_json
 
+from aew.engine import reports
 from aew.surface import readable
 
 PROBE = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
@@ -70,22 +72,25 @@ def test_through_the_real_adapter_the_text_is_readable_and_the_structured_conten
 def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(tmp_path):
     p = lead_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
+    blocked = create_planned_ticket(p, tmp_path, title="A running Ticket without report evidence")
+    p.lead("work", "assign", blocked)
+    p.lead("work", "transition", blocked, "--to", "RUNNING")
     rev = _rev(p)
     env_file = tmp_path / "server-env.json"
     argv, transcript = _argv(tmp_path, "lead", [
         *HANDSHAKE,
         {"call": "status", "arguments": {}},
-        {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "note": "paused", "next": "start T-0001"}},
-        {"call": "explain", "arguments": {"work_id": wid}},
+        {"call": "checkpoint", "arguments": {"note": "paused", "next": "start T-0001"}},
+        {"call": "work_show", "arguments": {"work_id": wid, "explain": True}},
         {"call": "nope", "arguments": {}},
         # every catalog row is built since E6a: a stage call naming no Ticket instead
-        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision"}},
+        {"call": "ticket_prepare", "arguments": {}},
         {"call": "cli", "arguments": {"argv": ["status"]}},
-        {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
+        {"call": "checkpoint", "arguments": {"bogus": True}},
         {"server_env": str(env_file)},
         {"call": "status", "arguments": {"work_id": wid}},
-        # M4-E E5b: a request stage through the MCP ingress, on a READY Ticket: its first step refuses
-        {"call": "ticket_request_review", "arguments": {"expect_rev": "$revision", "work_id": wid}},
+        # The binding matches, so the request reaches the step and its ordinary gate refuses the missing evidence.
+        {"call": "ticket_request_review", "arguments": {"work_id": blocked, "prior_value": "RUNNING"}},
     ])
     res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
     assert res.returncode == 0, res.stderr
@@ -93,9 +98,9 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     init, listed = r[0]["reply"]["result"], r[2]["reply"]["result"]
     assert init["serverInfo"]["name"] == "aew-lead"
     assert [t["name"] for t in listed["tools"]] == [  # no cli
-        "status", "resume", "work_show", "explain", "harness_status", "harness_wait", "checkpoint", "steering",
-        "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
-        "ticket_prepare", "integration_publish"]
+        "status", "resume", "work_show", "harness_status", "harness_wait", "checkpoint", "report_write",
+        "steering", "resolve", "ticket_draft", "ticket_start", "ticket_request_review", "ticket_request_verification",
+        "ticket_prepare", "integration_publish", "message_send", "map"]  # map: a new project's maps.reads is on (F15.8)
     assert _content(r[3])["ok"] and _content(r[3])["revision"] == rev
     assert _content(r[4])["ok"] and _content(r[4])["revision"] == rev + 1
     explained = _content(r[5])
@@ -124,6 +129,34 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
     assert_control_invariants(p)
 
 
+def test_mcp_report_write_uses_the_live_brokers_session_and_returns_an_explicit_read(tmp_path):
+    p = lead_project(tmp_path)
+    body = "A report written through the live MCP broker.\n\x1b[31mred\x1b[0m"
+    argv, transcript = _argv(tmp_path, "report", [
+        *HANDSHAKE,
+        {"call": "status", "arguments": {}},
+        {"call": "report_write", "arguments": {"title": "Answer", "body": body}},
+        {"call": "resume", "arguments": {}},
+    ])
+    res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    records = _records(transcript)
+    written, resumed = _content(records[4]), _content(records[5])
+    assert written["ok"] and resumed["ok"]
+    report_id = written["result"]["id"]
+    assert "-LS-" in report_id
+    assert resumed["projection"]["reports"] == {"label": reports.LABEL,
+                                                "items": [{"id": report_id, "title": "Answer"}]}
+    assert "reports" not in resumed["result"]
+    assert body.splitlines()[0] not in json.dumps(resumed)
+    command = shlex.split(written["result"]["show"])
+    assert command[0] == "aew"
+    shown = p.aew(*command[1:])
+    assert shown.returncode == 0, shown.stderr
+    assert reports.LABEL in shown.stdout and "\\u001b[31m" in shown.stdout and "\x1b" not in shown.stdout
+    assert p.ok(*command[1:], "--json")["body"] == body
+
+
 def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabricates_an_answer(tmp_path, monkeypatch):
     import aew.operator
     from aew.engine.api import Engine
@@ -144,7 +177,7 @@ def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabrica
         time.sleep(0.1)
     assert (sync / "ready").exists(), "the Lead session never became ready"
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator (test)"})
-    Engine.discover(p.root).lead_takeover(expect_rev=_rev(p), reason="session lost", session_label="operator")
+    Engine.discover(p.root).lead_takeover(reason="session lost", session_label="operator")
     time.sleep(1.5)  # the broker's watchdog notices within a second and closes its bridge
     (sync / "go").touch()
     out, err = proc.communicate(timeout=300)
@@ -177,7 +210,8 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
     engine = Engine.discover(p.root)
     in_flight, released = threading.Event(), threading.Event()
 
-    def held(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+    def held(runs, *, timeout=600.0, any_=False, triggers=False, lead=False, message_after=None):
+        assert message_after == {}, "a new project's typed wait observes the coordination lane"
         in_flight.set()  # each check the broker's cooperative wait makes, under its serialization
         run = runs if isinstance(runs, str) else runs[0]
         if released.is_set():

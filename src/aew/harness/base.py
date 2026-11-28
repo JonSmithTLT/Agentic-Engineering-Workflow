@@ -54,6 +54,7 @@ class HarnessAdapter(ABC):
     """``launch`` / ``inspect`` / ``send`` / ``interrupt`` / ``terminate`` / ``collect`` for one run."""
 
     name = ""
+    coordination_live = False
     # How the harness's reported token counters overlap, per qualified harness version and provider:
     # ``{version: {provider: semantics}}``, values from ``aew.harness.usage.TOKEN_SEMANTICS``, each pinned by a harness
     # conformance test (F25, cost and usage ledger v0.2 R4 rule 1); a gateway provider's entry is ``{route: semantics}``
@@ -120,6 +121,26 @@ class HarnessAdapter(ABC):
         ``delivery`` is ``steer`` (at the agent's next step boundary, without interrupting it) or ``queue`` (after its
         current turn): ``aew.harness.delivery.WHEN_DELIVERY`` maps the Lead's ``--when`` onto it (register E55)."""
         raise HarnessIncompatible(f"harness {self.name} does not support delivering messages to a running agent")
+
+    def coordination_post(self, prompt_id: str, text: str, metadata: dict[str, str], *, retry: bool,
+                          delivery: str = "steer", wake: bool = False) -> str:
+        """Offer coordination to this session, returning the outcome of the POST, never admission."""
+        return "unsupported"
+
+    def coordination_admission(self, prompt_id: str, text: str | None = None, *, timeout: float = 2.0) -> str:
+        return "unsupported"
+
+    def coordination_abandon(self, prompt_id: str) -> None:
+        """Stop watching a prompt that did not receive a matching offer receipt."""
+        return None
+
+    def coordination_halt(self, timeout: float) -> bool:
+        """Stop the current turn before reconciling any last known admissions."""
+        return False
+
+    def coordination_launch_prompt(self) -> str | None:
+        """A launch prompt's admission can be observed after startup, where the adapter has that facility."""
+        return None
 
     def interrupt(self) -> None:
         """Stop the agent's current turn, keeping the session."""

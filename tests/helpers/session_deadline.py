@@ -115,13 +115,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bounds  # noqa: E402
 import flight_recorder  # noqa: E402
 import proctree  # noqa: E402
-from evidence_files import ARMED_NOTE, stacks_ablated  # noqa: E402
+from evidence_files import (  # noqa: E402
+    ARMED_NOTE,
+    CONTROLLER,
+    WORKER_COUNT,
+    WORKER_PHASES,
+    lifecycle_receipt,
+    stacks_ablated,
+)
 
 PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
 SUPERVISOR_CUTOFF_EXIT = 71  # the Windows regression step's outer cutoff
 HOST_RESOURCES_EXIT = 72  # the lane step stopped early for the Windows host's resources (register E3)
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
+# The name the lane step gives its session's job object. The lane action sets it in the environment of the lane and of
+# its collection step, which opens the job by it to admit a worker the job holds (register E3). The controller takes it
+# out of its environment, so a nested session names its job as a local run does.
+JOB_NAMESPACE_ENV = "AEW_SESSION_JOB_NAMESPACE"
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
 HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere
 WORKER_KEY = "aew_session_deadline"
@@ -131,7 +142,13 @@ STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "
 STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
 AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 AFTER_FINISH_SIGNAL_READY = "after-finish-signal-ready"
-WORKER_PHASES = ("collecting", "collection-ended", "execution-started")
+# The clock of the worker phase receipts and of the signal they are read against (worker_evidence.phases_at_signal),
+# which takes a stamp equal to the signal, or two equal stamps, as indeterminate. It must be system-wide and fine
+# enough that a transition and a later reading never share a tick: CPython before 3.13 reads time.monotonic on Windows
+# from a 15.6 ms tick, so a receipt read just after a fast collection was indeterminate there (the nightly of
+# 2026-11-25). perf_counter is system-wide on every OS since 3.10, QueryPerformanceCounter on Windows, and is
+# CLOCK_MONOTONIC on Linux.
+PHASE_CLOCK = "perf_counter"
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -144,6 +161,10 @@ REAP_GATE_ENV = "G3_TEST_REAP_GATE"  # tests only: the reaper starts polling onc
 # deadline has its test running then. The deadline counts from configure, and a loaded Windows runner once took longer
 # than a 5 s deadline to reach the test (#443, 2026-11-11). The sentinel's times are unchanged.
 DEADLINE_GATE_ENV = "G3_TEST_DEADLINE_GATE"
+
+
+def phase_clock_ns() -> int:
+    return getattr(time, f"{PHASE_CLOCK}_ns")()
 
 
 def _write(directory: Path, name: str, text: str, *, append: bool = False) -> None:
@@ -188,6 +209,25 @@ def recorded_processes(root: Path):
                 continue
 
 
+@contextlib.contextmanager
+def session_job(directory: Path, *, named_by_lane: bool = False):
+    """One recorded session's job object, or None: off Windows, or when it cannot be opened. ``named_by_lane`` opens
+    only the job the lane step named (``JOB_NAMESPACE_ENV``), and only for the session whose marker records that name;
+    otherwise the job the session's marker names. The handle is closed on exit."""
+    job = None
+    if proctree.IS_WINDOWS:  # pragma: windows-only
+        with contextlib.suppress(OSError):
+            recorded = marker(directory, "session-job").read_text().strip()
+            name = os.environ.get(JOB_NAMESPACE_ENV) if named_by_lane else recorded
+            if name and name == recorded:
+                job = proctree.Job.open(name)
+    try:
+        yield job
+    finally:
+        if job is not None:  # pragma: windows-only
+            job.close()
+
+
 def collect_leftovers(root: Path) -> None:
     """End the session's recorded identities and their members before publication begins."""
     recorded = list(recorded_processes(root))
@@ -196,11 +236,10 @@ def collect_leftovers(root: Path) -> None:
     table = proctree.table()
     members = {identity for _, identity in recorded}
     for directory, identity in recorded:
-        job_file = marker(directory, "session-job")
-        if proctree.IS_WINDOWS and job_file.is_file():
-            with contextlib.suppress(OSError):
-                job = proctree.Job.open(job_file.read_text().strip())
-                members.update(proc.identity for proc in job.members(command_lines=False))
+        with session_job(directory) as job:
+            if job is not None:  # pragma: windows-only
+                with contextlib.suppress(OSError):
+                    members.update(proc.identity for proc in job.members(command_lines=False))
         members.update(proc.identity for proc in proctree.descendants(identity, table))
     members = {identity for identity in members if identity[0] != os.getpid()}
     end_members([proctree.Proc(pid, 0, start) for pid, start in members])
@@ -405,7 +444,58 @@ def addoption(parser: Any) -> None:
                     help="how long after the deadline the controller acts under xdist, and the sentinel one more")
 
 
-class Controller:
+class PhaseReceipt:
+    """The lifecycle receipt of a process that runs tests: an xdist worker, or a serial session's controller.
+
+    The process appends each of ``WORKER_PHASES`` as it reaches it, on one descriptor it keeps open, so a reader
+    (``worker_evidence.phases_at_signal``) can tell a live writer's current phase from a file left behind. A lane
+    cancelled before the process entered its first test's protocol is shown to be so by this receipt alone (register
+    E3): an xdist worker's since #579, and a serial controller's too, which runs its tests itself (the serial lane of
+    PR #608's run 45782924831, cancelled 2.4 s into its pytest step and typed as a test interrupted). An xdist
+    controller runs no test and has no ``lifecycle``, so it records nothing."""
+
+    lifecycle: Any = None
+    phase_stream: Any = None
+    execution_started = False
+
+    def _record_phase(self, phase: str) -> None:
+        # A held descriptor authenticates a live writer. On failure its last line cannot stand for the current phase.
+        if self.lifecycle is None:
+            return
+        try:
+            if phase == WORKER_PHASES[0]:
+                self.phase_stream = self.lifecycle.open("xb", buffering=0)
+            if self.phase_stream is not None:
+                line = f"{phase_clock_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
+                if self.phase_stream.write(line) != len(line):
+                    raise OSError("incomplete worker phase")
+        except OSError:
+            self._close_phase()
+
+    def _close_phase(self) -> None:
+        if self.phase_stream is not None:
+            with contextlib.suppress(OSError):
+                self.phase_stream.close()
+            self.phase_stream = None
+
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_collection(self):
+        self._record_phase(WORKER_PHASES[0])
+        try:
+            return (yield)
+        finally:
+            self._record_phase(WORKER_PHASES[1])
+
+    @pytest.hookimpl(wrapper=True, tryfirst=True)
+    def pytest_runtest_protocol(self):
+        # Enter the first item's protocol before ordinary hooks may block or suppress logstart.
+        if not self.execution_started:
+            self._record_phase(WORKER_PHASES[2])
+            self.execution_started = True
+        return (yield)
+
+
+class Controller(PhaseReceipt):
     def __init__(self, config: Any, seconds: float, margin: float) -> None:
         import watchdog
 
@@ -445,10 +535,17 @@ class Controller:
         if self.distributed:
             self.config.option.maxworkerrestart = "0"  # a worker that exits ends the run (the lanes pin it as well)
         job_name = None
+        named = os.environ.pop(JOB_NAMESPACE_ENV, None)  # this session's only: never a nested session's
         if proctree.IS_WINDOWS:  # pragma: windows-only
             self.job_note = proctree.outer_job()
             job_name = f"aew-session-{os.getpid()}-{secrets.token_hex(6)}"
-            self.job = proctree.Job(job_name)
+            if named:
+                try:
+                    self.job, job_name = proctree.Job(named, exclusive=True), named
+                except OSError as exc:  # a job of that name already exists: never join one this session did not make
+                    self.job_note += f"; the lane's job name was taken ({exc.__class__.__name__})"
+            if self.job is None:
+                self.job = proctree.Job(job_name)
             _write(self.dir, "session-job", job_name + "\n")
         else:
             self.job_note = "subreaper set" if proctree.set_child_subreaper() else "subreaper unavailable"
@@ -478,8 +575,12 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
-        _write(self.dir, "controller-pid", f"{os.getpid()}\n")
-        _write(self.dir, "controller-start", f"{proctree.start_time(os.getpid())}\n")
+        birth = proctree.start_time(os.getpid())
+        _write(self.dir, f"{CONTROLLER}-pid", f"{os.getpid()}\n")
+        _write(self.dir, f"{CONTROLLER}-start", f"{birth}\n")
+        if not self.distributed:
+            # The one process runs the tests, so it keeps a worker's receipt, under its own registered name.
+            self.lifecycle = self.dir / lifecycle_receipt(CONTROLLER, os.getpid(), birth)
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
@@ -615,6 +716,10 @@ class Controller:
             _write(self.dir, AFTER_FINISH_SIGNAL_READY, _stamp("the Linux controller armed its stack request"))
         atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
+        # A finished session is read from its files, not from a live writer: a serial controller's receipt is released
+        # here, so nothing of the session's stays open once it has said it finished (an in-process session's directory
+        # can then be removed on Windows).
+        self._close_phase()
         # Nothing the session made is collected at exit: interpreter finalization runs full collections, and over a
         # serial session's heap they outlasted the margin, so the sentinel ended sessions that had finished (the
         # nightly's Linux reference shards, 2026-11-17 to 11-22: ``Garbage-collecting``, no Python frame; register
@@ -639,7 +744,7 @@ class Controller:
     def pytest_xdist_setupnodes(self, config: Any, specs: list[Any]) -> None:
         # The final lane report may disappear if GitHub interrupts controller shutdown.
         # Pin the expected worker roster before any of its tests start.
-        _write(self.dir, "worker-count", f"{len(specs)}\n")
+        _write(self.dir, WORKER_COUNT, f"{len(specs)}\n")
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_configure_node(self, node: Any) -> None:
@@ -686,7 +791,7 @@ class Controller:
         self.finish()
 
 
-class Worker:
+class Worker(PhaseReceipt):
     """An xdist worker: at the absolute deadline, the running test's autopsy, then exit."""
 
     def __init__(self, config: Any, wall: float, directory: str, margin: float) -> None:
@@ -694,8 +799,6 @@ class Worker:
         self.mono = time.monotonic() + (wall - time.time())
         self.dir = Path(directory)
         self._done = threading.Event()
-        self.phase_stream = None
-        self.execution_started = False
         worker = config.workerinput.get("workerid", "?")
         # Half way from its own exit, at the deadline, to the controller's ending it, a margin on (the docstring's end)
         self.stacks = Stacks(marker(self.dir, f"worker-{worker}-deadline-stacks"), self.mono + margin / 2)
@@ -705,43 +808,9 @@ class Worker:
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
         birth = proctree.start_time(os.getpid())
         _write(self.dir, f"worker-{worker}-start", f"{birth}\n")
-        self.lifecycle = marker(self.dir, f"worker-{os.getpid()}-{birth}-lifecycle")
+        self.lifecycle = self.dir / lifecycle_receipt(f"worker-{worker}", os.getpid(), birth)
         self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
-
-    def _record_phase(self, phase: str) -> None:
-        # A held descriptor authenticates a live writer. On failure its last line cannot stand for the current phase.
-        try:
-            if phase == WORKER_PHASES[0]:
-                self.phase_stream = self.lifecycle.open("xb", buffering=0)
-            if self.phase_stream is not None:
-                line = f"{time.monotonic_ns()} {phase} {self.phase_stream.fileno()}\n".encode("ascii")
-                if self.phase_stream.write(line) != len(line):
-                    raise OSError("incomplete worker phase")
-        except OSError:
-            self._close_phase()
-
-    def _close_phase(self) -> None:
-        if self.phase_stream is not None:
-            with contextlib.suppress(OSError):
-                self.phase_stream.close()
-            self.phase_stream = None
-
-    @pytest.hookimpl(wrapper=True, tryfirst=True)
-    def pytest_collection(self):
-        self._record_phase(WORKER_PHASES[0])
-        try:
-            return (yield)
-        finally:
-            self._record_phase(WORKER_PHASES[1])
-
-    @pytest.hookimpl(wrapper=True, tryfirst=True)
-    def pytest_runtest_protocol(self):
-        # Enter the first item's protocol before ordinary hooks may block or suppress logstart.
-        if not self.execution_started:
-            self._record_phase(WORKER_PHASES[2])
-            self.execution_started = True
-        return (yield)
 
     def _watch(self) -> None:
         while not self._done.wait(max(0.0, min(self.mono - time.monotonic(), 60.0))):

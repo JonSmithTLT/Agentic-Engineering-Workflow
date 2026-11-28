@@ -4,6 +4,8 @@
 # Messaging on also limits unused bytes below the cap to the remaining estimates.
 # A smaller rendered pool must lower the baseline and cap by the saving.
 # Growth without an allocation can pass while it fits inside the reserved room.
+# An operator reserve (kind: reserve, with the operator's words and date) is room the operator keeps under the cap on
+# purpose; it counts with the estimates as unused room, and only an operator-attributed reserve can.
 # System, guide and join are UTF-8 bytes. MCP is compact JSON bytes with ASCII escapes.
 # The pool counts built rows only. Retiring D13's test drops its coverage of designed normal rows.
 schema: aew/lead-context-pool/v1
@@ -12,11 +14,13 @@ authority:
   a44_amendment: 30-stages/STG-20-blocked-on-you/AMENDMENT-2026-11-11-context-pool.md
 baseline:
   push_wake: true
-  switches: [coordination.messaging]
-  system_bytes: 9020
-  guide_bytes: 16412
+  # maps.reads: a new project's map reads (`aew init` writes structural; O1, 2026-11-25), so the Lead's typed `map` row
+  # is measured (F15.8 PR A2). Both modes below are measured with it on.
+  switches: [coordination.messaging, maps.reads]
+  system_bytes: 5834
+  guide_bytes: 8116
   join_bytes: 2
-  mcp_bytes: 11900
+  mcp_bytes: 10845
   # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
   # 242 B. The line would be 453 B with all six shipped tools placed.
   containment:
@@ -32,6 +36,10 @@ baseline:
           served: aew
           command: yq-go
 allocations:
+  E157:
+    bytes: 128
+    kind: measured
+    source: "The operator approved a 235 B reserve transfer on 2026-11-26 ('1..yup budget is good.'), measured against main 612767d3. E329 then removed report_write's revision argument. Against main 2db9b762, report_write and the explain fold into work_show add 72 MCP B and 56 guide B with messaging on, for 26755 B and 16 tools. With messaging off they add 56 guide B and save 12 MCP B, for 26455 B and 15 tools. The system and join byte counts are unchanged. The 107 B of the transfer left unused returns to operator_reserve."
   E158:
     bytes: 1200
     kind: estimate
@@ -39,7 +47,7 @@ allocations:
   E160:
     bytes: 300
     kind: estimate
-    source: "Register E160. A short paragraph for plan assessment guidance."
+    source: "Register E160. A short paragraph for plan assessment guidance. Slice 2b, measured: resolve's assess_plan choice and its description, MCP +14 B with messaging on (the compact description) and +38 B off, and the guide's one line naming the route, +107 B; so +121 B on and +145 B off. The estimate stands until slice 4's staffing text lands, which spends the rest."
   E162:
     bytes: 500
     kind: estimate
@@ -56,12 +64,51 @@ allocations:
     bytes: 200
     kind: measured
     source: "The Lead guide's maps line, with maps on for a new project. Messaging on: system 9279, guide 16590 to 16790, join 2, MCP 11900, so 37771 to 37971 B; the same 200 B with messaging off. The operator chose the lean entry (about 200 B, not a hard limit) on 2026-11-15."
-# Current cap. E328 retired a 21 B guide example, lowering the baseline and cap by 21 B; the maps guide entry then adds
-# its 200 B. Preserve the operator's exact words and date in approval history when the cap changes.
+  F15.8_map_tool:
+    bytes: 769
+    kind: measured
+    source: "F15.8's PR A2, the Lead's typed `map` tool, which O2 approved with an allocation under the pool cap (the operator, 2026-11-25; F15.8's notes), from operator_reserve. The operator approved taking the measured 769 B from operator_reserve on 2026-11-27 ('yes the map.tool can use some reserved room'). Measured with the pool gate's own render against main c9d99d16, maps.reads on as a new project holds it. Messaging on: MCP 11084 -> 11784 B (+700, the compact row, 17 tools) and guide 9404 -> 9473 B (+69, the core's line for `map`), so 26684 -> 27453 B. Messaging off: MCP 11174 -> 11950 B (+776, the standard row, 16 tools) and guide 9184 -> 9253 B (+69), so 26384 -> 27229 B. The system and join byte counts are unchanged. With maps.reads off the row and its line are absent and the pool is byte for byte what it was."
+  # The room between the derived ceiling (baseline 24797 + the allocations above 6534 = 31331 B) and the operator's
+  # 40000 B cap: unallocated, kept by the operator's decision of 2026-11-26.
+  # Under that fixed cap, a later measured saving grows this reserve, under the same quoted words and date, rather
+  # than lowering the cap; any change to the cap itself is the operator's.
+  operator_reserve:
+    bytes: 8669
+    kind: reserve
+    source: "The operator set the cap at 40000 B as an anti-bloat guard. E231 left 5320 B in reserve. E367 saved 3234 B and E329 saved another 1012 B with E367 on main, leaving 9566 B. The operator approved moving up to 235 B to E157 on 2026-11-26; its measured 128 B leaves 9566 - 128 = 9438 B. F15.8's PR A2 takes its measured 769 B, which the operator approved on 2026-11-27, leaving 9438 - 769 = 8669 B."
+    operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
+    date: '2026-11-26'
+# Current cap: the operator's 40000 B (2026-11-26). The cap stays an anti-bloat guard. E231's guide core and pointers
+# sends only the guide's core; measured with the pool gate's own render at main 5649d832, the guide is 17445 B ->
+# 9154 B with messaging on (system 9380, join 2, MCP 12022: 38849 B -> 30558 B) and 17267 B -> 8934 B off (system
+# 9121, MCP 12067: 38457 B -> 30124 B). Under the rule above, the 8291 B messaging-on saving lowers the baseline's guide
+# bytes (16412 - 8291 = 8121), and the derived ceiling to 34680 B (42971 - 8291). The operator chose 40000 B over that
+# figure; the 5320 B between them is the operator_reserve allocation. The 42971 B cap it replaces is in
+# approval_history.
+# E367's rewrite of the system text (every line true and needed; the guide's core owns the facts both stated) and the
+# compact tool descriptions, measured with the pool gate's own render at main d6078d2f and on the PR's branch:
+# messaging on, system 9380 B -> 6194 B and MCP 12022 B -> 11974 B (guide 9154, join 2: 30558 B -> 27324 B); off,
+# system 9121 B -> 6024 B, MCP 12067 B unchanged (the compact descriptions are the on catalog's). The 3234 B
+# messaging-on saving lowers the baseline's system bytes by 3186 (9020 -> 5834) and its MCP bytes by 48 (11900 ->
+# 11852), and the cap stays the operator's 40000 B: the saving grows operator_reserve (5320 -> 8554), as the rule above
+# the reserve says.
+# E329 measured against main 612767d3. Messaging on, the system stays 6194 B, the core goes from 9424 to
+# 9419 B, and MCP from 12019 to 11012 B. The 1012 B saving adds to the reserve. Off, the system stays
+# 6024 B, the core goes from 9204 to 9199 B, and MCP from 12086 to 11186 B. The 40000 B cap stays fixed.
+# Preserve the operator's exact words and date in approval history when the cap changes.
 approval:
-  ceiling_bytes: 42971
-  operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
-  date: '2026-11-15'
+  ceiling_bytes: 40000
+  operator: "For now put the cap at 40k or 42k or something the amount doesnt matter as much as ensuring its a guard against bloat"
+  date: '2026-11-26'
+# The offered-tool ceiling (TLS-21): the most tools the contained Lead's normal surface may offer, messaging on or off.
+# It is separate from the byte cap and, like it, a guard against bloat. It was 16 until the operator's decision of
+# 2026-11-27, which allowed 18 or 20; the Lead chose 20, because the queued typed tools (F15.8 A2's map read, E158's
+# consult, E12's `evidence show`, the history-search tool) would make 20. The operator and the designer will revisit
+# the figure. A change takes the same shape: the count, the operator's exact words and the date.
+tool_ceiling:
+  count: 20
+  operator: "Id say for now to keep things rolling raise the tool cap to 18 or 20 and the designer and I can reckon woth it after. Just like the byte cap the tool cap was for bloat. So if this is an action commonly used by the lead a tool makes sense."
+  date: '2026-11-27'
 # The approved drop after PR 3 still applies.
 approval_history:
   - ceiling_bytes: 42405
@@ -82,6 +129,34 @@ approval_history:
   - ceiling_bytes: 42992
     operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
     date: '2026-11-15'
+  # E328 retired a 21 B guide example: the same approval, 21 B lower. E231's guide core then lowered it again.
+  - ceiling_bytes: 42971
+    operator: "if possible yes keep it lean so B but im not hard stuck on exactly 200"
+    date: '2026-11-15'
+# E231's guide core and pointers: the guide's bytes in the pool gate's render, before and after, messaging on and off.
+# A test renders the guide and checks it against `after`; a change to the core's bytes updates these and the baseline.
+# The core's rule that accepting a plan and publishing are the operator's decisions, confirmed at their own terminal
+# (the operator's ruling of 2026-11-26; register E350), adds 221 B to the core, and its opening line, which said the
+# Lead accepts plans and makes every decision, now says what is true, for 49 B more (#597's quick check, m2): 270 B,
+# messaging on and off, and the same on the whole guide the core replaced, so before and after both grow by it and
+# E231's saving stands. Measured with the pool gate's own render on fix/operator-confirms-plan-and-publish: on,
+# 27324 B -> 27594 B (system 6194, guide 9424, join 2, MCP 11974); off, 27027 B -> 27297 B (system 6024, guide 9204,
+# join 2, MCP 12067). No allocation covers the 270 B and none is changed: the baseline, the derived ceiling, the
+# 40000 B cap and operator_reserve's 8554 B all stand, and the growth sits in the room that reserve keeps under the
+# cap. That room is the operator's, so the pull request says so for the operator to accept or to ask for a cut.
+# E157's 56 B per mode are in its measured allocation, so it updates `after` and the net saving without putting
+# those same bytes in the baseline.
+# E331: the core's rule on classifying no longer says to wait for the session's end (the operator classifies with no
+# Lead credential, the seat left to the Lead): 71 B fewer, messaging on and off, in before and after alike, so E231's
+# saving stands. The baseline, the allocations and the 40000 B cap are unchanged; the 71 B is more room under the cap.
+# F15.8's PR A2: the core's line for the typed `map` tool, shown while maps.reads is on (now in the fixture), adds 69 B,
+# messaging on and off, in before and after alike, so E231's saving stands; its bytes are in the F15.8_map_tool
+# allocation.
+guide_core:
+  measured: '2026-11-27'
+  messaging_on: {before: 17713, after: 9473}
+  messaging_off: {before: 17535, after: 9253}
+  saving_bytes: 8240
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:
 #   count: <approved byte ceiling>

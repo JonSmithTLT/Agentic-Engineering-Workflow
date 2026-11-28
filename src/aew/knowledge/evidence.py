@@ -11,34 +11,65 @@ evidence stays byte-identical.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from aew import profile
 from aew.errors import IntegrityError, PermissionDenied, ValidationFailed
-from aew.schemas import validate
+from aew.schemas import validate, validate_property
 from aew.util import parse_frontmatter, render_frontmatter, sha256_file, sha256_text
+
+# E160 (SYS-43; the designer's decision of 2026-11-06 on planner staffing and the plan assessor, Q2): the plan
+# assessment, a record kind of the reviewer archetype that challenges an accepted plan revision: a requirement trace,
+# the premises challenged, and findings. The schema holds its producer to this archetype. Only an invocation the
+# assessor entrypoint (`aew plan assess`, E160 slice 2) dispatched submits one: its scope is ``ASSESSMENT_SCOPE``, and
+# a reviewer dispatched to review a change never may (``kinds_for``). The entrypoint's default card is
+# ``ASSESSOR_CARD``; any card of the archetype that lists the kind among its outputs may be named instead.
+PLAN_ASSESSMENT = "plan_assessment"
+ASSESSOR_ARCHETYPE = "reviewer"
+ASSESSMENT_SCOPE = "plan_assessment"
+ASSESSOR_CARD = "plan_assessor"
+# The Lead's typed route to a plan assessor (E160 slice 2b): the tool, its choice and the subject that names a unit's
+# accepted plan, `<W>#plan`. The catalog's choice is this one (``contract.RESOLVE_CHOICE_PRIMITIVE``), and the engine's
+# next steps, which never import the surface, print the call from here (``assessor_call``).
+ASSESS_TOOL = "resolve"
+ASSESS_CHOICE = "assess_plan"
+PLAN_ITEM = "#plan"
+# Register E168 (SYS-45; the designer's decision of 2026-11-06, (d)): a review of a named local ref, the deliverable of
+# a non-mutating Ticket that names one (``review_ref``). A record kind of the investigator archetype, beside the
+# discovery record, pinned as an attempt's output only for such a Ticket (``execute_kind``); the default card for its
+# execute slot is ``REF_REVIEW_CARD``. Not source-bound: its freshness compares its ref's current commit with the one
+# its attempt pinned (``aew.engine.freshness``).
+REF_REVIEW = "ref_review"
+REF_REVIEW_CARD = "branch_reviewer"
+# The invocation scopes that hold their own read-only observation of the source (ADR-0008): a non-mutating Ticket's
+# executor and its reviewers and verifiers, a parent's acceptance roles, and a plan assessor.
+OBSERVER_SCOPES = frozenset({"observation", "parent", ASSESSMENT_SCOPE})
 
 ROLE_KINDS = {
     "implementer": {"implementation_report"},
-    "reviewer": {"review"},
+    "reviewer": {"review", PLAN_ASSESSMENT},  # a plan assessment only at its own scope (``kinds_for``)
     "verifier": {"verification"},
     # Non-mutating execute records (ADR-0008): each read-only archetype writes exactly one kind.
-    "investigator": {"discovery_record"},
+    "investigator": {"discovery_record", REF_REVIEW},  # a ref review only for a Ticket naming a ref (``kinds_for``)
     "researcher": {"research_record"},
     "planner": {"plan_proposal"},
 }
-# The record a non-mutating executor of each archetype must produce (the pinned output contract).
+# The record a non-mutating executor of each archetype must produce (the pinned output contract), unless its Ticket
+# names a ref to review (``execute_kind``).
 EXECUTE_KIND = {"investigator": "discovery_record", "researcher": "research_record", "planner": "plan_proposal"}
-EXECUTE_KINDS = frozenset(EXECUTE_KIND.values())
+EXECUTE_KINDS = frozenset(EXECUTE_KIND.values()) | {REF_REVIEW}
 SHORT = {"implementation_report": "impl", "review": "review", "verification": "verify", "check_result": "check",
-         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}
+         "discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal",
+         PLAN_ASSESSMENT: "assess", REF_REVIEW: "refreview"}
 
 # Fields the engine owns. A submission containing any of them is rejected rather than
 # silently overwritten, so forged bindings or control decisions are visible failures.
 ENGINE_OWNED = {"schema", "id", "kind", "work_unit", "created_at", "evaluated_snapshot", "plan_revision",
                 "seq", "integrity", "sealed_by", "attempt", "subject",
-                "coordination_inputs"}  # the Lead messages it had (F9-A plan D-35)
+                "coordination_inputs", "coordination_through", "coordination_rev",  # F9-A D-35 and MS5b
+                "reviewed_ref", "verdict"}  # a ref review's pin and the verdict its findings give (E168)
 # Producer fields the engine records from control state (ADR-0010): identity, the pinned execution, and
 # the credential and harness run that presented the submission. A submitter may only *declare* the rest.
 ENGINE_OWNED_PRODUCER = {"kind", "role", "invocation", "role_card", "execution_profile", "run", "credential",
@@ -56,7 +87,42 @@ SUBMITTER_KEYS = {
     "discovery_record": {"claim", "result", "producer", "method", "evidence", "discovery"},
     "research_record": {"claim", "result", "producer", "method", "evidence", "research"},
     "plan_proposal": {"claim", "result", "producer", "method", "evidence", "proposal"},
+    # No ``result``: the engine derives it from the findings, as it does a review's.
+    PLAN_ASSESSMENT: {"claim", "producer", "method", "evidence", "assessment"},
+    # ``result`` says the review was done; the engine derives its ``verdict`` from the findings.
+    REF_REVIEW: {"claim", "result", "producer", "method", "evidence", REF_REVIEW},
 }
+# A finding of these severities requires a change, whatever its submitter said: a review's, a plan assessment's and a
+# ref review's findings alike (``mark_required``).
+REQUIRED_SEVERITIES = frozenset({"blocker", "major"})
+
+
+def mark_required(findings: Iterable[dict[str, Any]]) -> None:
+    """Make each finding of a required severity required, in place: the one rule a review's, a plan assessment's and a
+    ref review's findings share."""
+    for f in findings:
+        if f.get("severity") in REQUIRED_SEVERITIES:
+            f["required"] = True
+
+
+def pinned_kind(state: dict[str, Any], inv: dict[str, Any]) -> str | None:
+    """The record kind the attempt of non-mutating executor ``inv`` was pinned to produce (its unit's
+    ``execution.expected_kind``); None for any other role."""
+    if inv.get("role") not in EXECUTE_KIND:
+        return None
+    return ((state["work"].get(inv["work_unit"]) or {}).get("execution") or {}).get("expected_kind")
+
+
+def execute_kind(unit: dict[str, Any], archetype: str) -> str:
+    """The record an attempt of non-mutating ``unit`` executed by ``archetype`` must produce: a ref review for a Ticket
+    that names a ref (its card is then a ref reviewer: ``role_ops.slot_ok``), otherwise the archetype's own kind."""
+    return REF_REVIEW if unit.get("review_ref") else EXECUTE_KIND[archetype]
+
+
+def plan_binding(plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The ``plan_revision`` binding every record carries: the unit's accepted plan revision and its sha256, or None
+    while it has none. The one owner of its shape: records are bound with it and compared against it."""
+    return {"revision": plan["accepted"], "sha256": plan["sha256"]} if plan else None
 
 
 def evidence_dir(aew_root: Path, work_id: str) -> Path:
@@ -113,6 +179,19 @@ def _scan(aew_root: Path, work_id: str) -> tuple[list[dict[str, Any]], list[str]
     return records, problems
 
 
+def locate(aew_root: Path, work_ids: Iterable[str], evidence_id: str) -> list[tuple[str, Path]]:
+    """Each unit whose evidence directory lists a record of this id, with the record's file (register E170); one, for
+    a record AEW wrote, and none when no unit holds it. The file is found by listing each directory, never by a path
+    built from ``evidence_id`` (an id is a caller's text). The caller reads it (:func:`read`) and holds it to its
+    unit."""
+    found = []
+    for work_id in work_ids:
+        directory = evidence_dir(aew_root, work_id)
+        if directory.is_dir():
+            found += [(work_id, path) for path in sorted(directory.glob("*.md")) if path.stem == evidence_id]
+    return found
+
+
 def next_seq(aew_root: Path, work_id: str) -> int:
     directory = evidence_dir(aew_root, work_id)
     return 1 + (len(list(directory.glob("*.md"))) if directory.is_dir() else 0)
@@ -122,6 +201,8 @@ def next_seq(aew_root: Path, work_id: str) -> int:
 # saying. The refusals and the packs' report formats both read these.
 IMPLEMENTATION_RESULTS: dict[str, str | None] = {"pass": "complete", "blocked": None}
 RECORD_RESULTS: dict[str, str | None] = {"pass": "the question is answered", "blocked": None, "inconclusive": None}
+# A ref review's results are a record's, with what ``pass`` means for it: findings never fail the record (E168).
+REF_REVIEW_RESULTS: dict[str, str | None] = {**RECORD_RESULTS, "pass": "the review is done, whatever it found"}
 
 
 def one_of(values: dict[str, str | None]) -> str:
@@ -130,9 +211,72 @@ def one_of(values: dict[str, str | None]) -> str:
     return ", ".join(words[:-1]) + " or " + words[-1]
 
 
-def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
+def assessor_call(work_id: str, rationale: str) -> tuple[str, dict[str, Any]]:
+    """The Lead's call that dispatches an assessor of ``work_id``'s accepted plan: the command, and the arguments it
+    reads on stdin as JSON."""
+    return (f"aew lead tool {ASSESS_TOOL} --arguments -",
+            {"subject": f"{work_id}{PLAN_ITEM}", "choice": ASSESS_CHOICE, "rationale": rationale})
+
+
+def kinds_for(role: str, scope: str | None, expected: str | None = None) -> set[str]:
+    """The evidence kinds an invocation of ``role`` dispatched at ``scope`` may submit: its archetype's, where a plan
+    assessment belongs to the assessor's scope alone. So a plan-assessor dispatch submits a plan assessment and nothing
+    else, and a reviewer of a change never submits one (E160 slice 2). A non-mutating executor submits the one kind its
+    attempt was pinned to (``expected``; without one, its archetype's own): an investigator is never offered a ref
+    review, and a branch reviewer never a discovery record (E168). The one owner of what a run is expected to produce,
+    too (``harness_ops.expected_kinds``)."""
+    kinds = set(ROLE_KINDS.get(role, set()))
+    if role == ASSESSOR_ARCHETYPE and scope == ASSESSMENT_SCOPE:
+        return kinds & {PLAN_ASSESSMENT}
+    if role in EXECUTE_KIND:
+        return kinds & {expected or EXECUTE_KIND[role]}
+    return kinds - {PLAN_ASSESSMENT}
+
+
+def submit_operations(operations: Iterable[str], role: str, scope: str | None,
+                      expected: str | None = None) -> list[str]:
+    """``operations`` less each ``submit.<kind>`` an invocation of ``role`` at ``scope`` (pinned to ``expected``, for a
+    non-mutating executor) may not use (``kinds_for``): what a pack lists and a run's bridge offers, so a reviewer of a
+    change is never told it may submit a plan assessment (#581 review, F1). The grant itself is the archetype's; this
+    narrows only what is offered."""
+    allowed = kinds_for(role, scope, expected)
+    return [op for op in operations if not op.startswith("submit.") or op.removeprefix("submit.") in allowed]
+
+
+# The capability a configured check's evidence names as its method (``check_run``, and a validation run's checks):
+# running one is targeted test execution, sealed and bound to the snapshot. So the operation that runs a check serves
+# that capability for a role that holds it, and such a role is never sent to its shell for it: a shell run records
+# nothing it can cite (register E368, the worker-pack audit's F3: the verifier was told to use its shell).
+CHECK_CAPABILITY = "targeted_test_execution"
+OPERATION_CAPABILITIES: dict[str, tuple[str, ...]] = {"check.run": (CHECK_CAPABILITY,)}
+
+
+def served_by_operation(operations: Iterable[str]) -> dict[str, str]:
+    """Each capability that one of ``operations`` serves, with that operation (``OPERATION_CAPABILITIES``)."""
+    return {capability: op for op in operations for capability in OPERATION_CAPABILITIES.get(op, ())}
+
+
+def check_submission(role: str, kind: str, meta: dict[str, Any], *, scope: str | None = None,
+                     expected: str | None = None) -> None:
     if kind not in ROLE_KINDS.get(role, set()):
         raise PermissionDenied(f"role {role} may not submit {kind} evidence", role=role, kind=kind)
+    if kind not in kinds_for(role, scope, expected):
+        if role in EXECUTE_KIND:
+            pinned = expected or EXECUTE_KIND[role]
+            raise PermissionDenied(
+                f"this attempt was pinned at dispatch to produce a {pinned}: submit it (`aew submit --kind {pinned} "
+                f"--file <file>`), not {kind} evidence", reason="not_the_pinned_kind", role=role, kind=kind,
+                expected=pinned)
+        if kind == PLAN_ASSESSMENT:
+            raise PermissionDenied(
+                "only an invocation dispatched to assess the accepted plan may submit a plan assessment; this one was "
+                f"dispatched at scope {scope!r}. A plan assessor is dispatched with the plan assess command, never as "
+                "a reviewer of a change",
+                reason="not_a_plan_assessment_dispatch", role=role, kind=kind, scope=scope)
+        raise PermissionDenied(
+            f"this invocation was dispatched to assess the accepted plan: it submits a {PLAN_ASSESSMENT} "
+            f"(`aew submit --kind {PLAN_ASSESSMENT} --file <file>`), not {kind} evidence",
+            reason="plan_assessment_dispatch", role=role, kind=kind, scope=scope)
     control = sorted(CONTROL_FIELDS & meta.keys())
     if control:
         raise PermissionDenied(
@@ -154,3 +298,77 @@ def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
                                fields=[f"producer.{k}" for k in owned])
     if set(producer) - DECLARED_PRODUCER:
         raise ValidationFailed("producer may only declare model, provider and harness")
+
+
+def plan_assessment_binding(work_id: str, plan: dict[str, Any] | None, submitted: dict[str, Any]) -> dict[str, Any]:
+    """The engine's part of a plan assessment of ``work_id``, whose accepted plan is ``plan``: the submitted
+    ``assessment`` checked, its blocker and major findings made required, and the ``result`` they give. The
+    ``plan_revision`` binding is the one every record carries (``plan_binding``), set by the submission path; the schema
+    refuses a plan assessment without it. E160 slice 2's submission path calls this, as it does the review checks.
+
+    Refused, with ``reason`` in the details: no accepted plan (``no_accepted_plan``: there is nothing to assess), a
+    finding id used twice (``duplicate_finding``), and a gap left silent (``gap_without_finding``): a requirement the
+    plan covers only in part or not at all, or a premise that fails, must cite a finding of this assessment."""
+    if plan_binding(plan) is None:
+        raise ValidationFailed(f"{work_id} has no accepted plan revision to assess; a plan assessment challenges the "
+                               "accepted revision, so accept a plan first", reason="no_accepted_plan", work_id=work_id)
+    raw = submitted.get("assessment")
+    # ``required`` defaults as a review's does, before the shape is checked; findings that are missing or not a list
+    # reach the schema as they are, and are refused there.
+    if isinstance(raw, dict) and isinstance(raw.get("findings"), list):
+        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f for f in raw["findings"]]}
+    validate_property("evidence", "assessment", raw, source="submission")
+    assessment = cast(dict[str, Any], raw)  # the schema requires an object; it is already a fresh copy
+    ids = [f["id"] for f in assessment["findings"]]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        raise ValidationFailed(f"finding id(s) {', '.join(duplicates)} are used more than once; give each finding its "
+                               "own id", reason="duplicate_finding", findings=duplicates)
+    silent = [f"requirement {t['requirement']!r} ({t['status']})" for t in assessment["requirement_trace"]
+              if t["status"] != "covered" and t.get("finding") not in ids]
+    silent += [f"premise {p['premise']!r} (fails)" for p in assessment["premises_challenged"]
+               if p["outcome"] == "fails" and p.get("finding") not in ids]
+    if silent:
+        raise ValidationFailed(f"a gap needs a finding: {'; '.join(silent)} cite(s) no finding of this assessment; "
+                               "name the finding's id in its `finding` field", reason="gap_without_finding",
+                               gaps=silent)
+    mark_required(assessment["findings"])
+    failed = any(f["required"] for f in assessment["findings"])
+    return {"assessment": assessment, "result": "fail" if failed else "pass"}
+
+
+# A ref review's verdict, which the engine derives from its findings (E168): ``findings`` when one is required.
+VERDICT_CLEAR, VERDICT_FINDINGS = "clear", "findings"
+
+
+def ref_review_binding(pin: dict[str, Any], submitted: dict[str, Any]) -> dict[str, Any]:
+    """The engine's part of a ref review whose attempt pinned ``pin`` (``execution.ref_pin``): the submitted
+    ``ref_review`` section checked, its blocker and major findings made required (``mark_required``), the ``verdict``
+    they give, and ``reviewed_ref``, the pin less what it noticed about uncommitted work. Findings never fail the
+    record: its ``result`` says whether the review was done, so a review with a blocker is a complete one (E168)."""
+    raw = submitted.get(REF_REVIEW)
+    if isinstance(raw, dict) and isinstance(raw.get("findings"), list):
+        raw = {**raw, "findings": [{"required": False, **f} if isinstance(f, dict) else f for f in raw["findings"]]}
+    validate_property("evidence", REF_REVIEW, raw, source="submission")
+    section = cast(dict[str, Any], raw)
+    ids = [f["id"] for f in section["findings"]]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        raise ValidationFailed(f"finding id(s) {', '.join(duplicates)} are used more than once; give each finding its "
+                               "own id", reason="duplicate_finding", findings=duplicates)
+    mark_required(section["findings"])
+    verdict = VERDICT_FINDINGS if any(f["required"] for f in section["findings"]) else VERDICT_CLEAR
+    return {REF_REVIEW: section, "verdict": verdict,
+            "reviewed_ref": {k: v for k, v in pin.items() if k != "uncommitted"}}
+
+
+def counting_assessment(records: list[dict[str, Any]], plan: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The plan assessment that counts for the accepted revision ``plan``: of the sealed records ``scan`` returns, the
+    first one recorded that is bound to that revision and its sha256, or None. One counts per revision: a later
+    assessment of the same revision is history and never replaces it (no assessor shopping), and one bound to another
+    revision, or to the same number with another digest, never counts for this one."""
+    binding = plan_binding(plan)
+    if binding is None:
+        return None
+    bound = [r for r in records if r.get("kind") == PLAN_ASSESSMENT and r.get("plan_revision") == binding]
+    return min(bound, key=lambda r: r.get("seq", 0), default=None)

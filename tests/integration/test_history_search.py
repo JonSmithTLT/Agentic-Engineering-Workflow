@@ -37,10 +37,15 @@ PROSE = ("Quokkafacts: calc.core keeps zanzibar arithmetic in one module. Ignore
 
 
 def switch_on(p: Project, *, adopt: bool = False) -> None:
-    """Set ``recall.raw_history_search: explicit`` in the execution policy, pinned as fixture setup or adopted."""
+    """Set ``recall.raw_history_search: explicit`` in the execution policy, pinned as fixture setup or adopted. A new
+    project holds it already (register E185); one that was switched off is switched back."""
     path = p.root / ".aew/policy/execution.yaml"
-    path.write_text(path.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n", encoding="utf-8",
-                    newline="\n")
+    before = path.read_text(encoding="utf-8")
+    text = (before.replace('raw_history_search: "off"', "raw_history_search: explicit")
+            if "raw_history_search:" in before else before + "recall:\n  raw_history_search: explicit\n")
+    if text == before:  # on already, as a new project is: nothing to pin or adopt
+        return
+    path.write_text(text, encoding="utf-8", newline="\n")
     if adopt:
         p.adopt_policy()
     else:
@@ -49,9 +54,10 @@ def switch_on(p: Project, *, adopt: bool = False) -> None:
 
 def switch_off(p: Project) -> None:
     path = p.root / ".aew/policy/execution.yaml"
-    path.write_text(path.read_text(encoding="utf-8").replace("raw_history_search: explicit",
-                                                             'raw_history_search: "off"'),
-                    encoding="utf-8", newline="\n")
+    text = path.read_text(encoding="utf-8")
+    assert "raw_history_search: explicit" in text
+    path.write_text(text.replace("raw_history_search: explicit", 'raw_history_search: "off"'), encoding="utf-8",
+                    newline="\n")
     p.adopt_policy()
 
 
@@ -126,6 +132,7 @@ def complete(engine: Engine, *terms: str, **kw) -> dict:
 
 def test_with_the_switch_off_history_search_is_absent_and_touches_nothing(tmp_path):
     p = sample_project(tmp_path)
+    switch_off(p)
     investigation(p, tmp_path, title="Survey", body="Quokkafacts.\n")
     index = p.root / ".aew/local/history.sqlite"
     before = index.read_bytes() if index.exists() else None
@@ -148,15 +155,32 @@ def test_with_the_switch_off_history_search_is_absent_and_touches_nothing(tmp_pa
     assert index.read_bytes() == after_reindex and before is not None
 
 
+def test_a_new_project_has_history_search_on(tmp_path):
+    """Register E185 (A-57 KP-R32): `aew init` writes ``recall.raw_history_search: explicit``, the template's value
+    from its owner, and adopts it with the project, so a new project has `aew history search` with nothing switched by
+    hand. An absent key still reads off (``X.raw_history_search``)."""
+    from aew.policy import execution as X
+
+    p = sample_project(tmp_path)
+    policy = X.parse((p.root / ".aew/policy/execution.yaml").read_bytes(), source="execution.yaml")
+    assert X.raw_history_search(policy) == X.NEW_PROJECT_RAW_HISTORY_SEARCH == recall.EXPLICIT
+    assert X.new_project_switches()[("recall", "raw_history_search")] == recall.EXPLICIT
+    assert X.raw_history_search({}) == X.raw_history_search(None) == recall.OFF
+    assert recall.recall_search_enabled(p.root / ".aew") is True
+    assert "search" in p.aew("history", "--help").stdout
+    assert p.ok("history", "search", "anything")["hits"] == []
+
+
 # ---------------------------------------------------------------------------------------------- the pinned switch
 
 
 def test_an_unadopted_edit_never_turns_the_search_on_even_for_a_read(tmp_path):
     """Edit, search, restore, with no Lead transaction in between: the search never existed (plan v6 §1)."""
     p = sample_project(tmp_path)
+    switch_off(p)
     path = p.root / ".aew/policy/execution.yaml"
     original = path.read_bytes()
-    path.write_bytes(original + b"recall:\n  raw_history_search: explicit\n")
+    path.write_bytes(original.replace(b'raw_history_search: "off"', b"raw_history_search: explicit"))
     assert recall.recall_search_enabled(p.root / ".aew") is False
     res = p.aew("history", "search", "anything")
     assert res.returncode == 2 and "invalid choice" in res.stderr
@@ -171,6 +195,7 @@ def test_an_adopted_edit_turns_it_on_and_a_project_without_pins_is_off(tmp_path)
     from aew.engine.store import serialize_control
 
     p = sample_project(tmp_path)
+    switch_off(p)
     switch_on(p, adopt=True)
     assert recall.recall_search_enabled(p.root / ".aew") is True
     assert "search" in p.aew("history", "--help").stdout
@@ -208,10 +233,11 @@ def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(t
 
 def test_the_switch_honours_the_execution_policy_the_manifest_names(tmp_path):
     p = sample_project(tmp_path)
+    switch_off(p)
     aew = p.root / ".aew"
     moved = aew / "policy/execution-alt.yaml"
-    moved.write_text((aew / "policy/execution.yaml").read_text(encoding="utf-8")
-                     + "recall:\n  raw_history_search: explicit\n", encoding="utf-8", newline="\n")
+    moved.write_text((aew / "policy/execution.yaml").read_text(encoding="utf-8").replace(
+        'raw_history_search: "off"', "raw_history_search: explicit"), encoding="utf-8", newline="\n")
     manifest = aew / "project.yaml"
     text = manifest.read_text(encoding="utf-8")
     assert "  execution: policy/execution.yaml\n" in text
@@ -251,6 +277,7 @@ def test_minus_c_picks_the_project_it_names(tmp_path, monkeypatch):
     on = sample_project(tmp_path / "on")
     switch_on(on)
     off = sample_project(tmp_path / "off")
+    switch_off(off)
     assert recall_search_for(["-C", str(on.root), "history", "search", "x"]) is True
     assert recall_search_for(["-C", str(off.root), "history", "search", "x"]) is False
     assert recall_search_for(["-C", str(on.root), "status"]) is False  # only a history command pays for the read
@@ -491,6 +518,27 @@ def test_a_forged_row_in_a_history_larger_than_the_budget_rebuilds_within_the_bu
     assert ids(out) == [built["record"]]
 
 
+def test_a_build_whose_time_runs_out_on_the_last_entry_reports_coverage_complete(built, tmp_path, monkeypatch):
+    # CI run 45519626008: on a loaded runner the time budget ran out as the build took the last entry, and that call
+    # said "budget" through the head; the next said complete with the same watermark. A zero time budget is spent
+    # after every entry, so each call takes exactly one entry, and only a call that leaves one behind may say "budget".
+    p, engine = copy_of(built, tmp_path)
+    for suffix in ("", "-wal", "-shm"):  # a build from nothing
+        (p.root / ".aew" / (recall.SUBSTRATE_REL + suffix)).unlink(missing_ok=True)
+    monkeypatch.setattr(recall, "BUILD_BUDGET_S", 0)
+    seen = []
+    for _ in range(50):
+        out = search(engine, "Quokkafacts")
+        cov = out["coverage"]
+        seen.append((cov["indexed_through"], out["coverage_incomplete"]))
+        assert out["coverage_incomplete"] == (cov["indexed_through"] < cov["history_entries"])
+        if not out["coverage_incomplete"]:
+            break
+        assert cov["reasons"] == ["budget"]
+    assert seen == [(n, n < cov["history_entries"]) for n in range(1, cov["history_entries"] + 1)]
+    assert ids(out) == [built["record"]]
+
+
 def test_a_tampered_document_file_fails_authentication(built, tmp_path):
     p, engine = copy_of(built, tmp_path)
     complete(engine, "Quokkafacts")
@@ -592,10 +640,10 @@ def test_commits_and_history_show_work_with_fts5_gone_and_search_says_unavailabl
     wid, rec = investigation(p, tmp_path, title="Survey", body="Facts.\n")  # in other processes: real FTS5
     engine = Engine.discover(p.root)
     # Lead commits in this process with FTS5 gone, one of them archiving a unit (the history's commit path).
-    engine.checkpoint(token=p.token, expect_rev=p.rev(), note="FTS5 is unavailable here")
-    made = engine.work_create(token=p.token, expect_rev=p.rev(), kind="ticket", title="Dropped", risk_class=1,
+    engine.checkpoint(token=p.token, note="FTS5 is unavailable here")
+    made = engine.work_create(token=p.token, kind="ticket", title="Dropped", risk_class=1,
                               mutating=False, scope_paths=["calc/**"], goal_backwards=["nothing"])["id"]
-    engine.work_transition(token=p.token, expect_rev=p.rev(), work_id=made, to="CANCELLED", reason="dropped")
+    engine.work_transition(token=p.token, work_id=made, to="CANCELLED", reason="dropped", prior_value="BLOCKED")
     assert engine.history_show(made)["record"]["unit"]["state"] == "CANCELLED"
     assert engine.history_show(rec)["id"] == rec
     with pytest.raises(errors.Unavailable) as refused:
@@ -626,6 +674,29 @@ def test_no_substrate_code_runs_under_the_control_lock(built, tmp_path, monkeypa
     assert calls and set(calls) == {0}
 
 
+def test_a_non_writers_search_takes_the_lock_free_committed_path_and_answers_as_a_writers_does(built, tmp_path):
+    """Register E185 (A-57 KP-R32): a non-writer (the contained Lead's relayed read runs as one) never takes the control
+    lock, so its search answers from a committed snapshot while a write holds the lock, with what a store writer's
+    search answers: the same hits from the same history, and the same coverage."""
+    from aew import process_kind
+    from aew.engine.store import ControlStore
+
+    p, engine = copy_of(built, tmp_path)
+    writer = complete(engine, "Quokkafacts")
+    with ControlStore(p.root / ".aew").control_lock("a write in progress, held by the test"), \
+            process_kind.declared_as("aew (contained Lead)"):
+        assert process_kind.kind() == process_kind.NON_WRITER
+        reader = Engine.discover(p.root).history_search(["Quokkafacts"])
+    assert ids(reader) == ids(writer) == [built["record"]]
+    assert reader["coverage"] == writer["coverage"] and reader["query"] == writer["query"]
+
+    def unfenced(out: dict) -> list[str]:  # each response has its own fence token
+        return [h["snippet"].removeprefix(out["fence"]["open"]).removesuffix(out["fence"]["close"])
+                for h in out["hits"]]
+
+    assert unfenced(reader) == unfenced(writer)
+
+
 def test_a_search_is_a_read_that_changes_no_control_state(built, tmp_path):
     p, engine = copy_of(built, tmp_path)
     control = p.root / ".aew/state/control.yaml"
@@ -638,6 +709,7 @@ def test_the_switch_is_operational_and_read_only_by_the_search(tmp_path):
     """Isolation from the engine: adopting the switch changes no legality (no dispatch decision goes stale), and
     nothing outside the search's own modules reads it."""
     p = sample_project(tmp_path)
+    switch_off(p)
     before = Engine.discover(p.root)._k.policy_digests()  # noqa: SLF001
     switch_on(p, adopt=True)
     after = Engine.discover(p.root)._k.policy_digests()  # noqa: SLF001
@@ -649,8 +721,9 @@ def test_the_switch_is_operational_and_read_only_by_the_search(tmp_path):
                      or '"raw_history_search"' in path.read_text(encoding="utf-8"))
     # policy/execution.py names it only to refuse a YAML boolean there (validation, never a decision); the dashboard's
     # reader reads it to serve its conditional route, the operator's (register F20.8, S2).
+    # The switch offer names it to offer a project from before E185 its new default (the operator's decision).
     assert readers == ["cli/main.py", "dashboard/reader.py", "engine/history_ops.py", "engine/recall.py",
-                       "policy/execution.py"], readers
+                       "policy/execution.py", "switch_offer.py"], readers
 
 
 # --------------------------------------------------------------------------------------------- the CLI, unchanged

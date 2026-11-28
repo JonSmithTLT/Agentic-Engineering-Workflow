@@ -181,7 +181,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
   - **Permissions:** every rule is allow or deny, never `ask`, because an `ask` blocks forever.
     - Anything not named is denied.
     - `subagent`, `question` and `external_directory` are denied, except the run's own OpenCode output directories. V2 saves long tool output there and points the model at it, and V2's own defaults allow the same directories.
-    - `.env` and `.env.*` are not readable; `.env.example` is. V2's own default asks, which would block.
+    - `.env` and `.env.*` are not readable; `.env.example` is. V2's own default asks, which would block. *(Amended 2026-11-25, below: the read rule is defence in depth; containment hides the project's `.env` files.)*
     - `edit` for implementers only.
     - Web access only for cards requesting `documentation_lookup`.
     - `skill` only for skills the harness provides for the card. M3 provides none, so card skills are recorded as `unavailable` (WC §16.10) and named in the system text.
@@ -432,6 +432,7 @@ M4-B closes register items F2 (real filesystem containment, the gate before any 
 - **`mode: allow_weaker`:** the run launches labelled `workdir_separation_only`, with the reason recorded.
 - **`writable`** adds directories every contained run may write (for example a shared build cache), recorded on each run's label. A root that equals, contains or lies under what containment protects is refused at launch, naming what it would expose and what to list instead (independent review, 2026-10-04): the project's `.aew`, the git directories, the runs directory, this run's bridge directory, the Python environment, a masked secret, or the workspaces root (contains only). For the shared temporary directory, containing it, or reaching one of AEW's own `aew-*` directories in it, is refused; a directory such as `/tmp/cache` is not. **`hide`** masks further secrets.
 - **Other platforms:** Windows always runs labelled `workdir_separation_only` (below). On any other platform without containment, an explicit `mode: required` refuses the launch and `doctor` reports FAIL; without it, runs launch labelled weaker.
+  *Amended for Windows by the amendment of 2026-11-25 below (register E100): an explicit `mode: required` refuses the launch on Windows too; without it, Windows runs launch labelled `workdir_separation_only`.*
 
 ### Labels
 - **Every run record's `containment` is an object** with:
@@ -687,6 +688,8 @@ organization gateway the relay speaks TLS to; here the Provider Gateway always c
   routing (F28); the hosting design governs attachment-aware attestation and broker binding (F18.8).
 
 ## Amendment 2026-10-10 — `harness send` takes `--when`, and posts `steer` by default (register E55)
+
+For the current enabled path, see the [MS5b amendment](#amendment-2026-11-25--recorded-harness-send-e175).
 
 The F9-A MS0 probe of OpenCode 2.0.18 ([ADR-0017](0017-coordination-messages.md) D8, its
 [evidence](evidence/f9a-delivery-probe-2026-10-10/probe-results.md)) found that a `queue` input is admitted only when
@@ -1676,6 +1679,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **Where the policy allows it, and on Windows, the general command runs labelled not contained**, through the same
   `label.json` writer as `aew opencode` (in a `lead-<UTC>-<hex>` run directory), which now names the session's own
   process by pid and start id. Off Linux, `aew opencode`'s label says why it is weaker.
+  *Amended by the amendment of 2026-11-25 (E100): an explicit `required` refuses on Windows too.*
 - **The register of weaker contexts** (ruling 2; `aew.harness.weaker_register`): per host and per operator account,
   in AEW's host state beside the capability register, outside every project and every sandbox's writable binds. Every
   agent context whose label is weaker than a self-tested sandbox on a network of its own is entered there by its
@@ -2182,3 +2186,236 @@ the rest of AEW's import path, such as an editable install's source tree, was no
   - a writable bind nested inside an import-path directory other than the interpreter's prefix;
   - third-party modules linked from elsewhere by symbolic links;
   - paths on case-insensitive filesystems, which are compared by their spelling.
+
+## Amendment 2026-11-25 — an explicit `required` refuses on every platform (register E100)
+
+The designer's decision of 2026-10-25, unfrozen by the operator on 2026-11-25 as SYS-02's slice. It replaces the
+Windows sentence of "Other platforms" in the M4-B amendment above, under which Windows always ran labelled
+`workdir_separation_only`, even under an explicit `containment.mode: required`, and the amendment of 2026-11-01's
+"and on Windows" for the general Lead command, which ran labelled not contained there under an explicit `required`
+too.
+
+- **An explicit `required` on a host that cannot meet it refuses the launch, on every platform, Windows included.**
+  `containment.mode` returns `required` wherever the policy says so; off Linux, `containment.establish` then refuses
+  with `CONTAINMENT_UNAVAILABLE`, reason `unsupported_platform` and the `platform`, saying the launch is refused, that
+  the platform has no filesystem containment, and what works instead: run on Linux, or set
+  `containment.mode: allow_weaker`. Nothing of the run starts: the refusal comes before any register entry, network,
+  check process or harness, so a worker run ends `launch_failed` as any refused launch does, and `aew check run`
+  removes its run directory.
+- **Every launch route reads the same mode:** worker runs (the supervisor's `contain_launch`), checks (`aew check run`
+  and a run's checks), checks-mode validation, and both Lead routes. Off Linux, the Lead's refusal (`aew lead session`,
+  and `aew opencode`) gives the same reason and remedy, and does not send the operator to `aew opencode`, which is not
+  contained there either. `aew doctor`'s `containment` line is FAIL under it.
+- **An unset mode still runs weaker** off Linux, labelled `workdir_separation_only`, its `weaker_because` naming the
+  platform; so does an explicit `allow_weaker`. On Linux nothing changes: `required` is the default.
+- **Not changed:** Windows still has no containment (the M3 model above, and the label decided for it in the
+  amendment of 2026-10-11, register F48), and `aew doctor` still prints it UNQUALIFIED.
+- **Tests:** `tests/unit/test_containment_required_everywhere.py`, with the platform simulated so that both sides run
+  on every CI platform.
+
+## Amendment 2026-11-25 — plain `http://` through the egress proxy (register E92)
+
+CS-4's hand-off, addendum 1, §4: the designer accepted the refusal of plain `http://` as a limit for CS-4 on the
+condition that E92 was filed, and the operator unfroze E92 on 2026-11-25 as SYS-02's slice. It replaces two sentences
+above: "`CONNECT` only" in CS-3b's "Egress" section, and the CS-4 "The network" section's "A plain `http://` request is
+refused, and the refusal names the `https://` form to ask for instead". `HTTP_PROXY` still names the egress proxy for
+the Lead only; a worker's sandbox still has none.
+
+- **The same host check as `CONNECT`.** A plain request whose target is an absolute `http://` URL takes `CONNECT`'s
+  path on the URL's `host:port` (port 80 when it names none): the policy (the allowlist before any DNS), one resolve,
+  R-6 and the policy's address rule on every answer, a connect to the literal address, and R-6 again on the connected
+  peer (`egress.EgressProxy._open_upstream`, shared). A refused target is recorded as a `CONNECT`'s is.
+- **Refused before any DNS** (`egress.EgressProxy._plain`, `egress._framing`), each with its own reason: an
+  origin-form or `*` target (`origin_form`), another scheme (`scheme`), a userinfo part (`userinfo`), a fragment or a
+  control character in the URL, a malformed authority (`bad_request`); a missing, repeated or different `Host`
+  (`host_mismatch`); a field line that is not a field, or a value with a control character other than HTAB
+  (`bad_header`); `Upgrade` (501, `upgrade`); an `Expect` other than `100-continue` (417, `expectation`); a body framed
+  more than one way, a `Content-Length` repeated or of other than ASCII digits, a `Transfer-Encoding` other than
+  exactly `chunked` or on HTTP/1.0 (`bad_framing`); a body over `egress.MAX_BODY` (413, `body_too_large`).
+- **What is forwarded:** an origin-form target with the client's own HTTP version (so an HTTP/1.0 client is never sent
+  a chunked response), `Host` set to the URL's authority, every hop-by-hop header (`http1.HOP_BY_HOP`), every
+  `Proxy-*` header, `Connection` and what it names left out, the framing as checked, and `Connection: close`. The proxy
+  answers `100-continue` itself. A chunked body's size lines and trailer fields are held to the field-value rule, as the
+  relay's are (`bad_chunk`, `bad_header`); a trailer leaves out the fields the head leaves out, and one carrying
+  `Host`, `Content-Length` or `Transfer-Encoding` is refused (`bad_header`; RFC 9110 §6.5.1). A refused line is never
+  sent. The proxy holds no credential and adds none.
+- **One request per connection.** The answer says `Connection: close` (`http1.close_head`), and whatever the client
+  sends after its one request, pipelined or after the answer, is read and dropped, never forwarded.
+- **Bounds** (implementation bounds, not policy): the request head as before (`MAX_HEADER`, `HEADER_TIMEOUT`), a pause
+  in the body (`BODY_TIMEOUT`), the response head (`MAX_RESPONSE_HEAD`), and a response with no byte either way for
+  `RESPONSE_IDLE_TIMEOUT`, while waiting for its head or while it streams. An upstream that stops taking the request
+  (it closes, or takes nothing for `connect_timeout`) has an answer it already sent relayed, where one can still be
+  read (a connection reset can discard it, as Windows does); with none, the client is answered 502 (`upstream_closed`),
+  and a response that never begins 502 (`no_response`, or `upstream_broken`), each saying the request may have arrived
+  and is not sent again. `close()` ends a response mid-stream as it ends a tunnel.
+- **One owner of HTTP/1's rules:** `containment/http1.py` (the field rule, hop-by-hop headers, chunk sizes, heads),
+  which the relay and the egress proxy both import.
+- **The provider relay's "Requests" list** in CS-3b's section gains three refusals (#582; review of #582, n1): a
+  header value with a control character other than HTAB, 400 `bad_header` (RFC 9110 §5.5); a chunk-size line whose
+  size or extension holds one, 400 `bad_chunk`, and a trailer line that is not such a field, 400 `bad_header`
+  (RFC 9112 §7.1.1, §7.1.2); and a `Content-Length` of other than ASCII digits, 400 `bad_framing`.
+- **Not claimed:** plain `http://` is plaintext beyond the host, as it is without the proxy; the proxy reads no
+  response content.
+- **Tests:** `tests/unit/test_egress_proxy.py`, the plain-http section: the forwarding, R-6 for every host route as
+  `CONNECT` meets it, the allowlist, the connected peer, each refusal, one request per connection, the chunked body's
+  rule and bound, and each time bound.
+
+## Amendment 2026-11-25 — `100-continue` to HTTP/1.1 only (the quick check of #584, m7)
+
+It narrows "The proxy answers `100-continue` itself" in the E92 amendment above: the egress proxy answers a plain
+request's `Expect: 100-continue` only on HTTP/1.1. An HTTP/1.0 client is sent no 1xx response (RFC 9110 §15.2), and its
+expectation is ignored, as an HTTP/1.0 server must (§10.1.1): its body is read and forwarded without one. Test:
+`test_an_http_1_0_client_that_sends_expect_is_never_sent_a_100_continue` (`tests/unit/test_egress_proxy.py`).
+The provider relay follows the same rule (CS-3b's "`Expect: 100-continue` answered by the relay" holds on HTTP/1.1
+only; the review of #587, m1): `tests/unit/test_provider_relay.py`.
+
+## Amendment 2026-11-25 — containment hides the project's `.env` files
+
+It corrects what the projection's `.env` rule claimed above ("`.env` and `.env.*` are not readable"), and the Lead's
+system text that said the same: the guarantee is containment's, and the `read` deny is defence in depth.
+
+- **What is masked:** every file in the project, at any depth, whose name matches `*.env` or `*.env.*` and not
+  `*.env.example` (`layout.ENV_FILES`, `layout.ENV_DOCS`: the names the read rules already used, the designer's of
+  2026-11-06; `.env.example` is documentation by convention, and V2's own default reads it). A directory is not one:
+  `.env` is also a virtual environment's usual name. A `.env`-named link to a file is masked by its target, which hides
+  it at both paths, where that target is in the project, or is itself named like a `.env` file, or is a plain file in
+  the operator's home directory, and is not one of the files a run is known to need: never the interpreter, AEW's
+  package, the harness binary the run starts (at its real path, from `binary_command`), the git metadata, the store,
+  one of the run's own directories, or a file in a system tree (`/etc`, `/usr`, `/proc`, `/sys`, `/dev`). That set is
+  all that is kept (the quick check of #592 at 99082b59, m1): another plain file in the home directory that a run uses,
+  such as the git configuration or a toolchain installed under the home directory, reads as empty inside contained runs
+  while a `.env`-named link points at it; that hides, and shows nothing, and the operator's own tools outside the
+  sandbox are not affected.
+  A masked target outside the project is named on the Lead's launch line with its link (`env_outside`). Any other link
+  so named masks nothing and is named on the launch line with why (`env_links`): one to a file elsewhere under
+  another name, which reads the same by its own path, one into `.aew` or the project's own `.git`, and one whose
+  target cannot be followed (a loop, or a path through a file), through which nothing can be read. None refuses a
+  launch or has its directory masked whole. These are the operator's rulings of 2026-11-27 ("The restriction is fine
+  but if it can be limited and we know its possible why not do so unless its egregiously difficult", and, on the
+  quick check's recommendations, "Yes agree with your recommendations on 592"). Nothing under `.aew` is scanned: the store and the runs' own directories
+  have masks of their own.
+- **How they are found** (`layout.project_env_masks`), at each launch and again for each check's sandbox
+  (`layout.for_check`, which makes it from the run's layout): a walk of the whole tree, whatever git makes of it (the
+  quick check of #592). So a check finds the `.env` files where they are when it starts, wherever the tree has been
+  rearranged since the run's layout was made; a `containment.writable` root that now holds one, or lies in a
+  directory now masked whole, refuses the check. That covers tracked, untracked and ignored files alike, and a nested
+  repository's or a submodule's own, as each is in the tree a run sees. It follows no link to a directory, so it ends. Its cost is the
+  tree's size, one stat for each entry: 1 to 3 s for 200,000 entries in ignored vendored directories, measured on
+  loaded hosts, two to three times the walk without the stats, at each launch and each check.
+- **What the walk leaves out:** only the project's own `.aew`, and its own `.git` directory where that is the git
+  metadata the layout binds read-only (the quick check of #592, m2). Each is a read-only mount of its own, so no
+  directory of the tree can be moved under it, and a checked-out branch named like a `.env` file keeps a working git
+  inside. No directory is left out by its name alone: a `.git` directory below the project's top is walked as any
+  other, since a directory can be moved under one, or given that name.
+- **It fails closed** (the quick checks of #592). Each entry is checked by its own stat, never by the listing alone.
+  What the walk cannot check is walked again by a child process in a user namespace that maps this account to root
+  (`layout._walk_in_namespace`, through bubblewrap, which containment needs anyway; the quick check of #592, m3). There
+  the account can read the directories it owns whatever their mode, which are the only ones a session of its own can
+  take the permissions of, so the `.env` files in them are masked one by one, as in a readable directory
+  (`env_read_through`, named on the Lead's launch line as read through a user namespace). Nothing there is masked
+  whole, for any role; a mode given back later finds the files masked already. What the child cannot read either (a
+  directory another account owns), and all of it where the child cannot run (a host that restricts unprivileged user
+  namespaces, a setuid bubblewrap; the launch line says why, `env_fallback`), is masked whole by an empty directory, as
+  a `containment.hide` directory is, because a `.env` file in it could still be read by name:
+  - a directory the walk cannot list (one searchable but not readable, such as 0311);
+  - a directory it can list but not search (such as 0400, 0600 or 0444), whose entries it cannot stat;
+  - a directory holding an entry it cannot stat for any other reason;
+  - for a path too long to list, the deepest directory the walk reached.
+
+  The child is one more process for a scan that meets such a directory, and none for one that does not: 0.12 to 0.28 s
+  (median 0.17 s over 7 runs, as an unprivileged account, on a host at load 6), most of it the child's start, next to
+  the walk's own cost below. Each directory masked whole is named on the Lead's launch line ("a project directory the .env scan
+  cannot read"), and none refuses the launch by itself (the last limit below). So a Lead that takes a directory's read
+  or search permission away in one session finds its `.env` files empty from the next, whichever path the scan took. The same
+  holds for a `containment.hide` entry in the Lead's own tree: where its directory cannot be searched, so that it
+  would read as absent, the directory is masked whole. Only the project itself is never masked whole, since AEW
+  reads its store there: one that cannot be listed, or searched, is refused (`project_unlistable`), naming the entry
+  that could not be checked and the fix for its cause (the quick check of #592, m1). A `containment.writable` root in
+  a directory masked whole is refused (`writable_root_env_mask`) with the step that lifts it: give the directory its
+  read and search permission back.
+- **Where, and how:** in every layout `for_run` makes, as every layout shows the project read-only. Each file is masked
+  in place by the run's empty read-only file (`hide_files`, the mask a secret in the run's own tree already gets): one
+  bind each, with no directory emptied and refilled. In the Lead's own tree each is named on the launch line ("the
+  project's .env files"), and a write to it fails, naming the mask. A masked file reads as empty to every tool,
+  OpenCode's and the shell's alike. Each mask takes three of bubblewrap's arguments. Where a project's `.env` files
+  would take a launch over the limit, the deepest directories holding enough of them are masked whole instead
+  (`env_bulk`, named on the Lead's launch line "a project directory with more .env files than can be masked one by
+  one"; the operator's ruling of 2026-11-27), never one that holds what the layout binds, writes or keeps, nor the
+  project itself. Only where that is not enough is the launch refused before bubblewrap starts
+  (`bwrap_argument_limit`, with `env_masks`, naming the count and where most of them are; CS-4 addendum 9).
+- **A tracked `.env` is masked too** (the review of #592, F1). That is the safer default, as such a file can still hold
+  a local edit. Inside, git shows it as modified with its content deleted, and a program that loads it reads it as
+  empty. Its committed content stays in the history (`git show HEAD:.env`), which a mask never covers.
+- **Its limits** (the review of #592):
+  - the masks are those of the tree as each scan found it: a file first created, moved or replaced by rename during
+    the session, or while a scan walks the tree, is masked from the next scan that finds it (the next launch, or the
+    next check's sandbox);
+  - a hard link to a masked file under another name is not masked;
+  - other names are not masked, such as `.envrc`, or `.ENV` (the names are matched case-sensitively);
+  - a `.env` file in a directory outside the project is not masked, even where a link inside the project points at
+    that directory;
+  - a directory masked whole hides all it holds, what a run needs there included. A `containment.writable` root in
+    it is refused, and a run that needs anything else there does not find it. That happens only where the user
+    namespace cannot read the directory: there, a Lead that takes away the permissions of a directory a run needs
+    stops the project's contained launches, its own next one and the workers' included, until the operator gives them
+    back. That hides, and shows nothing;
+  - a `.env`-named link to a plain file in the home directory masks it in contained runs unless it is in the set a
+    run is known to need (above), so a home file a run uses outside that set reads as empty there while the link
+    stands (the operator's ruling of 2026-11-27, "Yes agree with your recommendations on 592");
+  - a `.env` file in the project's own git directory is not masked: that is git's.
+
+  Anything else is named in `containment.hide`.
+- **One owner of the names:** the projection's `ENV_READ_RULES` derive from `layout.ENV_FILES` and `ENV_DOCS`.
+- **Workers:** a worker's worktree holds only what is committed, so it has no ignored `.env`. The project is visible
+  read-only in a worker's sandbox, and the mask applies there.
+- **Not claimed:** where the run is not contained (Windows, or `containment.mode: allow_weaker`, labelled
+  `workdir_separation_only`) there are no masks, and only the `read` rule applies. The Lead's base system text says only
+  that its read tool refuses `.env` files; the line that a contained Lead's text gains (`lead_contained_text`) states
+  that containment hides them. Eval's own sandboxes (`eval/aew_eval`) run over eval task copies, not an AEW project, and
+  are unchanged.
+- **Tests:** `tests/unit/test_containment_layout.py` covers these cases:
+  - the Lead's layout and a worker's mask the files in place at any depth and keep `.env.example`;
+  - a directory named `.env` is not masked, a link masks its file, and the whole tree is walked, each `.git`
+    directory below the top included; the project's own git directory is left out where the layout binds it;
+  - a `.env`-named link that cannot be followed is named, masks nothing and refuses nothing; one to a host file
+    outside the home directory under another name, the interpreter or the store masks nothing; one to a plain file in
+    the home directory masks it and is named, but not one of the run's own;
+  - a project with more `.env` files than bubblewrap takes masks the directory holding them whole and launches;
+  - each check's sandbox scans the project again, so a tree rearranged after the run's layout is made is masked where
+    it is, and a writable root that now holds a `.env` file refuses the check;
+  - a directory the scan cannot list or search is read through a user namespace and its `.env` files masked one by
+    one, for the Lead and a worker, and one the namespace cannot read either stays masked whole;
+  - where the namespace cannot run, such a directory is masked whole, the launch line says why, and the run still
+    launches; so is the directory of a `containment.hide` entry in the Lead's tree that cannot be checked;
+  - a `containment.writable` root in a directory masked whole is refused, saying to give its permissions back;
+  - a project the scan cannot list, or search, is refused, naming the entry and the fix;
+  - a project with too many files to mask, none of whose directories can be masked whole, is refused;
+  - the read rules derive from the names.
+
+  In a real sandbox on Linux, `tests/integration/test_lead_containment.py` and `tests/integration/test_containment.py`
+  check the Lead's sandbox and a worker's. A read by name or by absolute path, a search of the tree and another
+  program's read find no nested or top-level `.env` file's content, while each `.env.example` reads as it is. The
+  same holds in a nested repository, in a submodule's checkout, and for names that begin or end with a space. It also
+  holds in a directory the scan cannot list or search, for the Lead and a worker, and for a Lead that takes a
+  directory's permissions away in one session (modes 000, 300, 100, 400, 600 and 444) and gives them back, or moves
+  the directory, in the next. It holds under a directory named `.git` too: for a worker, and for a Lead that moves a
+  directory under one, or gives it that name, in one session and reads it in the next, while a move under the
+  project's own `.git` fails. A Lead on a branch named like a `.env` file has a working git inside. A check's sandbox
+  made after the tree is rearranged reads the moved file as empty, and a `.env`-named link that masks nothing
+  refuses no worker's launch and empties nothing. A worker reads a plain file in the home directory that a `.env`-named
+  link in the project points at as empty, by either path. The tests of a directory the scan cannot read run both
+  ways: read through the user namespace, and masked whole where it cannot run.
+
+## Amendment 2026-11-25 — recorded harness send (E175)
+
+The MS5b rules replace the transitional messaging-enabled refusals in HS1. When both the adopted project switch
+and the run's launch snapshot are enabled, `aew harness send` records either timing in the coordination store.
+A recorded shell send can wake a held session. A switch mismatch refuses both timings and asks the Lead to relaunch
+under the adopted policy. When both are disabled, the original next-step request path and the turn-end refusal
+still apply. See the [coordination amendment](0017-coordination-messages.md#amendment-of-2026-11-25-report-finality-and-turn-end-delivery-ms5b).
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+Launch and relaunch bind the prior run of the named invocation, or `none` when the invocation has no run. The locked launch checks the current run, active invocation and Lead authority before rotating the credential. A changed run requires a new decision. The state revision still identifies durable dispatch and launch commits.
+
+[Adopted control-binding amendment](../../design/scoped-control-bindings-amendment-2026-11-25.md).

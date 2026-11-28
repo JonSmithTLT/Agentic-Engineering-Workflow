@@ -1,12 +1,15 @@
 """`aew operator` and `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1).
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
-one-time codes. ``aew opencode`` starts one itself, in the background, unless one is live or
+one-time codes. ``aew operator confirm`` is the operator's confirmation, at that endpoint, of a plan acceptance or a
+publish a Lead session then carries out (the operator's ruling of 2026-11-26; :mod:`aew.engine.operator_decisions`).
+``aew opencode`` starts an endpoint itself, in the background, unless one is live or
 ``AEW_OPERATOR_AUTOSTART=off`` is set (:mod:`aew.harness.operator_autostart`). ``aew lead mode raise`` only sends a
 request to it, and then reads the code typed at this terminal or,
 where G3 counts, waits while the operator approves in G3's confirmer: it has no engine path of its own. ``aew lead mode
 lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker
-refuses ``raise``, ``serve`` and ``ping`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
+refuses ``raise``, ``serve``, ``ping`` and ``confirm`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``,
+``OPERATOR_CONFIRMS``).
 """
 
 from __future__ import annotations
@@ -37,6 +40,14 @@ def register(sub: argparse._SubParsersAction) -> None:
                         "needs a typed code shows it in the endpoint's own window on Windows; on Linux, with no "
                         "terminal, it says to run this without --background, and stops so that can start")
     q.set_defaults(handler=_serve)
+    q = osub.add_parser("confirm", help="confirm, at the operator endpoint, that the Lead may accept a Ticket's plan "
+                                        "or publish its candidate: its console shows exactly what, and a code to "
+                                        "type here (the operator's ruling of 2026-11-26)")
+    q.add_argument("decision", choices=["plan", "publish"], help="plan: its acceptance; publish: the candidate's")
+    q.add_argument("work_id")
+    q.add_argument("--revision", type=int, help="the plan revision (default: the newest one proposed)")
+    _add_json(q)
+    q.set_defaults(handler=_confirm)
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
     q.set_defaults(handler=_ping)
@@ -64,7 +75,7 @@ def _lower(a: argparse.Namespace) -> Any:
     prior = a.prior_value
     if prior is None and _approval_terminal(a):
         prior = engine.steering_view()["override_record"]
-    return engine.steering_lower(token=token, expect_rev=a.expect_rev, mode=a.mode,
+    return engine.steering_lower(token=token, mode=a.mode,
                                  rationale=a.rationale, prior_value=prior)
 
 
@@ -94,6 +105,21 @@ def _ping(a: argparse.Namespace) -> Any:
     from aew.harness import operator_client
 
     return operator_client.ping(_engine(a).aew_root)
+
+
+def _confirm(a: argparse.Namespace) -> Any:
+    from aew import operator
+    from aew.engine import operator_decisions
+    from aew.harness import operator_client
+
+    engine = _engine(a)
+    if not operator.has_terminal():
+        # As a raise: a requester that cannot type the code back never puts a challenge on the operator's console.
+        raise OperatorAuthorizationRequired(
+            f"`{operator_decisions.command(a.decision, a.work_id)}` is answered from your terminal, with the code the "
+            "operator endpoint shows, and this process has none (a harness tool call, a pipe or a scheduled job); run "
+            "it yourself in a terminal", detail="no terminal", reason=operator_decisions.NO_TERMINAL)
+    return operator_client.request_confirmation(engine.aew_root, a.decision, a.work_id, revision=a.revision)
 
 
 def _raise(a: argparse.Namespace) -> Any:

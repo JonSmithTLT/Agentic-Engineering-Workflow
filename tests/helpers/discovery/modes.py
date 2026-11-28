@@ -17,7 +17,7 @@ RULES = ("O-IDS", "O-CMD", "O-CODE", "O-WORDS", "O-SECRET", "O-ENV")
 
 MODES: dict[str, str] = {
     "O-IDS": SHADOW,
-    "O-CMD": SHADOW,
+    "O-CMD": ENFORCE,
     "O-CODE": SHADOW,
     "O-WORDS": SHADOW,
     "O-SECRET": ENFORCE,

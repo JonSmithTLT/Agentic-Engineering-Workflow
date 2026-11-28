@@ -35,6 +35,21 @@ PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 # reads as off (``pack_slices``), so a project initialized before this default keeps its packs until the operator takes
 # the switch offer (``aew.switch_offer``), which reads its target from here.
 NEW_PROJECT_PACK_SLICES = PACK_SLICES_STRUCTURAL
+# The worker's map reads (register F15.8; ``maps.reads``): ``structural`` offers a worker run the bridge's map
+# operations (``bridge.MAP_OPERATIONS``) and the prompt line that names them; ``off``, as an absent key reads, leaves
+# the run's prompt and operations byte-identical to a project without them. On for a new project (the operator,
+# 2026-11-25, O1); a project initialized before keeps its setting, as maps' pack slices did (E62). The mapping series'
+# PR B adds ``facts`` above ``structural``.
+MAPS_READS_OFF, MAPS_READS_STRUCTURAL = "off", "structural"
+NEW_PROJECT_MAPS_READS = MAPS_READS_STRUCTURAL
+MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
+NEW_PROJECT_MESSAGING = MESSAGING_ENABLED
+# Raw-history search (register F21's Arm B; ``recall.raw_history_search``): ``explicit`` registers `aew history search`
+# for an operator terminal and the Lead, whose contained session reads it relayed to its broker (register E185; A-57
+# KP-B1, KP-R32). On for a new project; an absent key reads ``off``, so a project initialized before keeps it off until
+# the operator takes the switch offer's row (``aew.switch_offer``), which reads its target from here.
+RAW_HISTORY_SEARCH_OFF, RAW_HISTORY_SEARCH_EXPLICIT = "off", "explicit"
+NEW_PROJECT_RAW_HISTORY_SEARCH = RAW_HISTORY_SEARCH_EXPLICIT
 
 TEMPLATE = """\
 # AEW execution policy (ADR-0010): which harness, provider, model and effort run each invocation.
@@ -81,12 +96,12 @@ routing:
 provider_env: []
 # Steering (crawl/walk/run): crawl is the standing mode from `aew init`, which pins this policy (a project made before
 # this template: from the adopt that pins it, or its migration to v2). Under crawl the loop runs no step itself: it
-# stops at each step it could take, and the Lead takes that step itself. Until confirmation arrives (E7c), such a stop
-# is held: status shows it, but the notifier below does not, and the Lead is not woken for it. The notifier shows each
-# other stop once. Unattended Run is the operator's to switch on, for one Lead generation, with
-# `aew lead mode raise run` approved at the operator endpoint. It needs the notifier below, and a `deadline_s` on
-# every profile routing can pick (first configuration writes one with its model, provisional until a measured run
-# replaces it, with `deadline_scope: run`: it bounds only runs started under Run).
+# stops at each step it could take, and the Lead takes that step itself (walk too, outside its bookkeeping steps). Such
+# a stop names the step as the Lead's: status shows it, but the notifier below does not, and the Lead is not woken for
+# it. The notifier shows each stop that needs attention once. Unattended Run is the operator's to switch on, for one
+# Lead generation, with `aew lead mode raise run` approved at the operator endpoint. It needs the notifier below, and
+# a `deadline_s` on every profile routing can pick (first configuration writes one with its model, provisional until a
+# measured run replaces it, with `deadline_scope: run`: it bounds only runs started under Run).
 steering:
   mode: crawl
 # The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop
@@ -94,11 +109,22 @@ steering:
 # it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
 notify:
   command: [aew, notify, desktop]
+# Lead messages and replies are stored on the worker invocation's thread. An existing policy with this key absent
+# stays off until the operator adopts it, and can keep it off explicitly with `disabled`.
+coordination:
+  messaging: """ + NEW_PROJECT_MESSAGING + """
+# Raw-history search: `aew history search` finds archived records and the evidence they hold, credentials redacted, for
+# the operator and the Lead (never inside an invocation). "off" (quoted) leaves the command unregistered.
+recall:
+  raw_history_search: """ + NEW_PROJECT_RAW_HISTORY_SEARCH + """
 # Project maps (ADR-0015): each worker's pack carries a bounded, fenced slice of the repository's structural map, made
 # from its Git objects, as navigation and never authority, and the Lead's resume view shows the map's freshness. "off"
-# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps.
+# (quoted: YAML reads a bare off as a boolean) leaves packs and the resume view as in a project without maps. `reads`
+# offers each worker run `aew map show` and `aew map search` through its run's bridge, answered at the run's own base;
+# "off" leaves the worker's prompt and operations as in a project without them.
 maps:
-  pack_slices: """ + NEW_PROJECT_PACK_SLICES + "\n"
+  pack_slices: """ + NEW_PROJECT_PACK_SLICES + """
+  reads: """ + NEW_PROJECT_MAPS_READS + "\n"
 
 
 def policy_path(aew_root: Path, manifest: dict[str, Any]) -> Path:
@@ -201,7 +227,6 @@ def _plan_login_problems(policy: dict[str, Any], *, adoption: bool) -> list[tupl
     return problems
 
 
-MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
 PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
 PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 
@@ -213,7 +238,8 @@ PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 # ``maps.pack_slices``, the lead developer's decision). A new string switch adds its row here.
 STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("maps", "pack_slices"): (PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL),  # register F22.1 (plan §5.1)
-    ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
+    ("maps", "reads"): (MAPS_READS_OFF, MAPS_READS_STRUCTURAL),  # register F15.8 (the mapping series' PR A)
+    ("recall", "raw_history_search"): (RAW_HISTORY_SEARCH_OFF, RAW_HISTORY_SEARCH_EXPLICIT),  # F21, Arm B; E185
     ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
     ("lead", "push_wake"): (PUSH_WAKE_ON, PUSH_WAKE_OFF),  # steering PR 2; on by default from PR 3
@@ -298,6 +324,22 @@ def pack_slices(policy: dict[str, Any] | None) -> str:
     :data:`NEW_PROJECT_PACK_SLICES`; an absent policy, an absent key and an unreadable policy all mean ``off``, so a
     project initialized before that default changes no pack until the operator takes the switch offer."""
     return str(((policy or {}).get("maps") or {}).get("pack_slices") or PACK_SLICES_OFF)
+
+
+def maps_reads(policy: dict[str, Any] | None) -> str:
+    """The worker map-reads switch (``maps.reads``, register F15.8). A new project's policy holds
+    :data:`NEW_PROJECT_MAPS_READS`; an absent policy, an absent key and any other value mean ``off``. A run reads it
+    once, at launch, into its own snapshot (``contract.run_maps_reads``), never from today's policy."""
+    value = ((policy or {}).get("maps") or {}).get("reads")
+    return MAPS_READS_STRUCTURAL if value == MAPS_READS_STRUCTURAL else MAPS_READS_OFF
+
+
+def raw_history_search(policy: dict[str, Any] | None) -> str:
+    """The raw-history search switch (``recall.raw_history_search``, register F21, E185). A new project's policy holds
+    :data:`NEW_PROJECT_RAW_HISTORY_SEARCH`; an absent policy, an absent key and any other value mean ``off``. Whether
+    the command exists is read from the adopted bytes only (``aew.engine.recall.search_enabled``)."""
+    value = ((policy or {}).get("recall") or {}).get("raw_history_search")
+    return RAW_HISTORY_SEARCH_EXPLICIT if value == RAW_HISTORY_SEARCH_EXPLICIT else RAW_HISTORY_SEARCH_OFF
 
 
 def route(policy: dict[str, Any], *, archetype: str, card_id: str | None, risk_class: int | None) -> tuple[str, str]:

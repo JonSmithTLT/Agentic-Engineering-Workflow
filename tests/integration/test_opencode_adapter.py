@@ -29,6 +29,7 @@ from lead_session import KEYS
 from notifier import Console, raise_to, recorder
 from proxy_env import RecordingProxy, proxy_env
 
+from aew import roles
 from aew.capability import consent
 from aew.engine.api import Engine
 from aew.harness import contract as K
@@ -41,7 +42,7 @@ from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
 # The relaunch command the adapter's refusals print for the lab's invocation (#313 review, N1).
-RELAUNCH = "`aew harness launch INV-0001 --expect-rev <revision from aew status>`"
+RELAUNCH = "`aew harness launch INV-0001 --prior-value R-INV-0001-1`"
 
 
 @pytest.fixture
@@ -152,7 +153,7 @@ def test_renewing_and_relaunching_the_printed_invocation_clears_the_steering_sto
     inv = lab.lead("work", "assign", wid)["invocation"]
     lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     engine = Engine.discover(lab.root)
-    first = engine.harness_launch(token=lab.project.token, expect_rev=lab.project.rev(), invocation=inv)
+    first = engine.harness_launch(token=lab.project.token, invocation=inv, prior_value="none")
     directory = runlog.run_dir(lab.aew_root, first["run"])
     directory.mkdir(parents=True, exist_ok=True)
     runlog.write_record(directory, {"status": K.CRASHED, "cause": "plan_login_expired", "reason": "worker failed"})
@@ -166,10 +167,11 @@ def test_renewing_and_relaunching_the_printed_invocation_clears_the_steering_sto
     assert stopped.code == steering_loop.PLAN_LOGIN_FAILED
     assert "opencode auth login openai" in stopped.message
     command = next(line for line in stopped.message.split("`") if line.startswith("aew harness launch "))
-    _, _, _, target, *_ = command.split()
+    _, _, _, target, flag, prior = command.split()
+    assert flag == "--prior-value" and prior == first["run"]
     with sqlite3.connect(db) as con:
         con.execute("UPDATE credential SET value = ?", (json.dumps(oauth(120)),))
-    relaunched = engine.harness_launch(token=lab.project.token, expect_rev=lab.project.rev(), invocation=target)
+    relaunched = engine.harness_launch(token=lab.project.token, invocation=target, prior_value=prior)
     assert target == inv and relaunched["superseded"] == first["run"]
     assert loop.activate().code == steering_loop.IDLE
 
@@ -1118,7 +1120,8 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     ran = lab.record("R-INV-0001-1")["launch"]["skills"]  # one plan: what the run got is what config shows
     assert ran["copy"] in ("read_only_bind", "rules_only") and {k: v for k, v in ran.items() if k != "copy"} == shown[
         "skills"]
-    exposed = ["c-development", "debugging-root-cause-analysis", "python-development"]
+    engineer = roles.builtin_cards()["engineer"].meta  # the card owns its lists
+    exposed = sorted(engineer["skills"] + engineer["optional_skills"])
     assert shown["skills"]["exposed"] == exposed == sorted(
         p.name for p in (harness_dir(lab) / "skills").iterdir())
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
@@ -1132,8 +1135,12 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
     placed = None if opencode_lead.contained_here() else {"placed": False, "tools": []}
     engine = Engine.discover(lab.root)  # wakes on, as a project that names no key has them, where they reach the Lead
+    # and the Lead's skills a start would copy, into the folder each start makes (E161): the same plan and folder
+    at = opencode_lead.lead_skills_at(engine)
     assert lead["config"] == projection.lead_config(lead_text.guide_for(engine), tools=placed,
-                                                    push_wake=opencode_lead.pushes_wakes(engine))
+                                                    push_wake=opencode_lead.pushes_wakes(engine), skills_dir=at,
+                                                    powershell=placed is not None and sys.platform == "win32")
+    assert lead["config"]["skills"] == [at.folder] and not os.path.lexists(at.folder)  # nothing copied
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
 
 

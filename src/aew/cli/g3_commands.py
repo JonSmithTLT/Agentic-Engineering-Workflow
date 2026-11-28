@@ -3,8 +3,9 @@
 * `request` asks the operator to approve a protected command set in the G3 confirmer, waits for the decision, and
   submits the approved set to the O-01 route (:mod:`aew.g3client`). It is the operator's, at their own terminal:
   it refuses in a Lead session (:func:`aew.engine.custody_ops.refuse_kept_out`) before it reads anything, and
-  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. A Lead asks through steering's
-  ``request_confirmation`` (addendum 6). Nothing here asks for the PIN, which is typed only in the confirmer.
+  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. No typed tool asks for it (the steering
+  tool hides ``request_confirmation``, register E183): a Lead names the action in its reply, and the operator runs
+  this. Nothing here asks for the PIN, which is typed only in the confirmer.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from aew.cli.commands import _add_json
+from aew.cli.commands import _add_json, _cwd
 from aew.errors import NotFound, ValidationFailed
 
 
@@ -66,8 +67,31 @@ def _request(a: argparse.Namespace) -> Any:
     sys.stderr.write(f"aew g3: waiting for the operator to approve or decline {pending['approval_ref']} in the "
                      f"confirmer (AEW approvals), until {pending['expires_at']}\n")
     sys.stderr.flush()
-    record = C.await_decision(pending)
-    receipt = C.submit(C.approved_set(proved, record), a.o01, token)
+    # The approval's per-host record (A-44 BOY-05.a): written by this client alone, at the start, after each read of
+    # G3 and at the exit, so the dashboard and `aew status` show the wait without connecting to G3
+    from aew import g3records as R
+    from aew.errors import OperatorAuthorizationRequired
+
+    writer = R.Writer(pending, project=R.project_label(_cwd(a)))
+    outcome = None
+    if writer.failed:
+        sys.stderr.write(f"aew g3: {R.unwritten(writer)}\n")
+
+    def say(text: str) -> None:
+        sys.stderr.write(f"aew g3: {text}\n")
+        sys.stderr.flush()
+
+    try:
+        try:
+            record = C.await_decision(pending, on_read=writer.read, say=say, keep_reading=True)
+        except OperatorAuthorizationRequired as exc:
+            outcome = R.outcome_of(exc)
+            raise
+        outcome = "approved_not_submitted"
+        receipt = C.submit(C.approved_set(proved, record), a.o01, token)
+        outcome = "approved_submitted"
+    finally:
+        writer.finish(outcome)
     out = {"approval_ref": pending["approval_ref"], "consent_set_ref": record.get("consent_set_ref"),
            "set_digest": record.get("set_digest"), "receipt": receipt,
            "note": C.note(receipt, S.standing(project=False), C.probe())}

@@ -18,6 +18,8 @@ pin can forgive a failed test.
   latest attempt but ``assurance`` succeeded or was skipped;
 - ``main``'s pins, parsed, are what they were when that run started: otherwise those reports can't match this merge's
   pins, whatever the author pins;
+- ``main`` changed nothing coverage measures (:func:`measured_paths`) since that run, whose coverage holds line numbers
+  of its own source;
 - its lane reports and coverage can still be read, and the only thing `assurance` can say of them under that head's own
   pins is about skips: so a failed test, a test that never ran or a lost shard means no shortcut.
 
@@ -30,8 +32,16 @@ their 14 days, coverage past its 7, and a pull request from a fork, whose token 
 
 **What it accepts on purpose:** the heads are compared, not the merge commits. If ``main`` moved between the two heads,
 the reports are of the older merge. A pull request whose run went green while ``main`` moved merges today without a
-re-run, with ``main``'s full push run behind it (strategy §3), so this adds no exposure beyond that. To tighten it, have
-:func:`decide` also require the run's recorded base to be this merge's first parent.
+re-run, with ``main``'s full push run behind it (strategy §3), so this adds no exposure beyond that. Coverage is the
+exception, and it refuses: `assurance` reads the run's coverage data against this merge's source, and that data holds
+line numbers, so if ``main`` changed what coverage measures since the run (:func:`measured_paths`), the same execution
+lands on other statements and scores as misses or hits by the shift alone (PR #592, run 45971642964). Requiring the
+run's recorded base to be this merge's first parent would also close it, but would refuse the shortcut whenever
+``main`` moved at all.
+What ``main`` changed outside the measured source can still fail it falsely, never pass it: a raised
+``tests/coverage-baseline.json`` that the reused run lacks the tests for, or the D2 ratchet judging the reused run's
+discovery findings against this merge's ``tests/helpers/discovery/allowed.yaml`` and ``modes.py``. ``full-ci`` gets
+past that.
 
 **What it passes over:** a run the next push cancelled, so a failure it had already shown at the nearer head goes
 unseen.
@@ -49,6 +59,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -69,6 +80,7 @@ SKIP_COMPLAINT = re.compile(rf"^({'|'.join(check_assurance.REQUIRED_PLATFORMS)})
 
 
 RECORD = "tier-decision"  # the artifact tier.py writes: the base this run merged with, and its name
+PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"  # coverage's config, in the checked-out merge
 
 
 class NoShortcut(Exception):
@@ -144,6 +156,24 @@ def pin_maps(rev: str) -> tuple[Any, Any]:
     return data.get("skipped") or {}, data.get("xfail") or {}
 
 
+def measured_paths(pyproject: Path = PYPROJECT) -> tuple[str, ...]:
+    """The paths whose change moves what the coverage gate reads, from its owner, ``[tool.coverage.run]``: each
+    ``source`` path, each ``source_pkgs`` package under setuptools' ``where`` directories, and the config itself.
+    A path that isn't there, such as a ``source`` given as a package name, would match nothing in a diff: it refuses."""
+    config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    run = config["tool"]["coverage"]["run"]
+    where = config.get("tool", {}).get("setuptools", {}).get("packages", {}).get("find", {}).get("where") or ["."]
+    packages = (f"{root}/{pkg.replace('.', '/')}".removeprefix("./") for pkg in run.get("source_pkgs", [])
+                for root in where)
+    paths = [*run.get("source", []), *packages]
+    if not paths:  # coverage would then measure everything it ran: no path can stand for that
+        raise NoShortcut(f"{pyproject.name} names no coverage source")
+    missing = [path for path in paths if not (pyproject.parent / path).exists()]
+    if missing:
+        raise NoShortcut(f"{pyproject.name}'s coverage source {missing[0]} isn't a path in this checkout")
+    return (*paths, pyproject.name)
+
+
 def forced(merge_ref: str, repo: str, pr: str) -> bool:
     """Whether this run must be full, or that can't be read, which comes to the same thing (as ``tier.py``)."""
     trailer = tiers.forced_by_trailer(merge_ref)
@@ -191,6 +221,11 @@ def decide(args: argparse.Namespace) -> dict[str, Any]:
         # pinning what main just made run: main's push run would then go red on a green pull request.
         if pin_maps(record["base"]) != pin_maps(f"{args.merge_ref}^1"):
             raise NoShortcut(f"main's pins changed since run {run['id']}")
+        # The coverage gate reads this run's data against this merge's source, and the data holds line numbers: if main
+        # moved what it measures, the old lines land on other statements (#592's reused lanes read main's knowledge 36
+        # branch points low). The head's side is pins only, so main's side is the whole difference.
+        if _git("diff", "--name-only", record["base"], f"{args.merge_ref}^1", "--", *measured_paths()).strip():
+            raise NoShortcut(f"main changed the measured source since run {run['id']}: its coverage is of other lines")
         download_reports(run["id"], args.repo, args.reports_dir)
         # Under that head's own pins, as its `assurance` judged it. The new pins are judged by this run's `assurance`.
         pins = yaml.safe_load(_git("show", f"{sha}:{PINS}")) or {}

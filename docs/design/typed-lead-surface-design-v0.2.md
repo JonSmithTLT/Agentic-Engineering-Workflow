@@ -310,3 +310,9 @@ There are no remaining designer-level questions in T1 v0.2. Operator adoption re
 - **Generic `cli` advertised in normal mode.** Rejected: it preserves the shell choreography and ingress path F15 is intended to remove, and gives the model an easy bypass around typed stages. It remains explicitly available in recovery/debug profiles.
 - **Direct MCP mode with a Lead token in the MCP process.** Rejected: it creates a second credential-custody mode for no required normal capability.
 - **Boolean action availability.** Rejected: before all guards are queryable, `false` conflates known-blocked with unknown. The contract uses `AVAILABLE | BLOCKED | UNKNOWN`.
+
+## Amendment 2026-11-25 — scoped control bindings (E329)
+
+This amends the argument conventions and stage rules 1, 2 and 4 (TLS-09, TLS-14 and LWE-02). Stages receive scoped prior values or approval digests where their operations need them. A stage opens its journal under current authority. Each step commits with its own guard and the stage's policy and authority checks. A changed target returns `CHANGED_SINCE_READ` and needs a fresh decision. The automatic stale-revision retry is retired. Committed steps stand, and a continued journal rechecks its scoped approval, subject, plan, policy and generation before it resumes at its first uncommitted step.
+
+[Adopted control-binding amendment](scoped-control-bindings-amendment-2026-11-25.md).

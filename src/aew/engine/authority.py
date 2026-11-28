@@ -21,7 +21,6 @@ from collections.abc import Callable
 from typing import Any
 
 from aew.errors import PermissionDenied, StaleAuthority
-from aew.harness.contract import EXPECT_REV
 from aew.util import sha256_text, utc_now
 
 TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
@@ -32,12 +31,14 @@ TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
 # and tests/unit/test_roles.py keeps the two equal. Role cards can only narrow it.
 ROLE_OPERATIONS: dict[str, frozenset[str]] = {
     "implementer": frozenset({"check.run", "submit.implementation_report", "context.read"}),
-    "reviewer": frozenset({"submit.review", "context.read"}),
+    # A plan assessment is submitted only at the assessor's own scope (E160; ``evidence.kinds_for``).
+    "reviewer": frozenset({"submit.review", "submit.plan_assessment", "context.read"}),
     "verifier": frozenset({"check.run", "submit.verification", "context.read"}),
     # Non-mutating executors (ADR-0008): each submits exactly its own record kind; the investigator may
     # also gather runtime evidence by running project checks in its read-only observation workspace.
     "planner": frozenset({"submit.plan_proposal", "context.read"}),
-    "investigator": frozenset({"check.run", "submit.discovery_record", "context.read"}),
+    # A ref review only on a Ticket that names a ref (E168; ``evidence.kinds_for``).
+    "investigator": frozenset({"check.run", "submit.discovery_record", "submit.ref_review", "context.read"}),
     "researcher": frozenset({"submit.research_record", "context.read"}),
 }
 
@@ -163,7 +164,7 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
             current_generation=lead["generation"],
         )
     if lead["status"] == "handoff_pending" and not allow_pending:
-        raise PermissionDenied(f"a Lead handoff is pending; only `aew lead handoff cancel {EXPECT_REV}` is allowed")
+        raise PermissionDenied("a Lead handoff is pending; only `aew lead handoff cancel` is allowed")
     if lead["status"] == "vacant":
         raise StaleAuthority(_VACANT)
     return {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead["generation"],
@@ -244,11 +245,16 @@ def require_invocation(
 CUSTODY = "custody"
 # The closed family (§2.3): the validation pin and commit and their infrastructure outcomes, routing a result (never
 # accepting a report), the custodian's own lease release, the worker's registration (S2), and the PIC publish, which
-# also needs the operator's envelope and the §17 predicate in the same transaction (E6b: until then it is refused).
+# would also need the operator's envelope and the §17 predicate in the same transaction: none exists (E6b lapsed on
+# 2026-11-06), so it is refused.
 CUSTODY_OPS = ("custody.register", "integrate.validate", "integrate.validated", "integrate.validation_abandoned",
                "integrate.validation_unavailable", "integrate.validation_released", "integrate.route",
                "integrate.release", "integrate.publishing")
 CUSTODY_PUBLISH = "integrate.publishing"
+# The closed family the operator commits at their own terminal with no Lead credential (register E331; review of #641,
+# point 4): the settings' adoption and an authority decision recorded as theirs. ``Kernel.operator_txn`` refuses any
+# other op, and a test holds this set to the engine's `operator_txn` call sites.
+OPERATOR_OPS = frozenset({"manifest.adopt", "authority.accept", "authority.reject"})
 
 
 def mint_custody(state: dict[str, Any], *, custodian: str, entry: str, attempt: int, lease_at: str) -> str:

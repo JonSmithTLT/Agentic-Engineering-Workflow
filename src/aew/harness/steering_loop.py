@@ -25,29 +25,30 @@ to a stop; the envelope is counted per activation.
 3. Select the first eligible action, Tickets in the priority order (``priority.order``: the level, then how many
    live Tickets each unblocks, then the id; register E227).
 4. ``confirm_before`` (``steering.confirmation_reason``): Crawl always, Walk unless every declared effect of every
-   primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
-   such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
+   primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **No confirmation exists (amendment 1, m3;
+   E7c lapsed on 2026-11-06):** such an action is never executed here. The loop stops with
+   ``CONFIRMATION_UNAVAILABLE``, naming the step as the Lead's: in crawl and walk the Lead takes it itself (register
+   E183).
 5. The envelope (A1 §3): the activation's deadline, its action count, and the repetition key ``(action, arguments,
    subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation the
    notifier must be able to deliver, and before each action the operator endpoint must answer
    (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4; register E228), and a dispatching action needs every profile routing
    can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1 §3.2).
-6. Execute it as a normal stage call (``run_tool``), with the projection's ``expect_rev``, a StageIntent, and the
+6. Execute it as a normal stage call (``run_tool``), with the projection's arguments, a StageIntent, and the
    loop's attribution on that intent (``auto_run``: activation, mode and its record and generation, digests,
    projection) and on its dispatches (channel ``steering_loop``). It is the same call a Lead makes, checked the same
-   way: R5-1 is the stage executor's, and a judgment is never replayed (it is never auto-run at all).
+   way. Stage admission rechecks the loop's mode and policy under the lock. Each operation uses its own binding.
 7. **Runtime declaration check (SAE-07):** each committed step's typed events must stay within what its primitives
    declare; an excess is recorded as a high anomaly and stops the loop.
 
-**Interaction with the Lead's ``expect_rev`` (n5):** the loop's commits are real progress and stale the Lead's next call
-(``STALE_REVISION``); the Lead re-reads and re-judges, nothing replays. The loop runs on an engine of its own, so a
-Lead's call and the loop's are each one stage, CAS-checked: at most two intents in flight (plan v3 §2.7).
+The loop runs on an engine of its own, so a Lead's call and the loop's are each one stage. The stage intent admits
+one outstanding stage per subject; each operation rechecks the facts its own action depends on.
 
 **What it records:** its state (``.aew/local/steering/loop.json``: running or stopped, and why; never control state,
 §2.7), and a ``loop_stopped`` line in the broker's event spool for a stop that needs attention, so the operator
 endpoint notifies (§2.8). A stop that returns control to the Lead in the ordinary way (a decision, a blocker, an
-unknown, nothing to do) is recorded but not notified. Until E7c, ``CONFIRMATION_UNAVAILABLE`` is recorded too, but
-neither notified nor told to the Lead (``HELD_UNTIL_E7C``).
+unknown, nothing to do, the Lead's own step) is recorded but not notified. The Lead's own step
+(``CONFIRMATION_UNAVAILABLE``) is not told to the Lead by a wake either (``LEADS_OWN_STEP``).
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ from aew.engine.primitives import spec_for
 from aew.engine.store import MISSING_MID_REPLACE, replace_pending, retry_lock_free
 from aew.harness import contract as K
 from aew.harness import event_spool, runlog
+from aew.owners import whose
 from aew.util import replace_with_retry, sha256_bytes, utc_now
 
 # Stop codes. The first group returns control to the Lead in the ordinary way; the rest need attention (notified).
@@ -78,18 +80,19 @@ IDLE = "NOTHING_TO_DO"
 DECISION_REQUIRED = "DECISION_REQUIRED"
 BLOCKED = "BLOCKED"
 UNKNOWN = "UNKNOWN"
-QUIET = frozenset({OFF, IDLE, DECISION_REQUIRED, BLOCKED, UNKNOWN})
+# confirm_before holds (crawl, or walk outside its allow-list) and no confirmation exists (m3): the step is the
+# Lead's, and the stop names it so (register E183; the designer's ruling of 2026-11-11 on SYS-04's held items).
+CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"
+QUIET = frozenset({OFF, IDLE, DECISION_REQUIRED, BLOCKED, UNKNOWN, CONFIRMATION_UNAVAILABLE})
+# The Lead's own step: recorded (``loop.json``, so ``status`` and the steering view show it), never notified (QUIET),
+# and kept from the Lead's ``loop_waiting`` wake too: nothing but the Lead acts on it (no confirmation exists, crawl
+# cannot be lowered, and under Walk lowering to crawl only confirms more), so a wake would be a Lead turn for a step
+# that stays the Lead's own (the operator's ruling on the quick check of E228's fourth PR, QC-1 (c)). It is the
+# code's, in any mode, never crawl's: every other quiet stop wakes the Lead as before.
+LEADS_OWN_STEP = frozenset({CONFIRMATION_UNAVAILABLE})
 ANOMALY_HIGH = "ANOMALY_HIGH"
 STALE_AUTHORITY = "STALE_AUTHORITY"
 STALE_POLICY = "STALE_POLICY"
-CONFIRMATION_UNAVAILABLE = "CONFIRMATION_UNAVAILABLE"  # E7b: confirm_before holds and no confirmation exists yet (m3)
-# Recorded (``loop.json``, so ``status`` and the steering view show it) but held from the notifier's spool and from the
-# Lead's ``loop_waiting`` wake until M4-E E7c, which lifts the hold: before E7c nothing can act on such a stop (no
-# confirmation exists, crawl cannot be lowered, and under Walk lowering to crawl only confirms more), so each would be
-# a toast and a Lead turn for a step that stays the Lead's own (the operator's ruling on the quick check of E228's
-# fourth PR, QC-1 (c)). It is the code's, in any mode, never crawl's: every other stop is notified and wakes the Lead
-# as before.
-HELD_UNTIL_E7C = frozenset({CONFIRMATION_UNAVAILABLE})
 NOTIFIER_UNAVAILABLE = "NOTIFIER_UNAVAILABLE"
 NO_HARD_DEADLINE = "NO_HARD_DEADLINE"
 LOOP_DEADLINE = "LOOP_DEADLINE"
@@ -101,7 +104,7 @@ ACTION_STOPPED = "ACTION_STOPPED"  # the executed stage stopped (refused, launch
 PLAN_LOGIN_FAILED = "PLAN_LOGIN_FAILED"
 CHANNEL = "steering_loop"  # the dispatch channel of an auto-run step (provenance only, never legality)
 NOTIFIED_MAX = 64  # conditions remembered as notified; the oldest is forgotten first
-STALE_RETRIES = 3  # another actor's commits between the projection and the call: re-project, a few times
+PROJECTION_READS = 3  # another actor's commits during a projection read: re-project, a few times
 COARSE_S = 30.0  # the look that covers a wake lost by a failed bump (``outbox.bump_wake``): one projection per period
 TERMINAL_STATES = frozenset({"DONE", "CANCELLED"})
 
@@ -112,7 +115,7 @@ class Stop:
     message: str
     subject: str = "project"
     action: str | None = None  # the action a stop is about, if any: with its arguments, the condition's identity
-    arguments_digest: str | None = None  # of its arguments without expect_rev (``arguments_digest``)
+    arguments_digest: str | None = None
     episode: str | None = None  # an envelope stop's activation: each activation that exhausts it is an occurrence
 
     @property
@@ -156,7 +159,9 @@ class Activation:
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
 
 
-LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)  # stops only the Lead can clear; a BLOCKED can clear on its own
+# Stops only the Lead can clear, itself or by asking the operator for a decision that is theirs (an operator-owned
+# decision such as PLAN, register E351); a BLOCKED can clear on its own.
+LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)
 
 
 def select(project: dict[str, Any], units: list[dict[str, Any]],
@@ -180,7 +185,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
     loose = [d for d in project.get("decisions_required") or [] if not set(d.get("evidence") or []) & owned]
     if loose:
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
-                                       "the Lead's")
+                                       f"{whose(loose[0].get('owner'))}")
     stops: list[Stop] = []
 
     def place(u: dict[str, Any]) -> tuple[int, int, str]:
@@ -193,7 +198,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
         why: Stop | None = None
         if p.get("decisions_required"):
             d = p["decisions_required"][0]
-            why = Stop(DECISION_REQUIRED, f"{subject}: {d['decision']} is the Lead's", subject)
+            why = Stop(DECISION_REQUIRED, f"{subject}: {d['decision']} is {whose(d.get('owner'))}", subject)
         elif p.get("blockers"):
             b = p["blockers"][0]
             why = Stop(BLOCKED, f"{subject}: {b['code']}: {b['message']}", subject)
@@ -234,8 +239,8 @@ def ingesting_action(state: dict[str, Any], action: dict[str, Any]) -> bool:
 
 
 def arguments_digest(action: dict[str, Any]) -> str:
-    """An action's arguments without ``expect_rev``, which moves with every commit and names no different action."""
-    args = {k: v for k, v in (action.get("arguments") or {}).items() if k != "expect_rev"}
+    """The arguments of the projected action, including its scoped bindings."""
+    args = action.get("arguments") or {}
     return sha256_bytes(json.dumps(args, sort_keys=True, default=str).encode("utf-8"))[:32]
 
 
@@ -259,6 +264,12 @@ def about(choice: Choice, code: str, message: str) -> Stop:
     return Stop(code, message, choice.subject, choice.action["action"], arguments_digest(choice.action))
 
 
+def leads_step(action: str, subject: str, why: str) -> str:
+    """``CONFIRMATION_UNAVAILABLE``'s message: it names the step and says it is the Lead's (register E183)."""
+    return (f"`{action}` on {subject} is your step: {why}, and no confirmation exists, so the loop never runs it; "
+            f"take it yourself with the `{action}` tool")
+
+
 # Every typed event kind a commit can carry (ADR-0012 D2: ``outbox.DERIVED_KINDS`` and ``DECLARED_KINDS``) and the
 # side-effect classes it shows (SAE-07, at runtime). Total, and tested to be (review of PR #199, F5): a kind not here
 # stops the loop, never counts as control state. A run recorded is a process to be started under a new credential; a
@@ -270,7 +281,7 @@ EVENT_EFFECTS: dict[str, frozenset[str]] = {
     "history.appended": CONTROL, "unit.archived": CONTROL, "queue.entry": CONTROL, "queue.lease": CONTROL,
     "work.binding": CONTROL,
     "decision.recorded": CONTROL, "handoff.recorded": CONTROL, "evidence.ingested": CONTROL, "audit.recorded": CONTROL,
-    "coordination.seal_fallback": frozenset({"coordination_record"}),
+    "coordination.seal_fallback": frozenset({"coordination_record"}), "confirmation.used": CONTROL,
 }
 
 
@@ -425,11 +436,11 @@ class SteeringLoop:
             if isinstance(outcome, Stop):
                 self._record(outcome, act, self._mode())
                 return outcome
-            if outcome.get("stale"):
+            if outcome.get("projection_moved"):
                 stale += 1
-                if stale >= STALE_RETRIES:
-                    stop = Stop(ACTION_STOPPED, "the projection kept moving under the loop's calls "
-                                                f"({STALE_RETRIES} stale revisions in a row): it waits for the next "
+                if stale >= PROJECTION_READS:
+                    stop = Stop(ACTION_STOPPED, "state changed while the loop read the projection "
+                                                f"({PROJECTION_READS} reads in a row): it waits for the next "
                                                 "change", episode=act.id)
                     self._record(stop, act, self._mode())
                     return stop
@@ -449,8 +460,7 @@ class SteeringLoop:
             return None
 
     def tick(self, act: Activation) -> Stop | dict[str, Any]:
-        """One evaluation: a stop, or the action it executed (``{"stale": True}`` when another actor's commit beat
-        the call: nothing ran, and the next tick re-projects)."""
+        """One evaluation: a stop, an executed action, or a read invalidated while assembling the projection."""
         if self._closed.is_set():
             return Stop(OFF, "the broker is closing")  # recorded as nothing: the session ended, not the loop
         self._seen = self._snapshot()  # before any read: a change after it is one this tick did not see (F3)
@@ -475,7 +485,7 @@ class SteeringLoop:
             record = runlog.read_record(runlog.run_dir(self.aew_root, run)) or {}
             if record.get("status") not in (K.CRASHED, K.ENDED_WITHOUT_EVIDENCE, K.LAUNCH_FAILED):
                 continue
-            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id):
+            if failure := K.plan_login_failure(record.get("cause"), inv["execution_profile"]["provider"], inv_id, run):
                 return Stop(PLAN_LOGIN_FAILED, f"{run}: {failure}", subject=inv["work_unit"])
         if act.last_own_rev is not None and int(state["revision"]) != act.last_own_rev:
             act.counts.clear()  # a commit the loop did not make: progress the repetition key cannot see
@@ -497,7 +507,7 @@ class SteeringLoop:
         # A stage can be chosen from an earlier Ticket state than the one its live guards read. A blocker from
         # that mixed projection is no more current than an action: retry before recording a stop or waking the Lead.
         if self._revision() != state["revision"]:
-            return {"stale": True}
+            return {"projection_moved": True}
         picked = select(project, units, PRIORITY.order(state))
         self._selected = selection(picked)
         if isinstance(picked, Stop):
@@ -508,9 +518,7 @@ class SteeringLoop:
         assert t is not None  # auto_runnable is never true for an unknown tool (surface.classify)
         why = S.confirmation_reason(mode, t.expands_to)
         if why is not None:
-            return about(picked, CONFIRMATION_UNAVAILABLE, f"{picked.action['action']} on {picked.subject} needs a "
-                                                          f"confirmation ({why}); confirmation arrives with M4-E E7c, "
-                                                          "so it is never executed here")
+            return about(picked, CONFIRMATION_UNAVAILABLE, leads_step(picked.action["action"], picked.subject, why))
         if mode == "run":
             refused = self._run_checks(act, policy, t)
             if refused is not None:
@@ -559,8 +567,6 @@ class SteeringLoop:
             result = self._execute(self.engine, self._ctx(), picked.action["action"],
                                    dict(picked.action["arguments"]), token=self._token(), auto_run=attribution)
         stopped = result.get("stopped")
-        if result.get("stage_intent_id") is None and stopped and stopped.get("boundary") == "stale_revision":
-            return {"stale": True}  # another actor committed first: nothing ran (the intent never opened)
         act.actions += 1
         act.counts[key] = act.counts.get(key, 0) + 1
         act.last_own_rev = act.own_rev = int(result.get("revision") or 0)
@@ -682,7 +688,7 @@ class SteeringLoop:
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
         self._acted.clear()
-        if not stop.attention or stop.code in HELD_UNTIL_E7C:  # held from the spool until E7c (HELD_UNTIL_E7C)
+        if not stop.attention:  # a quiet stop, the Lead's own step among them, is never spooled
             return
         if stop.condition in self._notified:
             self._notified.move_to_end(stop.condition)  # recurring: the last to be forgotten (LRU; review, R2)

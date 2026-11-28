@@ -321,6 +321,65 @@ def test_something_that_is_not_openapi_is_refused():
     assert capabilities.problems("<html>") and capabilities.problems({"paths": None})
 
 
+# ---------------------------------------------------------------------------------------------- the binary
+
+
+@pytest.fixture
+def desktop(tmp_path, monkeypatch):
+    """A Windows machine with OpenCode Desktop and no OpenCode on PATH: its ``cli`` folder, to fill."""
+    monkeypatch.setattr(adapter.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setattr(adapter.shutil, "which", lambda _name: None)
+    monkeypatch.delenv(adapter.BIN_ENV, raising=False)
+    return tmp_path / "ai.opencode.desktop" / "cli"
+
+
+def cli_in(folder: Path) -> Path:
+    folder.mkdir(parents=True)
+    binary = folder / "opencode-cli.exe"
+    binary.write_bytes(b"")
+    return binary
+
+
+PINNED = capabilities.TESTED_VERSIONS[0]
+
+
+def test_the_desktops_cli_is_found_in_the_folder_2_2_6_names_for_its_version_and_architecture(desktop):
+    """Register E235: Desktop 2.2.6 keeps its CLI in ``cli\\2.2.6-x64``, the real folder name, and with neither name
+    on PATH ``aew opencode`` said there was no OpenCode binary."""
+    assert PINNED == "2.2.6"  # the folder below is that version's own; a new pin brings its own folder name here
+    binary = cli_in(desktop / "2.2.6-x64")
+    assert adapter.default_binary() == binary
+    assert adapter.binary_command() == [str(binary)]  # what every launch and `aew opencode` start
+
+
+def test_the_desktops_cli_in_a_folder_named_for_the_version_alone_is_still_found_and_comes_first(desktop):
+    suffixed = cli_in(desktop / f"{PINNED}-{adapter.DESKTOP_CLI_ARCHITECTURES[0]}")
+    assert adapter.default_binary() == suffixed
+    plain = cli_in(desktop / PINNED)  # the layout before 2.2.6
+    assert adapter.default_binary() == plain
+
+
+@pytest.mark.parametrize("other", [
+    f"{PINNED}0-x64", f"1{PINNED}-x64", "2.2.7-x64", f"{PINNED}x64", "9.9.9",  # another version
+    f"{PINNED}-rc.1-x64", f"{PINNED}-beta", f"{PINNED}-evil", f"{PINNED}-x64-old", f"{PINNED}-",  # another suffix
+    f"{PINNED}-arm64",  # an architecture name nobody has seen the Desktop use
+])
+def test_a_folder_of_another_version_a_pre_release_or_an_unseen_suffix_is_never_taken_for_the_pin(desktop, other):
+    assert adapter.DESKTOP_CLI_ARCHITECTURES == ("x64",)  # a name added there has its folder planted above first
+    cli_in(desktop / other)
+    assert adapter.default_binary() is None
+    with pytest.raises(HarnessIncompatible, match="no OpenCode binary"):
+        adapter.binary_command()
+
+
+def test_a_machine_with_no_desktop_folder_falls_back_to_path(desktop, monkeypatch, tmp_path):
+    on_path = tmp_path / "opencode-cli.exe"
+    monkeypatch.setattr(adapter.shutil, "which", lambda name: str(on_path) if name == "opencode-cli" else None)
+    assert not desktop.exists()
+    assert adapter.default_binary() == on_path
+
+
 # ---------------------------------------------------------------------------------------------- environments
 
 
@@ -363,13 +422,28 @@ def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():
     assert not {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_LEAD_TOKEN", "AEW_HARNESS_ADAPTERS",
                 "OPENCODE_PASSWORD"} & set(env)
     assert env["XDG_CONFIG_HOME"] == "/c" and env["OPENCODE_CONFIG"] == "/cfg/opencode.json"
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(tools={"placed": False, "tools": []})
+    # The host's own Lead: on Windows, its shell is PowerShell (E367)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(tools={"placed": False, "tools": []},
+                                                                                powershell=sys.platform == "win32")
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == [
         {"action": "provider.use", "resource": "opencode", "effect": "deny"},
         {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]  # the designer's ruling, 2026-11-06
     assert "opencode" not in json.loads(env["OPENCODE_CONFIG_CONTENT"]).get("providers", {})  # never switched on
     assert env["PATH"].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     assert lead.tui_env(base_env(), provider_env=["ANTHROPIC_API_KEY"])["ANTHROPIC_API_KEY"] == "sk-ant-secret"
+
+
+def test_only_a_lead_whose_shell_is_powershell_is_told_its_form_and_a_contained_one_never_is():
+    """E367: the quoted heredoc the guide's core names is POSIX shell's. A Lead on Windows is told PowerShell's form,
+    and no other Lead pays for the line; a contained Lead runs on Linux, so it never gets it, whatever is asked."""
+    def system(**kw: Any) -> str:
+        return projection.lead_config("GUIDE", **kw)["agents"][projection.LEAD_AGENT]["system"]
+
+    assert projection.POWERSHELL in system(powershell=True).splitlines()
+    assert projection.POWERSHELL not in system() and projection.POWERSHELL not in projection.LEAD_SYSTEM
+    label = {"filesystem": "os_readonly_roots", "network": {"mode": "isolated"}}
+    assert system(contained=label, powershell=True) == system(contained=label)
+    assert "`@'` ... `'@ | aew ...`" in projection.POWERSHELL  # the here-string, piped in
 
 
 def no_proxy_of(env: dict[str, str]) -> list[str]:

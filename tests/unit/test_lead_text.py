@@ -9,8 +9,10 @@ text with no other edit. What is still hand-written is the prose, listed in the 
 
 from __future__ import annotations
 
+import argparse
 import ast
 import re
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -28,7 +30,7 @@ from aew.harness.contract import wake_guidance
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.surface import availability as SA
-from aew.surface import contract, lead_text
+from aew.surface import contract, lead_text, mcp
 from aew.surface import projection as surface
 from aew.surface.context import NORMAL, RECOVERY
 
@@ -44,6 +46,7 @@ NOT_TOOLS = {
     "planner": "a card", "researcher": "a card", "verifier": "a role",
     "checks": "a policy file's key", "max_publish_paths": "a policy key", "mutating_concurrency": "a policy key",
     "replace_gate": "a policy key", "add_scope": "a `resolve` choice: the scope add (register E126)",
+    "assess_plan": "a `resolve` choice: the plan assessor's dispatch (register E160)",
     "coordination_store": "a policy key", "launch": "a policy key",
     "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
     "seat": "a field of `aew opencode`'s result: how the Lead seat stands, and the step that goes with it",
@@ -55,6 +58,7 @@ NOT_TOOLS = {
     "slice_bytes": "a field of a pack's map source: the bytes of the slice the worker reads",
     "why": "a wait result's field: why it returned (E122)",
     "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
+    "launch_argv": "the status result’s scoped relaunch command",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
     "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
     "loop": "a field of a push wake: the steering loop's stop a `loop_waiting` wake is about (A-58 CL-R07)",
@@ -67,7 +71,13 @@ FULL = T.Fit(review=True, verification=True, last_review=True, last_verification
 
 
 def rendered() -> str:
+    """The guide's core: what every Lead request carries."""
     return lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+
+
+def full() -> str:
+    """The whole guide: the core and every section `aew guide <section>` prints (E231)."""
+    return lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS).full()
 
 
 def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
@@ -76,7 +86,7 @@ def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
     assert "coverage not recorded" in text.lower() and "validated within its scope" in text.lower()
     documented = (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8")
     assert documented.startswith("<!-- Generated:")
-    assert documented.partition("-->\n\n")[2] == text
+    assert documented.partition("-->\n\n")[2] == full()
 
 
 def system_text() -> str:
@@ -91,8 +101,8 @@ def plant(monkeypatch: pytest.MonkeyPatch, name: str = PLANTED, **kw: Any) -> No
 
 
 def steps(text: str) -> dict[str, str]:
-    """Each numbered step of the mutating path, by what leads it."""
-    section = text.split("## A mutating Ticket, step by step", 1)[1].split("Each state and the moves", 1)[0]
+    """Each numbered step of the mutating path, by what leads it: the `steps` section of the whole guide."""
+    section = text.split("## A mutating Ticket, step by step", 1)[1].split("\n## ", 1)[0]
     found = re.split(r"^\d+\. ", section, flags=re.MULTILINE)[1:]
     return {step.split(":", 1)[0]: step for step in found}
 
@@ -136,8 +146,11 @@ def stray_arguments(text: str) -> list[str]:
 
 
 def lead_texts() -> dict[str, str]:
-    """What a Lead reads as written: the system text with the guide, and each command's template."""
-    return {"system": system_text(), **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
+    """What a Lead reads as written: the system text with the guide's core, each section `aew guide` prints, and each
+    command's template."""
+    doc = lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS)
+    return {"system": system_text(), **{f"aew guide {n}": s.text() for n, s in doc.sections.items()},
+            **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
 
 
 def engine_words() -> dict[str, set[str]]:
@@ -177,28 +190,24 @@ def test_the_system_text_teaches_no_step_a_stage_covers_from_the_shell():
 
 def test_the_system_text_says_nothing_of_stages_still_to_come():
     assert "Until typed stages arrive" not in system_text()
-    assert projection.lead_tools_text() in projection.LEAD_SYSTEM
 
 
 @pytest.mark.parametrize("kind", contract.KINDS)
-def test_a_tool_added_to_the_catalog_is_named_with_no_other_edit(monkeypatch, kind):
-    """The guard's plant: a new normal-profile row of any kind is in the line of tools, so a hand-written list, or a
-    grouping that drops a kind, fails here."""
-    assert PLANTED not in projection.lead_tools_text()
+def test_a_tool_added_to_the_catalog_needs_no_edit_of_the_system_text_which_lists_none(monkeypatch, kind):
+    """E130's guarantee, kept by E367 with no list to keep: the system text named every tool by kind, which the model
+    already has in the listing (the audit of 2026-11-25, D1). A new normal-profile row of any kind is in the listing,
+    and the system text, which names no catalog of tools, is byte for byte what it was."""
+    before = projection.lead_system(push_wake=True)
     plant(monkeypatch, kind=kind)
-    assert f"`{PLANTED}`" in projection.lead_tools_text()
-
-
-def test_the_list_follows_the_catalog_when_a_tool_goes(monkeypatch):
-    monkeypatch.setattr(contract, "TOOLS", {k: t for k, t in contract.TOOLS.items() if k != "work_show"})
-    assert "`work_show`" not in projection.lead_tools_text()
+    assert PLANTED in {t["name"] for t in mcp.tools_list(NORMAL)["tools"]}
+    assert projection.lead_system(push_wake=True) == before and PLANTED not in system_text()
 
 
 # --------------------------------------------------------------------------------------- the stage leads what it covers
 
 
 def test_a_step_a_stage_covers_is_led_by_that_stage_and_its_shell_command_follows():
-    stages, found = lead_text.stages(), steps(rendered())
+    stages, found = lead_text.stages(), steps(full())
     moves = covered(stages)
     assert {s.tool for _, s in moves} == set(SA.STAGES)
     for move, stage in moves:
@@ -223,9 +232,11 @@ def test_a_stage_planted_over_a_move_no_stage_covers_takes_it_over_with_no_other
     """The other half of the guard: no second table says which tool takes which step. `plan.accept` has no stage today;
     planting one moves the step to it, the shell command becoming its fallback."""
     shell = next(m.shell for m in guide.PATH if m.primitive == "plan.accept")
-    assert steps(rendered())["Accept the plan"].startswith(f"Accept the plan: {shell}")
+    assert steps(full())["Accept the plan"].startswith(f"Accept the plan: {shell}")
+    assert f"then accept the plan with {shell}" in rendered()  # the core names it too, from the same groups
     plant(monkeypatch, expands_to=("plan.accept",))
-    now = steps(rendered())
+    now = steps(full())
+    assert f"then `{PLANTED}`" in rendered()
     assert "Accept the plan" not in now
     assert shell in now[f"`{PLANTED}`"].split("Shell fallback:", 1)[1]
 
@@ -269,7 +280,7 @@ def contract_edges(state: str) -> list[tuple[str, str]]:
 
 def test_a_move_no_stage_covers_is_led_by_its_shell_command():
     stages, text = lead_text.stages(), rendered()
-    found = steps(text)
+    found = steps(full())
     alone = [m for m in guide.PATH if guide._covering(stages, m) is None]
     assert [m.primitive for m in alone] == ["plan.accept"]
     for move in alone:
@@ -279,7 +290,7 @@ def test_a_move_no_stage_covers_is_led_by_its_shell_command():
 
 
 def test_with_no_stages_every_step_is_the_shell_commands_alone():
-    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS, ())
+    text = guide.document(DEFAULT_GATES, DEFAULT_CHECKS, ()).full()
     assert "Shell fallback" not in text
     for move in guide.PATH:
         assert move.shell and move.shell in text, move.primitive
@@ -288,7 +299,7 @@ def test_with_no_stages_every_step_is_the_shell_commands_alone():
 def test_the_shell_for_what_no_stage_reaches_is_named():
     """Step 1's list: a path without review or verification, rework, a classification, a parent's close and a
     non-mutating dispatch have no stage."""
-    text = rendered()
+    text = full()
     for command in ("aew work transition <T> --to <STATE>", "aew integrate prepare <T>",
                     "aew invoke create <T> --role implementer --launch", "aew verify classify <T>",
                     "aew work close <S>", "aew work dispatch <T> --launch"):
@@ -336,7 +347,7 @@ def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(mo
 
 
 def test_an_argument_a_step_or_command_names_is_taken_by_a_tool_it_names():
-    for lead, step in steps(rendered()).items():
+    for lead, step in steps(full()).items():
         if lead.startswith("`"):
             assert stray_arguments(step) == [], lead
     for name, command in projection.LEAD_COMMANDS.items():
@@ -351,7 +362,7 @@ def test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_
     monkeypatch.setitem(contract.TOOLS, "integration_publish",
                         row._replace(input_schema={**row.input_schema, "properties": props}))
     assert "verification_evidence" in known_words()
-    assert stray_arguments(steps(rendered())["`integration_publish`"]) == ["verification_evidence"]
+    assert stray_arguments(steps(full())["`integration_publish`"]) == ["verification_evidence"]
     hint = resume_with()._integration_verifier(integration_state(report="EV-3"), "T-0007")
     assert stray_arguments(hint) == ["verification_evidence"]
 
@@ -364,13 +375,13 @@ def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_gua
 
     monkeypatch.setattr(contract, "TOOLS", {k: renamed(t) for k, t in contract.TOOLS.items()})
     assert "verification_evidence" not in known_words()
-    assert "verification_evidence" in WORD.findall(system_text())
+    assert "verification_evidence" in WORD.findall("".join(lead_texts().values()))
 
 
 def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
     plant(monkeypatch, "zz_recovery", profiles=(RECOVERY,), expands_to=("plan.accept",))
     plant(monkeypatch, "zz_designed", status=contract.DESIGNED, expands_to=("plan.accept",))
-    text = projection.lead_tools_text() + rendered()
+    text = system_text() + full()
     assert "zz_recovery" not in text and "zz_designed" not in text
     assert "zz_recovery" in {s.tool for s in lead_text.stages(RECOVERY)}
 
@@ -431,16 +442,17 @@ def test_a_transition_step_says_its_target_and_a_dispatch_says_its_role_or_scope
                                                          for s in by_tool["ticket_prepare"].steps}
 
 
-def test_the_guide_for_a_project_is_rendered_with_the_stages():
+def test_the_guide_for_a_project_is_rendered_with_the_stages_and_the_tools_uses():
     seen: list[Any] = []
 
     class Engine:
-        def lead_guide(self, stages: Any) -> str:
-            seen.append(stages)
-            return "text"
+        def lead_guide_document(self, stages: Any, *, uses: Any, plan_assessment: str | None = None) -> Any:
+            seen.append((stages, uses, plan_assessment))
+            return SimpleNamespace(core="text")
 
     assert lead_text.guide_for(Engine()) == "text"
-    assert seen == [lead_text.stages()]
+    assert seen == [(lead_text.stages(), lead_text.uses(), lead_text.plan_assessment())]
+    assert lead_text.plan_assessment() == "`resolve`, choice `assess_plan`, subject `<W>#plan`"
 
 
 # --------------------------------------------------------------------------- the engine's own words: the one mirror
@@ -504,7 +516,7 @@ def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidat
     the stage requires, and names only a command where the stage is no whole step."""
     part: dict[str, Any] = {"state": "COMMIT_READY", "revision": 3, "decisions": [],
                             "unit": {"integration": {"status": "prepared", "candidate": "C-1"}}}
-    surface._ticket_actions(part, "T-0007", 3)
+    surface._ticket_actions(part, "T-0007")
     monkeypatch.setattr(surface, "_reports", lambda *a: ["EV-9"])
     monkeypatch.setattr(surface, "_items", lambda *a, **kw: [])
     monkeypatch.setattr(surface.SA, "stage_availability", lambda *a, **kw: {"availability": "AVAILABLE"})
@@ -512,7 +524,7 @@ def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidat
     [decision] = surface._decisions(engine, part, "T-0007", [], [])
     assert decision["decision"] == "PUBLISH", "named for what its tool does"
     assert decision["tool"] == "integration_publish" and decision["availability"] == "AVAILABLE"
-    assert decision["arguments"] == {"expect_rev": 3, "work_id": "T-0007", "verification_evidence": "EV-9",
+    assert decision["arguments"] == {"work_id": "T-0007", "verification_evidence": "EV-9",
                                      "prepared_candidate": "C-1"}
     required = contract.tool("integration_publish").input_schema["required"]
     assert set(required) <= set(decision["arguments"])
@@ -598,7 +610,8 @@ def test_a_move_that_requires_a_reason_is_printed_with_one(frm, dst):
     """#331 review F8: each of these is refused without `--reason`, and the guide and the refusals printed it bare."""
     assert T.RULES[frm, dst].reason_required
     assert "--reason <reason>" in T.command(frm, dst, "T-0007")
-    assert f"`aew work transition T-0007 --to {dst} --reason <reason> " in T.next_steps(frm, "T-0007")
+    command = f"aew work transition T-0007 --to {dst} --prior-value {frm} --reason <reason>"
+    assert f"`{command}`" in T.next_steps(frm, "T-0007")
     text = rendered()
     assert way_of(text, frm, dst) == f"{guide.TRANSITION} {guide.WITH_REASON}"
     assert f'"{guide.WITH_REASON}" adds `--reason <reason>`' in text
@@ -704,7 +717,7 @@ def test_every_ticket_hint_names_each_command_whole_so_it_parses(monkeypatch):
 
     hints = every_ticket_hint(monkeypatch)
     assert any("`aew integrate publish T-0007 " in h for h in hints)  # the walk reaches the publish
-    assert any("`aew review ingest T-0007 --evidence EV-1 " in h for h in hints)
+    assert any("`aew review ingest T-0007 --evidence EV-1`" in h for h in hints)
     found = [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_actions": hints}))
              if f.rule == "O-CMD"]
     assert found == [], found
@@ -726,9 +739,156 @@ def test_a_dispatch_hint_is_the_guides_own_launched_move(state, role):
     moves = {m.qualifier: m.shell for m in guide.PATH if m.primitive == "invoke.create.mutating"}
     if role in moves:
         assert moves[role] == f"`{T.dispatch_command('<T>', role)}`"
-    argv = command.replace(f" {T.EXPECT_REV}", " --expect-rev 3").split()[1:]
+    argv = command.split()[1:]
     ns = build_parser().parse_args(argv)
     assert ns.launch and ns.role == role and ns.work_id == "T-0007", ns
+
+
+def whole(texts: list[str]) -> int:
+    """Judge ``texts`` as a structured next step is judged (E140's O-CMD flip): D2's own rule finds nothing, and every
+    `aew` command in them runs on the live parser with each placeholder in its table. Returns how many parsed."""
+    import printed_commands as P
+    from discovery import rules
+
+    found = [f.detail for f in rules.check(rules.Output(site="unit", payload={"next_actions": texts}))
+             if f.rule == "O-CMD"]
+    assert found == [], found
+    parsed = 0
+    for text in texts:
+        for command, fenced in P.commands(text):
+            if command.startswith("aew "):
+                P.parse(command, fenced=fenced)  # raises PrintedCommandError, saying why, if it does not run
+                parsed += 1
+    return parsed
+
+
+def test_the_parent_acceptance_hint_is_the_guides_own_launched_move(monkeypatch):
+    """#547 quick check n1: the parent's acceptance hint dispatches a reviewer or verifier, launched, by the one owner
+    (`transitions.dispatch_command`); without `--launch` it made an invocation with no run."""
+    from aew.cli.main import build_parser
+
+    monkeypatch.setattr(resume_ops, "dependency_blockers", lambda *a, **k: [])
+    resume = Resume.__new__(Resume)
+    resume.units = SimpleNamespace(plan_binding_problem=lambda state, wid: None)  # type: ignore[assignment]
+    resume.gates = SimpleNamespace(gate_context=lambda state, wid: {  # type: ignore[assignment]
+        "gates": {"review_r1": {"status": G.MISSING}}, "open_required_findings": [],
+        "snapshot": {"children_digest": "d", "base_revision": 1}})
+    resume.k = SimpleNamespace(repo_root=None, authoritative_commit=lambda: "c")  # type: ignore[assignment]
+    [hint] = resume._parent_actions({"work": {}}, "S-0007", {"state": "ACCEPTANCE_PENDING", "kind": "story"})
+    command = T.dispatch_command("S-0007", "reviewer|verifier")
+    assert f"`{command}`" in hint, hint
+    assert whole([hint]) == 1
+    for role in ("reviewer", "verifier"):
+        ns = build_parser().parse_args(command.replace("reviewer|verifier", role).split()[1:])
+        assert ns.launch and ns.role == role and ns.work_id == "S-0007", ns
+
+
+def test_a_parents_re_verification_with_its_card_is_launched():
+    """#547 quick check n2: a parent's verification classified ENVIRONMENT_OR_EVIDENCE_BLOCKED is re-verified with the
+    failed card, and the printed dispatch, read from the one owner, launches it: without `--launch` it made an
+    invocation with no run."""
+    from aew.cli.main import build_parser
+    from aew.engine.hierarchy_ops import Hierarchy
+
+    unit = {"parent_verification": {"classification": "ENVIRONMENT_OR_EVIDENCE_BLOCKED", "failed_evidence": "EV-3"}}
+    gc = {"classification_retry": {"current": False, "card": "verifier"}}
+    text = Hierarchy._classification_unmet(Hierarchy.__new__(Hierarchy), "S-0007", unit, gc)
+    command = T.dispatch_command("S-0007", card="verifier")
+    assert text is not None and f"`{command}`" in text, text
+    assert whole([text]) == 1
+    ns = build_parser().parse_args(command.split()[1:])
+    assert ns.launch and ns.card == "verifier" and ns.role is None and ns.work_id == "S-0007", ns
+    with pytest.raises(ValueError):
+        T.dispatch_command("S-0007", "verifier", card="verifier")  # one or the other: never both
+    with pytest.raises(ValueError):
+        T.dispatch_command("S-0007", "")  # an empty role is no role (#555 review n1): never `--card None`
+
+
+def launched_redispatch(text: str, work_id: str = "T-0007") -> argparse.Namespace:
+    """The one `aew work redispatch` that ``text`` prints, parsed by the real parser with its revision filled."""
+    import printed_commands as P
+
+    from aew.cli.main import build_parser
+
+    [command] = [c for c, _ in P.commands(text) if c.startswith("aew work redispatch")]
+    assert command == T.operation_command("work.redispatch", work_id), text
+    argv = shlex.split(command)[1:]
+    return build_parser().parse_args(argv)
+
+
+def test_every_printed_redispatch_launches_the_new_attempt(monkeypatch):
+    """#555 review m1: a redispatch printed without `--launch` makes an attempt with no run, as #547's M1 found for a
+    dispatch. The owner's command, the refusal of an executor dispatch, and a stale record's action each parse on the
+    real parser with `--launch`."""
+    from aew.engine import nonmutating_ops
+    from aew.engine.nonmutating_ops import NonMutating
+
+    ns = launched_redispatch(f"`{T.operation_command('work.redispatch', 'T-0007')}`")
+    assert ns.launch and ns.work_id == "T-0007" and ns.reason == "<reason>", ns
+    engine = NonMutating.__new__(NonMutating)
+    unit = {"kind": "ticket", "mutating": False, "state": "RUNNING"}
+    blocker = engine._g_invoke({"work": {"T-0007": unit}}, "T-0007", {})
+    assert blocker is not None and launched_redispatch(blocker.message).launch, blocker
+    monkeypatch.setattr(nonmutating_ops.F, "record_freshness", lambda root, ev, commit: {"source_bound": True,
+                                                                                       "status": "STALE"})
+    engine.k = SimpleNamespace(repo_root=None)  # type: ignore[assignment]
+    record = {"_sha256": "s", "kind": "investigation", "attempt": 1, "result": "pass", "plan_revision": None}
+    unit = {"execution": {"record": {"id": "EV-1", "sha256": "s"}, "expected_kind": "investigation", "attempt": 1}}
+    status = engine.execute_record_status({"work": {"T-0007": unit}}, "T-0007", {"EV-1": record}, "c")
+    assert status["status"] == G.STALE and launched_redispatch(status["action"]).launch, status
+
+
+def test_the_project_and_non_mutating_next_actions_name_each_command_whole(monkeypatch):
+    """E140's O-CMD flip, the leftovers the triage named: a pending handoff, a non-mutating Ticket's new attempt and
+    its record's ingest, a stale dispatch's redispatch, and a non-mutating reconcile's next step. Each is offered to
+    be run as given, so each command is whole and read from its owner; the handoff names no command at all, since
+    its whole form would carry the offer secret."""
+    from aew.engine import nonmutating_ops
+    from aew.engine.nonmutating_ops import NonMutating
+
+    monkeypatch.setattr(resume_ops.H, "is_v2", lambda state: True)
+    monkeypatch.setattr(resume_ops.gate_ops, "open_items", lambda state, catalogue: [])
+    resume = Resume.__new__(Resume)
+    resume.k = SimpleNamespace(manifest={"authority": {"candidates": []}},  # type: ignore[assignment]
+                               policy=lambda name: {"checks": {}})
+    resume.roles = SimpleNamespace(policy_problems=lambda: [], gate_catalogue=lambda: {})  # type: ignore[assignment]
+    resume.harness = SimpleNamespace(harness_resume=lambda state: [])  # type: ignore[assignment]
+    resume.history = SimpleNamespace(audit_status=lambda state: None)  # type: ignore[assignment]
+    project = resume.next_actions({"lead": {"status": "handoff_pending", "generation": 1}, "work": {}})
+    assert project == [f"a Lead handoff is pending: {resume_ops.HANDOFF_ACCEPT}"]
+    assert "aew " not in resume_ops.HANDOFF_ACCEPT and "--offer" not in resume_ops.HANDOFF_ACCEPT
+
+    redispatch = T.operation_command("work.redispatch", "T-0007")
+    resume.units = SimpleNamespace(plan_binding_problem=lambda state, wid: None,  # type: ignore[assignment]
+                                   dispatch_binding_problem=lambda state, wid: "moved")
+    resume.inputs = SimpleNamespace(input_status=lambda state, wid: [])  # type: ignore[assignment]
+    resume._submitted = lambda state, wid, unit, kind: ["EV-1"]  # type: ignore[method-assign]
+    execution = {"invocation": "INV-1", "attempt": 1, "expected_kind": "investigation"}
+    hints = resume._common_actions({}, "T-0007", {"state": "RUNNING"})
+    for status in ("active", "completed"):
+        hints += resume._nm_ticket_actions({"invocations": {"INV-1": {"status": status}}}, "T-0007",
+                                           {"state": "RUNNING", "execution": execution, "invocations": ["INV-1"]})
+    hints += resume._nm_ticket_actions({"invocations": {}}, "T-0007", {"state": "INTERRUPTED", "invocations": []})
+    monkeypatch.setattr(nonmutating_ops.E, "scan", lambda root, wid: ([], []))
+    reconcile = NonMutating.__new__(NonMutating)
+    reconcile.k = SimpleNamespace(aew_root=None)  # type: ignore[assignment]
+    hints.append(reconcile._inspect_attempt({"invocations": {}}, "T-0007", {"execution": execution})["next"])
+    assert sum(f"`{redispatch}`" in h for h in hints) == 4, hints
+    assert f"`{T.operation_command('evidence.ingest', 'T-0007', 'EV-1')}`" in hints[1], hints
+    assert whole(hints) == 5
+
+
+def test_every_validation_next_step_names_each_command_whole():
+    """E140's O-CMD flip: `aew integrate validate`'s results named publish and classify without their revision,
+    `requeue` bare or with only its Ticket, and `validate` without its revision. Every `next` a validation result gives
+    is in one table, and each command in it is whole; so is a stuck run's step in `resume`."""
+    from aew.engine import validation_ops as VO
+
+    steps = VO.next_steps("T-0007")
+    assert whole(list(steps.values())) == len(steps)
+    run = {"id": "IV-1-1", "state": "running", "deadline_at": "2000-01-01T00:00:00Z"}
+    assert whole([VO.stuck_run(run, "T-0007") or ""]) == 1
+    assert f"`{T.operation_command('integrate.requeue', 'T-0007')}`" in steps["inconclusive"]
 
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
@@ -796,7 +956,8 @@ def harness_with(fit: T.Fit | None = FULL) -> Harness:
 def test_a_finished_runs_message_leads_with_the_stage_that_accepts_its_report(role, scope, tool):
     state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
     message = harness_with()._after_run(state, {"work_unit": "T-0007", "role": role, "scope": scope},
-                                        [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}])
+                                        [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}],
+                                        "INV-0003")
     assert message.index(f"`{tool}`") < message.index("`aew ")
 
 
@@ -806,7 +967,7 @@ def test_a_finished_review_names_no_stage_that_is_not_a_whole_step_for_this_tick
     fit names the ingest alone."""
     state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
     message = harness_with(fit)._after_run(state, {"work_unit": "T-0007", "role": "reviewer", "scope": "ticket"},
-                                           [{"id": "EV-3", "kind": "review"}])
+                                           [{"id": "EV-3", "kind": "review"}], "INV-0003")
     assert "`aew review ingest T-0007" in message and not stage_named(message)
 
 
@@ -816,7 +977,7 @@ def decisions_offered(fit: T.Fit | None) -> dict[str, Any]:
     out = {}
     for state in ("REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY"):
         part.update(state=state, decisions=[])
-        surface._ticket_actions(part, "T-0007", 3)
+        surface._ticket_actions(part, "T-0007")
         [decision] = part["decisions"]
         out[state] = surface._fitting(decision, fit)
     return out
@@ -837,5 +998,5 @@ def test_a_decision_offers_its_stage_only_where_it_is_a_whole_step_for_this_tick
 def test_a_parents_or_non_mutating_report_names_no_stage():
     for unit, role in (({"kind": "story"}, "reviewer"), ({"kind": "ticket", "mutating": False}, "investigator")):
         message = harness_with(None)._after_run({"work": {"S-1": unit}}, {"work_unit": "S-1", "role": role},
-                                                [{"id": "EV-3", "kind": "review"}])
+                                                [{"id": "EV-3", "kind": "review"}], "INV-0003")
         assert not stage_named(message), message

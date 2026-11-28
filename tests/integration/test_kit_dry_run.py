@@ -48,31 +48,36 @@ def offline_kit(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-must-not-reach-child")
     scrub_provider_environment(monkeypatch)
 
-    world = new_world(tmp_path)
-    dest = tmp_path / "kit"
-    lab = HarnessLab(Project(dest / "repo"), tmp_path, world.env)
-    ledger = Ledger("E117")
-    fixtures = {**world_fixtures(lab), "containment.network.upstreams": offline_policy}
-    known = {"fakeprov": OFFLINE_KEY}
-    env = clean_env(lab.env)
-    assert env["AEW_OPENCODE_BIN"] == world.env["AEW_OPENCODE_BIN"]
-    assert not set(netns.PROVIDER_KEY_ENV.values()) & env.keys()
-    assert env[OFFLINE_KEY] == "synthetic-offline-provider-key"
-    assert Path(env["OPENCODE_DB"]).is_relative_to(tmp_path)
-    assert all(Path(env[name]).is_relative_to(home) for name in env if name == "HOME" or name.startswith("XDG_")
-               and name.endswith("_HOME"))
-    # On Windows the fake executable is the isolation boundary. Linux additionally relays only inert upstreams.
-    with world_around_init(ledger, fixtures, known):
-        engine = prepare(dest, "fakeprov/worker", "fakeprov/lead")
-    policy = engine.execution_policy()[0]
-    assert policy["harness"] == "fake"
-    for provider in {*netns.PROVIDER_KEY_ENV, "fakeprov"}:
-        assert netns.upstream(provider, policy).url == f"https://{provider}.invalid/v1"
+    # The world's host-state base is the synthetic home's own (the XDG assertion below holds it there).
+    world = new_world(tmp_path, host_data=home / "data")
+    try:  # the world's provider listener closes however the kit's setup ends; its inert routes never use it
+        dest = tmp_path / "kit"
+        lab = HarnessLab(Project(dest / "repo"), tmp_path, world.env)
+        ledger = Ledger("E117")
+        fixtures = {**world_fixtures(lab), "containment.network.upstreams": offline_policy}
+        known = {"fakeprov": OFFLINE_KEY}
+        env = clean_env(lab.env)
+        assert env["AEW_OPENCODE_BIN"] == world.env["AEW_OPENCODE_BIN"]
+        assert not set(netns.PROVIDER_KEY_ENV.values()) & env.keys()
+        assert env[OFFLINE_KEY] == "synthetic-offline-provider-key"
+        assert Path(env["OPENCODE_DB"]).is_relative_to(tmp_path)
+        assert all(Path(env[name]).is_relative_to(home) for name in env if name == "HOME" or name.startswith("XDG_")
+                   and name.endswith("_HOME"))
+        # On Windows the fake executable is the isolation boundary. Linux additionally relays only inert upstreams.
+        with world_around_init(ledger, fixtures, known):
+            engine = prepare(dest, "fakeprov/worker", "fakeprov/lead")
+        policy = engine.execution_policy()[0]
+        assert policy["harness"] == "fake"
+        for provider in {*netns.PROVIDER_KEY_ENV, "fakeprov"}:
+            assert netns.upstream(provider, policy).url == f"https://{provider}.invalid/v1"
 
-    try:
-        yield dest, engine, lab, ledger
+        try:
+            yield dest, engine, lab, ledger
+        finally:
+            lab.cleanup()
     finally:
-        lab.cleanup()
+        for close in world.closers:
+            close()
 
 
 def test_dry_run_has_only_inert_provider_routes(offline_kit):

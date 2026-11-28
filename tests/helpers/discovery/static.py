@@ -27,17 +27,21 @@ def read_guides(directory: Path, prefix: str) -> dict[str, str]:
 
 
 def lead_system_text() -> str:
-    """What the Lead's TUI is given as its system text: ``LEAD_SYSTEM`` with the rendered guide appended."""
+    """What the Lead's TUI is given as its system text: ``LEAD_SYSTEM`` with the guide's core appended."""
     from aew.harness.opencode import projection
-
-    return projection.lead_config(rendered_guide())["agents"][projection.LEAD_AGENT]["system"]
-
-
-def rendered_guide() -> str:
     from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
     from aew.surface import lead_text
 
-    return lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    core = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    return projection.lead_config(core)["agents"][projection.LEAD_AGENT]["system"]
+
+
+def rendered_guide() -> str:
+    """Every text of the guide a Lead reads: its core and each section `aew guide <section>` prints (E231)."""
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
+
+    return lead_text.document(DEFAULT_GATES, DEFAULT_CHECKS).full()
 
 
 def pack_templates() -> Iterator[tuple[str, str]]:

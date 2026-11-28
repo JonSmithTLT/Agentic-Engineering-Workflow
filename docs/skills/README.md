@@ -20,6 +20,8 @@ into an invariant violation. Their names are retained from the brief because
 those distinctions make selection and evaluation practical. Invariant tracing
 and small regression probes are techniques within these procedures; separate
 skills for them are deferred until evidence supports the extra selection cost.
+Further candidates, added later, are listed in
+[section 6](#further-candidates); they are unevaluated too.
 
 The design makes four deliberate choices:
 
@@ -64,6 +66,7 @@ docs/skills/
 └── candidates/
     ├── codebase-investigation/
     ├── debugging-root-cause-analysis/
+    ├── …                             # the further candidates (section 6)
     └── adversarial-review/
         ├── SKILL.md
         ├── examples/good/
@@ -116,6 +119,34 @@ The reference skill is intended to be sufficiently complete for a reviewed
 target-model experiment. Its runnable or inspectable synthetic artifacts are
 test subjects, not claims about defects in AEW. Public cases are development
 material and cannot establish unseen-case performance.
+
+### Further candidates
+
+More candidates are public as text, one per row of the table below. Each is **unevaluated**. Being in this directory does
+not ship a skill or offer it on a card: whether and where each is served is a
+separate fit decision, made in the register's pull requests (E136, and E161 for
+the Lead's own list). What ships is what AEW's skill manifest lists
+(`src/aew/skills/manifest.json`), and what each card offers is on the card. They follow the layout
+above, except that none has an `examples/` directory yet. Their `evals/`
+hold cases and rubrics. Some also have authoring notes, source records,
+or runtime manifests.
+
+| Candidate | Review entrypoints |
+|---|---|
+| Agent security review | [Skill](candidates/agent-security-review/SKILL.md), [cases](candidates/agent-security-review/evals/cases.yaml), [rubric](candidates/agent-security-review/evals/rubric.md) |
+| Security control validation | [Skill](candidates/security-control-validation/SKILL.md), [cases](candidates/security-control-validation/evals/cases.yaml), [rubric](candidates/security-control-validation/evals/rubric.md) |
+| Test design | [Skill](candidates/test-design/SKILL.md), [cases](candidates/test-design/evals/cases.yaml), [rubric](candidates/test-design/evals/rubric.md) |
+| Engineering planning | [Skill](candidates/engineering-planning/SKILL.md), [cases](candidates/engineering-planning/evals/cases.yaml), [rubric](candidates/engineering-planning/evals/rubric.md) |
+| Requirements clarification | [Skill](candidates/requirements-clarification/SKILL.md), [cases](candidates/requirements-clarification/evals/cases.yaml), [rubric](candidates/requirements-clarification/evals/rubric.md) |
+| Empirical evaluation | [Skill](candidates/empirical-evaluation/SKILL.md), [cases](candidates/empirical-evaluation/evals/cases.yaml), [rubric](candidates/empirical-evaluation/evals/rubric.md) |
+| CI evidence triage | [Skill](candidates/ci-evidence-triage/SKILL.md), [cases](candidates/ci-evidence-triage/evals/cases.yaml), [rubric](candidates/ci-evidence-triage/evals/rubric.md) |
+| Mechanical enumeration | [Skill](candidates/mechanical-enumeration/SKILL.md), [cases](candidates/mechanical-enumeration/evals/cases.yaml), [rubric](candidates/mechanical-enumeration/evals/rubric.md) |
+| Technical writing | [Skill](candidates/technical-writing/SKILL.md), [cases](candidates/technical-writing/evals/cases.yaml), [rubric](candidates/technical-writing/evals/rubric.md) |
+| Delegation handoffs | [Skill](candidates/delegation-handoffs/SKILL.md), [cases](candidates/delegation-handoffs/evals/cases.yaml), [rubric](candidates/delegation-handoffs/evals/rubric.md) |
+| Frontend design | [Skill](candidates/frontend-design/SKILL.md), [cases](candidates/frontend-design/evals/cases.yaml), [rubric](candidates/frontend-design/evals/rubric.md) |
+| Source research | [Skill](candidates/source-research/SKILL.md), [cases](candidates/source-research/evals/cases.yaml), [rubric](candidates/source-research/evals/rubric.md) |
+| General implementation | [Skill](candidates/general-implementation/SKILL.md), [cases](candidates/general-implementation/evals/cases.yaml), [rubric](candidates/general-implementation/evals/rubric.md) |
+| Plan review | [Skill](candidates/plan-review/SKILL.md), [cases](candidates/plan-review/evals/cases.yaml), [rubric](candidates/plan-review/evals/rubric.md) |
 
 ## 7. Secondary skill outlines
 

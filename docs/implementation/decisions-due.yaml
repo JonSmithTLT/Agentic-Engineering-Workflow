@@ -13,6 +13,61 @@ intro: |
   material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
   show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
+- row: E367
+  needs: decision
+  owner: designer
+  due: Now
+  what: 'For the Lead''s always-sent text: whether to make the four schema changes the audit of 2026-11-25 found worth about
+    3.1 KB per request, and whether the Lead MCP server''s instructions count in the Lead''s pool'
+
+- row: E373
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q4: "On a project with no open Ticket, should the projection offer `ticket_draft`, with its
+    judgment inputs, as the interim of V01-01 step 4, or does step 4 wait for `CREATE_PROPOSED_WORK` (W15)?"'
+
+- row: E374
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q9: "For a stage the steering loop is running, is that decision offered at all, or is it
+    the mechanism''s until the loop stops?" E335''s branch makes RESOLVE_STAGE the Lead''s.'
+
+- row: E378
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q2: "When an integration candidate conflicts with the moved head and its queue entry awaits
+    disposition, which decision does the projection offer (requeue, return to RUNNING, REPLAN_REQUIRED), whose is it, and
+    through which typed route?"'
+
+- row: E379
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q3: "Does the operator''s publish approval cover a compatible rebuild of the same change
+    on a moved head, re-verified, or does every new candidate need its own approval?" vertical-uat.md §4 says no further
+    question. The projection asks again. The operator owns the threshold.'
+
+- row: E380
+  needs: decision
+  owner: designer
+  due: V-01
+  what: 'The V-01 burn-down''s Q6: "When the gate refuses because a check changes a tracked file of its snapshot, which
+    decision does the projection offer, and is it the operator''s?"'
+
+- row: E381
+  needs: design
+  owner: designer
+  due: V-01
+  what: 'The design of the V-01 wire track''s actions that have none (the burn-down''s Q7 and C12): `ATTACH_LEAD` and `REATTACH_LEAD`,
+    which STG-03''s closure left "proposed, with no row", and `APPROVE_INTEGRATION` (I4-06, I4-B7), which had no row. E381,
+    E382 and E383 now hold their work; the shape of each is the designer''s'
+  blocks:
+  - E382
+  - E383
+
 - row: E99
   needs: design
   owner: designer
@@ -51,6 +106,14 @@ items:
   due: Unscheduled
   what: A-44's Q10, put to the operator with E109's data.
 
+- row: E349
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: Where E349 (E7d's custodian half) sits against SYS-08's finish line, which does not name it, now that SYS-08 awaits
+    the operator's sign-off; inside it, outside it (the operator's to place after SYS-08 finishes, as E359 is), or in another
+    system
+
 - row: E360
   needs: adoption
   owner: designer
@@ -58,4 +121,11 @@ items:
   what: An amendment to E123's custody ruling of 2026-11-02 and to I-6 that writes the operator's decisions of 2026-11-24
     into the contract (managed key custody opt in per provider, today's path custody the default; credential operations
     operator-only, activation a G3 action), with the persistence a host without a TPM may claim
+
+- row: STG-15
+  needs: decision
+  owner: designer
+  due: Unscheduled
+  what: Whether SYS-09's serves_claims keeps its claim on the SPT records closing work (SPB), now that the operator has
+    taken STG-15's later records (MCP servers and SPT's records) out of SYS-09's finish line
 

@@ -80,7 +80,7 @@ def test_the_cli_transport_goes_through_the_session_broker(held):
 def test_a_checkpoint_commits_through_the_broker_and_no_result_carries_the_credential(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
-    out = call("checkpoint", {"expect_rev": rev, "note": "paused", "next": "review"})
+    out = call("checkpoint", {"note": "paused", "next": "review"})
     assert out["ok"] and out["revision"] == rev + 1 and out["completed_steps"][0]["primitive"] == "checkpoint"
     assert p.token not in json.dumps(out)
 
@@ -90,10 +90,10 @@ def test_ill_formed_calls_never_reach_the_engine(held):
     rev = _rev(engine)
     for name, args, profile, code in (("nope", {}, "normal", "UNKNOWN_TOOL"),
                                       # every catalog row is built since E6a: a malformed stage call instead
-                                      ("ticket_prepare", {"expect_rev": rev}, "normal",
+                                      ("ticket_prepare", {}, "normal",
                                        "INVALID_ARGUMENTS"),
                                       ("cli", {"argv": ["status"]}, "normal", "TOOL_NOT_EXPOSED"),
-                                      ("checkpoint", {"expect_rev": rev, "bogus": 1}, "normal", "INVALID_ARGUMENTS")):
+                                      ("checkpoint", {"bogus": 1}, "normal", "INVALID_ARGUMENTS")):
         with pytest.raises(AdapterInputError) as exc:
             call(name, args, profile=profile)
         assert exc.value.code == code
@@ -106,16 +106,16 @@ def test_ill_formed_calls_never_reach_the_engine(held):
 def test_the_cli_escape_runs_a_lead_command_on_the_recovery_profile(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
-    out = call("cli", {"argv": ["checkpoint", "--next", "recovered", "--expect-rev", str(rev)]}, profile="recovery")
+    out = call("cli", {"argv": ["checkpoint", "--next", "recovered", ]}, profile="recovery")
     assert out["ok"] and out["effective_operation_class"] == "JUDGMENT_BEARING" and _rev(engine) == rev + 1
     assert out["completed_steps"][0]["revision"] == rev + 1
 
 
 @pytest.mark.parametrize(("argv", "why"), [
-    (["lead", "release", "--expect-rev", "{rev}"], "operator"),  # operator-only
-    (["lead", "handoff", "offer", "--expect-rev", "{rev}"], "operator"),
+    (["lead", "release", ], "operator"),  # operator-only
+    (["lead", "handoff", "offer", ], "operator"),
     (["lead", "tool", "status"], "transport"),  # no nested surface
-    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "--launch"),  # it would print an invocation credential
+    (["work", "assign", "{wid}", ], "--launch"),  # it would print an invocation credential
     (["status"], "Lead-authenticated"),  # not a Lead command: run it directly
 ])
 def test_the_cli_escape_keeps_every_broker_refusal(held, argv, why):
@@ -141,7 +141,7 @@ def test_a_command_that_answers_not_ok_stops_the_call_and_keeps_what_it_committe
 
     monkeypatch.setattr(Engine, "checkpoint", committed_but_not_done)
     rev = _rev(engine)
-    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev)]}, profile="recovery")
+    out = call("cli", {"argv": ["checkpoint", ]}, profile="recovery")
     assert not out["ok"] and out["stopped"]["boundary"] == "refused", out
     assert out["stopped"]["at"] == "aew checkpoint" and out["stopped"]["error"]["code"] == "NOT_COMPLETED"
     assert out["stopped"]["error"]["message"] == "rerun post-integration validation, then publish"
@@ -152,7 +152,7 @@ def test_a_command_that_answers_not_ok_stops_the_call_and_keeps_what_it_committe
 def test_the_cli_escape_expands_fields_from_its_own_stdin(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
-    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev), "--fields", "-"],
+    out = call("cli", {"argv": ["checkpoint", "--fields", "-"],
                        "stdin": "next: 'from fields: $1 `x`'\n"}, profile="recovery")
     assert out["ok"], out["stopped"]
     assert _rev(engine) == rev + 1 and engine.store.read()["next_action"] == "from fields: $1 `x`"
@@ -162,13 +162,13 @@ def test_the_cli_escape_takes_text_and_says_so_when_given_a_path(held):
     p, wid, engine, broker = held
     rev = _rev(engine)
     (p.root / "fields.yaml").write_text("next: from a file\n", encoding="utf-8")
-    for argv in (["checkpoint", "--expect-rev", str(rev), "--fields", "fields.yaml"],
-                 ["checkpoint", "--expect-rev", str(rev), "--next", "x", "--note-file", "fields.yaml"]):
+    for argv in (["checkpoint", "--fields", "fields.yaml"],
+                 ["checkpoint", "--next", "x", "--note-file", "fields.yaml"]):
         out = call("cli", {"argv": argv}, profile="recovery")
         assert not out["ok"] and out["stopped"]["error"]["code"] == "USAGE", out["stopped"]
         assert "give - as the file" in out["stopped"]["error"]["message"], out["stopped"]
         assert _rev(engine) == rev
-    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev), "--next", "x", "--note-file", "-"],
+    out = call("cli", {"argv": ["checkpoint", "--next", "x", "--note-file", "-"],
                        "stdin": "the note"}, profile="recovery")
     assert out["ok"], out["stopped"]
     assert "the note" in (engine.aew_root / "state" / "HANDOFF.md").read_text(encoding="utf-8")
@@ -176,9 +176,9 @@ def test_the_cli_escape_takes_text_and_says_so_when_given_a_path(held):
 
 @pytest.mark.parametrize(("argv", "stdin", "code", "because"), [
     # a credential never goes through --fields: refused by the expansion itself, named so (PR #93 re-review)
-    (["checkpoint", "--expect-rev", "{rev}"], "token: x\n", "USAGE", "a credential never goes through --fields"),
+    (["checkpoint", ], "token: x\n", "USAGE", "a credential never goes through --fields"),
     # nor around a broker refusal: the expanded argv meets every one of them
-    (["work", "assign", "{wid}", "--expect-rev", "{rev}"], "launch: false\n", "PERMISSION_DENIED", None),
+    (["work", "assign", "{wid}", ], "launch: false\n", "PERMISSION_DENIED", None),
 ])
 def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code, because):
     p, wid, engine, broker = held
@@ -193,7 +193,7 @@ def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code, beca
 
 def test_the_cli_escape_refuses_a_token(held):
     p, wid, engine, broker = held
-    argv = ["checkpoint", "--token", "x", "--expect-rev", str(_rev(engine))]  # a --token value, refused
+    argv = ["checkpoint", "--token", "x", ]  # a --token value, refused
     out = call("cli", {"argv": argv}, profile="recovery")
     assert not out["ok"] and out["stopped"]["error"]["code"] == "USAGE"
     assert out["stopped"]["error"]["details"]["reason"] == "token_on_command_line"
@@ -202,7 +202,7 @@ def test_the_cli_escape_refuses_a_token(held):
 def test_the_bridge_key_is_not_a_lead_credential(held):
     p, wid, engine, broker = held
     with pytest.raises((errors.PermissionDenied, errors.StaleAuthority)):
-        engine.checkpoint(token=broker.env[lead_broker.ENV_KEY], expect_rev=_rev(engine), note="x")
+        engine.checkpoint(token=broker.env[lead_broker.ENV_KEY], note="x")
 
 
 # ---------------------------------------------------------------------------------------------- channels and waiting
@@ -210,8 +210,9 @@ def test_the_bridge_key_is_not_a_lead_credential(held):
 
 def _fake_wait(engine, monkeypatch, seen, until=None):
     """A run that never ends, or that ends once ``until`` is set: each single check (timeout 0) reports it."""
-    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False, lead=False, message_after=None):
         assert lead, "the typed wait is the Lead's own"  # its end then needs no wake (record_told)
+        assert message_after == {}, "a new project's typed wait observes the coordination lane"
         seen.append(timeout)
         run = runs if isinstance(runs, str) else runs[0]
         if until is not None and until.is_set():
@@ -246,13 +247,13 @@ def test_a_wait_never_holds_the_broker_and_channels_never_bleed(held, monkeypatc
         time.sleep(0.05)
     assert seen, "the wait never made its first check"
     for _ in range(3):  # explain from both ingresses and a query, all while the wait blocks
-        mcp = call("explain", {"work_id": wid}, ingress="mcp")
-        cli = call("explain", {"work_id": wid}, ingress="cli")
+        mcp = call("work_show", {"explain": True, "work_id": wid}, ingress="mcp")
+        cli = call("work_show", {"explain": True, "work_id": wid}, ingress="cli")
         status = call("status", {}, ingress="mcp")
         assert mcp["result"]["channel"] == "lead_mcp" and cli["result"]["channel"] == "lead_broker"
         assert status["ok"] and thread.is_alive(), "a request waited behind the blocking wait"
     rev = _rev(engine)
-    out = bridge.call("lead.cli", {"argv": ["checkpoint", "--next", "during the wait", "--expect-rev", str(rev)],
+    out = bridge.call("lead.cli", {"argv": ["checkpoint", "--next", "during the wait", ],
                                    "cwd": str(p.root), "stdin": ""}, env_names=lead_broker.ENV_NAMES)
     assert out["result"]["revision"] == rev + 1 and thread.is_alive()  # a relayed command commits while it blocks
     ended.set()
@@ -269,7 +270,8 @@ def test_a_typed_wait_ends_at_its_own_timeout(held, monkeypatch):
     _fake_wait(engine, monkeypatch, seen)
     started = time.monotonic()
     out = call("harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 1})
-    assert out["ok"] and out["result"]["timed_out"] is True
+    assert out["ok"], out["stopped"]
+    assert out["result"]["timed_out"] is True
     assert 1 <= time.monotonic() - started < 15 and set(seen) == {0}
 
 
@@ -281,7 +283,7 @@ def test_a_wait_ends_with_a_real_stale_result_when_authority_goes_and_then_the_b
     thread = threading.Thread(target=lambda: waited.update(out=call("harness_wait", {"runs": ["R-INV-0009-1"]})))
     thread.start()
     time.sleep(0.5)
-    Engine.discover(p.root).lead_release(token=p.token, expect_rev=_rev(engine))  # the seat moves on, elsewhere
+    Engine.discover(p.root).lead_release(token=p.token)  # the seat moves on, elsewhere
     thread.join(30)
     out = waited["out"]
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority"
@@ -310,7 +312,7 @@ def test_a_call_after_authority_moved_is_answered_once_then_the_bridge_closes(tm
 
 
 def _answered_once_then_closed(p, engine):
-    Engine.discover(p.root).lead_release(token=p.token, expect_rev=_rev(engine))
+    Engine.discover(p.root).lead_release(token=p.token)
     out = call("status", {})
     assert not out["ok"] and out["stopped"]["boundary"] == "stale_authority" and out["result"] is None
     with pytest.raises(AdapterInputError) as exc:
@@ -346,7 +348,7 @@ def test_a_stage_through_mcp_records_the_lead_mcp_channel_and_the_runners_result
     the held credential; its assignment and run 1 record the transport that carried them, and its result is the stage
     result the runner returns anywhere (its intent, its three steps), with no credential in it."""
     p, wid, engine, broker = launching_broker
-    out = call("ticket_start", {"expect_rev": _rev(engine), "work_id": wid}, ingress="mcp")
+    out = call("ticket_start", {"work_id": wid}, ingress="mcp")
     assert out["ok"], out["stopped"]
     assert [s["primitive"] for s in out["completed_steps"]] == ["work.assign", "dispatch.launch", "work.transition"]
     state = engine.store.read()
@@ -367,22 +369,22 @@ def test_every_typed_call_through_the_broker_is_one_line_of_the_tool_call_log(he
     p, wid, engine, broker = held
     rev = _rev(engine)
     call("status", {"work_id": wid})
-    call("checkpoint", {"expect_rev": rev, "note": "a private note", "next": "review"}, ingress="cli")
-    call("checkpoint", {"expect_rev": rev, "note": "stale"})  # refused: the revision moved
+    call("checkpoint", {"note": "a private note", "next": "review"}, ingress="cli")
+    call("work_show", {"work_id": "T-9999"})  # a typed engine refusal
     with pytest.raises(AdapterInputError):
-        call("checkpoint", {"expect_rev": rev, "bogus": 1})
+        call("checkpoint", {"bogus": 1})
     lines = tool_calls.read(engine.aew_root)
     assert [(x["tool"], x["ok"], x["boundary"], x["error_code"]) for x in lines] == [
         ("status", True, None, None), ("checkpoint", True, None, None),
-        ("checkpoint", False, "stale_revision", "STALE_REVISION"),
+        ("work_show", False, "not_found", "NOT_FOUND"),
         ("checkpoint", False, tool_calls.INPUT_ERROR, "INVALID_ARGUMENTS")]
-    status, done, stale, bad = lines
+    status, done, refused, bad = lines
     assert status["effective_class"] == "MECHANICAL" and status["revision_before"] == status["revision_after"] == rev
     assert (done["revision_before"], done["revision_after"], done["ingress"]) == (rev, rev + 1, "cli")
-    assert stale["revision_before"] == stale["revision_after"] == rev + 1 and bad["effective_class"] is None
+    assert refused["revision_before"] == refused["revision_after"] == rev + 1 and bad["effective_class"] is None
     assert all(x["duration_ms"] >= 0 and x["stage_intent"] is None and x["profile"] == "normal" for x in lines)
     assert done["arguments_sha256"] == tool_calls.arguments_digest(
-        {"next": "review", "note": "a private note", "expect_rev": rev})
+        {"next": "review", "note": "a private note", })
     assert "a private note" not in tool_calls.path(engine.aew_root).read_text(encoding="utf-8")
     assert _rev(engine) == rev + 1  # the log is never control state
 
@@ -399,7 +401,7 @@ def test_the_logged_revision_before_is_the_one_the_call_started_from(held):
         thread = threading.Thread(target=lambda: done.setdefault("out", call("status", {"work_id": wid})))
         thread.start()
         time.sleep(0.5)  # the status call is waiting for the section this test holds
-        engine.checkpoint(token=p.token, expect_rev=rev, note="another caller's commit")
+        engine.checkpoint(token=p.token, note="another caller's commit")
     thread.join(30)
     assert done["out"]["ok"]
     [line] = tool_calls.read(engine.aew_root)

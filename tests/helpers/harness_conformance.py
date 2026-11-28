@@ -50,6 +50,7 @@ from fake_harness import (
     watch_agent_pid,
 )
 from invariants import assert_control_invariants
+from operator_confirms import standing_by
 
 from aew.harness import bridge, procs, runlog
 from aew.knowledge import evidence as E
@@ -187,6 +188,7 @@ class Driver:
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
                                 encoding="utf-8", **NO_WINDOW)
         lab.sessions.append(proc)
+        standing_by(lab.root, steps, lambda: proc.poll() is None)
         return LeadSession(proc, transcript)
 
     def lead(self, lab: HarnessLab, name: str, steps: list[dict[str, Any]], *,
@@ -356,6 +358,7 @@ class FakeOpenCodeDriver(Driver):
         threading.Thread(target=drain, daemon=True).start()
         lab.sessions.append(proc)
         lab.ended_by_driver.append(ended)  # a wait on the session's work fails too, not only its result
+        standing_by(lab.root, steps, lambda: proc.poll() is None)
         return LeadSession(proc, transcript, relayed=True, ended_by_driver=ended)
 
 
@@ -742,10 +745,10 @@ def a_read_only_role_cannot_change_its_observation(lab, driver, tmp_path):
 @scenario()
 def an_agent_cannot_perform_lead_operations(lab, driver, tmp_path):
     _, inv, run = launch_ticket(lab, driver, tmp_path, [
-        {"do": "aew", "args": ["work", "transition", "T-0001", "--to", "REVIEW_PENDING", "--expect-rev", "99"]},
-        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", "--expect-rev", "99"],
+        {"do": "aew", "args": ["work", "transition", "T-0001", "--to", "REVIEW_PENDING", ]},
+        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", ],
          "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},
-        {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "99"]}])
+        {"do": "aew", "args": ["lead", "acquire", ]}])
     rev = lab.project.rev()
     lab.wait(run)
     codes = [code_of(lab.step(run, i)) for i in range(3)]

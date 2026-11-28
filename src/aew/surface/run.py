@@ -100,6 +100,8 @@ def _resume(c: Call) -> Any:
 
 
 def _work_show(c: Call) -> Any:
+    if c.a.get("explain"):
+        return _explain(c)
     c.subject = c.a["work_id"]
     return c.engine.work_show(c.a["work_id"])
 
@@ -173,47 +175,66 @@ def _cli(c: Call) -> Any:
 
 
 def _checkpoint(c: Call) -> Any:
-    out = c.engine.checkpoint(token=c.token(), expect_rev=c.a["expect_rev"], note=c.a.get("note") or "",
+    out = c.engine.checkpoint(token=c.token(), note=c.a.get("note") or "",
                               next_action=c.a.get("next"))
     c.committed("checkpoint", out, f"checkpoint {out.get('checkpoint')}", [str(out.get("checkpoint"))])
     return out
 
 
+def _report_write(c: Call) -> Any:
+    out = c.engine.report_write(token=c.token(), title=c.a["title"], body=c.a["body"],
+                                session_id=(c.ctx.lead_session or {}).get("session_id"))
+    c.committed("report.write", out, f"{out['label']} {out['id']}", [out["id"]])
+    return {**out, "next_action": out["show"]}
+
+
 def _steering(c: Call) -> Any:
-    """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a request. A request grants nothing; only
-    the operator raises or confirms, at the operator endpoint."""
-    action = c.a["action"]
-    if action == "lower":
-        out = c.engine.steering_lower(token=c.token(), expect_rev=c.a["expect_rev"], mode=c.a["mode"],
+    """The Lead's own steering (M4-E E2; A1 §1.2): lower its mode, or record a raise request. A request grants
+    nothing; only the operator raises, at the operator endpoint. The tool offers no confirmation request (register
+    E183): ``contract.STEERING_ARGUMENTS`` holds its actions, and a call is checked against them before it runs."""
+    if c.a["action"] == "lower":
+        out = c.engine.steering_lower(token=c.token(), mode=c.a["mode"],
                                       rationale=c.a.get("rationale") or "", prior_value=c.a.get("prior_value"))
         c.committed("steering", out, f"steering mode lowered to {out.get('mode')}", [str(out.get("record"))])
         return out
-    kind = "raise" if action == "request_raise" else "confirmation"
-    out = c.engine.steering_request(token=c.token(), expect_rev=c.a["expect_rev"], kind=kind,
-                                    rationale=c.a["rationale"], mode=c.a.get("mode"), action_ref=c.a.get("action_ref"))
+    out = c.engine.steering_request(token=c.token(), kind="raise",
+                                    rationale=c.a["rationale"], mode=c.a.get("mode"))
     c.committed("steering", out, f"steering request {out.get('request')} recorded (grants nothing)",
                 [str(out.get("request"))])
     return out
 
 
 def _message_send(c: Call) -> Any:
-    # Timing is advertised now, but no turn-end record exists until MS5b's finality guard is built.
-    if c.a.get("when", "next-step") != "next-step":
-        raise errors.UsageError("turn-end is not available yet; use next-step to record a message without delivery",
-                                reason="turn_end_not_built")
     out = c.engine.message_record_lead(
-        token=c.token(), expect_rev=c.a["expect_rev"], to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
+        token=c.token(), to=c.a["to"], body=c.a["body"], kind=c.a.get("kind"),
         in_reply_to=c.a.get("in_reply_to"), refs=c.a.get("refs"), idempotency_id=c.a.get("idempotency_id"),
+        when=c.a.get("when", "next-step"),
         channel=("lead_mcp" if c.ctx.ingress == "mcp" else "lead_broker" if c.ctx.lead_session is not None else "cli"))
-    return {**out, "delivery": "not_built",
-            "next": "Delivery is not built yet; this call only records a message."}
+    next_step = {"no_live_run": "This message can be carried when the invocation is next launched.",
+                 "unsupported": "This adapter cannot deliver live. Relaunch to carry the message.",
+                 "held": "The worker remains held. The message can arrive when the worker is resumed.",
+                 "live_pending": "The supervisor will offer this message at a worker step boundary.",
+                 "turn_end_pending": "The worker receives this at turn end and must submit again after receiving it."}
+    return out | {"next": next_step[out["delivery"]]}
+
+
+def _map(c: Call) -> Any:
+    """A read of the codebase map (register F15.8, PR A2): the bridge row the read names, answered by
+    ``aew.maps.query`` at the context ``aew map search`` reads at (``service.read_context``), by the tool's own route.
+    A read writes no map state, so it never refreshes or selects a map."""
+    from aew.maps import query, service
+
+    row = contract.MAP_PREFIX + c.a["read"]
+    ctx = service.read_context(c.engine, work=c.a.get("work_id"), recipient=query.TOOL_RECIPIENT,
+                               arguments=query.NAMES)  # a refusal names `limit`, never a flag it cannot pass
+    return query.serve(ctx, row, {name: c.a.get(name, "") for name in contract.MAP_OPERATIONS[row]})
 
 
 RUNNERS: dict[str, Runner] = {
-    "status": _status, "resume": _resume, "work_show": _work_show, "explain": _explain,
+    "status": _status, "resume": _resume, "work_show": _work_show,
     "harness_status": _harness_status, "harness_wait": _harness_wait, "checkpoint": _checkpoint,
-    "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
-    "message_send": _message_send,
+    "report_write": _report_write, "steering": _steering, "resolve": stage.resolve_stage, "cli": _cli,
+    "message_send": _message_send, "map": _map,
 }
 
 
@@ -297,7 +318,7 @@ def _runner_defect(call: Call, t: contract.Tool, exc: Exception) -> tuple[dict[s
     if call.committed_unknown or payload.get("status") == stage_intents.ACTIVE:
         next_action = "Call `resume` to see what committed and the unfinished stage, then `resolve`."
     elif t.mutates:
-        next_action = "Read `status` before retrying with a fresh `expect_rev`. See completed_steps for commits."
+        next_action = "Read `status` before retrying with current operation inputs. See completed_steps for commits."
     else:
         next_action = _RETRY_DEFECT
     defect = _report_defect(call, t, exc, next_action)
@@ -333,6 +354,7 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
+    payload = _compact(t.name, payload, projection)
     payload, projection = _message_budget(payload, projection)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
     # authored text too (PR #88 review).
@@ -346,6 +368,51 @@ def _result(call: Call, t: contract.Tool) -> dict[str, Any]:
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+# The project reports a typed `status` and `resume` return, without what the Lead reads elsewhere or cannot act on
+# (E367; the audit of 2026-11-25, R1 to R3 and R5: `status` was 7,231 B a call against the shell's 3,520 B, and every
+# result stays in the context until compaction). Each part kept whole is one the Lead acts on; the shell command named
+# in ``FULL`` gives the whole report, as the operator reads it.
+FULL = {"status": "`aew status --json`", "resume": "`aew resume --json`"}
+# The parts cut to what the Lead acts on: the usage report's one line, and the history audit's breaches.
+USAGE_KEPT, AUDIT_KEPT = ("line",), ("over_policy", "over_policy_detail")
+# A card keeps its id, archetype and `use_when`, the Lead's staffing guidance. Only the cards the guide's staffing
+# section names with their `use_when` (``guide.staffed_cards``) leave it out, since that section says it (#599, m1).
+CARD_KEPT, STAFFED_KEPT = ("id", "extends", "use_when"), ("id", "extends")
+
+
+def _compact(name: str, payload: Any, projection: dict[str, Any]) -> Any:
+    """``payload`` as a typed ``name`` returns it: a project ``status`` or ``resume`` without its next actions where
+    they are the projection's hints (byte for byte, as they are for the project: ``projection._guidance``), with the
+    usage line, the history audit's breaches, the count of what stands between the project and Run (each problem's fix
+    is for the operator's terminal) and each role card without its display name (and without the `use_when` the guide's
+    staffing section gives); and where the whole report is. Any other result, and a unit's status, is unchanged."""
+    if name not in FULL or not isinstance(payload, dict) or "project" not in payload:
+        return payload
+    out = dict(payload)
+    if name == "resume" and "reports" in projection:
+        out.pop("reports", None)  # the projection already carries the recent titles
+    if "next_actions" in out and out["next_actions"] == projection.get("hints"):
+        del out["next_actions"]
+        if isinstance(out.get("order"), list):  # a resume's list of its parts names only the parts it holds (m2)
+            out["order"] = [part for part in out["order"] if part != "next_actions"]
+    if isinstance(out.get("usage"), dict):
+        out["usage"] = {k: out["usage"][k] for k in USAGE_KEPT if k in out["usage"]}
+    if isinstance(out.get("history_audit"), dict):
+        out["history_audit"] = {k: out["history_audit"][k] for k in AUDIT_KEPT if k in out["history_audit"]}
+    steering = out.get("steering")
+    if isinstance(steering, dict) and isinstance(steering.get("run_problems"), list):
+        out["steering"] = {**steering, "run_problems": len(steering["run_problems"])}
+    if isinstance(out.get("role_catalog"), list):
+        from aew.engine.guide import staffed_cards
+
+        staffed = staffed_cards()
+        out["role_catalog"] = [
+            {k: card[k] for k in (STAFFED_KEPT if card.get("id") in staffed else CARD_KEPT) if k in card}
+            if isinstance(card, dict) else card for card in out["role_catalog"]]
+    out["full"] = FULL[name]
+    return out
 
 
 def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:

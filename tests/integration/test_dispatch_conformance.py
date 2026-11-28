@@ -45,6 +45,7 @@ COVERED = {
     "dispatch.launch": "test_launch_relaunch_and_dispatch_launch_record_their_decision",
     "lead_broker.relay": "test_a_lead_session_dispatch_is_relayed_to_the_same_predicate",
     "integrate.prepare": "test_an_integration_lease_records_the_decision_that_granted_it",
+    "plan.assess": "test_a_plan_assessor_records_its_decision_and_the_query_equals_the_execution",
 }
 
 
@@ -130,6 +131,20 @@ def test_parent_acceptance_invocations_record_their_decision(tmp_path):
     assert_control_invariants(p)
 
 
+def test_a_plan_assessor_records_its_decision_and_the_query_equals_the_execution(tmp_path):
+    """E160 slice 2a: `aew plan assess` reaches the predicate through its own entrypoint, for a Ticket and a parent."""
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    explained = p.ok("dispatch", "explain", wid, "--entrypoint", "plan.assess")
+    assert explained["allowed"] and explained["entrypoint"] == "plan.assess"
+    out = p.lead("plan", "assess", wid)
+    assert admitted(p, out["invocation"], "plan.assess")["revision"] == explained["revision"]
+    story = create_unit(p, "story", "Understand calc", cls=1)
+    plan_unit(p, tmp_path, story, "Investigate, then decide.\n")
+    admitted(p, p.lead("plan", "assess", story)["invocation"], "plan.assess")
+    assert_control_invariants(p)
+
+
 def test_launch_relaunch_and_dispatch_launch_record_their_decision(lab, tmp_path):
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("default", [{"do": "aew", "args": ["whoami"]}])
@@ -170,7 +185,7 @@ def test_a_typed_surface_dispatch_is_carried_by_lead_mcp_and_waited_on_through_i
     script.write_text(json.dumps([
         {"rpc": "initialize", "params": {"protocolVersion": "2025-06-18"}}, {"notify": "notifications/initialized"},
         {"call": "status", "arguments": {}},
-        {"call": "cli", "arguments": {"argv": ["work", "assign", wid, "--launch", "--expect-rev", "$revision_text"]}},
+        {"call": "cli", "arguments": {"argv": ["work", "assign", wid, "--launch", ]}},
     ]), encoding="utf-8")
     res = run_aew("-C", str(lab.root), "lead", "session", "--", sys.executable, str(probe), "--script", str(script),
                   "--transcript", str(transcript), "--profile", "recovery",
@@ -230,7 +245,7 @@ def test_explain_equals_the_execution_when_refused(tmp_path):
     t2 = create_planned_ticket(p, tmp_path, title="Independent change")
     p.lead("work", "assign", t1)
     asked = explain(p, t2)
-    res = p.aew("work", "assign", t2, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", t2, env={"AEW_LEAD_TOKEN": p.token})
     assert not asked["allowed"] and asked["reason_codes"] == ["CONCURRENCY_LIMIT"]
     assert res.returncode == 5 and res.error["code"] == "CONCURRENCY_LIMIT"
     assert asked["blocking_conditions"][0]["message"] == res.error["message"]
@@ -249,7 +264,7 @@ def test_an_allow_is_never_reused_after_policy_changes(tmp_path):
     guardrails.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     p.adopt_policy()
     rev = p.rev()
-    res = p.aew("work", "assign", wid, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
+    res = p.aew("work", "assign", wid, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and res.error["code"] == "DISPATCH_REFUSED"
     assert "PROTECTED_CONDITION_OVERLAP" in res.error["details"]["reason_codes"]
     assert p.rev() == rev  # nothing committed

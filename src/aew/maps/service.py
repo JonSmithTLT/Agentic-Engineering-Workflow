@@ -1,7 +1,7 @@
 """What the ``aew map`` commands do (plan §4.4; ADR-0015). The CLI only parses and renders.
 
 * ``generate`` is Lead-authenticated (it writes under ``.aew/``): the current Lead's credential, checked against the
-  control state it only reads. It never takes ``--expect-rev`` and never commits a control transition: selection is
+  control state it only reads. It never commits a control transition: selection is
   a compare-and-set on the map registry's own revision (T5-INV-11).
 * ``select-architecture`` (Lead-authenticated, register F22.1 plan §5.2) records an existing discovery-evidence id
   as the architecture navigation reference. Selection asserts nothing about the record's content (design v0.5 §10),
@@ -31,12 +31,12 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
+from aew.maps import EVIDENCE_CLASS, gitobjects, query, rules, store, structural
 from aew.maps import freshness as F
-from aew.maps import gitobjects, rules, store, structural
 from aew.maps.canonical import seal
 from aew.util import atomic_write, utc_now
 
-ENVELOPE = ("schema", "source_revision", "source_tree", "object_format", "generator", "artifact_sha256")
+ENVELOPE = query.ENVELOPE
 
 
 def identity() -> dict[str, Any]:
@@ -68,6 +68,19 @@ def _default_commit(engine: Any) -> str:
     if not commit:
         raise UsageError(f"the authoritative branch {engine.authoritative_branch!r} has no commit; pass --commit")
     return commit
+
+
+def read_context(engine: Any, *, commit: str | None = None, work: str | None = None,
+                 recipient: dict[str, Any] | None = None, arguments: str = query.FLAGS) -> query.Context:
+    """The Lead's and the operator's map read context (register F15.8): ``commit``, else the authoritative head, and
+    with ``work`` that Ticket's scope paths. ``aew map show --scope ticket``, ``aew map search`` and the Lead's typed
+    ``map`` tool (PR A2) all read here, so they answer at the same basis; a worker's basis is its invocation's
+    (``harness_ops.map_read_basis``). ``arguments``: how its refusals name an argument (``query.argument``)."""
+    scope_paths = tuple(engine.work_scope_paths(work)) if work else ()
+    return query.Context(repo_root=engine.repo_root, aew_root=engine.aew_root, commit=commit or _default_commit(engine),
+                         chosen_by=query.EXPLICIT if commit else query.AUTHORITATIVE_HEAD,
+                         recipient=recipient or query.CLI_RECIPIENT, workspace=engine.repo_root,
+                         scope_paths=scope_paths, arguments=arguments)
 
 
 def _entry(record: dict[str, Any], sha: str, root: str) -> dict[str, Any]:
@@ -106,7 +119,8 @@ def generate(engine: Any, *, token: str, commit: str | None = None, select: bool
     _lead_actor(engine, token, committed=True)
     sha, root = store.write_artifact(engine.aew_root, record)
     forget_failure(engine.aew_root)  # a dispatch at the failed base tries again
-    result: dict[str, Any] = {"ok": True, "root": sha, "path": f"{engine.aew_root.name}/{root}",
+    result: dict[str, Any] = {"ok": True, "root": sha, "evidence_class": EVIDENCE_CLASS,
+                              "path": f"{engine.aew_root.name}/{root}",
                               "source_revision": record["source_revision"], "source_tree": record["source_tree"],
                               "generator": record["generator"], "limits": record["limits"], "selected": False}
     try:
@@ -352,14 +366,6 @@ def _registry_revision(aew_root: Path) -> tuple[dict[str, Any] | None, str]:
     return registry, store.revision_of(registry)
 
 
-def _section(record: dict[str, Any], name: str | None) -> dict[str, Any]:
-    if name is None:
-        return record
-    if name not in structural.SECTIONS:
-        raise UsageError(f"no section {name!r}; the sections are {', '.join(structural.SECTIONS)}")
-    return {**{k: record[k] for k in ENVELOPE}, "sections": {name: record["sections"][name]}}
-
-
 def show(engine: Any, *, commit: str | None = None, root: str | None = None,
          section: str | None = None) -> dict[str, Any]:
     against = commit or _default_commit(engine)
@@ -373,10 +379,13 @@ def show(engine: Any, *, commit: str | None = None, root: str | None = None,
             return {"ok": True, "status": found.status, "reason": found.reason, "map_revision": revision,
                     **_architecture_field(engine, registry)}
         record = found.record
-    return {"ok": True, "status": "AVAILABLE", "root": record["artifact_sha256"],
+    # ``commit`` is what the map's freshness is compared against, never a map of it: a map of another commit is
+    # `aew map generate --commit` (stored) or `aew map diff --commit` (in memory). The class is the reader's label,
+    # the same selected or not (A-14 P01-37, P01-38; register E293).
+    return {"ok": True, "status": "AVAILABLE", "root": record["artifact_sha256"], "evidence_class": EVIDENCE_CLASS,
             "selected": record["artifact_sha256"] == selected_sha, "map_revision": revision,
             "freshness": F.freshness(engine.repo_root, record, against, identity()),
-            **_architecture_field(engine, registry), "record": _section(record, section)}
+            **_architecture_field(engine, registry), "record": query.record_section(record, section)}
 
 
 def _architecture_field(engine: Any, registry: dict[str, Any] | None) -> dict[str, Any]:
@@ -414,6 +423,8 @@ def diff(engine: Any, operands: list[tuple[str, str]]) -> dict[str, Any]:
             continue
         fields = {k: _diff_value(x.get(k), y.get(k)) for k in sorted(set(x) | set(y)) if x.get(k) != y.get(k)}
         sections[name] = {"changed": True, "fields": fields}
-    return {"ok": True, "a": {k: a[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
+    # Every map read is labelled with its class, a diff of generated-in-memory records included (the review of #567, m1)
+    return {"ok": True, "evidence_class": EVIDENCE_CLASS,
+            "a": {k: a[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
             "b": {k: b[k] for k in ("artifact_sha256", "source_revision", "source_tree")},
             "identical": a["artifact_sha256"] == b["artifact_sha256"], "envelope": envelope, "sections": sections}

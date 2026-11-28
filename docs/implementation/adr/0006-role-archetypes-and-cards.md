@@ -191,3 +191,174 @@ The operator's 2026-11-04 "Yes, serve them", unfrozen 2026-11-11 ("yes serve the
 - **Offered, never requested.** `codebase-investigation` goes on `investigator` and `planner`; `debugging-root-cause-analysis` on `investigator`, `engineer`, `python_engineer` and `c_engineer`. A card's `skills:` loads in every run of it, so a foundational skill there waits for its cost to be measured (E136); none of the five cards' `skills:` changes, and the pack's `sources` pin nothing new. Each card's version moves (`engineer` to 3, the others to 2), so a pinned invocation keeps the card it ran with.
 - **The Lead's staffing line** is derived from the default implementer card's optional skills (`guide.staffing_text`), so it now names `debugging-root-cause-analysis` too; `docs/guides/lead-guide.md` is re-rendered.
 - Tests: `tests/unit/test_skill_delivery.py` (the eight; each card of the batch is offered and delivered its skills and requests none of them; no other card is offered them; the link test reads no link inside code).
+
+## Amendment 2026-11-25 — the Lead's own skills (register E161)
+
+The operator's decision of 2026-11-06, more leeway for the Lead (items 6 to 8), and the designer's decision of the same day on the Lead's skills and MCP servers, (a); the operator reconfirmed on 2026-11-25 that the Lead should have the delivery mechanism the roles it staffs have. This replaces the 11-05 amendment's "The Lead's own route takes no skills: it has no card."
+
+- **A `lead` list in AEW's skill manifest, not on an archetype.** The Lead has no card, so the manifest holds its list (`aew.skills.lead`), and the same `aew.skills.plan` that decides what a run is exposed decides what the Lead is, with every id optional: `offered` is the list, `exposed` what of it ships and matches the manifest, `reasons` why any other is not. Nothing else is new: the shipped folder, the manifest entries with label, hash and source, `aew.skills.check` and `aew.skills.deliver` are E127's.
+- **Three skills ship for it, now eleven in all:** `engineering-planning`, `requirements-clarification` and `delegation-handoffs`, each optional, `unevaluated`, released for the personal alpha only. Each ships its public candidate's `SKILL.md` and `references/` byte for byte, without `evals/` (no `SKILL.md` links one). Each ships once: a role card that later offers one of them (E136's next batch) reads the same shipped copy.
+- **The copy** is each start's own: `aew.skills.deliver` into `skills` in a folder the host makes for that start, beside the Lead's state and never in it (`.aew/local/harness/lead-skills/<start>/skills`), once the seat is held, for both routes. An earlier start's copy is removed then. The contained Lead's layout binds the copy read-only and protects it, as a run's, after checking it again. `aew.skills.deliver` never follows a link: a folder that is one, or whose parent is one, is left as it is and its skills report `copy_failed`, and only what `lstat` shows to be a directory is removed. `--print-config` names the folder as `<start>`.
+- **The contained Lead** is offered only that copy: one `skills` entry (its absolute path), `skill allow <id>` for each exposed id after a `skill deny`, the compatibility plugin off, and the copy readable and never editable (`external_directory allow` and `edit deny` on it, together, as a run's).
+- **The Lead that is not contained** (Windows, or a weaker run the policy allows) gets the same entry and allows beside the operator's own skill sources, which stay: every other skill id stays at the Lead's `ask`, and the compatibility plugin stays on.
+- **What it is told.** One line of the Lead's system text names the exposed ids, from the plan as delivered (`projection.lead_skills_text`); not contained, it adds that the operator's own skills are listed beside them and ask first.
+- **What is recorded.** The Lead session's `label.json` holds `skills`: the plan as delivered, with each skill's version, hash, label and `SKILL.md` size, and `copy` (`read_only_bind` or `rules_only`). Which of them the Lead loaded is not in that record: a run's `loaded` is read from its private server at teardown, and the Lead's server ends with its TUI. The live test counts the Lead's loads with the same function (`adapter.skill_loads`), and measures the listing's and a loaded body's cost (register E161, its note).
+- **No MCP servers beyond AEW's own for the Lead in the alpha** (the operator, item 7): the Lead's configuration declares only `aew-lead`; an uncontained Lead keeps the operator's own servers, and the contained Lead leaves them out, as before.
+- Tests: `tests/unit/test_lead_skills.py` (the list and its plan; exactly the list offered in both modes; every other id denied and the plugin off when contained; the operator's own at `ask` when not; the text derived from the plan; the copy in each start's own folder, a link never followed, a changed copy never bound, a failed copy and the record; no role card offered a skill it does not name; no MCP server but AEW's own), `tests/unit/test_skill_delivery.py` (the eleven), `tests/unit/test_containment_layout.py` (each start's copy is in a folder of its own, bound read-only and reached by no writable bind), `tests/integration/test_lead_contained_session.py` (the contained Lead's copy bound read-only, in its record), `tests/integration/test_opencode_lead.py` (`--print-config` copies nothing; the uncontained route on Windows). The live check, on Windows, of the absolute `skills` path and a colliding id is `tests/live/test_lead_skills_live.py`; its model test runs on a keyed, paid model the operator approves for that run.
+
+## Amendment 2026-11-25 — the second batch: planning and testing (register E136)
+
+The operator's mapping of 2026-11-25 for E136's planning and testing group, under the 11-24 amendment's terms: unevaluated, alpha only, `optional_skills` and never `skills:`, each skill after its public-text check.
+
+- **Two more skills ship:** `test-design` and `mechanical-enumeration`, under the same manifest, allow-list and `unevaluated` label. Each ships its public candidate's `SKILL.md` and `references/` byte for byte, without `evals/` (no `SKILL.md` links one). `engineering-planning` and `requirements-clarification` already ship for the Lead (the E161 amendment above): the cards offer the same shipped copy, and nothing of theirs is re-hashed. What ships is what the manifest lists (`aew.skills.shipped`); no count is restated here.
+- **Offered, never requested.** `engineering-planning` on `planner`; `requirements-clarification` on `planner` and `investigator`; `test-design` on `engineer`, `python_engineer`, `c_engineer` and `verifier`; `mechanical-enumeration` on `investigator`, `code_reviewer` and `verifier`. No card's `skills:` changes, so the pack's `sources` pin nothing new. Each of the seven cards' versions moves by one (`engineer` and `code_reviewer` to 4, the five others to 3), so a pinned invocation keeps the card it ran with. `verifier` and `code_reviewer` get an `optional_skills` list for the first time.
+- **The Lead's staffing line** is derived (`guide.staffing_text`): every implementer card now offers `test-design`, so the sentence naming what every implementer card offers names it too, and `docs/guides/lead-guide.md` is re-rendered.
+- Tests: `tests/unit/test_skill_delivery.py` (what ships; each card of the batch offered and delivered its skills and requesting none; every built-in card offered exactly its mapped skills and nothing else); `tests/unit/test_containment_layout.py` (a skills folder that is a link is never bound) and `tests/integration/test_lead_contained_session.py` (a Lead copy changed after delivery is never bound and its record says `copy_failed`), the two tests #565's quick check left owed (E161).
+
+## Amendment 2026-11-26 — the third batch: writing, and the reviewer's languages (register E136, E167)
+
+What the adopted skills design already places, under the 11-24 amendment's terms (unevaluated, alpha only, each skill after its public-text check). The sources are the designer's decision of 2026-11-06 on the Lead's skills and MCP servers, and documents and branch reviews as work (v2): its (c), which the operator placed in the alpha (item 8 of the decision of 2026-11-06 on the Lead's leeway) and the design routes through the skills batches, and the Lead's two items it accepts.
+
+- **One more skill ships:** `technical-writing`, under the same manifest, allow-list and `unevaluated` label. It ships its public candidate's `SKILL.md` and `references/` byte for byte, without `evals/` (its `SKILL.md` links none). What ships is what the manifest lists (`aew.skills.shipped`).
+- **A `technical_writer` card, on the implementer archetype, with `technical-writing` in `skills:`** (E167). A delegated document is a mutating Ticket, and this is the card for it: its purpose is to write or revise the repository's documentation. It is the one card in the E136 batches whose skill is requested and not only offered, because the design names `skills:` for it: every run of the card is told to load it, and its pack's `sources` pin it. Its capabilities are the archetype's own and it narrows nothing. Nothing mechanical keeps it off generated reference by default: the archetype's prohibition and the card's own line tell the writer to leave it alone, and the guardrails check refuses the edit only for paths the project lists in `generated_paths`, which is empty until a project fills it. The 11-24 amendment had a foundational skill in `skills:` wait for its cost to be measured. The card is new, so no existing run's cost changes; its cost is measured in bytes (15,995 copied, 7,138 told to load) and not in tokens; no budget exists for worker packs yet (E368); and the operator's ruling of 2026-11-26 settles the wait: "it was planned for all role cards to have 1 foundational skill. The size it adds is probbaly negligible". A project's document checks stay its own configuration.
+- **`code_reviewer` offers three more,** as `optional_skills`: `technical-writing`, with no separate document-review card (the design's (c)), and `python-development` and `c-development` (the Lead's two items). Its version moves to 5. The `c_reviewer` card stays as it is.
+- **The Lead's staffing section** is derived (`guide.staffing_text`), so it names `technical_writer` with its `use_when`. Its opening now says to staff "by the change's language or surface", since the writer card is picked by surface, not language. Its last sentence named what every implementer card offers. The writer card offers no optional skill, so the sentence now names the cards it is true of, and says "every" only when it is true of every one. `docs/guides/lead-guide.md` is re-rendered.
+- **Not built, because no decision places them:** `empirical-evaluation`, `ci-evidence-triage` and `frontend-design` on any card, and a foundational skill in any role's `skills:`. The two security candidates have a fit the designer gave (`security_reviewer`: `designer-decisions-2026-11-04-skills-by-fit.md`, section 4, a record outside this repository), which is judged in the pull request that builds it, and they wait on the operator's update of their drafts. E136's note of 2026-11-26 holds each.
+- Tests: `tests/unit/test_skill_delivery.py` (what ships; the batch's card offered and delivered its skills and requesting none of them; the writer card on the implementer archetype, told to load its skill, widening nothing; every built-in card offered exactly its mapped skills and nothing else; the staffing sentence naming only the cards it is true of).
+
+## Amendment 2026-11-26 — the fourth batch: evidence skills, and what a skill is for (register E136)
+
+The operator's answers of 2026-11-26 to the questions E136's third batch left, under the 11-24 amendment's terms (unevaluated, alpha only, each skill after its public-text check).
+
+- **The principle: three layers.** The operator, 2026-11-26: "We have context packs which is what the job is, knowledge system which is what have previous agents learned, and skills are how you should proceed going forward with all the knowledge". A context pack says what the job is, the knowledge system says what earlier agents learned, and a skill says how to proceed. A skill stays technique and never authority, as this ADR already holds.
+- **One foundational skill for every role card.** The operator, 2026-11-26: "4 yes it was planned for all role cards to have 1 foundational skill. The size it adds is probbaly negligible but jt adds the final layer of how a specialized role should behave." Every built-in card but `researcher`, which waits for its skill to be written, holds exactly one skill in `skills:`, and no measuring run is needed first. This replaces the 11-24 amendment's "a foundational skill there waits for its cost to be measured".
+- **The mapping, approved by the operator** (2026-11-26: "Yup the table is good we just need to track the missing skills so I can have them created."). Seven cards already requested exactly one skill and do not change. Four gain one: `investigator` requests `codebase-investigation`, `planner` `engineering-planning`, `engineer` `test-design` and `plan_assessor` `adversarial-review`. The first three were on those cards' `optional_skills` and move to `skills:`; a card never lists its foundational skill as optional too. Each of the four cards' versions moves by one (`engineer` and `investigator` to 5, `planner` to 4, `plan_assessor` to 3), and its pack's "Skills to load" line and `sources` now name and pin the skill.
+- **Two of the four are interim, and one card waits,** each on a skill the operator will have created ("so I can have them created"). On the two interim ones the Lead asked "Should I track a general implementation skill and a standalone plan-review skill, so those two cards aren't left on borrowed ones? I recommend yes to both, as two register rows.", and the operator answered "8. Yes to both". `researcher` holds no skill until a source-research skill exists (E396). `engineer` holds `test-design` until a general implementation skill exists (E397). `plan_assessor` holds `adversarial-review`, whose plan-review part is behind a link in the code-review procedure, until a standalone plan-review skill exists (E398). The interim has a known gap: `adversarial-review`'s core steps 5 and 6 need execution an assessor lacks, and no run has checked an assessor with it.
+- **The Lead's staffing section and the default card.** `engineer` is the implementer archetype's default and now requests a skill, so `guide.staffing_text` would have listed it as a pick by its `use_when` ("no ... card fits better") and again as the default. The default is now never a pick: its own clause says what its run loads and what it may load, and `guide.staffed_cards` leaves it out, so a typed `resume` keeps its `use_when`. The shared sentence names only `debugging-root-cause-analysis`, the one skill every offering implementer card still offers. `docs/guides/lead-guide.md` is re-rendered.
+- **Two more skills ship:** `empirical-evaluation` and `ci-evidence-triage`, under the same manifest, allow-list and `unevaluated` label. Each ships its public candidate's `SKILL.md` and `references/` byte for byte, without `evals/` (neither `SKILL.md` links one).
+- **Offered, never requested** (the operator, 2026-11-26: "Your rec is fine on 2"). `empirical-evaluation` on `researcher` and `investigator`; `ci-evidence-triage` on `verifier` and `code_reviewer`. Each of the four cards' versions moves by one (`code_reviewer` to 6, `verifier` and `investigator` to 4, `researcher` to 2). `researcher` gets an `optional_skills` list for the first time.
+- **The Lead's list gains `ci-evidence-triage`** (the manifest's `lead`, the E161 amendment), by the same answer: attributing a red run is the Lead's act at each merge. The Lead's text names it, derived from the list (`projection.lead_skills_text`).
+- **`frontend-design` stays unserved.** The operator, 2026-11-26: "for 3 we should just track making a front-end focused specialized role card. It'll also align with the mcp servers and utilities we were planning on jnckuding anyway." That card is register E395, unscheduled, its shape the designer's.
+- Tests: `tests/unit/test_skill_delivery.py` (what ships; each card of a batch reaching its skills; every built-in card requesting exactly one foundational skill, or waiting for it on a named row that is open in the register; every built-in card offered exactly its mapped skills and nothing else; the default card's clause saying only what it has) and `tests/unit/test_lead_skills.py` (the Lead's list, its plan, rules, copy and text, with the fourth id).
+
+## Amendment 2026-11-27 — public skill candidates and Frontend Engineer proposal (E136, E395–E398)
+
+On 2026-11-27, the operator asked that “the updates and new skills should be researched as well”
+and to “Keep foundational skills small.” This batch publishes the researched
+entrypoints, linked details and evaluator material for public-text review.
+It records the intended delivery and version changes before the separate
+rehash pull request.
+
+- **Foundational candidates.** E396 proposes `source-research` 0.1.0 as
+  the sole foundation on `researcher` v2 → v3, retaining optional
+  `empirical-evaluation`. E397 proposes `general-implementation` 0.1.0
+  as the sole foundation on `engineer` v5 → v6, returning `test-design`
+  to its optional list. E398 proposes `plan-review` 0.1.0 as the sole
+  foundation on `plan_assessor` v3 → v4, replacing the interim
+  `adversarial-review`. Plan assessment uses read evidence and requires no
+  execution. The always-read entrypoints are 8,879, 8,827, and 8,830 UTF-8
+  bytes respectively.
+- **Security candidates.** E136 proposes `agent-security-review` 0.2.1
+  and `security-control-validation` 0.2.1 as optional on
+  `security_reviewer` v1 → v2. Its sole foundation remains
+  `security-review`. On 2026-11-27, the operator said the skills “should
+  describe method only.” The public text cites the adopted October 19 and October 24
+  scope and reachability decisions and describes defensive evidence methods.
+- **Frontend proposal.** On 2026-11-27, the operator said “Make browser
+  checks optional capabilities.” E395 proposes `frontend_engineer` v1 on `implementer`
+  with `frontend-design` 0.3.1 as its sole foundation. The E395 design note
+  holds the proposed card and the browser capability conditions. The designer
+  owns its sign-off. A later installation would measure and record the Lead
+  staffing change against the context pool cap and operator reserve.
+- **Delivery state.** This batch edits candidate and design records. Card
+  versions, shipped entries, and the Lead's context stay at their installed
+  revisions. Worker outcomes for the candidates are unevaluated.
+
+## Amendment 2026-11-27 — public candidate review follow-up (E136 and E395)
+
+The operator's follow-up on #642 said “if a contained agent can't reach
+something on its own, it is not filed.” `security-control-validation`
+0.2.2 states that October 24 rule in its AEW reference before delivery.
+The `agent-security-review` 0.2.1 evaluator record and the 0.2.2 evaluator
+record each describe the four current cases. The register note records
+that #642 cleared the draft-update hold.
+
+On 2026-11-27 the operator also clarified the E395 proposal's current
+environment. Contained workers will report browser checks as “not run”
+until a browser capability, supported execution environment, and preview
+access are provided. The designer still owns E395 sign-off and the
+installation-time license and provenance decision. The proposed card is v1.
+The four proposed delivery version bumps remain recorded above.
+
+## Amendment 2026-11-27 — deliver dedicated foundations and optional security skills (E136, E396–E398)
+
+On 2026-11-27, the operator confirmed “Implement the proposed plan” after asking for
+researched updates, small foundations and public security text that “should
+describe method only.” The public-text review in #642 cleared the exact
+candidate bundles in `e1cf8e690fe6d326b0aea1f68b6049db65e5ae07`.
+The public-text review in #646 cleared `security-control-validation` 0.2.2
+at `934a8cb4971dbe475e7005ef76ef267ac617940f`. This batch explicitly rehashes and copies the five approved runtime bundles,
+with evaluator files outside the install. Each is labelled unevaluated for
+the personal alpha.
+
+| Card | Version change | Foundational skill | Optional change |
+| --- | --- | --- | --- |
+| `researcher` | 2 → 3 | `source-research` 0.1.0 | Retains `empirical-evaluation` |
+| `engineer` | 5 → 6 | `general-implementation` 0.1.0 | Returns `test-design` to optional |
+| `plan_assessor` | 3 → 4 | `plan-review` 0.1.0 | Uses the existing read-only assessment contract |
+| `security_reviewer` | 1 → 2 | `security-review`, retained | Adds `agent-security-review` 0.2.1 and `security-control-validation` 0.2.2 |
+
+Each new dispatch pins its card and foundational skill. Optional skills are
+offered when shipped and are loaded for a relevant assignment. An invocation
+already in flight keeps the card and pack it pinned at dispatch.
+
+The foundational entrypoints are 8,879 B, 8,827 B and 8,830 B respectively.
+Their bundles are 9,964 B, 10,097 B and 9,815 B. The two optional additions
+copy 6,972 B and 8,115 B. These are UTF-8 and copied file bytes.
+
+The named Lead staffing section grows from 776 B to 804 B, including
+its heading. Its body grows from 746 B to 774 B. The contained pool gate's
+fixture measures 26,755 B with messaging on and 26,455 B with it off,
+a zero-byte change in both modes. The contained projection with the
+current Lead skill copy adds the existing 206 B listing in each mode.
+With the new staffing section loaded, those totals are 27,765 B and
+27,465 B, leaving 2,797 B and 3,097 B respectively under the 40,000 B cap
+after holding the 9,438 B operator reserve.
+
+Use the green delivery build at Monday's UAT preflight. If it has not
+qualified by then, use the previously approved baseline and record which
+skills are deferred. The offline checks exercise packaging, card dispatch
+and skill exposure. A run record must show actual model loading before
+any test or UAT observation is credited with it. E395 remains a proposal
+awaiting designer sign-off.
+
+## Amendment 2026-11-27 — the branch reviewer card (register E168; SYS-45)
+
+The designer's decision of 2026-11-06 (v2), section (d): a review of a named local ref is executed by a
+`branch_reviewer` card on the investigator archetype, whose pack is the requirement and the diff from the merge-base
+to the pinned commit (ADR-0008, amendment of the same date). Its skill is the Lead's fit choice, checked against each
+skill's description.
+
+| Card | Version | Extends | Outputs | Foundational skill | Optional skills |
+| --- | --- | --- | --- | --- | --- |
+| `branch_reviewer` | 1 | `investigator` | `ref_review` | `adversarial-review` 0.6.0 | `codebase-investigation`, `mechanical-enumeration`, `python-development`, `c-development` |
+
+**The fit check.** The design flagged that `adversarial-review` is the gate-review method (11-03 renamed
+`code-review` to it), so whether it fits a review that is itself the product needed checking against its own text.
+Its description is "Review code, plans, or fixes for reachable invariant violations ... Use for an assigned behavioral
+review with concrete artifacts and contracts". Its preconditions are "Pin the actual source/plan revision", "Establish
+the comparison base explicitly" and "Never reset or mutate the review target", which are this card's pin, merge-base and
+read-only observation; and "Map evidence into the host's required finding format; do not introduce a competing
+template" is the `ref_review` section's finding shape. It is a method for finding defects and says nothing about
+gating, so it fits a review that is the deliverable; what a deliverable adds (a requirement trace, what was and was
+not checked) is in the card's own responsibilities and the record's section. The alternative, `codebase-investigation`,
+is a discovery method ("how the existing system works"), so it is offered, not requested. If the Lead chooses
+otherwise, only the card and this table change.
+
+**Sizes** (UTF-8 bytes, as E136 measured): the card is 1,227 B; `adversarial-review`'s `SKILL.md` is 9,451 B and its
+copied bundle 25,219 B, already shipped for `code_reviewer`, so the install grows by the card alone. No budget exists
+for a worker's copy (register E368).
+
+`ROLE_OPERATIONS["investigator"]` and `archetypes/investigator.yaml` gain `submit.ref_review` and the `ref_review`
+evidence kind; what a run is offered is narrowed by its attempt's pinned kind (`evidence.kinds_for`). The archetype's
+prohibition, "mutating source, including the observation workspace", is unchanged and binds the card.

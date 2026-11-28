@@ -17,13 +17,21 @@ from pathlib import Path
 
 import pytest
 import worker_surface
-from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
+from aewflow import (
+    SUBTRACT_PATCH,
+    create_investigation,
+    create_planned_ticket,
+    dispatch,
+    plan_unit,
+    sample_project,
+    submit_record,
+)
 from conftest import clean_env, run_aew
 from fake_harness import IMPL_REPORT, HarnessLab
 from harness_conformance import FakeOpenCodeDriver, supervisor_gone, sync_dir
 
 from aew import process_kind
-from aew.engine import steering
+from aew.engine import recall, steering
 from aew.engine.api import Engine
 from aew.engine.store import ControlStore
 from aew.harness import bridge, broker_liveness, lead_broker, procs, runlog, wake_queue
@@ -70,6 +78,12 @@ def delivery_records(run: str | None, *, messages: bool = False) -> set[str]:
 
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
 CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+')
+# The one value a run draws at random: `history search`'s fence token (``recall.Substrate._result``, the CLI's).
+FENCE = re.compile(r"(?<=raw-history )[0-9a-f]{16}(?=>>)")
+
+
+def same(text: str) -> str:
+    return FENCE.sub("FENCE", CLOCK.sub("AGE", text))
 
 
 @pytest.fixture
@@ -146,10 +160,21 @@ def cases(run: str, invocation: str) -> list[list[str]]:
     out = [["status"], ["status", "--json"], ["resume"], ["resume", "--json"], ["harness", "status"],
            ["harness", "status", invocation], ["harness", "wait", run, "--timeout", "0"], ["harness", "wait", run],
            ["map", "show"],
-           ["map", "show", "--json"], ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"],
-           ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation]]
+           ["map", "show", "--json"], ["map", "show", "--section", "languages", "--json"],
+           ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"],
+           ["map", "search", "core.py"], ["map", "search", "calc", "--kind", "path", "--limit", "3", "--json"],
+           ["map", "search", "no such text", "--json"],
+           ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation],
+           ["guide"], ["guide", "--json"], ["guide", "steps"], ["guide", "core", "--json"], ["guide", "nope"],
+           ["history", "search", "calc"], ["history", "search", "add", "subtract", "--kind", "evidence", "--limit",
+                                            "3", "--since", "2026-01-01T00:00:00Z", "--json"]]
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out
+
+
+def recalled(rel: str) -> bool:
+    """The raw-history search's derived index, its directory and SQLite's companions: a cache, never the store."""
+    return rel == recall.SUBSTRATE_REL.rsplit("/", 1)[0] + "/" or rel.startswith(recall.SUBSTRATE_REL)
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
@@ -195,10 +220,11 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         assert served[-1:] == [argv], argv  # through the broker, never run by the client itself
         changed = changes(before, worker_surface.snapshot(lab.aew_root))
         told = [c for c in changed if argv[:2] == ["harness", "wait"] and c[1:] in delivery_records(run)]
-        assert [c for c in changed if c not in told] == [], argv
+        # `history search` catches up its own derived index (``recall.SUBSTRATE_REL``), as the host's search does
+        caught_up = [c for c in changed if argv[:2] == ["history", "search"] and recalled(c[1:])]
+        assert [c for c in changed if c not in told + caught_up] == [], argv
         here = direct(lab, *argv)
-        assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
-            here.returncode, CLOCK.sub("AGE", here.stdout), here.stderr), argv
+        assert (via.returncode, same(via.stdout), via.stderr) == (here.returncode, same(here.stdout), here.stderr), argv
     assert run in relayed(lab, broker, "harness", "status").stdout  # it read the run's own record, on the host
 
 
@@ -323,6 +349,54 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
         lab.cleanup()
 
 
+# Credential-shaped (built in pieces, so no scanner flags a fixture), as `history search`'s own tests plant one.
+PLANTED_TAIL = "Relayedtail" * 2 + "5678"
+PLANTED = "aew1.tk_" + "0123456789abcdef." + PLANTED_TAIL
+
+
+def test_the_leads_relayed_history_search_returns_what_the_store_holds_and_nothing_unredacted(lab, broker, tmp_path,
+                                                                                              monkeypatch):
+    """Register E185 (A-57 KP-B1, KP-R32): the Lead's read of the history store, a relayed command on by default. It
+    returns the archived record the store holds, as the operator's own search does (its fence token apart), and a
+    credential-shaped string in that record only redacted, so its tail finds nothing. It never takes the lock."""
+    p = lab.project
+    wid = create_investigation(p, tmp_path, title="Survey the numbat ledger")
+    plan_unit(p, tmp_path, wid, "Read calc/core.py.\n", reason="the survey's own plan")
+    role, _ = dispatch(p, wid)
+    record = submit_record(role, "discovery_record", body=f"Numbatfacts: {PLANTED} Wallabysums\n")
+    p.lead("evidence", "ingest", wid, "--evidence", record["evidence"])
+    p.lead("work", "accept", wid)  # archived: now in the history store
+    argv = ["history", "search", "Wallabysums", "--json"]  # its snippet ends at the match: the redaction before it
+    served: list[list[str]] = []
+    run_read = lead_broker.run_read
+    monkeypatch.setattr(lead_broker, "run_read", lambda engine, a, cwd, **kw: served.append(list(a)) or run_read(
+        engine, a, cwd, **kw))
+    with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
+        via = relayed(lab, broker, *argv)
+    assert via.returncode == 0, via.stderr
+    assert served == [argv]  # through the broker, on the host, never run by the client itself
+    found = json.loads(via.stdout)
+    assert [h["id"] for h in found["hits"]] == [record["evidence"]] and found["coverage"]["reasons"] == [], found
+    assert found["hits"][0]["expand"] == f"aew history show {record['evidence']}"
+    assert "aew1.<redacted>" in found["hits"][0]["snippet"] and PLANTED_TAIL not in via.stdout + via.stderr
+    here = direct(lab, *argv)
+    assert (via.returncode, same(via.stdout), via.stderr) == (here.returncode, same(here.stdout), here.stderr)
+    assert json.loads(relayed(lab, broker, "history", "search", PLANTED_TAIL, "--json").stdout)["hits"] == []
+
+
+@pytest.mark.parametrize("marker", ["AEW_INVOCATION", "AEW_INVOCATION_TOKEN"])
+def test_a_relayed_history_search_inside_an_invocation_is_still_refused_before_it_is_relayed(
+        lab, broker, monkeypatch, marker):
+    """Register E185: the refusal inside an invocation stays. The host's process, which the broker starts with its own
+    environment, can't see this one's markers, so the client refuses before anything is relayed."""
+    served: list[list[str]] = []
+    monkeypatch.setattr(lead_broker, "run_read", lambda engine, argv, cwd, **kw: served.append(argv))
+    out = run_aew("history", "search", "calc", cwd=lab.root, env={**contained(lab, broker), marker: "x"})
+    assert out.error["code"] == "CAPABILITY_UNAVAILABLE", out.stdout + out.stderr
+    assert out.error["details"] == {"reason": "not_in_invocations", "markers": [marker]}
+    assert broker.server.drain(20) and served == []
+
+
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
     """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
     are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""
@@ -387,7 +461,7 @@ def test_a_relayed_wait_never_holds_a_lead_write_and_returns_when_the_run_ends(l
     waiting = wait_in_flight(lab, broker, run)
     try:
         out = bridge.call("lead.cli", {"argv": ["work", "create", "ticket", "--title", "While a wait is held",
-                                                "--class", "1", "--expect-rev", str(lab.project.rev())],
+                                                "--class", "1", ],
                                        "cwd": str(lab.root), "stdin": ""},
                           endpoint=broker.env[lead_broker.ENV_ENDPOINT], key=broker.env[lead_broker.ENV_KEY])
         assert out["result"]["id"]
@@ -445,6 +519,53 @@ def test_a_relayed_read_whose_wait_fails_is_ended_never_left_running(lab, broker
         assert started and started[0].returncode is not None and not broker._reads
     finally:
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
+
+
+def test_a_guide_read_and_a_help_lookup_are_counted_in_the_sessions_telemetry(lab, broker):
+    """E231's failure criterion, measured: each `aew guide` the Lead's shell runs is relayed to its broker, which
+    records it against this session (with the section, and whether it was printed), and each `--help` lookup its shell
+    makes is counted too, by command words alone. `aew lead telemetry` reads them back per session."""
+    from aew.harness import tool_calls
+
+    assert relayed(lab, broker, "guide", "steps").stdout.startswith("## A mutating Ticket, step by step")
+    refused = relayed(lab, broker, "guide", "nope")
+    assert refused.returncode == 2 and refused.error["details"]["reason"] == "unknown_guide_section"
+    helped = run_aew("work", "create", "--help", cwd=lab.root, env=contained(lab, broker))
+    assert helped.returncode == 0 and "usage: aew work create" in helped.stdout
+    assert broker.server.drain(20)
+    [row] = [r for name, r in tool_calls.counters(tool_calls.read(lab.aew_root)).items()
+             if name == broker.session_id]
+    # Review of #593, m1: a name the guide does not have is recorded as a fixed token, never as typed
+    assert (row["guide_reads"], row["guide_sections"], row["generation"]) == (
+        2, {"steps": 1, lead_broker.UNKNOWN_SECTION: 1}, broker.generation)
+    assert "nope" not in tool_calls.path(lab.aew_root).read_text(encoding="utf-8")
+    assert (row["help_lookups"], row["help_commands"]) == (1, {"work create": 1})
+    lines = [x for x in tool_calls.read(lab.aew_root) if x.get("lookup") == tool_calls.GUIDE]
+    assert [x["ok"] for x in lines] == [True, False]
+    shown = direct(lab, "lead", "telemetry", "--json")
+    assert any(s["session"] == broker.session_id and s["help_lookups"] == 1 for s in json.loads(shown.stdout)[
+        "sessions"]), shown.stdout
+
+
+def test_a_lead_session_that_is_not_contained_counts_the_guide_reads_its_shell_runs_itself(lab, broker):
+    """Review of #593, M1: a Lead session that is not contained (every Windows Lead runs labelled so) runs `aew guide`
+    in its own shell, never relayed, so its broker never sees the read. The `aew` that ran it tells the broker, with
+    its exit status, and the read is counted against the session as a relayed one is, and only once."""
+    from aew.harness import tool_calls
+
+    uncontained = {**lab.env, **broker.env}
+    assert process_kind.LEAD_CONTAINED_ENV not in uncontained
+    shown = run_aew("guide", "classes", cwd=lab.root, env=uncontained)
+    assert shown.returncode == 0 and shown.stdout.startswith("## Choosing a risk class"), shown.stderr
+    listed = run_aew("guide", cwd=lab.root, env=uncontained)
+    assert listed.returncode == 0 and "`aew guide classes`" in listed.stdout
+    refused = run_aew("guide", "nope", cwd=lab.root, env=uncontained)
+    assert refused.returncode == 2
+    assert broker.server.drain(20)
+    lines = [x for x in tool_calls.read(lab.aew_root) if x.get("lookup") == tool_calls.GUIDE]
+    assert [(x["session"], x["ok"]) for x in lines] == [(broker.session_id, True)] * 2 + [(broker.session_id, False)]
+    [row] = [r for name, r in tool_calls.counters(tool_calls.read(lab.aew_root)).items() if name == broker.session_id]
+    assert row["guide_reads"] == 3 and row["help_lookups"] == 0
 
 
 def test_a_relayed_read_runs_on_the_leads_own_project_only(lab, broker, tmp_path):

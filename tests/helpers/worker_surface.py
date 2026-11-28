@@ -31,13 +31,14 @@ ROOT = Path(__file__).resolve().parents[2]
 SURFACE_MAP = ROOT / "docs" / "implementation" / "surface-map.yaml"  # a code input: full tier (tools/ci/tier.SHARED)
 
 # Commands a non-writer is refused (`non_writer_process`), each with why: it needs the control lock, or it writes
-# under `.aew`, which a non-writer never does (review of #231, MJ1 and m7). Shrink-only.
+# under `.aew`, which a non-writer never does (review of #231, MJ1 and m7).
 WRITER_ONLY: dict[tuple[str, ...], str] = {
     ("history", "audit"): ("copies the history's root and its mutable tail together, which only the lock keeps "
                            "consistent"),
     ("history", "compact"): "seals the transition log's segments into .aew/state/log, under the lock",
     ("history", "reindex"): "rebuilds the derived history index under .aew/local",
     ("context", "pack"): "rewrites the invocation's pack under .aew/local/packs",
+    ("lead", "acquire"): "takes the control lock to acquire the seat; E329 made the probe complete without an option",
 }
 
 # What a command run in a worker's sandbox must never show: a crash, or a write that only a read-only store refuses
@@ -108,7 +109,8 @@ def leaf_commands() -> tuple[tuple[str, ...], ...]:
             for name, sub in action.choices.items():
                 yield from walk(sub, (*prefix, name))
 
-    return tuple(sorted(set(walk(build_parser(), ()))))
+    # with the switched `history search` (on for a new project, register E185), as every relayed read is a leaf
+    return tuple(sorted(set(walk(build_parser(recall_search=True), ()))))
 
 
 def _surface() -> list[dict]:

@@ -50,7 +50,7 @@ from fake_harness import POLICY, HarnessLab
 from harness_conformance import PROVIDER_SECRET
 from live_models import free_model
 
-from aew import skills
+from aew import roles, skills
 from aew.harness import procs, runlog
 from aew.harness.opencode import adapter
 from aew.harness.opencode.client import Server, location
@@ -174,8 +174,9 @@ def test_live_the_copy_is_loaded_bound_read_only_and_nothing_else(tmp_path):
         lab.wait(run, timeout=300)
         record = lab.record(run)
         planned = record["contract"]["extra"]["skills"]
-        offered = ["c-development", "debugging-root-cause-analysis", "python-development"]
-        assert planned["offered"] == offered == planned["exposed"]
+        engineer = roles.builtin_cards()["engineer"].meta  # the card owns its lists
+        assert planned["offered"] == sorted(engineer["optional_skills"])
+        assert planned["exposed"] == sorted(engineer["skills"] + engineer["optional_skills"])
         assert record["launch"]["skills"] == planned
         wrote = lab.step(run, 0)
         contained = record["containment"]["filesystem"] == "os_readonly_roots"
@@ -294,7 +295,8 @@ def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path)
             record_result({"test": "listing", "model": model, "card": card, "run": listing[card]})
         finally:
             lab.cleanup()
-    assert listing["engineer"]["exposed"] == ["c-development", "debugging-root-cause-analysis", "python-development"]
+    engineer = roles.builtin_cards()["engineer"].meta
+    assert listing["engineer"]["exposed"] == sorted(engineer["skills"] + engineer["optional_skills"])
     assert listing["plain_engineer"]["exposed"] == []
 
     lab = model_lab(tmp_path / "probe", choice)

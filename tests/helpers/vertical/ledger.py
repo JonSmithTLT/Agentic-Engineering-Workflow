@@ -49,11 +49,15 @@ STEERING_ONLY = frozenset({"mechanical_calls"})
 # V1's operator decisions, exactly: approving the plan and approving the publish (publish stays a judgement unless a
 # grant covers it). Any other question fails the comparison and is reviewed by hand.
 V1_DECISIONS = ("plan", "publish")
+# The typed surface's refusal for a broker it cannot reach, owned by `aew.surface.errors.CODES` (no named constant).
+# Its unit test checks it against CODES, not this module: the lane tooling imports this module without aew.
+BROKER_UNREACHABLE = "BROKER_UNREACHABLE"
 # Whose decision it is, as the projection states it (spec v2): `decisions_required` counts operator-owned decisions
 # only. The scripted Lead puts to the operator only a decision the projection gives to the operator, or one whose owner
-# is not stated (every one, until the projection carries owners: today's behaviour, kept, and the summary says "owner
-# not stated"). One owned by the Lead or the mechanism it takes itself; it is listed apart and never asked. Every
-# question that does reach the operator is an operator decision and is compared, whatever owner it names.
+# is not stated (a fallback's question, which no decision carries: the summary says "owner not stated"; the projection
+# states every decision's owner since register E335). One owned by the Lead or the mechanism it takes itself; it is
+# listed apart and never asked. Every question that does reach the operator is an operator decision and is compared,
+# whatever owner it names.
 OPERATOR_OWNER, OWNER_NOT_STATED = "operator", "not stated"
 # The only owners the Lead takes a decision for. Any other stated owner (a new value, a case variant, an empty
 # string) is asked of the operator and compared like any other question, and is recorded as a finding
@@ -109,7 +113,6 @@ LIFECYCLE_COMMANDS = (("work",), ("plan",), ("invoke",), ("review",), ("verify",
                       ("harness", "launch"), ("checkpoint",), ("stage",))
 # Lead tools: reading the projection is the policy's own first step, never a guess.
 PROJECTION_READS = frozenset({"status", "resume"})
-HELP_TOOLS = frozenset({"explain"})
 WAIT_TOOLS = frozenset({"harness_wait"})
 
 
@@ -265,6 +268,11 @@ class Ledger:
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
         self.seq = 0
+        # The Lead sessions the test killed (as in V2's forced case), by their open's id, each with how many of its
+        # calls were already recorded at the kill; and how many of each session's calls the ledger has read
+        self.killed: dict[str, int] = {}
+        self.calls_read: dict[str, int] = {}
+        self.in_flight: dict[str, dict[str, Any]] = {}  # a killed session's excused call, until another follows it
 
     # ------------------------------------------------------------------ recording
 
@@ -374,6 +382,12 @@ class Ledger:
         if _starts(words, LIFECYCLE_COMMANDS):
             self.count("lifecycle_steps", evidence, actor="operator", step=step)
 
+    def session_killed(self, session: str, *, calls_before: int) -> None:
+        """The test killed the Lead session ``session`` (its open's id) from outside, as in V2's forced case, when
+        ``calls_before`` of its calls were already recorded: only a call recorded after them was in flight at the
+        kill."""
+        self.killed[session] = calls_before
+
     def lead_event(self, event: dict[str, Any]) -> None:
         """One event from the scripted Lead's own accounting (the ground truth for its calls, spec §4)."""
         kind = event.get("kind")
@@ -398,15 +412,33 @@ class Ledger:
                 self.count("help_calls", evidence, actor="lead", step=step)
         elif tool == "cli":
             self.count("cli_tool_calls", evidence, actor="lead", step=step, note=e.get("why", ""))
-        elif tool in HELP_TOOLS:
+        elif tool == "explain" or (tool == "work_show" and (args or {}).get("explain") is True):
             self.count("help_calls", evidence, actor="lead", step=step, note=e.get("why", ""))
         elif tool not in PROJECTION_READS and not e.get("offered"):
             self.count("guessed_commands", evidence, actor="lead", step=step, note=e.get("why", ""))
         if "expect_rev" in flat or "--expect-rev" in flat:
             self.count("revision_args", evidence, actor="lead", step=step,
                        note="supplied by the projection" if e.get("offered") else "")
+        session = e.get("session")
+        index = self.calls_read.get(session, 0)  # this call's place among its session's recorded calls
+        self.calls_read[session] = index + 1
+        if (earlier := self.in_flight.pop(session, None)) is not None:  # not its last call: the Lead's after all
+            self.observations.remove(earlier)
+            self.count("refusals", earlier["evidence"], actor="lead", step=earlier["step"])
+            self.entries[-1]["seq"] = earlier["seq"]  # where it happened, before the call that followed it
         if e.get("ok") is False:
-            self.count("refusals", {**evidence, "stopped": e.get("stopped")}, actor="lead", step=step)
+            refused = {**evidence, "stopped": e.get("stopped")}
+            code = ((e.get("stopped") or {}).get("error") or {}).get("code")
+            if session in self.killed and index == self.killed[session] and code == BROKER_UNREACHABLE:
+                # The call in flight when the test killed the session is refused because the kill took the broker
+                # with it: the scenario's doing, recorded and never the Lead's refusal (register E386). Only the
+                # first call recorded after the kill, and only while none follows it: an earlier refusal, or this
+                # one once the session calls again, is the Lead's.
+                self.observe("killed_in_flight", evidence=refused, step=step,
+                             note="the call in flight when the test killed the session")
+                self.in_flight[session] = self.observations[-1]
+            else:
+                self.count("refusals", refused, actor="lead", step=step)
         if e.get("mechanical"):
             self.count("mechanical_calls", evidence, actor="lead", step=step,
                        note="steering on" if self.steering else "steering off: measured, not held to 0")
@@ -506,6 +538,10 @@ class Ledger:
         if staled:  # which actor's commit staled each STALE_REVISION the Lead met (the loop's, or another's)
             lines.append("stale revisions, staled by: " + "; ".join(
                 f"{o.get('tool')} at {o.get('expect_rev')}: {o.get('op')}, {o.get('by')}" for o in staled))
+        for o in self.observations:  # recorded as the scenario's, not counted under refusals (register E386)
+            if o["kind"] == "killed_in_flight":
+                lines.append(f"the scenario's (refused in flight at the kill): {o['evidence'].get('tool')} "
+                             f"{((o['evidence'].get('stopped') or {}).get('error') or {}).get('code')}")
         lines.append("operator fallbacks: " + (", ".join(o.get("step") or "?" for o in self.operator_fallbacks())
                                                or "none"))
         for name, r in sorted(self.hard_limits.items()):
@@ -543,7 +579,7 @@ def ledger_dir_name(test_name: str) -> str:
 
 def decision_line(d: dict[str, Any]) -> str:
     """One decision as the summary shows it: what was asked, the tool its answer drives, whose decision the
-    projection says it is ("not stated" until it carries owners: the test does not settle that), and the answer
-    (bounded)."""
+    projection says it is ("not stated" for a question no decision carries: the test does not settle that), and the
+    answer (bounded)."""
     tool = (d.get("detail") or {}).get("tool") or "-"
     return f"{d['label']} [drives {tool}; owner {owner_of(d)}] -> {str(d['answer'])[:40]}"

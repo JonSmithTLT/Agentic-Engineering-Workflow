@@ -76,7 +76,6 @@ from aew.errors import (
     DispatchUndecided,
     IntegrityError,
     ProjectNotFound,
-    StaleRevision,
     ThreadUnsealed,
     ValidationFailed,
 )
@@ -112,6 +111,14 @@ READ_RETRIES = 8  # a lock-free read colliding with a replace on Windows
 _T = TypeVar("_T")
 # What an open reports for a present file in the middle of a replace, besides a sharing violation: only Windows.
 MISSING_MID_REPLACE: tuple[type[OSError], ...] = (FileNotFoundError,) if os.name == "nt" else ()
+
+
+def control_lock_visible(aew_root: Path) -> bool:
+    """Whether the real project lock is visible, without opening it or acquiring a lock (A-45)."""
+    try:
+        return stat.S_ISREG((aew_root / LOCK_REL).lstat().st_mode)
+    except OSError:
+        return False
 
 
 def retry_lock_free(read: Callable[[], _T], *, also: tuple[type[OSError], ...] = (),
@@ -324,18 +331,11 @@ class Session:
             raise IntegrityError(f"{path} is referenced with two different hashes")
         self._prewritten[path] = sha256
 
-    def commit(self, transition: Transition, *, expect_rev: int | None = None,
-               state: dict[str, Any] | None = None) -> int:
+    def commit(self, transition: Transition, *, state: dict[str, Any] | None = None) -> int:
         """Commit this session's state, or ``state`` when a finalizer projected the one to serialize (ADR-0011 R6).
         """
         if self.committed_revision is not None:
             raise AEWError("session already committed")
-        if expect_rev is not None and expect_rev != self.revision:
-            raise StaleRevision(
-                f"expected control revision {expect_rev}, current is {self.revision}",
-                expected=expect_rev,
-                current=self.revision,
-            )
         after = self.state if state is None else state
         _require_dispatched(self._committed_state, after)
         self._require_sealed(transition, after)
@@ -437,16 +437,17 @@ class ControlStore:
 
     # ------------------------------------------------------------------ public API
 
-    def control_lock(self, operation: str) -> FileLock:
+    def control_lock(self, operation: str, *, timeout: float | None = None) -> FileLock:
         """The engine's control lock, not yet taken: the one place AEW opens it (STG-05 CB-09). ``operation`` is refused
         here in a non-writer, before anything opens the lock (``process_kind.require_writer``); a test refuses a
         ``FileLock`` on :data:`LOCK_REL` anywhere else (review of #231, MJ1)."""
         process_kind.require_writer(operation)
-        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout)
+        return FileLock(self.root / LOCK_REL, timeout=self.lock_timeout if timeout is None else timeout)
 
     @contextmanager
-    def session(self) -> Iterator[Session]:
-        with self.control_lock("ControlStore.session") as lock:
+    def session(self, *, lock_timeout: float | None = None) -> Iterator[Session]:
+        lock_options = {} if lock_timeout is None else {"timeout": lock_timeout}
+        with self.control_lock("ControlStore.session", **lock_options) as lock:
             self.held += 1
             outer, self._lock = self._lock, lock
             try:

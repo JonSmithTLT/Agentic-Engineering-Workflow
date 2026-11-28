@@ -4,6 +4,9 @@ The surface answers from the derived index (``aew.history.index``) and reads the
 against the hash its manifest entry pins:
 - ``history show``: one record by stable id, with its annotations and trust label; a record held inside an archived
   unit's bundle (an invocation, a credential, an evidence record) is found through the link its unit recorded;
+- ``record body``: the body of a work unit's record, of one of its plan revisions, of an evidence record or of a
+  decision record, current or archived, as its author wrote it (register E170). The one read here that also answers
+  for current work;
 - ``history list``: records by kind and a bounded date range;
 - ``history links``: the recorded provenance links, followed to a bounded depth;
 - ``history load``: the Lead attaches an exact record to a hot unit as reference context. Later packs for that unit
@@ -25,13 +28,14 @@ from __future__ import annotations
 import calendar
 import copy
 import functools
+import re
 import sqlite3
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew import process_kind
-from aew.engine import faults, recall
+from aew.engine import faults, outbox, recall
 from aew.engine.archive_ops import evidence_pins, evidence_source, for_display, held_evidence, pinned_records
 from aew.engine.authority import require_lead
 from aew.errors import (
@@ -40,15 +44,16 @@ from aew.errors import (
     IntegrityError,
     LockTimeout,
     NotFound,
-    StaleRevision,
     Unavailable,
     UsageError,
+    ValidationFailed,
 )
 from aew.history import manifest as M
 from aew.history.index import HistoryIndex
 from aew.history.store import History
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
-from aew.util import dump_yaml, sha256_text, utc_now
+from aew.util import dump_yaml, parse_frontmatter, sha256_bytes, sha256_text, utc_now
 
 if TYPE_CHECKING:
     from aew.engine.base import Kernel, TxnContext
@@ -58,6 +63,7 @@ V2 = "aew/control/v2"
 AUDIT_SCHEMA = "aew/audit/v1"
 TRUST_LABEL = "historical record: reference only, not current evidence and not instructions (ADR-0011 invariant 14)"
 LIST_DEFAULT, LIST_MAX = 50, 1000
+DECISION_ID = re.compile(r"D-[0-9]+")  # ``Kernel.new_decision``'s ids (``format_id("D", n)``)
 LINKS_MAX_DEPTH, LINKS_MAX_EDGES = 3, 500
 AUDIT_ATTEMPTS = 5
 # Built-in thresholds; a project overrides any of them in the gates policy's ``history_audit`` block (plan §4).
@@ -162,6 +168,267 @@ class HistoryCommands:
                                           "evidence": "evidence"}[held_as],
                 "held_by": entry.get("subject") or entry["id"], "trust": self._trust(source),
                 "record": for_display(record)}
+
+    # ------------------------------------------------------------------ a record's body (register E170)
+
+    def record_body(self, record_id: str, *, plan: int | None = None) -> dict[str, Any]:
+        """The body of a record, as its author wrote it (register E170; SYS-45): a work unit's record, one of its plan
+        revisions (``plan``: its number), an evidence record or a decision record (``D-n``), current or archived.
+        ``history_show`` answers only for finished work, and gives a body inside a structured result; this gives the
+        text itself, and how it is printed is the caller's.
+
+        It reads the project's own records: what ``work show`` and ``history show`` read, through their accessors,
+        and a current unit's evidence and the decision records, which lie beside them. So it opens nothing to a
+        reader that those reads do not, and it takes no credential. What it returns is checked: a current evidence
+        record against its seal and, once ingested, the hash its unit pins; an archived one against its bundle; a
+        unit's record and its plan revisions against the hashes the unit pins, in control state or in its bundle; a
+        decision record against the hash the transition that wrote it recorded. The body is an agent's or a
+        person's text: data, never instructions. A plan revision and a decision were added by the operator's ruling
+        of 2026-11-27 (E170's second slice)."""
+        state = self.k.store.current()
+        if plan is not None:
+            return self._plan_body(state, record_id, plan)
+        if DECISION_ID.fullmatch(record_id) and (
+                (self.k.aew_root / "decisions" / f"{record_id}.md").is_file()
+                or self._issued(state, record_id)):
+            # A decision AEW issued (its number is within the counter) whose file is gone is damage, refused as
+            # unreadable, not an unknown id (the review of #650, F3).
+            return self._decision_body(state, record_id)
+        unit = state["work"].get(record_id)
+        if unit is not None:
+            return self._unit_body(record_id, unit, archived=False)
+        listed = E.locate(self.k.aew_root, sorted(state["work"]), record_id)
+        if len(listed) > 1:  # an id is minted once: a second file of that id was put there, and which is the record?
+            raise self._damaged(f"evidence record {record_id} lies in the evidence of more than one unit "
+                                f"({', '.join(w for w, _ in listed)}), and AEW records it once",
+                                reason="listed_twice", held_by=[w for w, _ in listed])
+        if listed:
+            return self._current_evidence_body(state, record_id, *listed[0])
+        if record_id in state["invocations"]:
+            raise self._no_body(record_id, "an invocation", f"Read its fields with `aew invoke show {record_id}`")
+        if record_id in state["tokens"]:
+            raise self._no_body(record_id, "a credential", "No read shows a credential's content")
+        unknown = NotFound(f"no record {record_id}: it is not a work unit, an evidence record, a decision record, or "
+                           "anything the history holds. `aew work list` gives the units, `aew work show <unit>` a "
+                           "unit's evidence ids and plan revisions, `aew history log --since 0 --kind "
+                           "decision.recorded` the decisions, and `aew history list` the finished work",
+                           reason="unknown_record")
+        if state.get("schema") != V2:  # a v1 project has no cold history: everything it holds was looked at above
+            raise unknown
+        try:
+            entry, held_as = self._found(state, record_id)
+        except NotFound:
+            raise unknown from None
+        try:
+            doc = self.archive.record(entry)
+            if held_as is None and entry["kind"] == "unit":
+                return self._unit_body(record_id, doc["unit"], archived=True)
+            if held_as == "evidence":
+                _, meta, body = held_evidence(self.k.aew_root, doc, record_id)
+                return self._evidence_body(record_id, meta, body, archived=True)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"{record_id}'s record is not UTF-8 text", reason="not_text") from exc
+        except IntegrityError as exc:  # the archive's own refusal, with what to do about it
+            if exc.message.endswith(self.DAMAGED):
+                raise
+            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **exc.details) from exc
+        kind = {"invocations": "an invocation", "tokens": "a credential"}.get(
+            held_as or "", f"a history record of kind `{entry['kind']}`")
+        raise self._no_body(record_id, kind, f"Read its fields with `aew history show {record_id}`")
+
+    # What every refusal of a damaged record ends with: nothing here repairs one. Whether `.aew` is in git is the
+    # project's choice, so the git step is conditional.
+    DAMAGED = ("Nothing is printed. Its file under `.aew/` was changed outside AEW: tell the operator. If the project "
+               "commits `.aew`, `git diff` on that file shows a change not yet committed and `git log` its earlier "
+               "content; `aew history audit --full` checks every record of the finished work")
+
+    def _damaged(self, what: str, **details: Any) -> IntegrityError:
+        return IntegrityError(f"{what}. {self.DAMAGED}", **details)
+
+    def _current_evidence_body(self, state: dict[str, Any], evidence_id: str, work_id: str,
+                               path: Any) -> dict[str, Any]:
+        """A current unit's evidence record, held to the unit whose directory lists it: a sealed record that names
+        that unit and, once the unit ingested it, the content the unit pins."""
+        rel = str(path.relative_to(self.k.aew_root)).replace("\\", "/")
+        elsewhere = sorted(w for w, u in state["work"].items()
+                           if w != work_id and any(r["id"] == evidence_id for r in u.get("evidence") or []))
+        if elsewhere:  # the unit that ingested it pins it, and its file is not in that unit's evidence
+            raise self._damaged(f"evidence record {evidence_id} is pinned by {', '.join(elsewhere)}, and the only "
+                                f"file of that id is {rel}, in {work_id}'s evidence", reason="pinned_elsewhere",
+                                path=rel, held_by=elsewhere)
+        try:
+            meta, body = E.read(path)
+            raw = path.read_bytes()
+        except OSError as exc:
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) cannot be read: {exc.strerror or 'an error'}",
+                                reason="unreadable", path=rel) from exc
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not UTF-8 text", reason="not_text",
+                                path=rel) from exc
+        except (IntegrityError, ValidationFailed) as exc:  # their messages name the file by its path on this host
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the sealed record AEW wrote",
+                                reason="not_sealed", path=rel) from exc
+        if meta["id"] != evidence_id or meta["work_unit"] != work_id:
+            raise self._damaged(f"the record in {rel} says it is {meta['id']} of {meta['work_unit']}, not "
+                                f"{evidence_id} of {work_id}, whose evidence it lies in", reason="not_this_units",
+                                path=rel, held_by=[work_id])
+        pinned = next((r for r in state["work"][work_id].get("evidence") or [] if r["id"] == evidence_id), None)
+        if pinned is not None and pinned["sha256"] != sha256_bytes(raw):
+            raise self._damaged(f"evidence record {evidence_id} ({rel}) is not the content its unit recorded",
+                                reason="not_pinned", path=rel, held_by=[work_id])
+        return self._evidence_body(evidence_id, meta, body, archived=False)
+
+    def _unit_body(self, work_id: str, unit: dict[str, Any], *, archived: bool) -> dict[str, Any]:
+        rel = unit["record"]
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except OSError as exc:
+            raise self._damaged(f"{work_id}'s record {rel} cannot be read: {exc.strerror or exc}", path=rel) from exc
+        if unit.get("record_sha256") and sha256_bytes(raw) != unit["record_sha256"]:
+            raise self._damaged(f"{work_id}'s record {rel} does not hold the content control state pins",
+                                reason="not_pinned", path=rel)
+        try:
+            _, body = parse_frontmatter(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"{work_id}'s record {rel} is not UTF-8 text", reason="not_text", path=rel) from exc
+        if not body.strip():
+            raise NotFound(f"{work_id}'s record has no body: the {unit['kind']} was created without one, so there is "
+                           f"nothing to print. Its title, scope and acceptance are fields: `aew work show {work_id}` "
+                           "gives them", reason="no_body", kind=unit["kind"])
+        return {"id": work_id, "kind": unit["kind"], "work_unit": work_id, "archived": archived, "body": body}
+
+    def _evidence_body(self, evidence_id: str, meta: dict[str, Any], body: str, *, archived: bool) -> dict[str, Any]:
+        work_id = meta.get("work_unit")
+        if not body.strip():
+            where = (f"`aew history show {evidence_id}` gives them" if archived
+                     else f"`aew work show {work_id}` lists the record with its result")
+            raise NotFound(f"evidence record {evidence_id} has no body: a `{meta['kind']}` holds its content in its "
+                           f"fields, so there is nothing to print. {where}", reason="no_body", kind=meta["kind"])
+        return {"id": evidence_id, "kind": meta["kind"], "work_unit": work_id, "archived": archived,
+                "source": evidence_source(meta), "body": body}
+
+    @staticmethod
+    def _no_body(record_id: str, kind: str, instead: str) -> NotFound:
+        return NotFound(f"{record_id} is {kind}, which has no body: only a work unit's record, its plan revisions, an "
+                        f"evidence record and a decision record have one. {instead}", reason="no_body")
+
+    def _plan_body(self, state: dict[str, Any], work_id: str, revision: int) -> dict[str, Any]:
+        """Plan revision ``revision`` of ``work_id``, hot or archived: the file the unit's ``plans`` entry names, held
+        to the hash that entry pins (``plan propose`` wrote both; ``plan accept`` compares the same two). A revision
+        has no id of its own: it is its unit's id and its number, as ``aew plan accept --revision`` names it."""
+        try:
+            unit = state["work"].get(work_id) or self.archive.archived_unit(state, work_id)
+        except IntegrityError as exc:  # the archive's own refusal, with what to do about it
+            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **exc.details) from exc
+        if unit is None:
+            raise NotFound(f"no work unit {work_id}: --plan reads a plan revision of a work unit. `aew work list` "
+                           "gives the units, and `aew history list` the finished work", reason="unknown_record")
+        archived = work_id not in state["work"]
+        plans = unit.get("plans") or []
+        entry = next((p for p in plans if p.get("revision") == revision), None)
+        if entry is None:
+            listed = ", ".join(str(p["revision"]) for p in plans)
+            raise NotFound(f"{work_id} has no plan revision {revision}: "
+                           + (f"its revisions are {listed}" if listed else "no plan was ever proposed for it")
+                           + f". `aew work show {work_id}` lists them with their status", reason="unknown_revision",
+                           revisions=[p["revision"] for p in plans])
+        rel = entry["path"]
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except OSError as exc:
+            raise self._damaged(f"{work_id}'s plan revision {revision} ({rel}) cannot be read: "
+                                f"{exc.strerror or 'an error'}", reason="unreadable", path=rel) from exc
+        if sha256_bytes(raw) != entry["sha256"]:
+            raise self._damaged(f"{work_id}'s plan revision {revision} ({rel}) is not the content its unit recorded",
+                                reason="not_pinned", path=rel, held_by=[work_id])
+        try:
+            _, body = parse_frontmatter(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"{work_id}'s plan revision {revision} ({rel}) is not UTF-8 text", reason="not_text",
+                                path=rel) from exc
+        accepted = (unit.get("plan") or {}).get("accepted")
+        return {"id": work_id, "kind": "plan", "work_unit": work_id, "archived": archived, "plan_revision": revision,
+                "status": entry.get("status"), "accepted": accepted == revision,
+                "supersedes": entry.get("supersedes"), "body": body}
+
+    def _decision_body(self, state: dict[str, Any], decision_id: str) -> dict[str, Any]:
+        """A decision record (``Kernel.new_decision``), held to the hash the transition that wrote it recorded in its
+        writes (``state/log``, hash-chained to the committed head: ``outbox.newest_transitions``). Control state pins
+        no decision by itself, so that log entry is its pin. A decision's body is the engine's account of what it
+        decided, with the values it was given; most have none, and then the record itself, its fields as written, is
+        what is printed (``record``, with the parsed ``fields`` beside it)."""
+        rel = f"decisions/{decision_id}.md"
+        try:
+            raw = (self.k.aew_root / rel).read_bytes()
+        except OSError as exc:
+            raise self._damaged(f"decision record {decision_id} ({rel}) cannot be read: {exc.strerror or 'an error'}",
+                                reason="unreadable", path=rel) from exc
+        try:
+            written, first = self._decision_pin(state, rel)
+        except IntegrityError as exc:  # the log's own refusal (a broken chain, a missing record): typed, with what
+            #                            to do about it (the review of #650, F4)
+            raise type(exc)(f"{exc.message}. {self.DAMAGED}", **{"reason": "log_damaged", **exc.details}) from exc
+        if written is None:
+            try:
+                claimed = str(parse_frontmatter(raw.decode("utf-8"), source=rel)[0].get("at"))
+            except (AEWError, UnicodeDecodeError, AttributeError):
+                claimed = None
+            since = (state.get("outbox") or {}).get("since") or 0
+            if first is None or (since > 0 and self._issued(state, decision_id)
+                                 and claimed is not None and claimed < first["at"]):
+                # Recorded before this project's transition log began (an engine older than ADR-0012): nothing pins
+                # it, which is not damage (the review of #650, F2). Still not printed, since nothing can check it.
+                # Only an id AEW issued, in a log that began after the project did, can be one (quick check, G1):
+                # a planted id above the counter, or any id in a log that holds every revision, is not_pinned.
+                began = ("this project has no transition log" if first is None
+                         else f"the transition log begins at revision {first['revision']}, {first['at']}")
+                raise IntegrityError(
+                    f"decision record {decision_id} ({rel}) says it was recorded before the transition log began "
+                    f"({began}), so no transition pins its content and nothing can check it. Nothing is printed; "
+                    f"its file is `.aew/{rel}`, to be read knowing that nothing checks it", reason="before_log",
+                    path=rel)
+            raise self._damaged(f"decision record {decision_id} ({rel}) is not one the transition log records "
+                                "writing", reason="not_pinned", path=rel)
+        if sha256_bytes(raw) != written:
+            raise self._damaged(f"decision record {decision_id} ({rel}) is not the content its transition recorded",
+                                reason="not_pinned", path=rel)
+        try:
+            meta, body = parse_frontmatter(raw.decode("utf-8"), source=rel)
+        except UnicodeDecodeError as exc:
+            raise self._damaged(f"decision record {decision_id} ({rel}) is not UTF-8 text", reason="not_text",
+                                path=rel) from exc
+        out = {"id": decision_id, "kind": "decision", "work_unit": meta.get("work_unit"), "archived": False,
+               "decision_type": meta.get("type"), "summary": meta.get("summary")}
+        if not body.strip():
+            # Most decisions hold what was decided in their fields alone (type, summary, reason, who decided and
+            # when), and the Lead has no dashboard to read them on: such a decision answers with its record itself,
+            # its fields in the file's own order and format, under the same pin (the coordinator's change of
+            # 2026-11-27 to the operator's ruling: "a lead being able to view decision records").
+            return {**out, "fields": meta, "record": raw.decode("utf-8")}
+        return {**out, "body": body}
+
+    @staticmethod
+    def _issued(state: dict[str, Any], record_id: str) -> bool:
+        """Whether ``record_id`` is a decision id AEW issued: exactly ``format_id("D", n)`` with ``n`` from 1 to the
+        decision counter (the quick check of #650, G2: ``D-1``, ``D-0`` and ``D-0000`` are not)."""
+        try:
+            n = int(record_id[2:])
+        except ValueError:
+            return False
+        return record_id == format_id("D", n) and 1 <= n <= (state.get("counters") or {}).get("decision", 0)
+
+    def _decision_pin(self, state: dict[str, Any], rel: str) -> tuple[str | None, dict[str, Any] | None]:
+        """The hash the transition that wrote ``rel`` recorded for it, newest first, and the oldest transition the log
+        holds (None: the project has no log). The whole log is read before a decision is refused, whatever its own
+        time says: a clock that stepped back after it was recorded leaves later commits dated before it (the review
+        of #650, F1). Only the chain and each record's writes are read, never its events (F5)."""
+        first = None
+        for transition in outbox.newest_transitions(self.k.aew_root, state, events=False):
+            for write in ((transition.get("txn") or {}).get("writes") or ()):
+                if isinstance(write, dict) and write.get("path") == rel:
+                    return write.get("after"), transition
+            first = transition
+        return None, first
 
     def history_list(self, *, kind: str | None = None, since: str | None = None, until: str | None = None,
                      limit: int = LIST_DEFAULT, before: int | None = None) -> dict[str, Any]:
@@ -285,6 +552,13 @@ class HistoryCommands:
         if not recall.fts5_available():
             raise Unavailable("this Python's SQLite has no usable FTS5, which raw-history search needs; nothing "
                               "else is affected", reason="fts5_unavailable")
+        if process_kind.kind() == process_kind.NON_WRITER:
+            # A non-writer takes no lock: the contained Lead's read, relayed to its broker, which runs it on the host
+            # as one (register E185; A-57 KP-R32). The same search from a committed snapshot, never destructive.
+            state = self.k.store.read_committed()
+            return self.history_search_committed(state, list(terms), kinds=kinds, since=since, until=until,
+                                                 limit=limit, enabled=recall.search_enabled(self.k.aew_root, state),
+                                                 fts5=recall.fts5_available())
         root, tail = self._root_and_tail()
         out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
                                        limit=limit)
@@ -293,12 +567,14 @@ class HistoryCommands:
 
     def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
                                  since: str | None = None, until: str | None = None,
-                                 limit: int = recall.LIMIT_DEFAULT, deadline: float, budget_s: float,
-                                 budget_docs: int, candidates: int, enabled: bool, fts5: bool,
+                                 limit: int = recall.LIMIT_DEFAULT, enabled: bool, fts5: bool,
+                                 deadline: float | None = None, budget_s: float | None = None,
+                                 budget_docs: int | None = None, candidates: int | None = None,
                                  fence_token: Callable[[list[str]], str] | None = None,
                                  clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
-        """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2),
-        answering from ``state``, the committed state it already read.
+        """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2; a
+        non-writer's `aew history search`, the contained Lead's relayed read among them, register E185), answering from
+        ``state``, the committed state it already read.
 
         The switch (``enabled``) and the FTS5 answer (``fts5``) are the caller's, read with its snapshot: policy is
         never re-read from disk here, so an edit that lands after the snapshot cannot contradict the capability the
@@ -311,9 +587,10 @@ class HistoryCommands:
         exactly at the root. If it does not (control committed and the tail not yet applied, a later commit appended,
         or a rollover sealed a segment the root does not know), there is no catch-up: the answer is what is already
         indexed, with ``history_moved``. Either way the substrate is searched with ``may_reset=False``, under the
-        caller's ``deadline``, catch-up budget and candidate budget, and the fence takes its token from
-        ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail. ``clock`` is
-        the one ``deadline`` was read from, passed through so the substrate judges it by the same clock."""
+        caller's ``deadline``, catch-up budget and candidate budget (each absent one is the CLI's: no deadline, the
+        substrate's own catch-up budget, every candidate), and the fence takes its token from ``fence_token``.
+        Candidates are proven by ``History.pinned_entry``, which accepts a longer tail. ``clock`` is the one
+        ``deadline`` was read from, passed through so the substrate judges it by the same clock."""
         if not enabled:
             raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
                                         "recall.raw_history_search: explicit", reason="switched_off")
@@ -351,12 +628,12 @@ class HistoryCommands:
 
     # ------------------------------------------------------------------ loading as reference (invariant 14)
 
-    def history_load(self, *, token: str, expect_rev: int, record_id: str, into: str, reason: str) -> dict[str, Any]:
+    def history_load(self, *, token: str, record_id: str, into: str, reason: str) -> dict[str, Any]:
         """Attach an exact historical record to a hot unit as reference context: later packs for the unit carry it
         as a labelled ``history:<id>@<sha>`` source with its trust classification, never as current evidence."""
         if not (reason and reason.strip()):
             raise UsageError("loading a historical record needs a reason")
-        with self.k.lead_txn(token, expect_rev, "history.load", reason=reason) as ctx:
+        with self.k.lead_txn(token, "history.load", reason=reason) as ctx:
             state = ctx.state
             self._require_v2(state)
             unit = self.units.unit(state, into)  # hot only: finished work does not change
@@ -390,7 +667,7 @@ class HistoryCommands:
         return {"count": v["count"], "h": v["h"]} if v else None
 
     def history_audit(self, *, full: bool = False, token: str | None = None,
-                      expect_rev: int | None = None) -> dict[str, Any]:
+                      ) -> dict[str, Any]:
         """Verify the history: from the last verified root (incremental) or from the beginning (``full``) through the
         current root. Without ``token`` it only reports (advisory: CI runs it this way). With the Lead's credential
         it records the audit and, if the history verified, advances the verified root to the one it commits."""
@@ -400,12 +677,6 @@ class HistoryCommands:
             tail = self.cold.tail_bytes()
             if token is not None:
                 require_lead(s.state, token, archived=self.k.archived_credential)
-                if expect_rev is None:
-                    raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
-                                        current=s.revision)
-                if expect_rev != s.revision:
-                    raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}",
-                                        expected=expect_rev, current=s.revision)
         self._require_v2(state)
         start = None if full else self._verified_point(state["cold"])
         target = dict(state["cold"]["root"])
@@ -429,16 +700,13 @@ class HistoryCommands:
                 raise IntegrityError(f"history audit found {len(problems)} problem(s)", audit=result)
             return {"recorded": False, **result}
         for _ in range(AUDIT_ATTEMPTS):
-            revision = self.k.store.current()["revision"]
             try:
-                with self.k.lead_txn(token, revision, "history.audit") as ctx:
+                with self.k.lead_txn(token, "history.audit") as ctx:
                     root = ctx.state["cold"]["root"]
                     if root != target and not problems:
                         raise _RootMoved(dict(root), self.cold.tail_bytes())  # 3. it moved: continue
                     audit_id = self._record_audit(ctx, full=full, start=result["from"], target=target,
                                                   checked=checked, problems=problems, damaged=damaged)
-            except StaleRevision:
-                continue  # a commit landed between reading the revision and taking the lock
             except _RootMoved as moved:
                 moved_root, moved_tail = moved.args
                 more = self.cold.verify(moved_root, {"count": target["count"], "h": target["head_h"]},

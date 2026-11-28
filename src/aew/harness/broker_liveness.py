@@ -162,7 +162,8 @@ class Unreadable:
     """A liveness observation whose read did not complete."""
 
 
-def read(aew_root: Path, *, budget_s: float | None = None) -> dict[str, Any] | Unreadable | None:
+def read(aew_root: Path, *, budget_s: float | None = None,
+         retry_missing: bool = True) -> dict[str, Any] | Unreadable | None:
     """The record, or ``None`` when there is none or it is not one the broker wrote (a link, a directory, an oversize
     or malformed file): untrusted local data, checked field by field."""
     from aew.engine.store import MISSING_MID_REPLACE, retry_lock_free
@@ -183,7 +184,8 @@ def read(aew_root: Path, *, budget_s: float | None = None) -> dict[str, Any] | U
             return False
 
     try:
-        raw = retry_lock_free(read_bytes, budget_s=budget_s, also=MISSING_MID_REPLACE, missing_when=marked)
+        raw = retry_lock_free(read_bytes, budget_s=budget_s, also=MISSING_MID_REPLACE,
+                              missing_when=marked if retry_missing else None)
         data = json.loads(raw, parse_constant=_refuse_constant) if raw is not None else None
     except PermissionError as exc:
         log.warning("broker_liveness_unreadable: errno=%s winerror=%s", exc.errno, getattr(exc, "winerror", None))

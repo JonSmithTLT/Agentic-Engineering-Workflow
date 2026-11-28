@@ -3,8 +3,8 @@ F9-A MS1; ADR-0017; F9-A plan v4 D-1 to D-12, D-15, D-31, D-32).
 
 **What a message is.** Lead-worker coordination: knowledge moved between the current Lead generation and one active
 role invocation, never project state (F9 invariant 1; F9-A1 §11). Recording one takes the control lock and commits
-nothing (D-4), as ``submit`` does: the revision does not move, so neither a Lead message nor a worker reply makes a
-Lead's ``expect_rev`` stale. No gate, transition, dispatch or evidence path reads a message.
+nothing (D-4), as ``submit`` does. The control revision does not move. The evidence finality guard reads
+ordering and delivery facts, never message text.
 
 **The thread.** One append-only JSONL file per invocation, ``.aew/work/<T>/coordination/<INV>.jsonl`` (D-1, D-3),
 outside control state and every run directory. Each line is canonical JSON with ``h = sha256(previous h || the line
@@ -34,6 +34,7 @@ attention (MS6). The operator reads (`aew message`) exist only while the switch 
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import os
@@ -47,11 +48,12 @@ from aew import util
 from aew.coordination import layout as L
 from aew.coordination.render import lead_message, worker_message
 from aew.engine import outbox
-from aew.engine.authority import require_invocation, require_lead
+from aew.engine.authority import lookup, require_invocation, require_lead
 from aew.engine.base import POLICY_PINS, V2, Kernel, TxnContext
 from aew.engine.ports import ArchivePort
 from aew.engine.store import Session
 from aew.errors import (
+    AEWError,
     CoordinationLimit,
     IdempotencyConflict,
     IllegalTransition,
@@ -61,18 +63,19 @@ from aew.errors import (
     MigrationRequired,
     NotAWorker,
     NotFound,
+    PendingLeadMessage,
     RecipientIndependent,
     RefOutOfScope,
     RefUnknown,
     ReplyNotInThread,
-    StaleRevision,
     UsageError,
     ValidationFailed,
 )
 from aew.harness import contract as K
-from aew.harness.contract import EXPECT_REV
+from aew.harness import runlog
 from aew.history.manifest import canonical_json
 from aew.history.store import prewrite
+from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
 from aew.policy import execution as X
 from aew.schemas import validate
@@ -87,6 +90,7 @@ _FINDING_ID = re.compile(r"^\S{1,128}$")
 _DECISION_ID = re.compile(r"^D-[0-9]+$")
 _LINES = re.compile(r"#L([1-9][0-9]*)(?:-L([1-9][0-9]*))?$")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_CARRY_UNRESOLVED = 10
 
 
 # ---------------------------------------------------------------------------------------------- the switch (D-15)
@@ -143,6 +147,7 @@ class Thread:
     exists: bool = False
     messages: list[dict[str, Any]] = field(default_factory=list)
     facts: list[dict[str, Any]] = field(default_factory=list)
+    final_checks: set[str] = field(default_factory=set)
     head: str = ""
     lines: int = 0
     complete: int = 0  # bytes of complete lines
@@ -217,6 +222,9 @@ def _walk(thread: Thread, raw: bytes, *, strict: bool) -> int:
         elif kind == L.FACT_LINE and isinstance(entry.get("fact"), dict) \
                 and isinstance(entry["fact"].get("kind"), str) and isinstance(entry["fact"].get("message"), str):
             thread.facts.append(entry["fact"])
+        elif (kind == "final_check" and isinstance(entry.get("run"), str)
+              and isinstance(entry.get("delivered"), list)):
+            thread.final_checks.add(entry["run"])
         else:
             if not strict:
                 return verified
@@ -306,9 +314,13 @@ def _seal_summary(seal: dict[str, Any], pointer: dict[str, Any]) -> dict[str, An
     return out
 
 
+def _delivered(thread: Thread) -> set[str]:
+    return {f["message"] for f in thread.facts if f["kind"] == L.DELIVERED}
+
+
 def _answered(thread: Thread) -> set[str]:
     """Messages the other party has evidently had: a fact says delivered, or the other party replied to it."""
-    out = {f["message"] for f in thread.facts if f["kind"] == L.DELIVERED}
+    out = _delivered(thread)
     by_id = thread.by_id()
     for m in thread.messages:
         target = by_id.get(m["in_reply_to"] or "")
@@ -318,10 +330,12 @@ def _answered(thread: Thread) -> set[str]:
 
 
 def derived_idempotency_id(sender: str, thread: str, in_reply_to: str | None, kind: str, body: str,
-                           refs: list[str]) -> str:
+                           refs: list[str], *, when: str = L.DEFAULT_WHEN, origin: str | None = None) -> str:
     """D-8: the canonical JSON array of the content, so no two contents share bytes across a field boundary."""
-    return L.DERIVED_ID_PREFIX + hashlib.sha256(
-        canonical_json([sender, thread, in_reply_to, kind, body, refs])).hexdigest()
+    content = [sender, thread, in_reply_to, kind, body, refs]
+    if when != L.DEFAULT_WHEN or origin is not None:
+        content.extend((when, origin))
+    return L.DERIVED_ID_PREFIX + hashlib.sha256(canonical_json(content)).hexdigest()
 
 
 # ---------------------------------------------------------------------------------------------- the collaborator
@@ -337,6 +351,12 @@ class _Draft:
     in_reply_to: str | None
     idempotency_id: str | None
     channel: str
+    when: str = L.DEFAULT_WHEN
+    origin: str | None = None
+
+    def key(self, sender: str, thread: str) -> str:
+        return self.idempotency_id or derived_idempotency_id(
+            sender, thread, self.in_reply_to, self.kind, self.body, self.refs, when=self.when, origin=self.origin)
 
 
 class Coordination:
@@ -349,35 +369,45 @@ class Coordination:
 
     # ------------------------------------------------------------------ records
 
-    def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
+    def message_record_lead(self, *, token: str, to: str, body: str, kind: str | None = None,
                             in_reply_to: str | None = None, refs: list[str] | None = None,
-                            idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
-        """Record a Lead message to an active worker (D-4, D-17's engine half). ``expect_rev`` is the control revision
-        the Lead read, checked under the lock before anything else; recording moves no revision, so the same
-        ``expect_rev`` stays valid for the Lead's next send or stage."""
+                            idempotency_id: str | None = None, channel: str = "cli",
+                            when: str = L.DEFAULT_WHEN) -> dict[str, Any]:
+        """Record a Lead message to an active worker (D-4, D-17's engine half). The message records the revision
+        observed under the control lock and does not advance control state."""
         draft = self._draft(kind or L.LEAD_DEFAULT_KIND, body, refs, in_reply_to, idempotency_id, channel)
+        if when not in L.WHEN_DELIVERY:
+            raise UsageError(f"--when is one of {', '.join(L.WHEN_DELIVERY)}, not {when!r}")
+        draft.when = when
         if not L.ANY_INVOCATION_RE.match(to or ""):
             raise UsageError(f"a message goes to one invocation (INV-n), not {to!r}")
         with self.k.store.session() as s:
             state = s.state
             actor = require_lead(state, token, archived=self.archive.archived_credential)
-            if expect_rev is None:
-                raise StaleRevision("a Lead message must state the revision it was written against (--expect-rev)",
-                                    current=s.revision)
-            if expect_rev != s.revision:
-                raise StaleRevision(f"expected control revision {expect_rev}, current is {s.revision}: read again, "
-                                    "then decide whether the message still holds", expected=expect_rev,
-                                    current=s.revision)
-            self._require_recordable(state)
-            inv = self._invocation(state, to)
-            thread = read_thread(self.k.aew_root, inv["work_unit"], to)
-            sender = L.lead_party(actor["generation"])
-            found = self._existing(thread, sender, draft)
-            if found is not None:  # before the recipient check: a retry after the recipient ended returns the original
-                return found | {"revision": s.revision, "unseen_replies": self._unseen_replies(thread)}
+            return self._record_lead(state, actor, to, draft)
+
+    def record_harness_send(self, state: dict[str, Any], actor: dict[str, Any], to: str, body: str, *, when: str,
+                            idempotency_id: str | None) -> dict[str, Any]:
+        """The caller holds the control lock after checking the named run and both messaging switches (G4)."""
+        if len(body) > L.MAX_BODY_CHARS:
+            raise CoordinationLimit(f"while coordination messaging is on, `harness send` carries at most "
+                                    f"{L.MAX_BODY_CHARS:,} characters; write longer material to a file the worker "
+                                    "can read and send a short message that points to it",
+                                    bound="body_chars", limit=L.MAX_BODY_CHARS, actual=len(body))
+        draft = self._draft(L.LEAD_DEFAULT_KIND, body, None, None, idempotency_id, "cli")
+        draft.when = when
+        draft.origin = "harness_send"
+        return self._record_lead(state, actor, to, draft)
+
+    def _record_lead(self, state: dict[str, Any], actor: dict[str, Any], to: str, draft: _Draft) -> dict[str, Any]:
+        self._require_recordable(state)
+        inv = self._invocation(state, to)
+        thread = read_thread(self.k.aew_root, inv["work_unit"], to)
+        sender = L.lead_party(actor["generation"])
+        result = self._existing(thread, sender, draft)
+        if result is None:
             self._require_recipient(state, to)
-            by_id = thread.by_id()
-            if draft.in_reply_to is not None and draft.in_reply_to not in by_id:
+            if draft.in_reply_to is not None and draft.in_reply_to not in thread.by_id():
                 raise ReplyNotInThread(f"{draft.in_reply_to} is not a message of {to}'s thread", reason="unknown",
                                        in_reply_to=draft.in_reply_to, thread=to)
             self._require_room(thread)
@@ -390,10 +420,27 @@ class Coordination:
                                         pending=pending)
             self._check_refs(state, thread, draft.refs, worker=None)
             record = self._record(thread, inv, draft, sender=sender, recipient=L.invocation_party(to),
-                                  checked_rev=expect_rev)
+                                  checked_rev=state["revision"])
             self._write(state, thread, record)
-            return self._result(thread, record, duplicate=False) | {
-                "revision": s.revision, "unseen_replies": self._unseen_replies(thread)}
+            result = self._result(thread, record, duplicate=False)
+        result.update(revision=state["revision"], unseen_replies=self._unseen_replies(thread),
+                      delivery=self._delivery_hint(inv, draft))
+        if draft.when == L.TURN_END:
+            result["ingest_blocked_until_resubmission"] = True
+        return result
+
+    def _delivery_hint(self, invocation: dict[str, Any], draft: _Draft) -> str:
+        latest = (invocation.get("runs") or [{}])[-1]
+        run = latest.get("run")
+        if not run or (latest.get("coordination") or {}).get("messaging") != X.MESSAGING_ENABLED:
+            return "no_live_run"
+        status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+        if not runlog.possibly_live(status, latest.get("launched_at")):
+            return "no_live_run"
+        outcome = (record or {}).get("coordination_delivery")
+        if outcome == "unsupported" or (outcome == "held" and draft.origin is None):
+            return outcome
+        return "turn_end_pending" if draft.when == L.TURN_END else "live_pending"
 
     @staticmethod
     def _unseen_replies(thread: Thread) -> int:
@@ -459,9 +506,10 @@ class Coordination:
             if target is None:
                 raise ReplyNotInThread(f"{after} is not a message of your thread ({inv_id})", reason="unknown")
             cursor = target["seq"]
-        answered = _answered(thread)
+        handled = _delivered(thread) | {f["message"] for f in thread.facts if f["kind"] == L.POSTED}
         pending = [m for m in thread.messages if m["sender"] == L.lead_party(state["lead"]["generation"])
-                   and m["seq"] > cursor and m["id"] not in answered]
+                   and m.get("when", L.DEFAULT_WHEN) == L.NEXT_STEP
+                   and m["seq"] > cursor and m["id"] not in handled]
         return thread, pending[:L.UNSEEN_CAP]
 
     def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
@@ -489,6 +537,185 @@ class Coordination:
                 if m["id"] in carried:
                     self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": m["id"], "via": "wait",
                                                       "at": utc_now(), "transport_ref": run})
+
+    def _delivery_thread(self, state: dict[str, Any], credential: str, run: str) -> Thread:
+        inv_id, inv, _ = require_invocation(state, credential, None, archived=self.archive.archived_credential)
+        self._require_recordable(state)
+        self._require_recipient(state, inv_id)
+        latest = (inv.get("runs") or [{}])[-1]
+        if latest.get("run") != run or (latest.get("coordination") or {}).get("messaging") != X.MESSAGING_ENABLED:
+            raise IllegalTransition("message delivery requires the current messaging-enabled run", run=run)
+        return read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+
+    def _lead_revision_holds(self, state: dict[str, Any], message: dict[str, Any],
+                             *, through: int | None = None) -> bool:
+        generation = state["lead"]["generation"]
+        return (message["sender"] == L.lead_party(generation)
+                and self._recording_revision_holds(state, message, through=through))
+
+    def _recording_revision_holds(self, state: dict[str, Any], message: dict[str, Any],
+                                  *, through: int | None = None) -> bool:
+        generation = int(message["sender"].partition(":")[2])
+        checked = message["checked_rev"]
+        limit: int = state["revision"] if through is None else through
+        if not 0 < generation <= state["lead"]["generation"] or not 0 < checked <= limit:
+            return False
+        return not any(
+            event["kind"] == "lead.generation" and event["to"] == generation
+            for transition in outbox.read_transitions(
+                self.k.aew_root, checked, limit, outbox=state.get("outbox"))
+            for event in transition.get("events") or []
+        )
+
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool],
+                          blocked: set[str] | None = None) -> dict[str, Any]:
+        """Select in thread order and durably record POSTED before the supervisor calls the adapter."""
+        if not permit() or not self._delivery_thread(self.k.store.read_committed(), credential, run).exists:
+            return {"message": None, "refused": []}
+        with self.k.store.session() as s:
+            thread = self._delivery_thread(s.state, credential, run)
+            # A reply may follow read-only inspection. Only a receipt can settle the report's inputs.
+            handled = _delivered(thread) | {f["message"] for f in thread.facts if f["kind"] == L.POSTED}
+            refused = []
+            for message in thread.messages:
+                mid = message["id"]
+                if not _is_lead(message) or mid in handled:
+                    continue
+                if blocked and message.get("when", L.DEFAULT_WHEN) in blocked:
+                    continue
+                if not self._lead_revision_holds(s.state, message):
+                    refused.append(mid)
+                    continue
+                if not permit():
+                    break
+                self._write_fact(s.state, thread, {"kind": L.POSTED, "message": mid, "run": run,
+                                                  "generation": s.state["lead"]["generation"],
+                                                  "checked_rev": s.revision})
+                return {"message": lead_message(message), "refused": refused}
+            return {"message": None, "refused": refused}
+
+    def message_confirm_delivery(self, *, credential: str, run: str, ids: list[str],
+                                 via: str, transport_ref: str) -> None:
+        """Record confirmed admission without reopening a sealed or superseded thread."""
+        with self.k.store.session() as s:
+            thread = self._delivery_thread(s.state, credential, run)
+            self._record_deliveries(s.state, thread, run, ids, via, transport_ref)
+
+    def _record_deliveries(self, state: dict[str, Any], thread: Thread, run: str, ids: list[str],
+                           via: str, transport_ref: str) -> None:
+        by_id = thread.by_id()
+        for mid in dict.fromkeys(ids):
+            if mid not in by_id or not _is_lead(by_id[mid]):
+                continue
+            facts = [f for f in thread.facts if f["message"] == mid]
+            if via == "live" and not any(f["kind"] == L.POSTED and f.get("run") == run for f in facts):
+                continue
+            if any(f["kind"] == L.DELIVERED and f.get("via") == via and f.get("run") == run for f in facts):
+                continue
+            self._write_fact(state, thread, {"kind": L.DELIVERED, "message": mid, "via": via,
+                                            "run": run, "at": utc_now(), "transport_ref": transport_ref})
+
+    def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str],
+                            lock_timeout: float | None = None) -> None:
+        """The supervisor settles its own observed admissions once after revocation, while the thread is open."""
+        with self.k.store.session(lock_timeout=lock_timeout) as s:
+            token_id, token = lookup(s.state["tokens"], credential)
+            inv_id = (token.get("scope") or {}).get("invocation_id")
+            if not isinstance(inv_id, str):
+                raise IllegalTransition("final admission check requires an invocation credential", run=run)
+            inv = s.state["invocations"].get(inv_id)
+            entry = next((item for item in (inv or {}).get("runs") or [] if item["run"] == run), {})
+            if (token.get("kind") != "invocation" or not token.get("revoked_at")
+                    or entry.get("token_id") != token_id
+                    or (entry.get("coordination") or {}).get("messaging") != X.MESSAGING_ENABLED):
+                raise IllegalTransition("final admission check requires the revoked credential for this run", run=run)
+            assert inv is not None
+            thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+            self._require_unsealed(s.state, thread)
+            if run in thread.final_checks:
+                raise IllegalTransition("this run already recorded its final admission check",
+                                        reason="final_check_recorded", run=run)
+            posted = {fact["message"] for fact in thread.facts if fact["kind"] == L.POSTED and fact.get("run") == run}
+            if not posted:
+                return
+            delivered = {fact["message"] for fact in thread.facts if fact["kind"] == L.DELIVERED}
+            ids = []
+            for mid, transport in admitted.items():
+                if mid in posted and mid not in delivered:
+                    self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": mid, "via": "live",
+                                                      "run": run, "at": utc_now(), "transport_ref": transport})
+                    ids.append(mid)
+            self._append_fact_line(thread, {"type": "final_check", "run": run, "delivered": ids})
+
+    def continuation_messages(self, state: dict[str, Any], inv_id: str) -> tuple[list[dict[str, Any]], int, int]:
+        """D-29: carry pending text, unconfirmed posts and failed turns before bounded older context."""
+        inv = state["invocations"][inv_id]
+        if inv.get("scope") == CONFIRMER_SCOPE or self.project_switch(state) != X.MESSAGING_ENABLED:
+            return [], 0, 0
+        thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+        replied = {m["in_reply_to"] for m in thread.messages if not _is_lead(m)}
+        current, recovery, earlier = [], [], []
+        run_ids = {r["run"] for r in inv.get("runs") or []}
+        event_logs: dict[str, list[dict[str, Any]]] = {}
+        for message in thread.messages:
+            mid = message["id"]
+            if not _is_lead(message):
+                continue
+            facts = [f for f in thread.facts if f["message"] == mid]
+            delivered = next((f for f in reversed(facts) if f["kind"] == L.DELIVERED), None)
+            if delivered and mid in replied:
+                continue
+            posted = next((f for f in reversed(facts) if f["kind"] == L.POSTED), None)
+            rendered = lead_message(message)["rendered"]
+            if message.get("when") == L.TURN_END:
+                rendered = "(after you finish your main task)\n" + rendered
+            if not delivered and not posted:
+                if self._lead_revision_holds(state, message):
+                    current.append({"id": mid, "category": "never_posted", "text": rendered})
+                continue
+            if not delivered:
+                label, category, target = "sent to an earlier run; delivery unconfirmed", "unconfirmed", recovery
+            elif not self._completed_message_step(delivered, run_ids, event_logs):
+                label = "delivered to a turn that ended before a step completed"
+                category, target = "failed_turn", recovery
+            else:
+                label, category, target = "delivered to an earlier run", "unresolved", earlier
+            target.append({"id": mid, "category": category, "text": f"({label})\n{rendered}"})
+        carried = current + recovery + earlier[-_CARRY_UNRESOLVED:]
+        return carried, max(0, len(earlier) - _CARRY_UNRESOLVED), thread.lines
+
+    def _completed_message_step(self, fact: dict[str, Any], runs: set[str],
+                                logs: dict[str, list[dict[str, Any]]]) -> bool:
+        via = fact.get("via")
+        ref = fact.get("transport_ref")
+        run = ref if via == "wait" else fact.get("run")
+        if run not in runs:
+            return False
+        if run not in logs:
+            try:
+                raw = runlog.read_regular(runlog.run_dir(self.k.aew_root, run) / "events.jsonl")
+                events = [json.loads(line) for line in raw.splitlines()]
+                logs[run] = [entry for entry in events if isinstance(entry, dict)]
+            except (OSError, ValueError):
+                logs[run] = []
+        events = logs[run]
+        ended = "opencode.session.step.ended"
+        second = fact["at"][:19]
+        if via != "wait":
+            for index, event in enumerate(events):
+                if event.get("event") == "opencode.session.inbox.delivered" and event.get("inboxID") == ref:
+                    return any(row.get("event") == ended for row in events[index + 1:])
+            return any(row.get("event") == ended and str(row.get("at", ""))[:19] > second for row in events)
+        started: set[str] = set()
+        for row in events:
+            step = row.get("assistantMessageID")
+            if not isinstance(step, str):
+                continue
+            if row.get("event") == "opencode.session.step.started" and str(row.get("at", ""))[:19] > second:
+                started.add(step)
+            elif row.get("event") == ended and step in started:
+                return True
+        return False
 
     def message_thread(self, invocation: str) -> dict[str, Any]:
         """An invocation's thread, lock-free (a reader never repairs): its complete, chain-verified messages, each with
@@ -697,6 +924,11 @@ class Coordination:
                     "revision": s.revision}
 
     # ------------------------------------------------------------------ registration (D-39)
+
+    @staticmethod
+    def register_at_init(state: dict[str, Any], policy: dict[str, Any] | None) -> None:
+        if X.messaging(policy) == X.MESSAGING_ENABLED:
+            state[L.STORE_KEY] = {"since_rev": 0, "decision": None, "via": "init"}
 
     @staticmethod
     def on_adopt(ctx: TxnContext, policy: dict[str, Any] | None, decision: str) -> None:
@@ -988,6 +1220,103 @@ class Coordination:
                                  path=rel, reason="seal_unpinned")
         return pointer
 
+    def message_lost(self, state: dict[str, Any], *, resume: bool = False) -> dict[str, Any]:
+        """Recent sealed Lead messages left unadmitted, rederived from the transition and seal that ended them."""
+        cap = 500 if resume else 10_000
+        rows: list[dict[str, Any]] = []
+        omitted = 0
+        hit_cap = False
+        hit_entry_limit = False
+        if self.reads_on(state):
+            cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(days=7)
+            since = (state.get("outbox") or {}).get("since", state["revision"] + 1)
+            began: dict[int, int] = {}
+            units: dict[str, list[dict[str, Any]]] = {}
+            for examined, transition in enumerate(outbox.newest_transitions(self.k.aew_root, state), 1):
+                if dt.datetime.fromisoformat(transition["at"]) < cutoff:
+                    break
+                for event in transition.get("events") or []:
+                    if event["kind"] == "lead.generation" and event.get("to") is not None:
+                        began[event["to"]] = transition["revision"]
+                refs = transition.get("refs") or []
+                for ref_index, ref in enumerate(refs):
+                    match = L.SEAL_RE.fullmatch(ref)
+                    if match is None:
+                        continue
+                    work_id, invocation = match.group(1, 2)
+                    pointer = self._pinned(state, ref, work_id, invocation)
+                    seal, thread = self._sealed(work_id, invocation, pointer)
+                    lost = self._lost_messages(seal, thread)
+                    if not lost:
+                        continue
+                    if work_id not in units:
+                        units[work_id] = self._unit_lead_messages(state, work_id)
+                    if self._has_later_lead_message(state, units[work_id], seal["closed_rev"], began):
+                        continue
+                    room = L.UNSEEN_CAP - len(rows) if resume else len(lost)
+                    rows.extend(lost[:room])
+                    omitted += max(0, len(lost) - room)
+                    if resume and len(rows) == L.UNSEEN_CAP:
+                        hit_entry_limit = ref_index + 1 < len(refs) or transition["revision"] > since
+                        break
+                if examined == cap:
+                    hit_cap = transition["revision"] > since
+                    break
+                if resume and len(rows) == L.UNSEEN_CAP:
+                    break
+        out: dict[str, Any] = {"messages": rows}
+        if omitted:
+            out["omitted"] = {"at_least": omitted}
+        if hit_cap:
+            out["walk_limit"] = cap
+            out["note"] = ("More may exist. Run `aew message lost` for the full list." if resume else
+                           f"Stopped at the cap of {cap:,} commits. Older lost messages within seven days may exist.")
+        elif hit_entry_limit or omitted:
+            out["note"] = "More may exist. Run `aew message lost` for the full list."
+        return out
+
+    def _unit_lead_messages(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
+        unit = self._unit(state, work_id) or {}
+        pointers = {p["invocation"]: p for p in unit.get(L.UNIT_KEY, ())}
+        messages = []
+        for invocation in unit.get("invocations", ()):
+            _, thread = self._view(work_id, invocation, pointers.get(invocation))
+            messages.extend(m for m in thread.messages if _is_lead(m))
+        return messages
+
+    @staticmethod
+    def _has_later_lead_message(state: dict[str, Any], messages: list[dict[str, Any]], closed_rev: int,
+                                began: dict[int, int]) -> bool:
+        """Only the known transition prefix after the seal is needed to check a later revision claim."""
+        for message in messages:
+            rev = message["checked_rev"]
+            generation = int(message["sender"].partition(":")[2])
+            if (closed_rev <= rev <= state["revision"] and 0 < generation <= state["lead"]["generation"]
+                    and began.get(generation, 0) <= rev < began.get(generation + 1, state["revision"] + 1)):
+                return True
+        return False
+
+    @staticmethod
+    def _lost_messages(seal: dict[str, Any], thread: Thread) -> list[dict[str, Any]]:
+        undeliverable = {m["message"] for m in seal["undeliverable"] if m["reason"] == L.INVOCATION_ENDED}
+        posted = {f["message"] for f in thread.facts if f["kind"] == L.POSTED}
+        delivered = {f["message"] for f in thread.facts if f["kind"] == L.DELIVERED}
+        rows = []
+        for message in reversed(thread.messages):
+            mid = message["id"]
+            if mid in undeliverable:
+                state = "undeliverable"
+                next_action = "Never given to the worker. Re-send to the unit's next invocation or a follow-up Ticket."
+            elif mid in posted and mid not in delivered:
+                state = "posted"
+                next_action = "Outcome unknown. Check the worker's transcript before re-sending."
+            else:
+                continue
+            rows.append({"id": mid, "when": message.get("when", L.DEFAULT_WHEN), "state": state,
+                         "invocation": thread.invocation, "work_unit": thread.work_unit,
+                         "closed_rev": seal["closed_rev"], "next": next_action})
+        return rows
+
     # ------------------------------------------------------------------ evidence inputs (D-35)
 
     def evidence_inputs(self, work_id: str, inv_id: str) -> list[dict[str, Any]]:
@@ -998,6 +1327,10 @@ class Coordination:
         if not (self.k.aew_root / rel).is_file():
             return []
         thread, _, _ = scan_thread(self.k.aew_root, work_id, inv_id)
+        return self._evidence_inputs(thread)
+
+    @staticmethod
+    def _evidence_inputs(thread: Thread) -> list[dict[str, Any]]:
         replied = {m["in_reply_to"] for m in thread.messages if not _is_lead(m)}
         out = []
         for m in thread.messages:
@@ -1010,6 +1343,132 @@ class Coordination:
                 out.append({"message": m["id"], "sha256": sha256_bytes(canonical_json(m)), "kind": m["kind"],
                             "via": via})
         return out
+
+    def report_snapshot(self, state: dict[str, Any], ev: dict[str, Any], admitted: dict[str, str] | None,
+                        continued: tuple[str, list[str]] | None = None) -> int | None:
+        """Settle this run's confirmed POSTs and snapshot the report under the caller's control lock."""
+        iid, work_id = ev["producer"]["invocation"], ev["work_unit"]
+        thread = read_thread(self.k.aew_root, work_id, iid)
+        runs = state["invocations"][iid].get("runs") or []
+        latest = runs[-1] if runs else {}
+        snapshot_on = (latest.get("coordination") or {}).get("messaging") == X.MESSAGING_ENABLED
+        if not (thread.exists or snapshot_on or self.project_switch(state) == X.MESSAGING_ENABLED):
+            return None
+        run = latest.get("run")
+        if snapshot_on and run is not None and ev["producer"].get("run") == run:
+            if continued and len(runs) > 1:
+                prompt, ids = continued
+                self._record_deliveries(state, thread, run, ids, "continuation", prompt)
+            delivered = _delivered(thread)
+            posted = {f["message"] for f in thread.facts if f["kind"] == L.POSTED and f.get("run") == run}
+            for mid, prompt in (admitted or {}).items():
+                if mid in posted and mid not in delivered:
+                    fact = {"kind": L.DELIVERED, "message": mid, "via": "live", "run": run,
+                            "at": utc_now(), "transport_ref": prompt}
+                    self._write_fact(state, thread, fact)
+        ev.update(coordination_through=len(thread.messages), coordination_rev=state["revision"])
+        if inputs := self._evidence_inputs(thread):
+            ev["coordination_inputs"] = inputs
+        pending, _ = self._report_messages(state, ev, thread)
+        return len(pending)
+
+    def _report_messages(self, state: dict[str, Any], ev: dict[str, Any], thread: Thread
+                         ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        through = ev.get("coordination_through")
+        if through is None:  # legacy reports used no sequence; a same-second tie is conservative
+            through = (len(thread.messages) if thread.messages
+                       and ev["created_at"] >= thread.messages[0]["created_at"] else 0)
+        incorporated = {i["message"] for i in ev.get("coordination_inputs", ())
+                        if i["via"] in {"live", "continuation", "wait"}}
+        delivered = _delivered(thread)
+        posted = {f["message"] for f in thread.facts if f["kind"] == L.POSTED}
+        current = L.lead_party(state["lead"]["generation"])
+        pending, later = [], []
+        for message in thread.messages:
+            if not _is_lead(message):
+                continue
+            mid = message["id"]
+            details = {"id": mid, "when": message.get("when", L.DEFAULT_WHEN)}
+            if mid in incorporated:
+                continue
+            if mid not in posted and not self._recording_revision_holds(
+                    state, message, through=ev.get("coordination_rev") if message["seq"] <= through else None):
+                continue
+            if message["seq"] > through:
+                later.append(details | {"state": "delivered" if mid in delivered else "undelivered"})
+            elif mid in delivered:
+                pending.append(details | {"state": "delivered_after_submission"})
+            elif message["sender"] == current:
+                pending.append(details | {"state": "undelivered"})
+        return pending, later
+
+    def report_finality(self, state: dict[str, Any], ev: dict[str, Any]
+                        ) -> tuple[PendingLeadMessage | None, list[dict[str, Any]]]:
+        if ev["kind"] == "check_result" or ev["producer"].get("kind") == "engine":
+            return None, []  # checks are not submitted worker reports
+        iid = ev["producer"]["invocation"]
+        work_id = ev["work_unit"]
+        pointer = self.seal_pointer(state, work_id, iid)
+        _, thread = self._view(work_id, iid, pointer)
+        if ev.get("coordination_through", 0) > len(thread.messages):
+            raise IntegrityError(f"{iid}'s coordination thread does not reach report {ev['id']}'s recorded sequence",
+                                 invocation=iid, report=ev["id"], reason="report_thread_incomplete")
+        pending, later = self._report_messages(state, ev, thread)
+        if not pending:
+            return None, later
+        ids = ", ".join(m["id"] for m in pending)
+        waiting = ", ".join(m["id"] for m in pending if m["state"] == "undelivered")
+        latest = (state["invocations"].get(iid, {}).get("runs") or [{}])[-1]
+        run = latest.get("run")
+        live = run and runlog.possibly_live(runlog.observed_status(runlog.run_dir(self.k.aew_root, run))[0],
+                                           latest.get("launched_at"))
+        if not waiting:
+            action = f"Have {iid} submit again accounting for the delivered messages {ids}"
+            next_action = action if live else f"Relaunch {iid}. {action}"
+        else:
+            if live and (latest.get("coordination") or {}).get("messaging") == X.MESSAGING_ENABLED:
+                next_action = f"Have {iid} receive {waiting} and submit again accounting for {ids}"
+            else:
+                next_action = (f"Relaunch {iid}, so its continuation delivers {waiting}, then have it submit again "
+                               f"accounting for {ids}")
+            if self.project_switch(state) != X.MESSAGING_ENABLED:
+                next_action = f"Have the operator re-enable coordination messaging. {next_action}"
+        return PendingLeadMessage(f"{PendingLeadMessage.definition}\n{next_action}.",
+                                  invocation=iid, report=ev["id"], messages=pending, next=next_action), []
+
+    def require_final(self, state: dict[str, Any], ev: dict[str, Any]) -> list[dict[str, Any]]:
+        error, advisory = self.report_finality(state, ev)
+        if error is not None:
+            raise error
+        return advisory
+
+    def report_view(self, state: dict[str, Any], work_id: str, *, active_only: bool = False) -> list[dict[str, Any]]:
+        """Report finality hints, read-only. Resume only considers each active producer's latest report of a kind."""
+        if not self.reads_on(state):
+            return []
+        if active_only and not any(state["invocations"].get(i, {}).get("status") == "active"
+                                   for i in state["work"][work_id].get("invocations", ())):
+            return []
+        evidence, _ = E.scan(self.k.aew_root, work_id)
+        seen: set[tuple[str, str]] = set()
+        rows = []
+        for ev in reversed(evidence):
+            iid = ev["producer"]["invocation"]
+            key = (iid, ev["kind"])
+            if active_only and (key in seen or state["invocations"].get(iid, {}).get("status") != "active"):
+                continue
+            seen.add(key)
+            try:
+                error, advisory = self.report_finality(state, ev)
+            except (AEWError, OSError) as exc:
+                rows.append({"id": ev["id"], "not_final": getattr(exc, "code", type(exc).__name__),
+                             "message": str(exc)})
+                continue
+            if error:
+                rows.append({"id": ev["id"], "not_final": error.code, **error.details})
+            elif advisory:
+                rows.append({"id": ev["id"], "post_report_message_pending": advisory})
+        return rows
 
     # ------------------------------------------------------------------ doctor (D-39 backstop)
 
@@ -1096,8 +1555,8 @@ class Coordination:
         when either refuses."""
         if state.get("schema") != V2:
             raise MigrationRequired("this project's control state is v1: messages are recorded on v2 projects only; "
-                                    f"the operator runs `aew migrate {EXPECT_REV}` first",
-                                    schema=state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
+                                    "the operator runs `aew migrate` first",
+                                    schema=state.get("schema"), next_action="aew migrate")
         switch, reason = messaging_switch(self.k.aew_root, state)
         if switch != X.MESSAGING_ENABLED:
             raise MessagingDisabled(
@@ -1150,13 +1609,13 @@ class Coordination:
     def _existing(self, thread: Thread, sender: str, draft: _Draft) -> dict[str, Any] | None:
         """D-8: the message this sender already recorded under the same idempotency id on this thread (the result of a
         retry), or None. The same id with other content is refused."""
-        key = draft.idempotency_id or derived_idempotency_id(sender, thread.invocation, draft.in_reply_to,
-                                                             draft.kind, draft.body, draft.refs)
+        key = draft.key(sender, thread.invocation)
         match = next((m for m in thread.messages if m["sender"] == sender and m["idempotency_id"] == key), None)
         if match is None:
             return None
-        content = {"kind": draft.kind, "body": draft.body, "refs": draft.refs, "in_reply_to": draft.in_reply_to}
-        differs = sorted(f for f, v in content.items() if match[f] != v)
+        content = {"kind": draft.kind, "body": draft.body, "refs": draft.refs, "in_reply_to": draft.in_reply_to,
+                   "when": draft.when, "origin": draft.origin}
+        differs = sorted(f for f, v in content.items() if match.get(f, L.DEFAULT_WHEN if f == "when" else None) != v)
         if differs:
             raise IdempotencyConflict(f"idempotency id {key} already names {match['id']} with other content "
                                       f"({', '.join(differs)}): a retry repeats the original exactly; a new message "
@@ -1306,18 +1765,22 @@ class Coordination:
                 checked_rev: int) -> dict[str, Any]:
         seq = len(thread.messages) + 1
         runs = inv.get("runs") or []
-        return {
+        record = {
             "schema": L.MESSAGE_SCHEMA, "id": L.message_id(thread.invocation, seq), "thread": thread.invocation,
             "seq": seq, "sender": sender, "recipient": recipient, "work_unit": thread.work_unit,
             # D-9: on an F4-enabled project, the revision the invocation records (F4 S2c, TR-2). No project records
             # one before S2c, so it is null; whichever of MS1 and S2c merges second binds it and adds the test.
             "ticket_revision": None,
             "run": runs[-1]["run"] if runs else None, "channel": draft.channel, "in_reply_to": draft.in_reply_to,
-            "idempotency_id": draft.idempotency_id or derived_idempotency_id(
-                sender, thread.invocation, draft.in_reply_to, draft.kind, draft.body, draft.refs),
+            "idempotency_id": draft.key(sender, thread.invocation),
             "kind": draft.kind, "body": draft.body, "refs": draft.refs, "created_at": utc_now(),
             "checked_rev": checked_rev,
         }
+        if draft.when != L.DEFAULT_WHEN:
+            record["when"] = draft.when
+        if draft.origin is not None:
+            record["origin"] = draft.origin
+        return record
 
     def _write(self, state: dict[str, Any], thread: Thread, record: dict[str, Any]) -> None:
         """Append ``record`` to its thread under the control lock the caller holds: the project marker first if there
@@ -1365,14 +1828,16 @@ class Coordination:
         message writer's discipline: the lock checked intact, a torn tail repaired, the line synced, the advisory wake.
         A fact always names a message, so the thread and the marker already exist."""
         self._require_unsealed(state, thread)
-        envelope = {"type": L.FACT_LINE, "fact": fact}
+        self._append_fact_line(thread, {"type": L.FACT_LINE, "fact": fact})
+        thread.facts.append(fact)
+
+    def _append_fact_line(self, thread: Thread, envelope: dict[str, Any]) -> None:
         h = chained(thread.head, canonical_json(envelope))
         path = self.k.aew_root / thread.rel
         self.k.store.require_lock_intact()
         if thread.torn:
             _truncate(path, thread.complete)
         _append_line(path, canonical_json({**envelope, "h": h}) + b"\n")
-        thread.facts.append(fact)
         thread.lines, thread.head, thread.torn = thread.lines + 1, h, 0
         outbox.bump_wake(self.k.aew_root)
 

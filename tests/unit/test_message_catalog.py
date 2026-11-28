@@ -22,10 +22,12 @@ def without_descriptions(value):
     return value
 
 
-def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send():
-    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send"]
-    assert set(contract.ALL_SWITCHES) == {"coordination.messaging"}
-    assert "message_send" not in contract.catalog()
+def test_the_catalog_with_every_switch_is_the_v1_catalog_plus_message_send_and_map():
+    assert list(contract.catalog(contract.ALL_SWITCHES)) == [*contract.catalog(), "message_send", "map"]
+    assert set(contract.ALL_SWITCHES) == {"coordination.messaging", "maps.reads"}
+    assert "message_send" not in contract.catalog() and "map" not in contract.catalog()
+    assert list(contract.catalog(frozenset({contract.MESSAGING}))) == [*contract.catalog(), "message_send"]
+    assert list(contract.catalog(frozenset({contract.MAPS}))) == [*contract.catalog(), "map"]
 
 
 def test_the_compact_presentation_changes_only_descriptions():
@@ -41,6 +43,14 @@ def test_the_compact_presentation_changes_only_descriptions():
     assert "message_send" not in compact  # no standalone compact policy switch is enabled by this slice
 
 
+def test_the_compact_message_send_listing_describes_both_delivery_timings():
+    [message] = [row for row in mcp.tools_list("normal", contract.ALL_SWITCHES)["tools"]
+                 if row["name"] == "message_send"]
+    assert message["description"] == ("Message an active worker's invocation. Deliver at its next step (default), "
+                                      "turn end or on relaunch.")
+    assert message["inputSchema"]["properties"]["when"]["enum"] == ["next-step", "turn-end"]
+
+
 @pytest.mark.parametrize("switches", [frozenset(), contract.ALL_SWITCHES], ids=["off", "on"])
 @pytest.mark.parametrize("profile", ["normal", "recovery"])
 def test_every_built_row_is_offered_on_exactly_its_declared_profiles(switches, profile):
@@ -49,6 +59,7 @@ def test_every_built_row_is_offered_on_exactly_its_declared_profiles(switches, p
     assert offered == [t for t in rows.values() if t.built and profile in t.profiles]
     assert ("cli" in {t.name for t in offered}) == (profile == "recovery")
     assert ("message_send" in {t.name for t in offered}) == bool(switches)
+    assert ("map" in {t.name for t in offered}) == bool(switches)
 
 
 @pytest.mark.parametrize("value", ["not JSON", "{}", '"coordination.messaging"', '[7]', '["unknown"]'])
@@ -66,11 +77,11 @@ def test_message_send_is_mechanical_never_auto_runnable_never_journaled_and_disp
     assert "message_send" in run.RUNNERS and "message_send" not in stage.STAGES
 
 
-@pytest.mark.parametrize("change", [{"expect_rev": None}, {"body": ""}, {"body": "x" * 4001},
+@pytest.mark.parametrize("change", [{"expect_rev": 0}, {"body": ""}, {"body": "x" * 4001},
                                     {"when": "queue"}, {"idempotency_id": "invalid/ID"},
                                     {"refs": ["source:x"] * 9}, {"token": "not-an-argument"}])
 def test_message_send_bounds_are_enforced_before_the_runner(change):
-    args = {"expect_rev": 1, "to": "INV-0001", "body": "Check shutdown.", **change}
+    args = {"to": "INV-0001", "body": "Check shutdown.", **change}
     with pytest.raises(AdapterInputError):
         check_call("message_send", args, "normal", contract.ALL_SWITCHES)
 
@@ -87,7 +98,8 @@ OFF_READERS = {
         "Only planned workflow stages; message_send has no planner.", {"_compose": 1}),
     "src/aew/surface/mcp.py": ("Wait classification only; message_send is not a wait.", {"_is_wait": 1}),
     "src/aew/surface/projection.py": (
-        "Only projected workflow actions; message_send is not a projection action.", {"_action": 1, "_project": 1}),
+        "Only projected workflow actions, and the call a decision names (judgment_inputs); message_send is neither a "
+        "projection action nor a decision's tool.", {"_action": 1, "_project": 1, "judgment_inputs": 1}),
     "src/aew/surface/readable.py": (
         "Primitive-to-stage rendering; record-only send has no completed step.", {"<module>": 1}),
     "src/aew/surface/stage.py": (
@@ -118,6 +130,10 @@ OFF_READERS = {
         {"test_o_cmd_checks_typed_tool_names_against_the_contract": 1,
          "test_a_typed_tool_behind_a_switch_is_a_known_tool_name_never_an_o_cmd_finding": 1,
          "test_o_secret_reads_the_typed_tools_arguments": 2}),
+    "tests/unit/test_lead_map_catalog.py": (
+        "A planted `map` row without its switch, to show the off-surface comparison fails when the row leaks; the "
+        "switched rows are read through catalog(MAPS_ON).",
+        {"test_a_map_row_or_line_offered_without_the_switch_fails_the_comparison": 1}),
     "tests/unit/test_lead_reachability.py": (
         "Send has no operator-only primitive, pinned by the on catalog contract.",
         {"test_no_typed_tool_reaches_an_operator_only_command": 2}),
@@ -126,7 +142,6 @@ OFF_READERS = {
         "in messaging_guidance.",
         {"plant": 1, "stage_named": 1, "known_words": 1, "stray_arguments": 4,
          "test_every_normal_tool_is_named_in_what_the_lead_is_given": 2,
-         "test_the_list_follows_the_catalog_when_a_tool_goes": 1,
          "test_the_text_names_no_tool_the_normal_profile_lacks": 2,
          "test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard": 2,
          "test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_the_guard": 2,
@@ -137,8 +152,9 @@ OFF_READERS = {
         "Off baseline must remain unmodified by compacting.",
         {"test_the_compact_presentation_changes_only_descriptions": 2}),
     "tests/unit/test_messaging_guidance.py": (
-        "Independent switched-row plant copies metadata and mutates the registry, not a live off-only enumeration.",
-        {"test_a_switched_row_omitted_by_the_prose_selector_fails_the_independent_oracle": 2}),
+        "The independent prose oracle's filter of catalog names: every row's name, with the switched rows', never a "
+        "live off-only enumeration (E367 moved it from the system text's tool line to the guide's core).",
+        {"assert_catalog_names": 1}),
     "tests/unit/test_operator_endpoint.py": (
         "Named raise/confirmation tools; message_send is mechanical, with no operator principal.",
         {"test_no_operator_principal_outside_the_endpoint": 2}),

@@ -56,10 +56,15 @@ def w(tmp_path) -> World:
 # ---------------------------------------------------------------------------------------------- helpers
 
 
-def talk(w: World, inv: str, token: str, *, replies: int = 1, body: str = "Check shutdown while recv() blocks.") -> \
+def talk(w: World, inv: str, token: str, *, replies: int = 1, body: str = "Check shutdown while recv() blocks.",
+         deliver: bool = False) -> \
         tuple[str, list[str]]:
     """A Lead message to ``inv`` and ``replies`` worker replies to it: the thread exists, and the replies are unseen."""
     lead = w.send(body, to=inv)["message"]["id"]
+    if deliver:
+        received: list[dict[str, Any]] = []
+        w.e.message_deliver_wait(invocation_token=token, after="", send=received.append)
+        assert [message["id"] for message in received[0]["messages"]] == [lead]
     out = [w.reply(lead, f"reply {n}", invocation_token=token)["message"]["id"] for n in range(1, replies + 1)]
     return lead, out
 
@@ -130,7 +135,7 @@ def non_mutating(w: World) -> tuple[str, str, str]:
 
 def takeover(w: World, monkeypatch) -> None:
     monkeypatch.setattr(aew.operator, "authorize", lambda challenge, **_: {"authorized_by": "operator-tty (test)"})
-    w.token = w.e.lead_takeover(expect_rev=w.rev(), reason="the seat was lost", session_label="lead-b")["token"]
+    w.token = w.e.lead_takeover(reason="the seat was lost", session_label="lead-b")["token"]
 
 
 def to_commit_ready(w: World) -> None:
@@ -173,7 +178,7 @@ def _redispatch(w: World, mp: Any) -> list[tuple[str, str]]:
 
 
 def _transition(w: World, mp: Any) -> list[tuple[str, str]]:
-    talk(w, w.inv, w.worker)
+    talk(w, w.inv, w.worker, deliver=True)
     implement(w)
     w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")  # the implementer's report is ingested: it ends
     return [(w.wid, w.inv)]
@@ -191,7 +196,7 @@ def _retirement(w: World, mp: Any) -> list[tuple[str, str]]:
 def _stage_step(w: World, mp: Any) -> list[tuple[str, str]]:
     wid, inv, token = non_mutating(w)
     talk(w, inv, token)
-    si = w.e.stage_open(token=w.token, expect_rev=w.rev(), tool="probe", contract_digest=ZERO, arguments={},
+    si = w.e.stage_open(token=w.token, tool="probe", contract_digest=ZERO, arguments={},
                         judgment_inputs=["supersession_reason"], base_class="JUDGMENT_BEARING",
                         effective_class="JUDGMENT_BEARING", plan=[{"primitive": "work.redispatch"}], subject=wid,
                         ingress="test")["intent"]
@@ -221,7 +226,7 @@ def _takeover(w: World, mp: Any) -> list[tuple[str, str]]:
 def _handoff_not_carried(w: World, mp: Any) -> list[tuple[str, str]]:
     talk(w, w.inv, w.worker)
     offer = w.lead("lead_handoff_offer", carry_invocations=[])["offer"]
-    w.token = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="lead-b")["token"]
+    w.token = w.e.lead_handoff_accept(offer=offer, session_label="lead-b")["token"]
     return [(w.wid, w.inv)]
 
 
@@ -257,7 +262,7 @@ def test_release_and_migrate_end_no_invocation(w):
     with pytest.raises(IllegalTransition):
         w.lead("lead_release")
     before = {i: v["status"] for i, v in state(w)["invocations"].items()}
-    w.e.migrate(token=w.token, expect_rev=w.rev())
+    w.e.migrate(token=w.token)
     assert {i: v["status"] for i, v in state(w)["invocations"].items()} == before
     assert pointer(w, w.wid, w.inv) is None and "coordination" not in state(w)["work"][w.wid]
     assert_control_invariants(w)
@@ -347,10 +352,10 @@ def test_the_direct_commit_paths_archive_no_unit(w, monkeypatch, path):
     if path == "acquire":
         w.lead("invoke_cancel", invocation=w.inv, reason="release the seat")
         w.lead("lead_release")
-        w.token = w.e.lead_acquire(expect_rev=w.rev(), session_label="lead-c")["token"]
+        w.token = w.e.lead_acquire(session_label="lead-c")["token"]
     elif path == "handoff_accept":
         offer = w.lead("lead_handoff_offer", carry_invocations=[])["offer"]
-        w.token = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="lead-b")["token"]
+        w.token = w.e.lead_handoff_accept(offer=offer, session_label="lead-b")["token"]
     else:
         takeover(w, monkeypatch)
     entries = w.e.archive.index(state(w)).list(limit=100)
@@ -381,7 +386,7 @@ def test_the_takeover_preview_writes_no_seal(w):
     talk(w, w.inv, w.worker)
     before = sorted((w.root / ".aew/work").rglob("*"))
     with pytest.raises(Exception) as exc:
-        w.e.lead_acquire(expect_rev=w.rev(), session_label="lead-b")
+        w.e.lead_acquire(session_label="lead-b")
     assert w.inv in exc.value.details["active_invocations"]
     assert sorted((w.root / ".aew/work").rglob("*")) == before
 
@@ -391,7 +396,7 @@ def test_a_carried_invocation_stays_live_and_old_generation_messages_derive_supe
     message is sealed as undeliverable for ``sender_superseded``, and the new generation's as ``invocation_ended``."""
     old = w.send("from generation 1")["message"]["id"]
     offer = w.lead("lead_handoff_offer", carry_invocations=[w.inv])["offer"]
-    w.token = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="lead-b")["token"]
+    w.token = w.e.lead_handoff_accept(offer=offer, session_label="lead-b")["token"]
     assert pointer(w, w.wid, w.inv) is None and state(w)["invocations"][w.inv]["status"] == "active"
     new = w.send("from generation 2")["message"]["id"]
     w.lead("invoke_cancel", invocation=w.inv, reason="stop")
@@ -752,14 +757,17 @@ def test_adopting_messaging_enabled_commits_the_coordination_store_key_once(tmp_
     w = world(tmp_path, messaging=None)
     assert "coordination_store" not in state(w)
     set_messaging(w.root, "enabled")
-    out = w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn messaging on", authorization=OPERATOR)
+    out = w.e.manifest_adopt(token=w.token, reason="turn messaging on", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     key = state(w)["coordination_store"]
     assert key == {"since_rev": out["revision"], "decision": out["decision"]}
     set_messaging(w.root, "disabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn messaging off", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="turn messaging off", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert state(w)["coordination_store"] == key
     set_messaging(w.root, "enabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="on again", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="on again", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert state(w)["coordination_store"] == key
 
 
@@ -768,7 +776,8 @@ def test_an_adoption_that_leaves_messaging_off_writes_no_key(tmp_path, setting):
     """D-39 "Off and never enabled": an adoption that leaves the switch absent or disabled registers nothing."""
     w = world(tmp_path, messaging=setting)
     (w.root / ".aew/policy/gates.yaml").write_bytes((w.root / ".aew/policy/gates.yaml").read_bytes() + b"# edit\n")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="an unrelated edit", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="an unrelated edit", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert "coordination_store" not in state(w)
 
 
@@ -788,7 +797,8 @@ def test_recording_needs_the_coordination_store_key(w):
     assert check["status"] == "WARN" and "manifest adopt" in check["detail"] and "comment" in check["detail"]
     policy = w.root / ".aew/policy/execution.yaml"
     policy.write_bytes(policy.read_bytes() + b"# reviewed\n")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="register messaging", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="register messaging", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert w.send()["ok"]
 
 
@@ -825,7 +835,7 @@ def append_then_die(path, line):
     os._exit(3)
 C._append_line = append_then_die
 e = Engine.discover(Path(sys.argv[1]))
-e.message_record_lead(token=sys.argv[2], expect_rev=int(sys.argv[3]), to=sys.argv[4], body="before the crash")
+e.message_record_lead(token=sys.argv[2], to=sys.argv[4], body="before the crash")
 """
 
 
@@ -847,7 +857,8 @@ def test_threads_stay_readable_after_the_switch_is_turned_off(w):
     and the reads still show it, because a thread exists."""
     lead, _ = talk(w, w.inv, w.worker)
     set_messaging(w.root, "disabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="turn messaging off", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="turn messaging off", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     with pytest.raises(MessagingDisabled):
         w.send("after off")
     w.lead("invoke_cancel", invocation=w.inv, reason="stop")
@@ -955,17 +966,17 @@ def test_no_known_ending_path_needs_the_seal_fallback(tmp_path, monkeypatch):
     redispatch, transition, queue retirement, handoff acceptance, takeover); every ended thread is sealed, and no
     transition carries a ``coordination.seal_fallback`` event."""
     w = world(tmp_path, checks=True)
-    talk(w, w.inv, w.worker)
+    talk(w, w.inv, w.worker, deliver=True)
     implement(w)
     w.lead("work_transition", work_id=w.wid, to="REVIEW_PENDING")  # the implementer ends by its report's ingest
     out = w.lead("invoke_create", work_id=w.wid, role="reviewer")
-    talk(w, out["invocation"], out["invocation_token"])
+    talk(w, out["invocation"], out["invocation_token"], deliver=True)
     review = w.e.submit(invocation_token=out["invocation_token"], kind="review",
                         text=CP.submission(CP.REVIEW))["evidence"]
     w.lead("review_ingest", work_id=w.wid, evidence_id=review)  # the reviewer ends by ingest
     w.lead("work_transition", work_id=w.wid, to="VERIFY_PENDING")
     out = w.lead("invoke_create", work_id=w.wid, role="verifier")
-    talk(w, out["invocation"], out["invocation_token"])
+    talk(w, out["invocation"], out["invocation_token"], deliver=True)
     w.lead("verify_ingest", work_id=w.wid, evidence_id=verification(w, out["invocation_token"], "ticket"))
     w.lead("work_transition", work_id=w.wid, to="COMMIT_READY")
     w.lead("integrate_prepare", work_id=w.wid)
@@ -984,7 +995,7 @@ def test_no_known_ending_path_needs_the_seal_fallback(tmp_path, monkeypatch):
     other_wid, uncarried, other_token = non_mutating(w)
     talk(w, uncarried, other_token)
     offer = w.lead("lead_handoff_offer", carry_invocations=[carried])["offer"]
-    w.token = w.e.lead_handoff_accept(offer=offer, expect_rev=w.rev(), session_label="lead-b")["token"]
+    w.token = w.e.lead_handoff_accept(offer=offer, session_label="lead-b")["token"]
     assert pointer(w, wid, carried) is None and pointer(w, other_wid, uncarried) is not None
     takeover(w, monkeypatch)  # ends the carried attempt too
     ended = [(u, i) for u, unit in [*state(w)["work"].items()] for i in unit.get("invocations") or []
@@ -1088,9 +1099,10 @@ def test_migrating_a_v1_project_that_adopted_messaging_registers_it(tmp_path):
     w = world(tmp_path, messaging=None)
     (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
     set_messaging(w.root, "enabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="messaging on, while v1", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="messaging on, while v1", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert "coordination_store" not in state(w)
-    out = w.e.migrate(token=w.token, expect_rev=w.rev())
+    out = w.e.migrate(token=w.token)
     assert state(w)["coordination_store"] == {"since_rev": out["revision"], "decision": None, "via": "migrate"}
     assert w.send()["ok"]
     assert next(c for c in w.e.doctor_checks() if c["check"] == "coordination")["status"] == "PASS"
@@ -1123,9 +1135,10 @@ def test_migrating_a_v1_project_records_its_adopted_steering_default_so_a_raise_
     w = world(tmp_path, messaging=None)
     (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
     set_messaging(w.root, "enabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="while v1", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="while v1", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert "steering" not in state(w)
-    out = w.e.migrate(token=w.token, expect_rev=w.rev())
+    out = w.e.migrate(token=w.token)
     now = S.effective(state(w))
     assert state(w)["steering"]["default"] == "crawl" and (now["mode"], now["source"]) == ("crawl", S.STANDING_DEFAULT)
     record = next(r for r in _steering_records(w) if r["id"] == now["record"])
@@ -1135,7 +1148,8 @@ def test_migrating_a_v1_project_records_its_adopted_steering_default_so_a_raise_
     assert len(named) == 1 and f'"id":"{record["id"]}"' in (w.root / ".aew" / named[0]).read_text(), named
     _raise_walk(w)
     set_messaging(w.root, "disabled")  # an adopted edit that does not touch steering
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="unrelated edit", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="unrelated edit", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert S.effective(state(w))["mode"] == "walk"
     assert_control_invariants(w)
 
@@ -1153,7 +1167,8 @@ def test_a_raise_on_a_project_fresh_from_init_outlives_an_unrelated_adopt(tmp_pa
     assert record["legality_digest"] == w.e.policy_digests()["legality_digest"]  # the digests of what init pinned
     _raise_walk(w)
     set_messaging(w.root, "enabled")
-    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="unrelated edit", authorization=OPERATOR)
+    w.e.manifest_adopt(token=w.token, reason="unrelated edit", authorization=OPERATOR,
+                             binding=w.e.manifest_approval())
     assert S.effective(state(w))["mode"] == "walk"
     assert_control_invariants(w)
 
@@ -1165,11 +1180,11 @@ def test_resolving_a_stage_ends_no_invocation_and_needs_no_seal(w):
     nothing and records no fallback."""
     wid, inv, token = non_mutating(w)
     talk(w, inv, token)
-    si = w.e.stage_open(token=w.token, expect_rev=w.rev(), tool="probe", contract_digest=ZERO, arguments={},
+    si = w.e.stage_open(token=w.token, tool="probe", contract_digest=ZERO, arguments={},
                         judgment_inputs=["supersession_reason"], base_class="JUDGMENT_BEARING",
                         effective_class="JUDGMENT_BEARING", plan=[{"primitive": "work.redispatch"}], subject=wid,
                         ingress="test")["intent"]
-    w.e.stage_abandon(token=w.token, expect_rev=w.rev(), intent=si, rationale="not wanted after all")
+    w.e.stage_abandon(token=w.token, intent=si, rationale="not wanted after all")
     assert state(w)["invocations"][inv]["status"] == "active" and pointer(w, wid, inv) is None
     assert fallback_events(w) == []
     assert_control_invariants(w)

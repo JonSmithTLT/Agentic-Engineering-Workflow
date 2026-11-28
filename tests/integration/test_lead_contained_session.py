@@ -23,6 +23,7 @@ import pytest
 from fake_harness import contains_credential
 from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
 
+from aew import skills
 from aew.capability import ops as capability
 from aew.harness import procs, wake_queue
 from aew.harness.containment import netns
@@ -56,7 +57,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
             {"do": "dump_env", "path": str(sync / "env")},
             {"do": "aew", "args": ["lead", "show"]},
             {"do": "lead", "args": ["checkpoint", "--next", "dispatch T-0001 with --launch"]},
-            {"do": "aew", "args": ["lead", "handoff", "offer", "--expect-rev", "1"]},
+            {"do": "aew", "args": ["lead", "handoff", "offer", ]},
             {"do": "aew", "args": ["resume", "--json"]},
             {"do": "read", "path": str(home / ".local/share/opencode/opencode.db")}]))
         done = at_the_terminal(lab, home, extra={"XDG_RUNTIME_DIR": str(tmp_path / "operator-runtime"),
@@ -103,8 +104,14 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert server["command"] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
         assert server["environment"] == procs.engine_imports({})
         # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
+        # The Lead's skills (E161): the manifest's list, copied into this start's own folder and bound read-only
+        assert label["skills"]["exposed"] == list(skills.lead()) and label["skills"]["copy"] == "read_only_bind"
+        assert json.loads((run_dir / "label.json").read_text())["skills"] == label["skills"]
+        [start] = (lab.aew_root / lead.LEAD_SKILLS_DIR).iterdir()
+        at = lead.lead_skills_at(lab, start.name)
         assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
-                                                tools=capability.placed(label, contained=True), push_wake=True)
+                                                tools=capability.placed(label, contained=True), push_wake=True,
+                                                skills_dir=at, skills_planned=label["skills"])
         assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
         assert wake_queue.HEADER in config["agents"][projection.LEAD_AGENT]["system"]  # no key names it: it is on
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
@@ -122,6 +129,29 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert ((steps[3].get("stderr_json") or {}).get("error") or {}).get("code") == "USAGE"
         assert steps[4]["stdout_json"]["lead_note"] == "dispatch T-0001 with --launch"
         assert steps[5] == {"readable": False, "error": "FileNotFoundError"}  # the login store is masked
+    finally:
+        lab.cleanup()
+
+
+def test_a_lead_copy_changed_after_delivery_is_never_bound_and_its_record_says_copy_failed(tmp_path):
+    """E161, the copy checked again just before the contained Lead's layout binds it (``ContainedLead.__call__``;
+    #565's quick check, m3): a copy whose file changed after delivery is not bound, the start goes on contained, and
+    its ``label.json`` reports every skill of the list ``copy_failed``, as a copy that failed would."""
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([]))
+        done = at_the_terminal(lab, home, change_lead_copy=True)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        label = done["result"]["containment"]
+        assert label["filesystem"] == "os_readonly_roots"
+        assert label["layout"]["skills_binds"] == []
+        failed = {name: skills.COPY_FAILED for name in skills.lead()}
+        assert (label["skills"]["exposed"], label["skills"]["reasons"]) == ([], failed)
+        assert "copy" not in label["skills"]  # nothing bound, so nothing to say of how a copy was kept
+        run_dir = lab.aew_root / "local" / "harness" / "runs" / label["session"]
+        assert json.loads((run_dir / "label.json").read_text())["skills"] == label["skills"]
     finally:
         lab.cleanup()
 
@@ -154,6 +184,43 @@ def test_a_relayed_file_argument_is_read_where_the_client_runs(tmp_path):
         stored = "\n".join(f.read_text(encoding="utf-8") for f in (lab.aew_root / "state" / "handoffs").glob("*.md"))
         assert "written where the client runs" in stored and "piped from the shell" in stored
         assert "text the client cannot read" not in stored
+    finally:
+        lab.cleanup()
+
+
+def test_the_contained_lead_reads_a_guide_section_through_its_broker_and_its_lookups_are_counted(tmp_path):
+    """E231, from a real contained session: the Lead's system text carries the guide's core only, and its shell, in the
+    sandbox, reads a section with `aew guide <section>`, relayed to its broker on the host. An unknown section is
+    refused with the names that exist. Each read and a `--help` lookup are counted against this session in the
+    broker's telemetry, which `aew lead telemetry` reads."""
+    from aew.engine import guide
+    from aew.engine.api import Engine
+    from aew.harness import tool_calls
+    from aew.surface import lead_text
+
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        sync = tmp_path / "sync"
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([
+            {"do": "dump_env", "path": str(sync / "env")},
+            {"do": "aew", "args": ["guide", "steps"]},
+            {"do": "aew", "args": ["guide", "nope"]},
+            {"do": "aew", "args": ["work", "show", "--help"]}]))
+        done = at_the_terminal(lab, home)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        doc = lead_text.document_for(Engine.discover(lab.root))
+        config = json.loads(json.loads((sync / "env").read_text())["OPENCODE_CONFIG_CONTENT"])
+        system = config["agents"][projection.LEAD_AGENT]["system"]
+        assert system.endswith(doc.core) and doc.sections["steps"].text() not in system
+        steps = {e["i"]: e["result"] for e in map(json.loads, (tui / "tui.jsonl").read_text().splitlines())}
+        assert steps[1]["exit"] == 0 and steps[1]["stdout"] == doc.sections["steps"].text(), steps[1]
+        refused = steps[2]["stderr_json"]["error"]
+        assert steps[2]["exit"] == 2 and refused["details"]["sections"] == doc.names() == [guide.CORE, *doc.sections]
+        assert steps[3]["exit"] == 0 and "usage: aew work show" in steps[3]["stdout"], steps[3]
+        [row] = [r for r in tool_calls.counters(tool_calls.read(lab.aew_root)).values() if r["guide_reads"]]
+        assert (row["guide_sections"], row["help_commands"]) == ({"steps": 1, "(unknown)": 1}, {"work show": 1})
     finally:
         lab.cleanup()
 

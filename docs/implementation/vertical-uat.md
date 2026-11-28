@@ -59,6 +59,16 @@ internals.
   provider), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
   `raw_yaml`; one edited after setup counts. Everything else in setup (an acquire, a credential, a separate adopt) is
   counted like any other step.
+- **AEW's tool offers are settled in setup.** This is a fixture of the offline world: it is recorded, and it is never
+  counted. Before the first open, the world answers AEW's consent screen `none`, because it has no route to a tool's
+  source (`scripted_operator.settle_tool_offers`): each needed tool is declined, which today is `ripgrep`, and no
+  optional one. A reopen on the operator's terminal then meets no consent screen. AEW's start line that names a
+  needed tool the operator declined counts nothing. The seat-resume confirmation code at a reopen still counts under
+  `pin_reentries` on Linux. The operator ruled on 2026-11-26 (Q5 of the V-01 re-measure): "Q5 yup setup fixture that
+  is recorded but not counted. The vertical was meant to fix ux issues. Aew saying a critical item is missing isnt a
+  ux failure its common sense. And yes it should count but is that how aew works? I thought at that point it would
+  automatically reattach already?" The closing question is open: STG-13's note
+  `2026-11-26-fix-v01-reopen-world.md` records it.
 - **Terminal channels.** A decision AEW confirms at the operator's own terminal (a policy adoption, a takeover, a
   steering raise) runs with the terminal channel substituted in-process, the channel AT-1 uses on Windows, on every
   platform. The steering raise goes through the real operator endpoint and its real one-time code.
@@ -74,21 +84,31 @@ OpenCode configuration as OpenCode starts it). **It has no AEW knowledge.** Its 
    stated owner is exactly `lead` or `mechanical`, the Lead takes itself and never asks, and the ledger lists it
    apart. Any other stated owner is asked of the operator, compared like any question, and recorded as a finding
    (`unknown_owner`).
-   **Until the projection states owners** (projection v2), no decision has one: the Lead asks the operator, as
-   today, and the summary shows "owner not stated" for each.
+   **The projection states each decision's owner** (register E335: one owner per decision kind, read from the
+   table of primitive owners, and one the table does not state is the operator's). A question with no owner, such as
+   a fallback's, is asked of the operator, and the summary shows "owner not stated" for it.
 3. Otherwise call the single action the projection marks as next, with **exactly the arguments the projection
    supplied**. Today's projection marks no action as next, so a single AVAILABLE action is taken as the next one; if
    several are AVAILABLE, `ambiguous_next_action` is recorded and the first in order is taken.
 4. When the subject is terminal, report the result to the operator: the diff, an evidence summary and the commit.
 
+**With steering on, a wait the projection marks `woken` ends the Lead's turn** (amended with the operator's answer of
+2026-11-26 to the [V-01 burn-down](v01-burn-down.md)'s Q1: "For q1 yes. That honestly just seems like a bug and sint
+how aew works now."; register E375). `woken` says a broker posts wakes, so the Lead does not call `harness_wait`: it
+ends its turn, and its next turn starts when a wake reaches its session or the operator says something. The fake TUI
+holds a session on the Lead's server, as OpenCode's TUI does, and the broker's wakes land there (`WakeChannel`). A
+wake that does not come within a bound is recorded (`lead.wake_missed`), and the Lead then calls the wait, counted
+under `mechanical_calls`. With steering off the Lead calls the wait, as before.
+
 **Judgment inputs (v2).** Where an action, or a decision owned by the Lead or the mechanism, names `judgment_inputs`,
 the Lead supplies them, as its own judgment, and asks no one (never on an operator's decision, whose choice is the
 operator's): a value the projection offers (or the first of its `options`) fills an argument the
-projection's arguments leave out, and the names are recorded as the Lead's (`lead.judgment`). Today's projection names
-none; projection v2 does, with its `next`.
+projection's arguments leave out, an input offered with neither (a rationale) the Lead writes in its own words, and
+the names are recorded as the Lead's (`lead.judgment`). The projection names them on each decision whose call needs
+them (register E388); projection v2 names them on its actions too, with its `next`.
 
 Where that policy cannot make progress (no available action, a refusal, a blocked state), it falls back the way a
-real Lead did, and **counts it**: `explain` or help, the `cli` tool, `aew` from its shell, or a tool the projection did
+real Lead did, and **counts it**: `work_show` with `explain: true` or help, the `cli` tool, `aew` from its shell, or a tool the projection did
 not offer. The fallbacks are scripted per known gap so the run finishes, and every one is a ledger entry; the
 scripted Lead's own accounting is the ground truth for its calls. The known gaps on today's `main`:
 
@@ -97,10 +117,10 @@ scripted Lead's own accounting is the ground truth for its calls. The known gaps
 | An empty project offers no action for the operator's request | `ticket_draft`, a tool the projection did not offer, with the Lead's own proposition and plan |
 | No decision asks for the proposed plan's approval | the Lead asks the operator anyway, then accepts the plan from its shell |
 | A decision has no typed tool | its `cli_fallback`, from the shell; for `RECONCILE` (an INTERRUPTED Ticket), with the phase it was interrupted from and a reason |
-| Nothing AVAILABLE and no decision | one `explain`; then the command a projection hint names, from the shell (subject, revision and a reason in the Lead's own words filled in, `--launch` as a refusal asks). A hint with any other placeholder runs nothing and is the gap `hint_not_followable`; a command that doesn't parse is the observation `hint_usage_error`. Neither has a counter or a threshold, and the summary always prints both |
+| Nothing AVAILABLE and no decision | one `work_show` with `explain: true`, then the command a projection hint names, from the shell (subject, revision and a reason in the Lead's own words filled in, `--launch` as a refusal asks). A hint with any other placeholder runs nothing and is the gap `hint_not_followable`. A command that doesn't parse is the observation `hint_usage_error`. The summary always prints both and neither has a counter or a threshold |
 | A prepared candidate with no decision offered: the publish decision reads the routed report, so this leaves a report that wasn't clean, or none | the Lead asks the operator to publish, then calls `integration_publish` (not offered) |
 | After a takeover and a reconcile, no implementer is active and nothing is offered (the hint's transition is refused) | a new attempt: `aew invoke create --role implementer --launch` (`work redispatch` for a non-mutating Ticket); the refused hint is recorded as `stale_hint` |
-| A decision still required after its answer was acted on (its call refused) | never re-asked: one `explain`, then its `cli_fallback` if it is concrete (for `RESOLVE_STAGE`, `aew stage continue` with the Lead's own rationale; when that is refused and the refusal names `abandon`, `aew stage abandon` with the Lead's rationale), then stuck |
+| A decision still required after its answer was acted on (its call refused) | leave the original decision as recorded. Try one `work_show` with `explain: true`, then its `cli_fallback` if it is concrete. For `RESOLVE_STAGE` use `aew stage continue` with the Lead's own rationale. If that is refused and the refusal names `abandon`, use `aew stage abandon` with the Lead's rationale. If the decision is still required, mark the run stuck |
 | Anything else | the Lead tells the operator it is stuck and waits; whatever the operator says next, it goes on (the ledger says where it stopped) |
 
 **The workers** come from the fake harness: implementer, reviewer, verifier and integration verifier, each run's
@@ -109,7 +129,12 @@ to a real Python sample, with a real test. **The project's unit check is a real 
 `__pycache__`. The sample declares its pytest caches in `policy/checks.yaml` and has no Git ignore entry for them.
 
 The offline world (the fake harness, the fake OpenCode binary and their scripts) belongs to the test, like an
-installed tool: its variables are not the operator's.
+installed tool: its variables are not the operator's. It has its own provider, a listener on loopback, which a setup
+fixture names as the relay upstream of every provider AEW knows an address for, so a relay probe of the world's
+synthetic login (doctor's and init's `provider-relay` rows) is answered there and never by a real provider host
+(register E387). Its limit: it is an upstream override, so the world's built-in providers take the override's paths.
+No plan login and no stored worker key is relayed in the world, and the refreshing route is not reached; the world's
+one login, an API key, is relayed as in the operator's default configuration.
 
 ## 3. The scenarios
 
@@ -135,7 +160,9 @@ installed tool: its variables are not the operator's.
   of the authoritative snapshot, contained as a worker's check, and its `check-changes` row names each path a check
   changes, with `.gitignore` or `.git/info/exclude` as the fix; never evidence. Without the flag the row is a WARN
   that gives the command, so the driver types `aew doctor --run-checks` for this case. Neither refuses anything.
-- **The case readiness can't name yet** stays red, and the driver names what holds it: the stale seat is G3-C's.
+- **The stale seat** is named by doctor's `lead-seat` row (register E384): a seat held by a Lead session that is
+  no longer running is a WARN naming that session and the fix, plain `aew opencode`, which resumes it, or a
+  takeover where resume is refused. Should the case go red, the driver names the row that owes it: E384.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
   the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for readiness (`aew doctor`) and for the
@@ -167,6 +194,13 @@ installed tool: its variables are not the operator's.
   is an operator decision**, recorded under decisions, never a `lifecycle_step`; it is not one of V1's two. With
   steering on, the Lead leaves an action the projection marks `auto_runnable` to the loop: it waits for an event (the
   revision moves, or the loop records a stop) and pushes the action itself, counted, only when the loop declined.
+  **A BLOCKED stop is the loop declining only when its blocker is still present after the run ends** (amended with
+  the operator's answer of 2026-11-26 to the V-01 burn-down's Q10: "5. B yes its meant to make sure the lead doesnt
+  do menial labor."; register E375). The loop keeps BLOCKED out of the stops only the Lead can clear: such a blocker
+  can clear on its own, and the loop then acts. So the Lead reads a BLOCKED stop with the loop's own selection, and
+  takes it as a decline only once the blocker still stands, with no live run, for one of the loop's own looks; any
+  other stop is a decline at once. The Lead's push after a stop that cleared itself is a mechanical call, and is
+  counted. No counter or threshold changes.
 
 ## 4. The burden ledger (the measurement, and the assertions)
 
@@ -219,8 +253,8 @@ workaround no counter sees (editing git's own exclude file, for example) can nev
 **Operator decisions** are listed, not counted against: every question AEW or the Lead put to the operator, with the
 answer. V1 must list exactly `plan`, `publish`. Any other question fails that comparison and is reviewed by hand: is it
 a real product, policy or safety judgement? The summary shows, for each decision, the tool its answer drives and
-whose decision the projection says it is ("owner not stated" until the projection carries owners); the test does not
-settle that ownership. **v2:** only operator-owned decisions are the operator's. A decision the projection gives to the
+whose decision the projection says it is ("owner not stated" for a question no decision carries, such as a
+fallback's); the test does not settle that ownership. **v2:** only operator-owned decisions are the operator's. A decision the projection gives to the
 Lead or the mechanism is never put to the operator, and the summary lists it apart ("not the operator's"). Every
 question that does reach the operator is compared, whatever owner it names, so a question cannot leave the
 comparison by its label.
@@ -248,14 +282,14 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 
 | Counter | What counts |
 |---|---|
-| `help_calls` | `--help`, or `explain` used to find a command |
+| `help_calls` | `--help`, or `work_show` with `explain: true` used to find a command |
 | `guessed_commands` | any call to a tool or command the projection did not offer |
 | `cli_tool_calls` | the typed surface's `cli` passthrough |
 | `shell_aew_calls` | `aew` run from the Lead's shell (the scripted Lead's own accounting is the ground truth) |
 | `ambiguous_next_action` | the projection offered several AVAILABLE actions and marked none as next |
 | `revision_args` | any Lead call whose arguments include `expect_rev` or any other revision, **including one the projection supplied** |
 | `stale_retries` | a STALE_REVISION followed by a retry |
-| `refusals` | any refusal, by code and message |
+| `refusals` | any refusal, by code and message, except the call in flight when the test kills the session (as in V2's forced case): the first call that session records after the kill, refused `BROKER_UNREACHABLE` and followed by no other, is the scenario's, recorded and shown, never counted (amended with the operator's approval of 2026-11-27 to build the [V-01 burn-down](v01-burn-down.md)'s C16, replying to the Lead's plan whose step 1 was "the C4 re-measure, and start builders on C16 and C17": "Yes do 1 and 2"; register E386) |
 | `mechanical_calls` | calls that only push a stage or wait, with steering on (a steering-off run records them as its measurement, and only a steering-on run is held to 0) |
 
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:
@@ -349,7 +383,7 @@ Approved by the operator on 2026-10-11 (Q8: every listed amendment). Each thresh
 | Amendment | Where it is implemented |
 |---|---|
 | The scripted Lead supplies the projection's `judgment_inputs`, where present | §2; `vertical/lead.py` (`judged`) |
-| `decisions_required` counts operator-owned decisions only; until the projection states owners, "owner not stated" and today's behaviour | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
+| `decisions_required` counts operator-owned decisions only; the projection states owners (E335), and a question with none shows "owner not stated" | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
 | The evidence-mismatch sub-scenario no longer relies on `__pycache__` | **already met** in v1 (the check rewrites the tracked `ledger/build-stamp.txt`) |
 | The `open` row opens the operator console and asks for the PIN; the auto-opened console is not counted; until then the ideal attempt fails and today's fallback is counted | retired with the frozen path (STG-13): `open` is step 3 of V-01's path (§3), and `console_opened` still records a console |
 | A live-UAT check of auto-open | §6, the live variant |
@@ -426,7 +460,7 @@ In `shadow` a finding is reported and never fails a run. Every rule starts in `s
 | Rule | Mode |
 |---|---|
 | O-IDS | `shadow` |
-| O-CMD | `shadow` |
+| O-CMD | `enforce` |
 | O-CODE | `shadow` |
 | O-WORDS | `shadow` |
 | O-SECRET | `enforce` |
@@ -516,6 +550,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `STALE_POLICY` | The legality policy in force is not the one a staged action was bound to | `policy_changed` | Lead |
 | `STALE_REVISION` | Only a CAS mismatch. After A3, `CHANGED_SINCE_READ` carries the named semantic change | `cas_mismatch` | Lead |
 | `PERMISSION_DENIED` | Only an authority that actually denied the caller. Never "seat held", and never "input not set or malformed" | `authority_denied` | operator |
+| `OUTAGE_READ_REFUSED` | The independent outage reader carries this internal refusal as a D-01 Problem | `authentication_unqualified`, `invalid_request`, `not_found_or_not_disclosable`, `cursor_stale_or_unauthorized`, `owner_unavailable` | operator |
 | `CAPABILITY_UNAVAILABLE` | A capability switched off for the project, or refused where it was called | `capability_off` | operator |
 | `OPERATOR_AUTHORIZATION_REQUIRED` | The operation needs the operator's out-of-band authorization | `operator_authorization_missing` | operator |
 | `REF_OUT_OF_SCOPE` | A worker's message ref names something outside its own unit, thread, Ticket and runs | `ref_out_of_scope` | Lead |
@@ -543,7 +578,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `WAIT_BINDING_LOST_ON_RECONNECT` | The event stream dropped since the last observed step boundary. Retry from a foreground shell call in a new step | `wait_binding_lost` | engine |
 | `WAIT_OUTSIDE_A_STEP` | No foreground shell call became available within the worker wait's grace | `wait_outside_step` | engine |
 | `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
-| `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |
+| `PENDING_LEAD_MESSAGE` | The run submitted a report while a previously admitted Lead message remained unincorporated into a subsequent worker result. A Lead message recorded before submission is incorporated by a report from the same invocation that lists it as delivered. The definition excludes a forged unposted line, a superseded unposted message and a superseded post never confirmed delivered. | `pending_lead_message` | Lead |
 | `MESSAGING_SNAPSHOT_MISMATCH` | A send to a run whose launch snapshot of the messaging switch disagrees with the project's | `messaging_switch_changed` | Lead |
 | `COORDINATION_LIMIT` | A coordination message beyond one of its bounds | `coordination_bound` | Lead |
 | `LEAD_INBOX_FULL` | The thread already holds the most worker messages not yet shown to the Lead | `inbox_full` | Lead |

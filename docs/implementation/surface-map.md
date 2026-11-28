@@ -22,6 +22,9 @@ finding 2).
 
   Until A4 takes `aew` off the Lead's PATH, that mechanism is what honours the disposition. `shell_reachable_mutation`
   reports the grandfathered commands that have no such mechanism today.
+- **A new command a Lead uses, with disposition `typed`:** it takes the Lead credential and joins
+  `lead_broker.TYPED_ONLY`, so a Lead session reaches it through its typed tool only, never from its shell or the
+  `cli` escape (E160 slice 2b: `plan assess`, reached by `resolve`'s `assess_plan`).
 
 **A keep-out claim is proved, never stated** (PR 215 third and fourth reviews). A keep-out claim is a
 `lead_kept_out_by`, an `engine-owned` or `forbidden-to-lead` disposition, or an `internal` home.
@@ -37,6 +40,9 @@ finding 2).
 - **The comparison.** The same probe also runs without that environment, with an empty stdin. It must not carry the
   session marker, nor end in the same refusal (code and message), so the refusal is the session's, not the probe's
   arguments'.
+- **The outage reader's D-01 refusal.** The probe compares the ordinary JSON read with the session's
+  `authentication_unqualified` Problem. O-02 gives the Problem fixed text and omits caller details, so the comparison
+  uses the Problem code and title and requires an ordinary result outside the session.
 - **Today.** `integrate custody` passes: refused by `custody_ops.refuse_lead_session` in a session, and past it, to
   the credential read, outside one.
 - **Not a keep-out.** A typed-surface transport (`lead mcp`, `lead tool`) is the Lead's door by design, not a
@@ -115,8 +121,9 @@ typed Lead tool (`aew.surface.contract.TOOLS`) has one entry:
   - The floor comes from its arguments:
     - any command: `USAGE`;
     - a Lead credential: `PERMISSION_DENIED` and `STALE_AUTHORITY`;
-    - any expected revision (`--expect-rev`, `--expect-map-rev`): `STALE_REVISION`;
-    - a mutating tool: the same.
+    - the independent map compare-and-set (`--expect-map-rev`): `STALE_REVISION`;
+    - a missing or moved required prior value or approval subject: `CHANGED_SINCE_READ`;
+    - a mutating tool: current Lead authority and that tool’s declared bindings.
   - On top of the floor: `PROJECT_NOT_FOUND` where it opens a project, and the codes its own handler raises.
   - `refusal_status` says the inventory is partial and the refusals are not yet structured (a cause, a remedy and an
     owner each). A2 delivers both.
@@ -145,8 +152,10 @@ the checks by being labelled diagnostic? No, by construction):
     - a git repository;
     - `aew init`, with messaging and recall search switched on and adopted, so their commands exist;
     - a Lead;
-    - one Ticket with an accepted plan, assigned without a launch, so its invocation `INV-0001`, its workspace and its
-      pack exist.
+    - one Ticket with a body and an accepted plan, assigned without a launch, so its invocation `INV-0001`, its
+      workspace and its pack exist;
+    - a second Ticket that depends on it, so the dependency change is a decision with a body (`D-0003`, for
+      `record body`; the plan's acceptance, `D-0002`, is one without).
 
     It is settled before any probe runs, so housekeeping the setup left pending is never blamed on a surface. The
     settling may remove only the spent redo records under `.aew/state/txn/`; anything else fails.
@@ -198,7 +207,12 @@ registry records the plan, not the decision:
     `R(<choice>)` (built in `RESOLVE_CHOICE_PRIMITIVE`, or under `proposed_choices`), that will reach it. An empty list
     means no home is designed yet (`work dispatch` and `work redispatch`, an A2 design item). Other plans have none.
   - `primitive`: the step the homes run, named like a typed door's (or `none`).
-  - `lands`: the slice that builds the homes and decides the row, from the vocabulary's `lands`.
+  - `lands`: the live register row whose work builds the homes and decides the row, or `later`, from the
+    vocabulary's `lands`. The plan named its slices here; its A2 is dead, and register E233 owns the typed-surface
+    hole it left (the designer's ruling of 2026-11-08). So the `fields` check holds the **lands guard**: every key of
+    the vocabulary's `lands` is an open row of the register (`docs/implementation/future-work.yaml`, read through
+    `tools/register.py`) or `later`. When the row closes, the guard fails until each entry that lands there is
+    decided, or moved to the row that took the work over, or to `later`.
 - **`proposed_tools`** (with the `expands_to` each will have) and **`proposed_choices`** (with their
   `(subject kind: primitive)` pairs): the homes not built yet.
 - **Shrink-only.** The planned rows and both proposal lists are pinned in the test by their digests. The registry
@@ -334,7 +348,7 @@ each check.
 |---|---|---|
 | `registered` | enforce | a live command or tool has no entry |
 | `live` | enforce | an entry names a command or tool that no longer exists, or is registered twice |
-| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing slice or reason is missing or invalid (below); a proposal homes no planned row |
+| `fields` | enforce | an entry lacks exactly one home, users, a `journeys` list, a valid `mutates` with its basis, or `refusals`; or uses a value outside the vocabulary; an undecided command has no `planned`, or a decided one keeps it; a plan's disposition, homes, primitive, landing row or reason is missing or invalid (below); a key of the vocabulary's `lands` is neither an open register row nor `later` (the lands guard); a proposal homes no planned row |
 | `users` | enforce | the users contradict the live classification: an operator-only command (`lead_broker.OPERATOR_ONLY`) with any user but `operator`; a Lead-reachable command without `lead`; `worker` on anything but the worker bridge's commands (`bridge.OPERATIONS`), or missing from one |
 | `home` | enforce | a `diagnostic` entry whose `mutates` is not `"no"`, or with journeys; an `internal` entry whose `launcher` does not resolve to code that starts the command; a new diagnostic entry without its `diagnostic_justification` |
 | `mutates` | enforce | the declaration contradicts the code: a tool's differs from `contract.Tool.mutates`; a command with an expected-revision argument is neither `"yes"` nor `with` that flag; a command taking a credential (Lead or invocation) is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); an operator-only command is neither `"yes"` nor `with` (unless `mutates_exempt` gives the reason); a command that runs a primitive is `"no"` |
@@ -360,7 +374,7 @@ each check.
 | `planned_coverage` | enforce | a typed plan's `uncovered` differs from what the four scans derive (transition edges, entrypoints, state-selected entrypoint uses, options); it does not classify exactly its command's options; names an option's home outside its homes; states `uncovered` uses other than the scans derive (or omits them); a plan that is not typed has `options` or `uncovered`; a proposal runs `work.transition` without naming its `transitions` |
 | `out_of_door` | enforce | a command that has left `LEAD_REACHABLE` is still `undecided` |
 | `planned_sweep` | report | a planned typed row's home, built or proposed, that does not run its primitive yet: the A2 debts |
-| `planned_by_slice` | report | the planned rows, by the slice they land in: until every row is decided |
+| `planned_by_slice` | report | the planned rows, by the register row they land in: until every row is decided |
 
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the

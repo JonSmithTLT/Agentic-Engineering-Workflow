@@ -41,7 +41,6 @@ from aew.engine.store import Transition
 from aew.errors import (
     AEWError,
     HarnessLaunchFailed,
-    HarnessSendNeedsStore,
     IllegalTransition,
     MessagingSnapshotMismatch,
     NotFound,
@@ -54,6 +53,7 @@ from aew.harness import contract as K
 from aew.harness import delivery as L
 from aew.harness import progress as P
 from aew.harness.base import LAUNCH_REFUSALS, RELAY_FAMILY_SHOWN
+from aew.harness.bridge import MAP_OPERATIONS
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
@@ -167,16 +167,17 @@ class Harness:
             stop = K.fields_command(f"aew harness stop {previous['run']}", "reason", "superseded run is still live")
             return blocker_from(RunLive(
                 f"{previous['run']} may still be running; stop it with:\n\n{stop}\n\n"
-                f"or relaunch with `aew harness launch {invocation} {K.EXPECT_REV} "
+                f"or relaunch with `aew harness launch {invocation} --prior-value {previous['run']} "
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+    def harness_launch(self, *, token: str, invocation: str, replace: bool = False,
                        request_id: str | None = None, prior_value: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
         request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
-        with self.k.lead_txn(token, expect_rev, "harness.launch", request=request) as ctx:
+        with self.k.lead_txn(token, "harness.launch", request=request) as ctx:
+            approval.require_binding("harness.launch", invocation, "run", prior_value)
             if request is not None and ctx.replayed is not None:
                 replay = ctx.replayed
                 invocation = replay["invocation"]
@@ -212,6 +213,7 @@ class Harness:
             runs.append(run_record)
             if self.coordination.project_switch(state) == X.MESSAGING_ENABLED:
                 runs[-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
+            runs[-1].update(maps_launch_snapshot(self.k))
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
@@ -304,7 +306,7 @@ class Harness:
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                           f"with `aew harness launch {inv_id} {K.EXPECT_REV}` (the credential "
+                                           f"with `aew harness launch {inv_id} --prior-value {run}` (the credential "
                                            "rotates)", **base,
                                           **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
@@ -329,7 +331,7 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      f"with `aew harness launch {inv_id} {K.EXPECT_REV}` "
+                                      f"with `aew harness launch {inv_id} --prior-value {run}` "
                                       "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
@@ -354,20 +356,53 @@ class Harness:
         return {"text": text, "sha256": sha256_text(text), "path": self.packs.pack_rel(inv_id)}
 
     def expected_kinds(self, state: dict[str, Any], inv: dict[str, Any]) -> list[str]:
-        unit = state["work"][inv["work_unit"]]
-        pinned = (unit.get("execution") or {}).get("expected_kind")
-        if inv["role"] in E.EXECUTE_KIND and pinned:
+        pinned = E.pinned_kind(state, inv)
+        if pinned:
             return [pinned]
-        return sorted(E.ROLE_KINDS.get(inv["role"], set()))
+        return sorted(E.kinds_for(inv["role"], inv.get("scope")))  # a plan assessor's run expects its assessment
 
-    def operations_of(self, inv: dict[str, Any]) -> list[str]:
+    def operations_of(self, inv: dict[str, Any], *, expected: str | None = None) -> list[str]:
+        """The engine operations a run of ``inv`` is offered; ``expected``: the kind its attempt was pinned to, for a
+        non-mutating executor (``evidence.pinned_kind``), so it is offered that kind's submission alone (E168)."""
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))
         if inv.get("allowed_operations") is not None:
             ops &= set(inv["allowed_operations"])
         runs = inv.get("runs") or []
         if runs and run_messaging_snapshot(runs[-1]) == X.MESSAGING_ENABLED:
             ops |= {"message.reply", "message.read", "message.wait"}
-        return sorted(ops)
+        # The map reads ride context.read (register F15.8): a role that reads context, in a run launched with them on
+        if runs and "context.read" in ops and K.run_maps_reads(runs[-1]) == X.MAPS_READS_STRUCTURAL:
+            ops |= set(MAP_OPERATIONS)
+        return sorted(E.submit_operations(ops, inv["role"], inv.get("scope"), expected))  # what it may submit (#581 F1)
+
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        """What a worker's map read answers at (register F15.8): its invocation's workspace and base commit
+        (``invocation_workspace``, the one owner), the Ticket's effective scope paths, and who asks. The credential is
+        checked for ``context.read``, the operation the map reads ride. Reads the state; writes nothing."""
+        state = self.k.store.current()
+        inv_id, inv, _ = require_invocation(state, invocation_token, "context.read",
+                                            archived=self.archive.archived_credential)
+        workspace, _, base = self.invocations.invocation_workspace(state, inv)
+        if not base:
+            raise IllegalTransition(f"{inv_id} has no base commit to read the map at", invocation=inv_id)
+        scope: list[str] | None
+        try:
+            scope = list((self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths")
+                         or [])
+        except Exception:  # noqa: BLE001 - a record that cannot be read: the answer says its scope is unknown (m9)
+            scope = None
+        return {"workspace": str(workspace), "base": base, "scope_paths": scope,
+                "recipient": {"kind": "worker", "invocation": inv_id, "role": inv["role"],
+                              "work_unit": inv["work_unit"]}}
+
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        """A work unit's effective scope paths, read lock-free from committed state, for the Lead's and the operator's
+        ``aew map show --scope ticket --work`` (register F15.8)."""
+        state = self.k.store.read_committed()
+        unit = state["work"].get(work_id)
+        if unit is None:
+            raise NotFound(f"no work unit {work_id}", work_id=work_id)
+        return list((self.gates.record_meta(unit).get("scope") or {}).get("paths") or [])
 
     def harness_contract(self, state: dict[str, Any], inv_id: str, run: str) -> K.LaunchContract:
         inv = state["invocations"][inv_id]
@@ -376,7 +411,9 @@ class Harness:
             raise IllegalTransition(f"{inv_id}'s context pack no longer matches the pack pinned at dispatch")
         workspace, _, base = self.invocations.invocation_workspace(state, inv)
         runs = inv.get("runs") or []
+        messaging = any(r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs)
         continuation = None
+        carried = None
         if len(runs) > 1:
             mine = [e for e in E.scan(self.k.aew_root, inv["work_unit"])[0] if e["producer"]["invocation"] == inv_id]
             changed = None
@@ -399,6 +436,12 @@ class Harness:
 
             continuation = {"previous_runs": [r["run"] for r in runs[:-1]],
                             "evidence": [entry(e) for e in mine], "changed_paths": changed}
+            if messaging:
+                carried, omitted, thread_lines = self.coordination.continuation_messages(state, inv_id)
+                if carried:
+                    continuation.update(messages=[message["id"] for message in carried], messages_omitted=omitted,
+                                        message_categories={message["id"]: message["category"] for message in carried},
+                                        message_thread_lines=thread_lines)
         card = inv.get("card")
         content = (card or {}).get("content") or {}
         capabilities = set(archetype(inv["role"]).get("capabilities") or [])
@@ -418,9 +461,11 @@ class Harness:
             scope=inv.get("scope") or "ticket",
             card={k: card[k] for k in ("id", "version", "sha256")} if card else None,
             execution_profile=inv["execution_profile"], workspace=str(workspace),
-            expected_kinds=self.expected_kinds(state, inv), operations=self.operations_of(inv),
+            expected_kinds=self.expected_kinds(state, inv),
+            operations=self.operations_of(inv, expected=E.pinned_kind(state, inv)),
             pack_path=str(self.k.aew_root / pack["path"]), pack_sha256=pack["sha256"], pack_text=pack["text"],
             continuation=continuation, run_dir=str(runlog.run_dir(self.k.aew_root, run)),
+            coordination_text=tuple(message["text"] for message in carried or []),
             scratch=str(runlog.run_dir(self.k.aew_root, run) / "scratch"),
             # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
             # variables the harness server needs (never their values; the policy's current list, not a pin). `skills`
@@ -432,8 +477,7 @@ class Harness:
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or []),
-                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
-                       r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
+                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if messaging else {}),
                    K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base,
                    **(self.k.check_cache_inputs() if base else {})})
 
@@ -462,7 +506,8 @@ class Harness:
         run = next((r["run"] for r in reversed(inv.get("runs") or []) if r["token_id"] == inv["token_id"]), None)
         return {"invocation": inv_id, "run": run, "role": inv["role"], "role_card": self.invocations.card_ref(inv),
                 "work_unit": inv["work_unit"], "scope": inv.get("scope"), "workspace": inv.get("workspace"),
-                "expected_kinds": self.expected_kinds(state, inv), "operations": self.operations_of(inv),
+                "expected_kinds": self.expected_kinds(state, inv),
+                "operations": self.operations_of(inv, expected=E.pinned_kind(state, inv)),
                 "execution_profile": inv.get("execution_profile")}
 
     def run_evidence(self, work_unit: str, run: str,
@@ -528,12 +573,12 @@ class Harness:
         answer = {"runs": out}
         if invocation and state["invocations"][invocation]["status"] == "active":
             prior = approval.run_value(state["invocations"][invocation])
-            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), state["revision"], prior)
+            answer["launch_argv"] = approval.bound_argv(("harness", "launch", invocation), prior)
         return answer
 
     @staticmethod
     def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:
-        launch = f"aew harness launch {invocation} {K.EXPECT_REV} --prior-value {run['run']}"
+        launch = f"aew harness launch {invocation} --prior-value {run['run']}"
         if runlog.possibly_live(K.UNCONFIRMED, run["launched_at"]):
             return (f"Wait for the {runlog.UNCONFIRMED_GRACE_S:g}-second launch grace period. "
                     f"If the run is still unconfirmed, relaunch with `{launch}`.")
@@ -791,20 +836,22 @@ class Harness:
         return name, text
 
     def _lead_request(self, token: str, run: str, kind: str, payload: dict[str, Any], *, current: bool,
-                      reason: str | None = None,
-                      admit: Callable[[dict[str, Any], dict[str, Any]], None] | None = None) -> dict[str, Any]:
+                      reason: str | None = None, send_when: str | None = None,
+                      idempotency_id: str | None = None) -> dict[str, Any]:
         """Record and deliver a Lead request for a run. Work and invocation state do not change. Like the Lead seat
         operations, it needs no expected revision: it names one run and is checked against the state it commits on.
 
-        ``admit(state, run_entry)``, when given, runs under the same lock once the Lead and the run are found, before
-        any other check or write. It refuses by raising, and then nothing is written (``harness send``'s messaging
-        branch, F9-A plan v4 amendment 2 §3.1)."""
+        A send selects the request or coordination-record path here, with the authority and run check under the same
+        lock. A refused record never reaches the request writer (G4)."""
         directory = runlog.run_dir(self.k.aew_root, run)
         with self.k.store.session() as s:
             actor = require_lead(s.state, token, archived=self.archive.archived_credential)
             inv_id, inv = self._find_run(s.state, run)
-            if admit is not None:
-                admit(s.state, next(r for r in inv["runs"] if r["run"] == run))
+            entry = next(r for r in inv["runs"] if r["run"] == run)
+            route = "request"
+            if send_when is not None:
+                route = send_route(self.coordination.project_switch(s.state), run_messaging_snapshot(entry), send_when,
+                                   invocation=inv_id, run=run)
             if current:
                 if inv["status"] != "active" or inv["runs"][-1]["run"] != run:
                     raise IllegalTransition(f"{run} is not {inv_id}'s current run (invocation {inv['status']}, "
@@ -814,9 +861,19 @@ class Harness:
                     raise IllegalTransition(f"{run}'s status is unreadable; check `aew harness status {inv_id}`")
                 if status not in K.LIVE_RUNS:
                     raise IllegalTransition(
-                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
-                        "its invocation")
-            entry = next(r for r in inv["runs"] if r["run"] == run)
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} --prior-value {run}` "
+                        "to continue its invocation")
+            if send_when is not None:
+                body = payload["text"]
+                if route == "coordination":
+                    return self.coordination.record_harness_send(s.state, actor, inv_id, body, when=send_when,
+                                                                  idempotency_id=idempotency_id) | {"run": run}
+                if idempotency_id is not None:
+                    raise UsageError("`--idempotency-id` needs coordination messaging", reason="messaging_off")
+                if len(body) > MAX_SEND_CHARS:
+                    raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has "
+                                     f"{len(body)}. Put the material in a file in the agent's workspace and send its "
+                                     "path instead")
             name, text = self._record_request(entry, kind, payload)
             revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
                                            reason=reason, refs=[f"run:{run}"]))
@@ -831,7 +888,8 @@ class Harness:
             raise UsageError(f"a stop reason is at most {MAX_SEND_CHARS} characters; this one has {len(reason)}")
         return self._lead_request(token, run, "stop", {"reason": reason}, current=False, reason=reason)
 
-    def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN) -> dict[str, Any]:
+    def harness_send(self, *, token: str, run: str, text: str, when: str = L.DEFAULT_WHEN,
+                     idempotency_id: str | None = None) -> dict[str, Any]:
         """Deliver a Lead message to a running agent. ``when`` is its timing (F9-A plan v4 amendment 2 §1, §3, §4;
         register E55): ``next-step``, the default, reaches the agent at its next step boundary without interrupting it
         (OpenCode ``steer``); ``turn-end`` reaches it after its current turn (OpenCode ``queue``), and exists only
@@ -842,8 +900,7 @@ class Harness:
 
         * both off (M4-H's treatment, G1): ``next-step`` is a supervisor request file of up to ``MAX_SEND_CHARS``, as
           before; ``turn-end`` is refused ``TURN_END_NEEDS_MESSAGING``;
-        * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
-          (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
+        * both on (G4): every send is recorded in the message store, failing closed;
         * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal. The Lead relaunches
           the run to record a launch snapshot matching the current adopted switch.
 
@@ -855,17 +912,10 @@ class Harness:
             raise UsageError("nothing to send")
         if K.CREDENTIAL_RE.search(text):
             raise UsageError("refusing to send an AEW credential to an agent (its harness would persist it)")
-        if len(text) > MAX_SEND_CHARS:
-            raise UsageError(f"a message to an agent is at most {MAX_SEND_CHARS} characters; this one has {len(text)}. "
-                             "Put the material in a file in the agent's workspace and send its path instead")
-
-        def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
-            send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when,
-                       invocation=K.invocation_of_run(entry["run"]))
-
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.
-        return self._lead_request(token, run, "send", {"text": text}, current=True, admit=admit)
+        return self._lead_request(token, run, "send", {"text": text}, current=True, send_when=when,
+                                  idempotency_id=idempotency_id)
 
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         """Stop a run's current turn, keeping its session: `harness send` continues it. Work and invocation state do
@@ -932,15 +982,15 @@ class Harness:
                 action = f"{run}'s record is unreadable: {K.wait_step([run])}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
-                          f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
+                          f"{self._after_run(state, inv, produced, inv_id)} (the run itself decides nothing)")
             elif plan_failure := K.plan_login_failure(
-                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id
+                (record or {}).get("cause"), (inv.get("execution_profile") or {}).get("provider", ""), inv_id, run
             ):
                 action = f"{run} ended because {plan_failure}"
             elif (_reason_code(record) == K.PROVIDER_AUTH_FAILED
                   and (inv.get("execution_profile") or {}).get("credential") == "plan_login"):
                 action = (f"{run} ended because the provider rejected the operator's plan login. "
-                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id))
+                          + K.plan_login_recovery(inv["execution_profile"]["provider"], inv_id, run))
             elif _reason_code(record) == K.PROVIDER_AUTH_FAILED:
                 if provider_env is None:  # the policy's current names: a relaunch's server is given these
                     try:
@@ -950,29 +1000,41 @@ class Harness:
                         provider_env = []
                 names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
                     "provider_env"))]  # else the names this run was launched with
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}`, or "
+                          f"relaunch with `{K.launch_command(inv_id, run)}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id}",
                                           "reason", "harness run ended")
-                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"{K.EXPECT_REV}` (its credential rotates) or cancel it with:"
-                          f"\n\n{cancel}")
+                action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with "
+                          f"`{K.launch_command(inv_id, run)}` (its credential rotates) or cancel it with:\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
         return out
 
-    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]]) -> str:
+    @staticmethod
+    def unlaunched(state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for: a dispatch made without `--launch`,
+        or a stage that stopped before its launch. ``harness_resume`` lists none of them (it reads runs), and a
+        `harness launch` starts each (register E233). Never the lease's custodian (``integration_attempt``), which an
+        engine process works for, not a harness."""
+        return [inv_id for inv_id, inv in sorted(state["invocations"].items())
+                if inv["status"] == "active" and inv["work_unit"] == work_id and not inv.get("runs")
+                and inv.get("kind") != "integration_attempt"]
+
+    def _after_run(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
+                   inv_id: str) -> str:
         """What the Lead does with a finished run's evidence, as the command that applies (M3-D8)."""
         wid = inv["work_unit"]
         unit = state["work"].get(wid) or {}
+        if inv.get("scope") == E.ASSESSMENT_SCOPE:
+            return self._after_assessment(state, inv, produced, inv_id)
         if inv["role"] == "implementer":
             blocked = self.implementation_blocker(state, wid)
             if blocked:
@@ -985,7 +1047,28 @@ class Harness:
         if command is None:
             return "ingest it"
         return f"ingest it: {self._stage_for_report(state, inv)}" + ", ".join(
-            f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+            f"`{command} {wid} --evidence {e}`" for e in records)
+
+    def _after_assessment(self, state: dict[str, Any], inv: dict[str, Any], produced: list[dict[str, Any]],
+                          inv_id: str) -> str:
+        """A plan assessor's finished run (E160; #581 review, F2): nothing ingests a plan assessment, so say whether it
+        is the one that counts for the accepted revision (``evidence.counting_assessment``), and end the invocation,
+        which retires its observation and credential."""
+        wid = inv["work_unit"]
+        mine = sorted(e["id"] for e in produced if e["kind"] == E.PLAN_ASSESSMENT)
+        plan = (state["work"].get(wid) or {}).get("plan")
+        counted = E.counting_assessment(E.scan(self.k.aew_root, wid)[0], plan)
+        if counted is not None and counted["id"] in mine:
+            standing = (f"{counted['id']} ({counted['result']}) is the assessment that counts for {wid}'s plan "
+                        f"v{plan['accepted'] if plan else '?'}")
+        elif counted is not None:
+            standing = f"{counted['id']} already counts for {wid}'s accepted plan, so it is history"
+        else:
+            standing = f"it is bound to a plan revision that is no longer {wid}'s accepted one, so it counts for none"
+        end = K.fields_command(f"aew invoke cancel {inv_id}", "reason",
+                               "its plan assessment is recorded")
+        return (f"its plan assessment {', '.join(mine) or '(none)'} is recorded and nothing ingests it: {standing}. "
+                f"End {inv_id}, which retires its observation and credential, with:\n\n{end}\n")
 
     def _stage_for_report(self, state: dict[str, Any], inv: dict[str, Any]) -> str:
         """The stage that accepts a Ticket's report, in front of its command, where it is a whole step for that Ticket
@@ -1003,14 +1086,14 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
+            step = f"`aew work transition {wid} --to {to} --prior-value RUNNING`"
             stage = self.gates.stage_for(state, wid, "RUNNING", to)
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
-            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
-                    "its gates require)")
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY "
+                    "--prior-value RUNNING` (as its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING {K.EXPECT_REV}`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING --prior-value ASSIGNED`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
@@ -1103,6 +1186,17 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 MAX_SEND_CHARS = 1 << 20
 
 
+def maps_launch_snapshot(k: Kernel) -> dict[str, Any]:
+    """A new run entry's ``maps.reads`` launch snapshot (register F15.8), from the adopted execution policy the
+    recording transaction holds (``contract.maps_reads_snapshot``): ``harness launch`` and a dispatch's ``--launch``
+    both record it here. A policy that cannot be read turns nothing on."""
+    try:
+        policy, _ = k.execution_policy()
+    except Exception:  # noqa: BLE001 - an unreadable policy offers no map reads, as an absent key reads
+        return {}
+    return K.maps_reads_snapshot(policy)
+
+
 def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
     """The immutable launch snapshot; an old or absent snapshot is off, never today's project policy."""
     snapshot = run_entry.get("coordination")
@@ -1110,24 +1204,21 @@ def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
             else X.MESSAGING_DISABLED)
 
 
-def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
+def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None,
+               run: str | None = None) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
-    timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
-    and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
-    switched off or on records the matching snapshot. ``invocation`` is the run's, for the relaunch remedy."""
+    timing is ``next-step``. Both on goes through the coordination record. Mismatch has priority over a timing's
+    refusal and calls for a relaunch, which records the adopted switch in the new run's snapshot."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                  f"{K.EXPECT_REV}`) and send to the new run")
+                  f"--prior-value {run or '<run from aew harness status>'}`) and send to the new run")
         raise MessagingSnapshotMismatch(
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)
     if on:
-        raise HarnessSendNeedsStore(
-            "coordination messaging is on, and this AEW version cannot yet record `harness send` in the message store; "
-            "nothing was sent. With messaging on, every send is recorded and fails closed: not yet available (F9-A "
-            "MS5b adds it)", when=when)
+        return "coordination"
     if when == L.TURN_END:
         raise TurnEndNeedsMessaging(
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "

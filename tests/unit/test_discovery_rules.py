@@ -5,12 +5,14 @@ than from hand lists (docs/implementation/vertical-uat.md §8)."""
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
 import sys
 import threading
 import unicodedata
+from types import SimpleNamespace
 
 import pytest
 from discovery import allowed, capture, modes, rules, static
@@ -69,7 +71,7 @@ def test_o_cmd_takes_placeholders_as_values_and_checks_every_alternative():
 def test_alternatives_between_options_split_whole_option_groups():
     """The product's own plan hint offers `--assurance none` or `--review <card>` or `--verify <card>` across spaces:
     each group is one alternative, and each must parse. A group naming an option the command lacks is caught."""
-    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> --expect-rev N"
+    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card>"
     assert not found(prose(hint), "O-CMD")
     assert found(prose(hint.replace("--verify <card>", "--verfy <card>")), "O-CMD")
     assert not found(prose("aew harness config opencode <INV>|--lead"), "O-CMD")
@@ -82,8 +84,8 @@ def test_the_hint_the_engine_writes_for_a_plan_parses():
     source = (Path(rules.__file__).resolve().parents[3] / "src" / "aew" / "engine" / "resume_ops.py").read_text(
         encoding="utf-8")
     assert "--assurance none|--review <card>|--verify <card>" in source
-    assert not found(prose("aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card> "
-                           "--expect-rev N"), "O-CMD")
+    hint = "aew plan propose T-0001 --file - --assurance none|--review <card>|--verify <card>"
+    assert not found(prose(hint), "O-CMD")
 
 
 def test_a_refusal_saying_what_a_command_would_put_on_stdout_asks_for_nothing():
@@ -155,7 +157,8 @@ def id_typed_options() -> list[tuple[tuple[str, ...], str]]:
 
 def test_o_ids_flags_every_id_typed_option_of_the_live_parser():
     options = id_typed_options()
-    assert any(opt == "--expect-rev" for _, opt in options) and len(options) > 40
+    assert {(("plan", "accept"), "--revision"), (("integrate", "publish"), "--candidate")} <= set(options)
+    assert all(opt != "--expect-rev" for _, opt in options)
     for path, option in options:
         s = Suggestion((*path, option, "N"), "", structured=False)
         assert rules.o_ids(s), (path, option)
@@ -211,11 +214,11 @@ def test_a_structured_field_names_a_command_that_must_parse_whole():
 
 
 def test_o_ids_reads_structured_suggestions():
-    assert found(Output(site="unit", payload={"next": "acquire Lead authority: aew lead acquire --expect-rev 0"}),
+    assert found(Output(site="unit", payload={"next": "view history: aew history log --since 12"}),
                  "O-IDS")
     assert not found(Output(site="unit", payload={"next": "acquire Lead authority: aew lead acquire"}), "O-IDS")
     # A field that is not a suggestion is shown, not suggested: an id in it is allowed.
-    assert not found(Output(site="unit", payload={"run": "R-INV-1-1", "detail": "aew lead acquire --expect-rev 0"}),
+    assert not found(Output(site="unit", payload={"run": "R-INV-1-1", "detail": "aew history log --since 12"}),
                      "O-IDS")
 
 
@@ -645,6 +648,46 @@ def test_a_capture_run_writes_its_findings_beside_the_lane_report(tmp_path):
     assert "O-WORDS cli:aew status|PROJECT_NOT_FOUND" in data["findings"], data["findings"]
 
 
+@pytest.mark.skipif(importlib.util.find_spec("xdist") is None, reason="pytest-xdist not installed (extra: parallel)")
+def test_a_lost_xdist_worker_after_its_tests_pass_publishes_the_exit_and_fails_d2(tmp_path, capsys):
+    """An EOF after the last test report has no crash item. The green pytest lane still needs a red D2 result."""
+    import os
+    from pathlib import Path
+
+    tests = Path(__file__).resolve().parents[1]
+    probe = tmp_path / "tests" / "unit" / "test_probe.py"
+    probe.parent.mkdir(parents=True)
+    probe.write_text("def test_probe():\n    pass\n", encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "exit_worker.py").write_text(
+        "import os\n\ndef pytest_sessionfinish(session):\n"
+        "    if hasattr(session.config, 'workerinput'):\n        os._exit(37)\n", encoding="utf-8")
+    report = tmp_path / "reports" / "probe.json"
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tests), os.environ.get("PYTHONPATH", "")]),
+           "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+    env.pop("PYTEST_ADDOPTS", None)
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "xdist.plugin", "-p", "conftest",
+               "-p", "exit_worker", "--rootdir", str(tmp_path), "-c", str(tmp_path / "pytest.ini"), "-n", "1",
+               "--dist", "worksteal", "--max-worker-restart", "0", "--lane-report", str(report), str(probe)]
+    proc = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300,
+                          stdin=subprocess.DEVNULL,
+                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    assert proc.returncode == 0, proc.stdout[-3000:] + proc.stderr[-3000:]
+    assert json.loads(report.read_text(encoding="utf-8"))["complete"]
+    discovery = capture.out_path_for(report)
+    data = json.loads(discovery.read_text(encoding="utf-8"))
+    assert sum(data["errors"].values()) == 1
+    [loss] = data["worker_losses"]
+    assert isinstance(loss["pid"], int) and loss["pid"] > 0
+    assert (loss["worker"], loss["exit_code"], loss["findings_received"]) == ("gw0", 37, False)
+    assert loss["last_report"] == {"test": "tests/unit/test_probe.py::test_probe", "phase": "teardown",
+                                   "outcome": "passed"}
+    assert _ratchet().main([str(report.parent), "--event", "push", "--tier", "full", "--assurance", "success"]) == 1
+    output = capsys.readouterr().out
+    assert "FAIL capture errors (outputs left unjudged): 1" in output
+    assert f"{discovery.name}: RuntimeError: gw0 went down without its findings" in output
+
+
 # ---------------------------------------------------------------------------------------------- the ratchet
 
 def test_a_pull_request_fails_only_on_new_keys_of_enforced_rules():
@@ -814,16 +857,31 @@ def test_a_worker_that_goes_down_without_its_findings_is_a_capture_error(output,
     snapshot = plugin.recorder.as_dict()
     assert sum(snapshot["errors"].values()) == (1 if lost else 0)  # counted, and once per worker
     assert all("gw3 went down without its findings" in name for name in snapshot["errors"])
-    if not lost:
+    if lost:
+        assert plugin._loss_details() == [{"worker": "gw3", "pid": None, "exit_code": None,
+                                          "findings_received": capture.WORKER_KEY in output, "last_report": None}]
+    else:
+        assert plugin._loss_details() == []
         assert snapshot["findings"]["O-CMD x"]["count"] == 1 and snapshot["outputs"] == 2
+
+
+def test_a_synthetic_crash_item_never_replaces_the_last_report_from_the_lost_worker():
+    plugin = capture.CapturePlugin(None, None)  # type: ignore[arg-type]
+    node = SimpleNamespace(gateway=SimpleNamespace(id="gw3"))
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="setup", outcome="passed"))
+    plugin.pytest_testnodedown(node, "Not properly terminated")
+    plugin.pytest_runtest_logreport(SimpleNamespace(node=node, nodeid="test_worker.py::test_example",
+                                                    when="???", outcome="failed"))
+    [loss] = plugin._loss_details()
+    assert loss["last_report"] == {"test": "test_worker.py::test_example", "phase": "setup", "outcome": "passed"}
 
 
 def test_o_ids_still_reads_a_line_that_does_not_parse():
     """Review of #218, G2: O-IDS's fallbacks for a suggested line the parser refuses (here, an option it lacks): an id
     option's value, and a placeholder outside a Ticket's slot."""
-    unparsed = rules.o_ids(Suggestion(("plan", "accept", "T-0001", "--revision", "3", "--expect-rev", "12",
-                                       "--bogus"), "", structured=False))
-    assert {"--expect-rev 12", "--revision 3"} <= set(unparsed)
+    unparsed = rules.o_ids(Suggestion(("plan", "accept", "T-0001", "--revision", "3", "--bogus"), "", structured=False))
+    assert "--revision 3" in unparsed
     assert rules.o_ids(Suggestion(("work", "show", "<run-id>", "--bogus"), "", structured=False)) == [
         "placeholder in an unparsed line"]
     assert rules.o_ids(Suggestion(("work", "show", "<T>", "--bogus"), "", structured=False)) == []
@@ -941,16 +999,16 @@ def test_a_complete_run_decides_stale_whatever_its_event(tmp_path, capsys, monke
     D2 enforce measurement). A full-tier pull request runs what main runs, so it fails on the change that caused it."""
     ratchet = _ratchet()
     head = tmp_path / "allowed.yaml"
-    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    head.write_text(allowed.render({"O-IDS cli:aew x|result"}), encoding="utf-8")
     args = [str(_reports(tmp_path)), "--event", event, "--allowlist", str(head), "--tier", "full",
             "--assurance", "success"]
     assert ratchet.main(args) == 0  # shadow: reported only
     assert "1 stale (allow-listed, no longer observed)" in capsys.readouterr().out
-    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    monkeypatch.setitem(modes.MODES, "O-IDS", modes.ENFORCE)
     assert ratchet.main(args) == 1
     out = capsys.readouterr().out
-    assert "FAIL O-CMD cli:aew x|result" in out
-    assert allowed.remove_command("O-CMD cli:aew x|result") in out  # what to do, ready to paste
+    assert "FAIL O-IDS cli:aew x|result" in out
+    assert allowed.remove_command("O-IDS cli:aew x|result") in out  # what to do, ready to paste
 
 
 def test_a_lost_shard_fails_the_assurance_check_and_yields_no_mass_stale(tmp_path, capsys, monkeypatch):
@@ -1026,11 +1084,16 @@ def test_the_static_texts_add_no_new_key_of_an_enforced_rule():
     listed = {k for k in allowed.load() if allowed.is_static(k)}
     verdict = allowed.decide(observed, listed, stale_scope="static")
     assert verdict.ok, "\n".join(allowed.report(verdict, details=found))
+    # With every rule enforced, plant additions and removals on the actual observed baseline. This verifies
+    # the comparison independently of the committed list's intentional O-IDS shadow findings.
     enforced = {r: modes.ENFORCE for r in modes.RULES}
-    assert allowed.decide(observed | {"O-IDS static:guide|aew x --expect-rev N"}, listed, stale_scope="static",
-                          mode_of=enforced).failing == ["O-IDS static:guide|aew x --expect-rev N"]
-    dropped = sorted(listed)[0]
-    assert allowed.decide(observed - {dropped}, listed, stale_scope="static", mode_of=enforced).failing == [dropped]
+    planted = "O-IDS static:guide|aew x"
+    assert planted not in observed
+    assert allowed.decide(observed | {planted}, observed, stale_scope="static",
+                          mode_of=enforced).failing == [planted]
+    dropped = sorted(observed)[0]
+    assert allowed.decide(observed - {dropped}, observed, stale_scope="static", mode_of=enforced).failing == [dropped]
+    assert all("--expect-rev" not in text for _, _, text in static.texts(guides()))
 
 
 def test_the_committed_allow_list_is_well_formed_and_sorted():
@@ -1067,6 +1130,29 @@ def test_a_planted_credential_ask_fails_the_ratchet_under_the_committed_modes_an
         keys += [f"{f.rule} {f.site}" for f in found]
     assert not [f for f in rules.check(Output(site="unit", text=f"Your key is sk-ant-api03-{fake}AA and it works."))
                 if f.rule == "O-SECRET"]
+    head = tmp_path / "allowed.yaml"
+    head.write_text((Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "allowed.yaml")
+                    .read_text(encoding="utf-8"), encoding="utf-8")
+    assert _ratchet().main([str(_with_findings(tmp_path, keys)), "--event", "push", "--tier", "fast",
+                            "--assurance", "success", "--allowlist", str(head)]) == 1
+
+
+def test_a_planted_unparseable_suggestion_fails_the_ratchet_under_the_committed_modes_and_a_mention_is_no_finding(
+        tmp_path):
+    """With the modes as committed and nothing patched, a structured next step that does not parse, or a typed tool
+    the catalog lacks, fails the run as the ratchet decides it in `assurance`: O-CMD enforces (the operator: E140,
+    2026-11-04, and 2026-11-19, after its triage). A command named in prose without its arguments is a mention, and
+    no finding."""
+    from pathlib import Path
+
+    planted = {"next": Output(site="cli:aew planted-next|result", payload={"next": "`aew harness send`"}),
+               "tool": Output(site="cli:aew planted-tool|result", payload={"tool": "integration_publsh"})}
+    keys = []
+    for name, output in planted.items():
+        found = [f for f in rules.check(output) if f.rule == "O-CMD"]
+        assert found, name
+        keys += [f"{f.rule} {f.site}" for f in found]
+    assert not [f for f in rules.check(prose("aew harness send")) if f.rule == "O-CMD"]
     head = tmp_path / "allowed.yaml"
     head.write_text((Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "allowed.yaml")
                     .read_text(encoding="utf-8"), encoding="utf-8")
@@ -1252,11 +1338,11 @@ def test_a_parse_never_sees_another_calls_required_flags_off(monkeypatch):
 
     def complete():
         try:
-            outcome.append(rules.parse(["work", "staff", "T-0001"]))
+            outcome.append(rules.parse(["work", "transition", "T-0001"]))
         except rules.ParseFail as exc:
             outcome.append(exc)
 
-    mention = threading.Thread(target=rules.parse, args=(["work", "staff"],), kwargs={"complete": False},
+    mention = threading.Thread(target=rules.parse, args=(["work", "transition"],), kwargs={"complete": False},
                                name="mention")
     other = threading.Thread(target=complete, name="complete")
     mention.start()
@@ -1269,7 +1355,7 @@ def test_a_parse_never_sees_another_calls_required_flags_off(monkeypatch):
         release.set()
         mention.join(30)
         other.join(30)
-    assert len(outcome) == 1 and isinstance(outcome[0], rules.ParseFail)  # --expect-rev is required: refused
+    assert len(outcome) == 1 and isinstance(outcome[0], rules.ParseFail)  # the target state is still required
 
 
 def test_a_mention_named_with_a_trailing_option_still_parses_under_the_lock():
@@ -1281,7 +1367,7 @@ def test_a_mention_named_with_a_trailing_option_still_parses_under_the_lock():
     thread.join(30)
     assert done and not thread.is_alive()
     with pytest.raises(rules.ParseFail):
-        rules.parse(["work", "staff", "T-0001"])  # every flag back on
+        rules.parse(["work", "transition", "T-0001"])  # every flag back on
 
 
 # ---------------------------------------------------------------------------------------------- lowering a mode
@@ -1292,7 +1378,7 @@ def _base_modes(tmp_path, values: str):
     return path
 
 
-def _lowering(tmp_path, monkeypatch, labels, values='"O-CMD": ENFORCE'):
+def _lowering(tmp_path, monkeypatch, labels, values='"O-IDS": ENFORCE'):
     ratchet = _ratchet()
     read: list[int] = []
 
@@ -1316,13 +1402,13 @@ def test_lowering_a_mode_fails_a_pull_request_without_the_operators_label(tmp_pa
     """Any pull request could set a rule back to shadow, and only review caught it. Labels that cannot be read sign
     nothing."""
     assert _lowering(tmp_path, monkeypatch, labels)[0] == 1
-    assert "FAIL mode O-CMD: lowered from enforce against the base" in capsys.readouterr().out
+    assert "FAIL mode O-IDS: lowered from enforce against the base" in capsys.readouterr().out
 
 
 def test_lowering_a_mode_passes_on_a_pull_request_the_operator_merges(tmp_path, monkeypatch, capsys):
     assert _lowering(tmp_path, monkeypatch, ["operator-merge"])[0] == 0
     out = capsys.readouterr().out
-    assert "accepted mode O-CMD lowered" in out and "FAIL" not in out
+    assert "accepted mode O-IDS lowered" in out and "FAIL" not in out
 
 
 @pytest.mark.parametrize(("labels", "code", "line"), [([], 1, "FAIL mode O-GONE"),
@@ -1540,12 +1626,12 @@ def test_a_negator_still_governs_its_own_verb(text):
 # negator kind (recall first, the Lead's call). Generated from Unicode's own classes, not from a list of marks: every
 # character in a punctuation (P*) or symbol (S*) category, and every character Python splits lines at. Only a word
 # character ("_", which joins a name such as AEW_LEAD_TOKEN) and the backtick (a code span is the verb's own object)
-# are not punctuation.
-_EVERY_CHARACTER = [chr(c) for c in range(sys.maxunicode + 1)]
-PUNCTUATION_CHARS = [c for c in _EVERY_CHARACTER if unicodedata.category(c)[0] in "PS"]
+# are not punctuation. Every character is walked, never kept: a list of all of them held 1.1 M memory blocks for the
+# rest of the session in every process that collects this module (register E363's sweep).
+PUNCTUATION_CHARS = [chr(c) for c in range(sys.maxunicode + 1) if unicodedata.category(chr(c))[0] in "PS"]
 NOT_PUNCTUATION = {c for c in PUNCTUATION_CHARS if re.fullmatch(r"\w", c)} | {"`"}
 MARKS = [c for c in PUNCTUATION_CHARS if c not in NOT_PUNCTUATION]
-LINE_BREAKS = [c for c in _EVERY_CHARACTER if len(f"a{c}b".splitlines()) == 2]
+LINE_BREAKS = [chr(c) for c in range(sys.maxunicode + 1) if len(f"a{chr(c)}b".splitlines()) == 2]
 NEGATOR_LEADS = {"prohibition": "AEW can't", "plain negator": "The shell has no session",
                  "refusing verb": "Ignore the warning"}
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]
@@ -1981,7 +2067,7 @@ def test_a_fields_line_parses_through_the_real_expansion(monkeypatch):
             raise AssertionError("stdin was read")
 
     monkeypatch.setattr(sys, "stdin", NoStdin())
-    command = "aew invoke cancel INV-0001 --expect-rev <revision from aew status>"
+    command = "aew invoke cancel INV-0001"
     assert found(_hint(fields_command(command, "reason", "operator asked")), "O-CMD") == []
     empty = found(_hint(fields_block(command, {})), "O-CMD")
     assert len(empty) == 1 and "--reason" in empty[0]  # what the body lacks is still missing

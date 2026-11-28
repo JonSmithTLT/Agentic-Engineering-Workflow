@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import unprivileged_scandir
 from host_env import GUARDED
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
@@ -28,6 +30,35 @@ pytestmark = GUARDED
 @pytest.fixture
 def fake_bwrap(monkeypatch):
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+
+
+NO_NAMESPACE = "no user namespace in this test"
+
+
+@pytest.fixture
+def no_namespace(monkeypatch):
+    """The `.env` scan as on a host where it cannot read a directory through a user namespace: its fallback."""
+    monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, NO_NAMESPACE))
+
+
+@pytest.fixture
+def namespace_reads(monkeypatch):
+    """The `.env` scan's user namespace as one that reads every directory this account owns: the child's walk, run
+    here with the host's own listing (not ``listing_as_unprivileged``'s), as a namespace that maps the account to root
+    lists what it owns whatever its mode. Each path in the returned set stays unreadable there, as a directory another
+    account owns does. Pure, so it runs on every platform; the real child is tested in a sandbox."""
+    theirs: set[str] = set()
+
+    def walk(starts, root, rules):
+        with pytest.MonkeyPatch.context() as host:
+            for name, real in (("scandir", unprivileged_scandir._SCANDIR), ("stat", unprivileged_scandir._STAT),
+                               ("lstat", unprivileged_scandir._LSTAT)):
+                host.setattr(os, name, real)
+            walked = L._walk([d for d in starts if d not in theirs], root, rules, set())
+        return {**walked, "dirs": sorted({*walked["dirs"], *(d for d in starts if d in theirs)})}, None
+
+    monkeypatch.setattr(L, "_walk_in_namespace", walk)
+    return theirs
 
 
 @pytest.fixture
@@ -58,17 +89,24 @@ def run_layout(tmp_path: Path, role: str, *, scope: str = "ticket", policy: dict
 
 
 def lead_layout(tmp_path: Path, *, scope: str = "project", network: str = L.SHARED, net_dir: str | None = None,
-                home: str | None = None, policy: dict | None = None, env: dict[str, str] | None = None) -> C.Layout:
+                home: str | None = None, policy: dict | None = None, env: dict[str, str] | None = None,
+                skills_dir: str | None = None) -> C.Layout:
     """The Lead's layout (STG-05 CS-4): its project's working tree is its workspace, its run directory and its own
     OpenCode state are under the project's `.aew/local`."""
     repo, _ = repo_with_worktree(tmp_path)
     for d in (".aew/state/log", ".aew/local/harness/runs"):
         (repo / d).mkdir(parents=True, exist_ok=True)
+    return C.for_run(**lead_args(tmp_path), scope=scope, policy=policy,
+                     home=home if home is not None else str(tmp_path / "home"), env=env or {}, network=network,
+                     net_dir=net_dir, skills_dir=skills_dir)
+
+
+def lead_args(tmp_path: Path) -> dict[str, Any]:
+    """The arguments of :func:`lead_layout`'s project, once it is made, that every Lead start there shares."""
+    repo = tmp_path / "repo"
     run = repo / ".aew/local/harness/runs/lead-1"
-    return C.for_run(role="lead", scope=scope, workspace=str(repo), run_dir=run, scratch=str(run / "scratch"),
-                     bridge_dir=None, policy=policy, home=home if home is not None else str(tmp_path / "home"),
-                     project=str(repo), runs=str(run.parent), env=env or {}, network=network, net_dir=net_dir,
-                     state_dir=str(repo / ".aew/local/harness/lead"))
+    return {"role": "lead", "workspace": str(repo), "run_dir": run, "scratch": str(run / "scratch"), "bridge_dir": None,
+            "project": str(repo), "runs": str(run.parent), "state_dir": str(repo / ".aew/local/harness/lead")}
 
 
 def test_argv_binds_the_root_read_only_first_then_writable_roots_then_read_only_rebinds_then_masks():
@@ -146,6 +184,46 @@ def test_a_runs_skill_copy_is_bound_read_only_after_its_harness_state_and_protec
     steps = L.order(present)
     assert steps.index(("--bind", harness)) < steps.index(("--ro-bind", real))
     assert present.describe()["skills_binds"] == [real]
+
+
+def test_each_lead_start_binds_only_its_own_skills_copy_read_only(tmp_path, fake_bwrap):
+    """E161: each Lead start's copy is a folder of its own, made by the host beside the Lead's state and never in it,
+    and reached by no writable bind of an earlier start's layout or its own: only its own start binds it, read-only."""
+    from types import SimpleNamespace
+
+    from aew import skills
+    from aew.harness.opencode import lead
+
+    engine = SimpleNamespace(aew_root=tmp_path / "repo" / ".aew")
+    first, first_at = lead.deliver_lead_skills(engine)
+    earlier = lead_layout(tmp_path, skills_dir=first_at.folder)
+    planned, at = lead.deliver_lead_skills(engine)
+    successor = C.for_run(**lead_args(tmp_path), scope="project", policy=None, home=str(tmp_path / "home"),
+                          env={}, skills_dir=at.folder)
+    assert first["exposed"] and planned["exposed"] and skills.verify(planned, Path(at.folder))
+    assert at.folder != first_at.folder and not os.path.lexists(first_at.folder)
+    assert successor.skills_binds == (at.folder,) and at.folder in successor.protected
+    for layout in (earlier, successor):
+        # the deepest bind that reaches the copy decides it: the project is writable, `.aew` read-only, `.aew/local`
+        # hidden (an empty read-only tmpfs), and only the successor's own copy is bound back, read-only
+        reach = [(len(b), kind) for kind, binds in (("writable", layout.writable), ("readonly", layout.readonly),
+                                                     ("hidden", layout.hide_runs))
+                 for b in binds if Path(at.folder).is_relative_to(b)]
+        assert max(reach)[1] == ("readonly" if layout is successor else "hidden"), reach
+    assert not Path(at.folder).is_relative_to(os.path.realpath(engine.aew_root / lead.LEAD_DIR))
+
+
+def test_a_skills_folder_that_is_a_link_to_a_directory_is_never_bound(tmp_path, fake_bwrap):
+    """E161 (#565's quick check, m3): the layout binds a skills copy only where ``skills_dir`` is a directory of its
+    own; a link to one is never followed, so nothing is bound and nothing protected in its name."""
+    target = tmp_path / "elsewhere"
+    (target / "engineering-planning").mkdir(parents=True)
+    link = tmp_path / "skills-link"
+    link.symlink_to(target, target_is_directory=True)
+    layout = lead_layout(tmp_path, skills_dir=str(link))
+    real = os.path.realpath(target)
+    assert layout.skills_binds == ()
+    assert real not in layout.readonly and real not in layout.protected
 
 
 def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):
@@ -401,13 +479,14 @@ def test_policy_mode_defaults_to_required_where_containment_exists():
     if C.supported():
         assert C.mode(None) == C.mode({}) == "required"
         assert C.mode({"containment": {"mode": "allow_weaker"}}) == "allow_weaker"
-    else:  # nothing can be required where nothing can contain: the label says what runs have
-        assert C.mode({"containment": {"mode": "required"}}) == "allow_weaker"
+    else:  # unset, nothing is required where nothing can contain; an explicit `required` refuses (E100)
+        assert C.mode(None) == C.mode({}) == "allow_weaker"
+        assert C.mode({"containment": {"mode": "required"}}) == "required"
 
 
 def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(monkeypatch, tmp_path):
     """M4-B review: on a POSIX platform other than Linux, `required` is honoured by refusing, never silently weakened;
-    Windows stays labelled workdir_separation_only (ADR-0009)."""
+    and on Windows too since E100 (``test_containment_required_everywhere``)."""
     monkeypatch.setattr(C, "supported", lambda: False)
     required = {"containment": {"mode": "required"}}
     args = dict(role="implementer", scope="ticket", workspace=str(tmp_path), run_dir=tmp_path / "run",
@@ -419,7 +498,9 @@ def test_an_explicit_required_mode_refuses_on_a_platform_without_containment(mon
     assert C.establish(**args, policy=None)[0] is None
     assert C.doctor(required, "note")[0] == "FAIL"
     monkeypatch.setattr(C.sys, "platform", "win32")
-    assert C.mode(required) == "allow_weaker" and C.establish(**args, policy=required)[0] is None
+    assert C.mode(required) == "required" and C.mode(None) == "allow_weaker"
+    with pytest.raises(ContainmentUnavailable, match=r"this platform \(win32\)"):
+        C.establish(**args, policy=required)
 
 
 def test_a_tree_that_requires_a_layout_refuses_to_spawn_without_one():
@@ -907,6 +988,25 @@ def test_an_operator_root_that_holds_aews_host_state_is_refused(tmp_path, monkey
     guarded = L._guarded(ws, project=None, runs=None, bridge_dir=None, masks=(), host=())
     for root in (data, data / "aew", data / "aew" / "weaker-contexts"):
         with pytest.raises(ContainmentUnavailable, match="AEW's host state"):
+            L._refuse_unsafe_root(str(root), L._real(root), guarded, workspaces=str(tmp_path / "workspaces"))
+    L._refuse_unsafe_root(str(tmp_path / "beside"), L._real(tmp_path / "beside"), guarded,
+                          workspaces=str(tmp_path / "workspaces"))
+
+
+def test_an_operator_root_that_holds_the_g3_approval_records_is_refused(tmp_path, monkeypatch, fake_bwrap):
+    """A-44 BOY-05.a: only the G3 clients write the per-host approval records, so a policy root that is, contains or
+    lies under their directory is refused, as AEW's host state is; one beside it is not (#660 review)."""
+    from aew import g3client
+
+    _, ws = repo_with_worktree(tmp_path)
+    state = tmp_path / "state"
+    records = state / "aew" / "g3" / "requests"
+    records.mkdir(parents=True)
+    (tmp_path / "beside").mkdir()
+    monkeypatch.setattr(g3client, "RECORDS_OVERRIDE", records)
+    guarded = L._guarded(ws, project=None, runs=None, bridge_dir=None, masks=(), host=())
+    for root in (state, state / "aew", records):
+        with pytest.raises(ContainmentUnavailable, match="the G3 clients' approval records"):
             L._refuse_unsafe_root(str(root), L._real(root), guarded, workspaces=str(tmp_path / "workspaces"))
     L._refuse_unsafe_root(str(tmp_path / "beside"), L._real(tmp_path / "beside"), guarded,
                           workspaces=str(tmp_path / "workspaces"))
@@ -1798,3 +1898,446 @@ def test_no_contained_environment_builder_passes_a_display_variable(tmp_path):
         built.append(Validation._check_env(None))
     for env in built:
         assert not {k.upper() for k in env} & set(L.DISPLAY_ENV), sorted(env)
+
+
+# What the projection's read rules name, at the project's top level and nested, as a monorepo keeps them
+ENV_NAMES = (".env", ".env.local", "prod.env", "apps/web/.env", "apps/web/config/.env.production", "docker/.env")
+ENV_KEPT = (".env.example", "apps/web/.env.example", ".aew/local/scratch/.env")
+
+
+def plant_env_files(repo: Path) -> None:
+    """Synthetic `.env` files at the project's top level and nested, the documentation copies beside them, and one under
+    `.aew`, which the store's own masks cover, made before the layout."""
+    for name in (*ENV_NAMES, *ENV_KEPT):
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text("SYNTHETIC=1\n")
+
+
+def env_path(repo: str, name: str) -> str:
+    """``name`` (written with `/`) under ``repo``, as the platform spells a path."""
+    return os.path.join(repo, *name.split("/"))
+
+
+def env_masked(layout: C.Layout, repo: str, names: tuple[str, ...]) -> set[str]:
+    """Which of ``names`` (relative to ``repo``) the layout masks in place by the empty file, from its argv."""
+    argv = C.bwrap_argv(layout, ["agent"])
+    binds = {argv[i + 2] for i, a in enumerate(argv[:-2]) if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
+    return {n for n in names if env_path(repo, n) in binds}
+
+
+def test_the_contained_leads_layout_masks_the_projects_env_files_at_any_depth_and_keeps_env_example(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """Containment hides the project's `.env` files, as the Lead's system text states: at any depth, each is masked in
+    place by the empty read-only file and named on the launch line by what put it there. `.env.example` stays, and so
+    does what lies under `.aew`, which the store's own masks cover."""
+    plant_env_files(tmp_path / "repo")
+    layout = lead_layout(tmp_path)
+    repo = os.path.realpath(tmp_path / "repo")
+    want = {env_path(repo, n) for n in ENV_NAMES}
+    assert set(layout.env_masks) == want and set(layout.hide_files) >= want
+    assert {p: by for p, by in layout.tree_masks if p in want} == dict.fromkeys(want, L.PROJECT_ENV)
+    assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES)
+    assert all(p in C.tree_masks_line(layout) for p in want)
+
+
+def test_a_workers_layout_masks_the_projects_env_files_in_place_at_any_depth(tmp_path, fake_bwrap, tmp_unmasked):
+    """Every worker's layout shows the project read-only, so containment hides the project's `.env` files there too:
+    each masked in place by the empty file, with no directory of the project emptied and refilled. The worker's own
+    worktree holds none of them, as a worktree holds only what is committed."""
+    for role in ("implementer", "reviewer"):
+        plant_env_files(tmp_path / role / "repo")
+        layout = run_layout(tmp_path / role, role)
+        repo = os.path.realpath(tmp_path / role / "repo")
+        assert repo in layout.visible
+        assert set(layout.env_masks) == {env_path(repo, n) for n in ENV_NAMES}, role
+        assert env_masked(layout, repo, (*ENV_NAMES, *ENV_KEPT)) == set(ENV_NAMES), role
+        assert not [d for d in layout.left_out_of if L._within(d, repo)], role
+        assert not [n for n in os.listdir(tmp_path / role / "ws") if n.startswith(".env")], role
+
+
+def test_a_directory_named_env_is_not_masked_a_link_masks_its_file_and_the_whole_tree_is_walked(tmp_path):
+    """`.env` is also a virtual environment's usual name: a directory is not one of the project's `.env` files, nor a
+    link to one, so a run that needs it keeps it. A `.env` that links to a file masks that file, which hides it at both
+    paths. The whole tree is walked, at any depth, in a git work tree or not: only the project's own `.aew` is left
+    out, and no directory by its name alone, so a `.git` directory is walked as any other, at the top and below, and
+    so is an `.aew` that is not the project's own."""
+    repo = tmp_path / "plain"
+    (repo / ".env" / "bin").mkdir(parents=True)
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / "app.cfg").write_text("SYNTHETIC=1\n")
+    (repo / "svc").mkdir()
+    (repo / "svc" / ".env").symlink_to(repo / "secrets" / "app.cfg")
+    (repo / "svc" / "deep").mkdir()
+    (repo / "svc" / "deep" / "x.env").write_text("SYNTHETIC=1\n")
+    for walked in (".git", ".aew", "svc/.git/moved", "svc/.aew"):
+        (repo / walked).mkdir(parents=True)
+        (repo / walked / ".env").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(repo)
+    assert L.project_env_masks(repo) == L.EnvScan(sorted([os.path.join(real, ".git", ".env"),
+                                                         os.path.join(real, "secrets", "app.cfg"),
+                                                         os.path.join(real, "svc", ".aew", ".env"),
+                                                         os.path.join(real, "svc", ".git", "moved", ".env"),
+                                                         os.path.join(real, "svc", "deep", "x.env")]), [])
+    assert L.project_env_masks(tmp_path / "missing") == L.EnvScan([], [])
+    # In a git work tree too: a link to a directory is not masked, nor one to nothing, and a non-ASCII name is found
+    tree, _ = repo_with_worktree(tmp_path / "git")
+    (tree / "venv").mkdir()
+    (tree / ".env").symlink_to(tree / "venv", target_is_directory=True)
+    (tree / "gone.env").symlink_to(tree / "missing.cfg")
+    (tree / "svc").mkdir()
+    (tree / "svc" / ".env").write_text("SYNTHETIC=1\n")
+    (tree / "caf\u00e9").mkdir()
+    (tree / "caf\u00e9" / ".env").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(tree)
+    assert L.project_env_masks(tree) == L.EnvScan(sorted([os.path.join(real, "caf\u00e9", ".env"),
+                                                         os.path.join(real, "svc", ".env")]), [])
+
+
+def test_a_project_with_too_many_env_files_to_mask_is_refused_naming_them(tmp_path, fake_bwrap, tmp_unmasked):
+    """Each `.env` file is masked on its own, with three arguments, so a project with more than bubblewrap can take is
+    refused before it starts, with the typed refusal that names how many there are and what to do."""
+    repo = tmp_path / "repo"
+    for i in range(3100):
+        (repo / f"d{i}").mkdir(parents=True)
+        (repo / f"d{i}" / ".env").write_text("SYNTHETIC=1\n")
+    with pytest.raises(ContainmentUnavailable, match="keep fewer .env files in the project") as refused:
+        run_layout(tmp_path, "reviewer")
+    assert refused.value.details["reason"] == "bwrap_argument_limit"
+    assert refused.value.details["env_masks"] == 3100
+
+
+def test_a_directory_the_env_scan_cannot_read_is_masked_whole_and_named_and_the_run_still_launches(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
+    """Where no user namespace can read it, the scan fails closed: a directory it cannot list (searchable but not
+    readable, as 0311 is on POSIX), one it can list but not search (0400), one holding an entry whose type it cannot
+    read, and the deepest directory reached on a path too long to list are each masked whole by an empty directory, as
+    a `.env` file in it may still be read by name, and named on the Lead's launch line with why the namespace could
+    not read them. None refuses the launch, so a Lead cannot stop the next one by changing a mode.
+    The listing is refused by name, so the test runs on every platform."""
+    repo = tmp_path / "repo"
+    for d in ("locked", "listed", "odd", "deep/long", "fine"):
+        (repo / d).mkdir(parents=True)
+        (repo / d / ".env").write_text("SYNTHETIC=1\n")
+    (repo / "odd" / "entry").write_text("x\n")
+    real = os.path.realpath(repo)
+    # refused by name, so it holds on every platform (Windows' chmod cannot take a directory's list permission away)
+    with listing_as_unprivileged(monkeypatch, unlistable=(os.path.join(real, "locked"),),
+                                 unsearchable=(os.path.join(real, "listed"),),
+                                 unreadable=(os.path.join(real, "odd", "entry"),),
+                                 too_long=(os.path.join(real, "deep", "long"),)):
+        scan = L.project_env_masks(repo)
+        layout = lead_layout(tmp_path)
+    dirs = [os.path.join(real, d) for d in ("deep", "listed", "locked", "odd")]
+    assert scan == L.EnvScan([os.path.join(real, "fine", ".env")], dirs, fallback=NO_NAMESPACE)
+    assert set(layout.env_dirs) == set(dirs) and set(layout.hide_dirs) >= set(dirs)
+    assert layout.env_fallback == NO_NAMESPACE and NO_NAMESPACE in C.tree_masks_line(layout)
+    assert {p: by for p, by in layout.tree_masks if p in dirs} == dict.fromkeys(dirs, L.PROJECT_ENV_DIR)
+    argv = C.bwrap_argv(layout, ["agent"])
+    assert all(argv[argv.index(d) - 1] == "--tmpfs" for d in dirs)
+    assert all(d in C.tree_masks_line(layout) for d in dirs)
+
+
+def test_a_directory_this_account_cannot_read_is_read_through_a_user_namespace_and_its_env_files_masked_one_by_one(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, namespace_reads):
+    """The quick check of #592, m3 (the operator, 2026-11-27): a directory the scan cannot list or search is walked
+    again through a user namespace of this account, which reads what the account owns whatever its mode, so its `.env`
+    files are masked one by one and nothing there is masked whole, for the Lead and a worker alike. The launch line
+    says which directories were read that way. What the namespace cannot read either (another account's) is masked
+    whole as before."""
+    for role in ("lead", "implementer"):
+        base = tmp_path / role
+        repo = base / "repo"
+        for d in ("locked", "listed", "theirs"):
+            (repo / d / "sub").mkdir(parents=True)
+            (repo / d / "sub" / ".env").write_text("SYNTHETIC=1\n")
+        real = os.path.realpath(repo)
+        locked, listed, theirs = (os.path.join(real, d) for d in ("locked", "listed", "theirs"))
+        namespace_reads.add(theirs)
+        with listing_as_unprivileged(monkeypatch, unlistable=(locked, theirs), unsearchable=(listed,)):
+            layout = lead_layout(base) if role == "lead" else run_layout(base, role)
+        assert set(layout.env_masks) >= {os.path.join(locked, "sub", ".env"), os.path.join(listed, "sub", ".env")}
+        assert set(layout.env_read_through) == {locked, listed} and layout.env_dirs == (theirs,), role
+        assert not {locked, listed} & set(layout.hide_dirs), role
+        if role == "lead":
+            line = C.tree_masks_line(layout)
+            assert line is not None and locked in line and listed in line and "user namespace" in line
+
+
+def test_a_containment_hide_entry_in_the_leads_tree_that_cannot_be_checked_masks_its_directory_whole(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
+    """The same rule for a containment.hide entry in the Lead's own tree: one whose directory cannot be searched reads
+    as absent, so it is not left unmasked as absent at the launch, but its directory is masked whole and named."""
+    repo = tmp_path / "repo"
+    (repo / "keys").mkdir(parents=True)
+    (repo / "keys" / "deploy.key").write_text("SYNTHETIC=1\n")
+    real = os.path.realpath(repo)
+    keys = os.path.join(real, "keys")
+    with listing_as_unprivileged(monkeypatch, unsearchable=(keys,)):
+        layout = lead_layout(tmp_path, policy={"hide": [str(repo / "keys" / "deploy.key")]})
+    # masked for the entry, by what names it: not only as a directory the `.env` scan could not read
+    assert keys in layout.hide_dirs and dict(layout.tree_masks)[keys] == L.POLICY_HIDE
+    assert keys not in layout.env_dirs
+    assert not [p for p, _ in layout.tree_absent if p.startswith(keys)]
+    assert C.bwrap_argv(layout, ["agent"]).count(keys) >= 2  # the mask, and its remount read-only
+
+
+def test_a_writable_root_in_a_directory_the_env_scan_masks_whole_is_refused(
+        tmp_path, fake_bwrap, tmp_unmasked, monkeypatch, no_namespace):
+    """A directory masked whole hides all it holds, so a `containment.writable` root in one is refused, as a root
+    under any mask is: it is never bound back over the mask, where the scan did not look. That stops the launch until
+    the directory's permissions are given back, and shows nothing."""
+    repo = tmp_path / "repo"
+    (repo / "tools" / "out").mkdir(parents=True)
+    tools = os.path.join(os.path.realpath(repo), "tools")
+    with listing_as_unprivileged(monkeypatch, unlistable=(tools,)), \
+            pytest.raises(ContainmentUnavailable, match="containment.writable root") as refused:
+        lead_layout(tmp_path, policy={"writable": [str(repo / "tools" / "out")]})
+    assert [(e["path"], e["what"].startswith(L.ENV_DIR_WHAT)) for e in refused.value.details["exposes"]] \
+        == [(tools, True)]
+    # the step that lifts it (the quick check of #592, m1): give the directory its permissions back
+    assert f"give {tools} back its read and search permission" in refused.value.message
+    assert refused.value.details["reason"] == "writable_root_env_mask"
+
+
+def test_a_project_the_env_scan_cannot_list_is_refused_naming_it(tmp_path, fake_bwrap, monkeypatch):
+    """The project itself is never masked whole: AEW reads its store there, so a project this account cannot list is
+    refused, with the typed refusal that says what to do."""
+    repo, _ = repo_with_worktree(tmp_path)
+    with listing_as_unprivileged(monkeypatch, unlistable=(os.path.realpath(repo),)), \
+            pytest.raises(ContainmentUnavailable, match="cannot be listed") as no:
+        L.project_env_masks(repo)
+    assert no.value.details["reason"] == "project_unlistable"
+
+
+def test_a_env_named_link_that_cannot_be_followed_is_named_and_neither_refuses_the_launch_nor_empties_its_directory(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """A `.env`-named link whose target cannot be checked, a loop or a path through a file, at the project's top or
+    below, can be read through by nothing, inside either: it masks nothing, refuses nothing, and leaves its directory
+    as it is, and the Lead's launch line names each with why. A `.env` file beside one stays masked. Links only, so
+    the test runs as any account."""
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "f.txt").write_text("x\n")
+    (repo / "loop.env").symlink_to("loop.env")
+    (repo / "through.env").symlink_to("f.txt/x")
+    (repo / "src" / "loop.env").symlink_to("loop.env")
+    (repo / "src" / ".env").write_text("SYNTHETIC=1\n")
+    layout = lead_layout(tmp_path)
+    real = os.path.realpath(repo)
+    links = {os.path.join(real, n) for n in ("loop.env", "through.env", os.path.join("src", "loop.env"))}
+    assert {p for p, _ in layout.env_links} == links
+    assert all("cannot be followed" in why for _, why in layout.env_links)
+    assert layout.env_dirs == () and layout.env_masks == (os.path.join(real, "src", ".env"),)
+    line = C.tree_masks_line(layout)
+    assert line is not None and all(p in line for p in links)
+
+
+def test_a_env_named_link_to_a_file_outside_the_project_or_one_a_run_needs_never_makes_that_file_read_as_empty(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """A `.env`-named link masks its target only where that is in the project or named like a `.env` file itself, and
+    is not what a run needs: a link to a host file under another name, to the interpreter, or into the store, masks
+    nothing (the file reads the same by its own path) and is named; one to a `.env` file outside the project, or to a
+    file in the project, masks its target, which hides it at both paths."""
+    host = tmp_path / "host"
+    host.mkdir()
+    (host / "passwd").write_text("synthetic:x:0:0\n")
+    (host / "app.env").write_text("SYNTHETIC=1\n")
+    repo = tmp_path / "repo"
+    (repo / ".aew" / "state").mkdir(parents=True)
+    (repo / ".aew" / "state" / "control.json").write_text('{"revision": 1}\n')
+    (repo / "cfg").mkdir()
+    (repo / "cfg" / "local.cfg").write_text("SYNTHETIC=1\n")
+    interpreter = os.path.realpath(sys.executable)
+    for name, target in (("host.env", host / "passwd"), ("python.env", interpreter),
+                         ("store.env", repo / ".aew" / "state" / "control.json"), ("app.env", host / "app.env"),
+                         ("cfg.env", repo / "cfg" / "local.cfg")):
+        (repo / name).symlink_to(target)
+    layout = lead_layout(tmp_path)
+    real = os.path.realpath(repo)
+    kept = {os.path.realpath(host / "passwd"), interpreter, os.path.join(real, ".aew", "state", "control.json")}
+    assert set(layout.env_masks) == {os.path.realpath(host / "app.env"), os.path.join(real, "cfg", "local.cfg")}
+    assert {p for p, _ in layout.env_links} == {os.path.join(real, n) for n in ("host.env", "python.env", "store.env")}
+    argv = C.bwrap_argv(layout, ["agent"])
+    masked = {argv[i + 2] for i, a in enumerate(argv[:-2]) if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
+    assert not masked & kept
+
+
+def test_a_env_named_link_to_a_plain_file_in_the_home_directory_masks_it_and_names_it_but_never_one_of_the_runs_own(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """The operator's ruling of 2026-11-27 ("Yes agree with your recommendations on 592"): a `.env`-named link to a
+    plain file in the operator's home directory under another name, such as a credentials file, masks it, which hides
+    it at both paths, and the layout names the link and its target. One whose target is one of the run's own (its
+    scratch directory here) masks nothing and is named with why."""
+    base = tmp_path / "w"
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    note = base / "run" / "scratch" / "note.txt"
+    note.parent.mkdir(parents=True)
+    note.write_text("x\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "app.env").symlink_to(creds)
+    (repo / "note.env").symlink_to(note)
+    layout = run_layout(base, "implementer", home=str(base))
+    real = os.path.realpath(repo)
+    assert os.path.realpath(creds) in layout.env_masks and os.path.realpath(note) not in layout.env_masks
+    assert layout.env_outside == ((os.path.join(real, "app.env"), os.path.realpath(creds)),)
+    assert [p for p, _ in layout.env_links] == [os.path.join(real, "note.env")]
+    argv = C.bwrap_argv(layout, ["agent"])
+    assert os.path.realpath(creds) in {argv[i + 2] for i, a in enumerate(argv[:-2])
+                                       if a == "--ro-bind" and argv[i + 1] == layout.mask_file}
+
+
+def test_a_env_link_never_masks_the_harness_binary_the_run_starts(tmp_path, fake_bwrap, tmp_unmasked, monkeypatch):
+    """The harness binary a run starts is one of what it needs (the quick check of #592 at 99082b59, m1): a
+    `.env`-named link to it, installed under the home directory and reached through a link as an installer leaves it,
+    masks nothing and is named with why, so every contained launch still starts it. Another plain file there is still
+    masked."""
+    from aew.harness.opencode import adapter
+
+    base = tmp_path / "w"
+    real_bin = base / ".opencode" / "versions" / "1" / "opencode"
+    real_bin.parent.mkdir(parents=True)
+    real_bin.write_text("#!/bin/sh\n")
+    real_bin.chmod(0o755)
+    (base / ".opencode" / "bin").mkdir()
+    (base / ".opencode" / "bin" / "opencode").symlink_to(real_bin)
+    monkeypatch.setenv(adapter.BIN_ENV, str(base / ".opencode" / "bin" / "opencode"))
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "tool.env").symlink_to(base / ".opencode" / "bin" / "opencode")
+    (repo / "app.env").symlink_to(creds)
+    layout = run_layout(base, "implementer", home=str(base))
+    real = os.path.realpath(repo)
+    assert os.path.realpath(real_bin) not in layout.env_masks and os.path.realpath(creds) in layout.env_masks
+    assert [p for p, _ in layout.env_links] == [os.path.join(real, "tool.env")]
+    assert os.path.realpath(real_bin) in layout.env_needs
+    assert os.path.realpath(real_bin) not in set(C.for_check(layout).env_masks)
+
+
+def test_each_check_sandbox_rescans_with_the_home_rule_so_a_env_link_to_a_home_file_stays_masked(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """A check's sandbox scans the project again with the run's home directory and its own directories
+    (``for_check``; the quick check of #592 at 99082b59, m2): a `.env`-named link to a plain file in the home
+    directory masks that file in the check's sandbox as in the run's, and one to the run's own file still does not."""
+    base = tmp_path / "w"
+    creds = base / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC=1\n")
+    note = base / "run" / "scratch" / "note.txt"
+    note.parent.mkdir(parents=True)
+    note.write_text("x\n")
+    repo = base / "repo"
+    repo.mkdir()
+    (repo / "app.env").symlink_to(creds)
+    (repo / "note.env").symlink_to(note)
+    layout = run_layout(base, "implementer", home=str(base))
+    check = C.for_check(layout)
+    assert os.path.realpath(creds) in check.env_masks and os.path.realpath(note) not in check.env_masks
+    argv = C.bwrap_argv(check, ["check"])
+    assert os.path.realpath(creds) in {argv[i + 2] for i, a in enumerate(argv[:-2])
+                                       if a == "--ro-bind" and argv[i + 1] == check.mask_file}
+
+
+@pytest.mark.skipif(not os.path.isfile("/etc/passwd"), reason="needs a plain file in a system tree")
+def test_a_env_link_to_a_file_in_a_system_tree_is_never_masked_even_where_the_home_directory_holds_it(tmp_path):
+    """A `.env`-named link's target in a system tree (:data:`SYSTEM_TREES`) is never masked, even where the home
+    directory given holds that tree (the quick check of #592 at 99082b59, m2): it masks nothing
+    and is named with why."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "sys.env").symlink_to("/etc/passwd")
+    scan = L.project_env_masks(repo, (), home="/etc", needs=())
+    assert os.path.realpath("/etc/passwd") not in scan.files
+    assert [p for p, _ in scan.links] == [os.path.join(os.path.realpath(repo), "sys.env")]
+
+
+def test_a_project_whose_top_cannot_be_searched_is_refused_naming_the_entry_and_the_fix(tmp_path, monkeypatch):
+    """A refusal says what was refused, why, and what to do (the quick check of #592, m1): a project that can be
+    listed but not searched is refused naming the entry at its top that could not be checked, and the permission to
+    give back on the project."""
+    repo, _ = repo_with_worktree(tmp_path)
+    real = os.path.realpath(repo)
+    with listing_as_unprivileged(monkeypatch, unsearchable=(real,)), \
+            pytest.raises(ContainmentUnavailable, match="chmod u\\+rx") as no:
+        L.project_env_masks(repo)
+    assert no.value.details["reason"] == "project_unlistable"
+    assert os.path.dirname(no.value.details["entry"]) == real and no.value.details["entry"] in no.value.message
+
+
+def test_a_project_with_more_env_files_than_bubblewrap_takes_masks_the_directory_holding_them_whole_and_launches(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """Each `.env` file takes three of bubblewrap's arguments, so where they would take a launch over its limit the
+    deepest directory holding enough of them is masked whole instead, read-only and named on the Lead's launch line,
+    and the launch goes ahead; a `.env` file elsewhere stays masked on its own."""
+    repo = tmp_path / "repo"
+    for i in range(3100):
+        (repo / "fixtures" / "cases" / f"c{i}").mkdir(parents=True)
+        (repo / "fixtures" / "cases" / f"c{i}" / ".env").write_text("SYNTHETIC=1\n")
+    (repo / ".env").write_text("SYNTHETIC=1\n")
+    layout = lead_layout(tmp_path)
+    real = os.path.realpath(repo)
+    bulk = os.path.join(real, "fixtures", "cases")
+    assert layout.env_bulk == (bulk,) and layout.env_masks == (os.path.join(real, ".env"),)
+    assert dict(layout.tree_masks)[bulk] == L.PROJECT_ENV_BULK
+    argv = C.bwrap_argv(layout, ["agent"])
+    assert argv[argv.index(bulk) - 1] == "--tmpfs" and ["--remount-ro", bulk] == argv[argv.index(bulk, argv.index(
+        bulk) + 1) - 1:argv.index(bulk, argv.index(bulk) + 1) + 1]
+
+
+def test_each_check_sandbox_scans_the_project_again_so_a_tree_rearranged_after_the_layout_cannot_misplace_a_mask(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """A check's sandbox is made from its run's layout (``for_check``), and scans the project again: a directory
+    holding a `.env` file that is moved after the layout is made, with an empty decoy left at its old path, is masked
+    where it now is. The run's own layout is unchanged, and a containment.writable root that now holds a `.env` file
+    refuses the check, as it would refuse a launch."""
+    base = tmp_path / "w"
+    repo = base / "repo"
+    (repo / "apps" / "web").mkdir(parents=True)
+    (repo / "apps" / "web" / ".env").write_text("SYNTHETIC=1\n")
+    (repo / "build").mkdir()
+    layout = run_layout(base, "implementer", policy={"writable": [str(repo / "build")]})
+    real = os.path.realpath(repo)
+    assert layout.env_masks == (env_path(real, "apps/web/.env"),)
+    (repo / "apps" / "web").rename(repo / "apps" / "old")
+    (repo / "apps" / "web").mkdir()
+    (repo / "apps" / "web" / ".env").write_text("")
+    check = C.for_check(layout)
+    assert set(check.env_masks) == {env_path(real, "apps/old/.env"), env_path(real, "apps/web/.env")}
+    assert env_masked(check, real, ("apps/old/.env", "apps/web/.env")) == {"apps/old/.env", "apps/web/.env"}
+    assert layout.env_masks == (env_path(real, "apps/web/.env"),)
+    (repo / "build" / ".env").write_text("SYNTHETIC=1\n")
+    with pytest.raises(ContainmentUnavailable, match="containment.writable root") as refused:
+        C.for_check(layout)
+    assert refused.value.details["reason"] == "writable_root_env_mask"
+
+
+def test_the_projects_own_git_directory_is_left_out_of_the_env_scan_where_the_layout_binds_it_read_only(
+        tmp_path, fake_bwrap, tmp_unmasked):
+    """The quick check of #592, m2: the project's own git directory is a read-only mount of its own in every layout,
+    so nothing is moved under it, and the scan leaves it out, as it does `.aew`: a checked-out branch named like a
+    `.env` file keeps its ref, so git works inside. A `.git` directory below the project's top is walked as before."""
+    layout = lead_layout(tmp_path)
+    repo = tmp_path / "repo"
+    real = os.path.realpath(repo)
+    assert os.path.join(real, ".git") in layout.env_keep
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout
+    (repo / ".git" / "refs" / "heads" / "rel.env").write_text(sha)
+    (repo / "vendor" / ".git").mkdir(parents=True)
+    (repo / "vendor" / ".git" / "x.env").write_text("SYNTHETIC=1\n")
+    scan = L.project_env_masks(repo, layout.env_keep)
+    assert scan.files == [os.path.join(real, "vendor", ".git", "x.env")]
+    assert set(C.for_check(layout).env_masks) == {os.path.join(real, "vendor", ".git", "x.env")}
+
+
+def test_the_projections_env_read_rules_name_what_containment_masks():
+    """One owner for the names (derive, don't restate): the OpenCode read rules for `.env` files come from
+    containment's, so a name added to one layer is in the other."""
+    from aew.harness.opencode import projection
+
+    assert [(r["effect"], r["resource"]) for r in projection.ENV_READ_RULES] == [
+        *(("deny", p) for p in L.ENV_FILES), *(("allow", p) for p in L.ENV_DOCS)]

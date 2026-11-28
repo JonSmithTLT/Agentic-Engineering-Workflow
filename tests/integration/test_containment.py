@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 from host_env import GUARDED, launching_names
+from unprivileged_scandir import listing_as_unprivileged
 
 from aew.harness import containment as C
 from aew.harness import procs
@@ -189,6 +190,165 @@ def test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory(lab):
     assert done.stdout.strip() == "ABSENT"
 
 
+@pytest.mark.parametrize("role", ["implementer", "reviewer"])
+def test_containment_hides_the_projects_env_files_from_a_worker_that_sees_the_project(lab, role):
+    """Every worker's sandbox shows the project read-only, so containment hides the project's `.env` files there too,
+    at any depth: a read by absolute path, a search of the project and a read from another program find each empty,
+    while `.env.example` reads as it is, nested too. The worker's worktree holds no `.env`: it has only what is
+    committed. Synthetic values only."""
+    (lab.repo / ".gitignore").write_text(".env\n")
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    for name in (".env", ".env.production", "apps/web/.env"):
+        (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    for name in (".env.example", "apps/web/.env.example"):
+        (lab.repo / name).write_text("SYNTHETIC-DOC=\n")
+    nested = lab.repo / "apps" / "web" / ".env"
+    done = lab.sh(lab.layout(role), f"cat {lab.repo}/.env {lab.repo}/.env.production {nested} 2>/dev/null; "
+                                    f"grep -rh SYNTHETIC {lab.repo} 2>/dev/null; "
+                                    f"{sys.executable} -I -c \"print(open({str(nested)!r}).read())\" 2>/dev/null; "
+                                    "ls -A; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    assert done.stdout.count("SYNTHETIC-DOC=") == 2, done.stdout
+    assert not [n for n in os.listdir(lab.ws) if n.startswith(".env")]
+    assert nested.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+# A nested repository, a submodule and names that begin or end with a space: each `.env` there is the project's too
+HARD_ENV = ("nested/.env", "nested/deep/.env.local", "sm/.env", " .env", ".env.local ")
+
+
+def test_containment_hides_env_files_in_a_nested_repository_a_submodule_and_spaced_names_from_a_worker(lab):
+    """Containment hides the project's `.env` files at any depth from a worker too, wherever git would not list them:
+    in a repository nested in the project, in a submodule's checkout, and under a name with a leading or trailing
+    space. A read by absolute path, a search of the project and another program's read find each empty. Synthetic
+    values only."""
+    repo = lab.repo
+    (repo / "nested" / "deep").mkdir(parents=True)
+    assert git("init", "-q", cwd=repo / "nested").returncode == 0
+    source = lab.root / "sm-source"
+    source.mkdir()
+    assert git("init", "-q", cwd=source).returncode == 0
+    (source / "m.txt").write_text("m\n")
+    git("add", "m.txt", cwd=source)
+    assert git("commit", "-q", "-m", "m", cwd=source).returncode == 0
+    added = git("-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "sm", cwd=repo)
+    assert added.returncode == 0, added.stderr
+    for name in HARD_ENV:
+        (repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    paths = " ".join(shlex.quote(str(repo / n)) for n in HARD_ENV)
+    first = repo / HARD_ENV[0]
+    done = lab.sh(lab.layout("implementer"), f"cat {paths}; grep -rh SYNTHETIC {repo} 2>/dev/null; "
+                                             f"{sys.executable} -I -c \"print(open({str(first)!r}).read())\"; "
+                                             "echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+    assert (repo / "sm" / ".env").read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
+def test_containment_hides_env_files_under_a_directory_named_git_from_a_worker(lab):
+    """The scan leaves no directory out by its name, so a `.env` file under a directory named `.git` below the
+    project's top reads as empty from a worker's sandbox too, by absolute path and to a search of the project. Only the
+    project's own git directory is left out, a read-only mount of its own in every layout. Synthetic values only."""
+    names = ("vendor/.git/.env", "vendor/.git/web/.env.local", "src/.git/moved/.env")
+    for name in names:
+        (lab.repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (lab.repo / name).write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    paths = " ".join(shlex.quote(str(lab.repo / n)) for n in names)
+    layout = lab.layout("implementer")
+    assert {str((lab.repo / n).resolve()) for n in names} <= set(layout.env_masks)
+    done = lab.sh(layout, f"cat {paths}; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; git status --short; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
+@pytest.mark.parametrize("scan", ["namespace", "fallback"])
+def test_a_directory_a_workers_env_scan_cannot_read_is_empty_in_its_sandbox(lab, monkeypatch, scan):
+    """The scan fails closed for a worker too: a project directory it cannot list as the launching account (searchable
+    but not readable, 0311), or can list but not search (0400), is read through a user namespace of the account and
+    its `.env` file masked on its own, or, where that cannot run, masked whole, so a `.env` file there cannot be read
+    by absolute path. The layout is built as an unprivileged account lists (``listing_as_unprivileged``), as these tests
+    may run as root. Synthetic values only."""
+    if scan == "fallback":
+        monkeypatch.setattr(L, "_walk_in_namespace", lambda starts, root, rules: (None, "no namespace in this test"))
+    locked, listed = lab.repo / "locked", lab.repo / "listed"
+    for d in (locked, listed):
+        d.mkdir()
+        (d / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    try:
+        locked.chmod(0o311)
+        listed.chmod(0o400)  # listed, but nothing in it can be checked
+        with listing_as_unprivileged(monkeypatch):
+            layout = lab.layout("implementer")
+        done = lab.sh(layout, f"cat {locked}/.env {listed}/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; echo end")
+    finally:
+        locked.chmod(0o700)
+        listed.chmod(0o700)
+    where = layout.env_read_through if scan == "namespace" else layout.env_dirs
+    assert {str(locked.resolve()), str(listed.resolve())} <= set(where), (scan, layout.env_dirs)
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC-ENV-VALUE" not in done.stdout, done.stdout
+
+
+def test_a_checks_sandbox_masks_the_projects_env_files_where_they_are_when_the_check_starts(lab):
+    """Each check's sandbox scans the project again (``for_check``): a session that writes the project and moves a
+    directory holding a `.env` file after a run's layout is made, leaving an empty decoy at the old path, finds the
+    file empty from a check of that run by its new path, by its old one and to a search of the tree, through the same
+    choke point a check uses (``checks.run``). Synthetic values only."""
+    from aew.policy import checks
+
+    (lab.repo / "apps" / "web").mkdir(parents=True)
+    (lab.repo / "apps" / "web" / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    layout = lab.layout("implementer")
+    # the rearrangement a Lead's live session can make after the worker's layout is made
+    (lab.repo / "apps" / "web").rename(lab.repo / "apps" / "old")
+    (lab.repo / "apps" / "web").mkdir()
+    (lab.repo / "apps" / "web" / ".env").write_text("")
+    script = (f"cat {lab.repo}/apps/old/.env {lab.repo}/apps/web/.env; grep -rh SYNTHETIC {lab.repo} 2>/dev/null; "
+              "echo end")
+    result = checks.run({"command": ["sh", "-c", script], "timeout_s": 60}, lab.ws, policy=None,
+                        env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
+    assert "--- stdout ---\nend\n" in result["log"], result["log"]  # it ran, and read nothing
+    assert "SYNTHETIC-ENV-VALUE" not in result["log"], result["log"]
+    assert str((lab.repo / "apps" / "old" / ".env").resolve()) in L.for_check(layout).env_masks
+
+
+def test_a_env_named_link_that_masks_nothing_neither_refuses_a_launch_nor_empties_a_file_or_directory(lab):
+    """A `.env`-named link whose target cannot be followed (a loop, or a path through a file), at the project's top or
+    below, and one to a file outside the project under another name, mask nothing and refuse nothing: a worker's
+    sandbox starts, the directory holding the link reads as it is, and the outside file reads as it is by its own path
+    and through the link. A `.env` file beside them stays masked. Synthetic values only."""
+    (lab.repo / "src").mkdir()
+    (lab.repo / "src" / "main.py").write_text("SYNTHETIC-SOURCE\n")
+    (lab.repo / "src" / ".env").write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "loop.env").symlink_to("loop.env")
+    (lab.repo / "through.env").symlink_to("f.txt/x")
+    (lab.repo / "src" / "loop.env").symlink_to("loop.env")
+    host = lab.outside / "host-file.txt"
+    host.write_text("SYNTHETIC-HOST-FILE\n")
+    (lab.repo / "host.env").symlink_to(host)
+    layout = lab.layout("implementer")
+    assert not layout.env_dirs and str(host.resolve()) not in layout.env_masks
+    done = lab.sh(layout, f"cat {lab.repo}/src/main.py {host} {lab.repo}/host.env {lab.repo}/src/.env; echo end")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.split() == ["SYNTHETIC-SOURCE", "SYNTHETIC-HOST-FILE", "SYNTHETIC-HOST-FILE", "end"], done.stdout
+
+
+def test_a_env_named_link_to_a_credentials_file_in_the_home_directory_reads_as_empty_in_a_workers_sandbox(lab):
+    """The operator's ruling of 2026-11-27: a `.env`-named link in the project to a plain file in the operator's home
+    under another name masks that file, so a worker reads it as empty through the link and by its own path, and the
+    layout names the link with its target. Synthetic values only."""
+    creds = lab.home / ".config" / "app" / "credentials"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n")
+    (lab.repo / "app.env").symlink_to(creds)
+    layout = lab.layout("implementer")
+    assert (str(lab.repo.resolve() / "app.env"), str(creds.resolve())) in layout.env_outside
+    done = lab.sh(layout, f"cat {lab.repo}/app.env {creds}; echo end")
+    assert done.returncode == 0 and done.stdout.split() == ["end"], done.stdout + done.stderr
+    assert creds.read_text() == "SYNTHETIC_TOKEN=SYNTHETIC-ENV-VALUE\n"
+
+
 def test_provider_config_locations_read_empty_from_inside(lab):
     (lab.home / ".claude.json").write_text('{"secret": "SECRET-CFG"}\n')
     (lab.home / ".config" / "anthropic").mkdir(parents=True)
@@ -279,6 +439,24 @@ def test_the_role_packs_git_commands_work_on_the_private_index_and_store(lab):
     C.retire_private_git(lab.run)
     assert not (lab.run / "git").exists()
     assert git("status", "--porcelain", cwd=lab.ws).returncode == 0
+
+
+def test_git_diff_from_the_merge_base_works_inside_a_contained_observation(lab):
+    """Register E168: a branch reviewer reads its change with `git diff <merge-base> <pinned commit>` in its read-only
+    observation, inside the investigator's sandbox; the shared git metadata stays read-only there, so the ref it
+    reviews cannot be moved from inside."""
+    base = git("rev-parse", "HEAD", cwd=lab.ws).stdout.strip()
+    (lab.ws / "f.txt").write_text("base\nreviewed line\n")
+    assert git("commit", "-q", "-am", "the reviewed change", cwd=lab.ws).returncode == 0
+    pinned = git("rev-parse", "HEAD", cwd=lab.ws).stdout.strip()
+    layout = lab.layout("investigator", scope="observation")
+    before = lab.fingerprint()
+    done = lab.sh(layout, f"git diff --no-ext-diff --no-textconv {base} {pinned}")
+    assert done.returncode == 0, done.stderr
+    assert "+reviewed line" in done.stdout
+    moved = lab.sh(layout, f"git update-ref refs/heads/w {base}")
+    assert moved.returncode != 0
+    assert git("rev-parse", "w", cwd=lab.repo).stdout.strip() == pinned and lab.fingerprint() == before
 
 
 # ------------------------------------------------------------------ the launch self-test
@@ -721,7 +899,11 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
             return None
 
     refused = {worker_surface.words(a) for a, r in results if reason(r.stderr) == "non_writer_process"}
-    assert refused == set(worker_surface.WRITER_ONLY), sorted(refused)
+    acquire = ("lead", "acquire")
+    assert refused == set(worker_surface.WRITER_ONLY) - {acquire}, sorted(refused)
+    [own_terminal] = [r for a, r in results if worker_surface.words(a) == acquire]
+    denied = json.loads(own_terminal.stderr)["error"]
+    assert denied["code"] == "USAGE" and "writes credentials only to your terminal" in denied["message"]
 
 
 # ------------------------------------------------------------------ STG-05 CS-2: a workspace fingerprint is a read

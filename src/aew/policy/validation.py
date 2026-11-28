@@ -10,6 +10,8 @@ Effective obligations are a separate input, and they override: a Ticket must hav
 * an ancestor Story or Epic lists the gate ``post_integration_verifier`` in its ``mandatory_gates``, or
 * an ancestor's explicit minimum-class rule (``min_descendant_class``) names a class whose mode is ``verifier``.
 
+An ancestor's obligations include those a promotion carried onto it (``hierarchy.ancestor_obligations``; register E87).
+
 Otherwise the class policy may choose ``checks``.
 
 The **obligation binding** is the digest of the legality-affecting inputs this resolution read (the
@@ -23,8 +25,10 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import math
 from typing import Any
 
+from aew.engine import hierarchy as H
 from aew.errors import ContainmentUnavailable
 from aew.policy import checks as C
 
@@ -70,15 +74,13 @@ def obligation(state: dict[str, Any], work_id: str, gates_policy: dict[str, Any]
     local = int(unit["risk_class"])
     sources: list[str] = []
     floors: dict[str, int] = {}
-    parent = unit.get("parent")
-    while parent:
-        anc = state["work"][parent]
-        policy = anc.get("policy") or {}
+    # Each obligation is named by its origin, carried by a promotion or not, so a promotion that carries it leaves the
+    # binding as it was (register E87).
+    for _, origin, policy in H.ancestor_obligations(state, work_id):
         if INTEGRATION_VERIFIER_GATE in (policy.get("mandatory_gates") or []):
-            sources.append(f"{parent} mandatory gate {INTEGRATION_VERIFIER_GATE}")
+            sources.append(f"{origin} mandatory gate {INTEGRATION_VERIFIER_GATE}")
         if policy.get("min_descendant_class") is not None:
-            floors[parent] = int(policy["min_descendant_class"])
-        parent = anc.get("parent")
+            floors[origin] = max(floors.get(origin, 0), int(policy["min_descendant_class"]))
     # Policy consistency reports non-monotone maps, but they can still be adopted. Judge each ancestor's floor on
     # its own so a higher floor that maps to checks cannot hide a lower floor that maps to verifier (PR #91, F3).
     for anc_id, cls in sorted(floors.items()):
@@ -89,8 +91,8 @@ def obligation(state: dict[str, Any], work_id: str, gates_policy: dict[str, Any]
     required = bool(sources)
     mode = VERIFIER if required else preferred
     basis = {"post_integration": {k: post.get(k) for k in ("verification", "checks", "validation")},
-             "local_class": local, "floors": dict(sorted(floors.items())), "verifier_sources": sorted(sources)}
-    return {"mode": mode, "preferred": preferred, "verifier_required": required, "sources": sorted(sources),
+             "local_class": local, "floors": dict(sorted(floors.items())), "verifier_sources": sorted(set(sources))}
+    return {"mode": mode, "preferred": preferred, "verifier_required": required, "sources": sorted(set(sources)),
             "local_class": local, "floor": floor, "binding": _digest(basis)}
 
 
@@ -107,9 +109,14 @@ def custody_register_s(post: dict[str, Any]) -> int:
     return int(post.get("custody_register_s") or CUSTODY_REGISTER_S)
 
 
+def selector_allowance_s(selector: dict[str, Any] | None) -> int:
+    """The whole selector phase reserves its own budget, only for a declaration already verified at its pin."""
+    return math.ceil(selector.get("timeout_s", C.DEFAULT_TIMEOUT_S)) if selector is not None else 0
+
+
 def deadline_s(post: dict[str, Any], checks_policy: dict[str, Any]) -> int:
-    """The run's hard deadline: ``validation_deadline_s`` when policy sets it, otherwise the sum of the checks'
-    timeouts plus the orchestration allowance; capped either way."""
+    """The hard check budget: ``validation_deadline_s`` when set, otherwise the checks' timeouts plus orchestration.
+    Both forms are capped."""
     explicit = post.get("validation_deadline_s")
     if explicit:
         return min(int(explicit), DEADLINE_CAP_S)

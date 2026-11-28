@@ -226,26 +226,35 @@ def test_an_unquoted_off_is_told_to_quote_off_and_not_the_default() -> None:
 def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
     assert 'set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`' in guide
-    assert "`aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`" in guide
-    assert "A session that took the seat itself holds the only credential, so end that session first" in guide
+    assert "`aew manifest adopt --reason ...`" in guide
+    assert "It needs no Lead credential, and the Lead session keeps its seat" in guide  # register E331
 
 
 def test_what_every_linux_lead_gets_is_the_lead_text_with_the_wait_taken_out_and_the_wake_text_added() -> None:
-    """The on variant, derived from the pinned off one (review, n4)."""
+    """The on variant, derived from the pinned off one (review, n4): the wait's lines go, whole (E367: its rule and
+    its own guide of returns, which the wake text replaces rather than overrides), and the wake text is added."""
     from aew.harness.opencode import projection as P
 
     off, on = P.lead_config(push_wake=False), P.lead_config(push_wake=True)
-    expected = off["agents"][P.LEAD_AGENT]["system"].replace(f" {P.WAIT_SENTENCE}", "") + f"\n{P.lead_wake_text()}"
+    wait = "".join(f"{line}\n" for line in P.lead_wait_text())
+    assert wait in off["agents"][P.LEAD_AGENT]["system"] and P.WAIT_SENTENCE in wait
+    expected = off["agents"][P.LEAD_AGENT]["system"].replace(wait, "").replace(
+        f"\n{P.NO_GUIDE}", f"\n{P.lead_wake_text()}\n{P.NO_GUIDE}")
     assert on["agents"][P.LEAD_AGENT]["system"] == expected
     on["agents"][P.LEAD_AGENT]["system"] = off["agents"][P.LEAD_AGENT]["system"]
     assert on == off
 
 
 def test_a_lead_on_wakes_is_told_a_timed_out_wait_ends_its_turn_and_a_trigger_tells_the_operator_once() -> None:
+    """E367 (the audit of 2026-11-25, U1): the woken Lead's own timed-out line says so, where the text used to tell it
+    to wait again and then, below, to end its turn "whatever the line above on a timed-out wait says"."""
     from aew.harness import contract as K
     from aew.harness.opencode import projection as P
 
-    assert "a wait that times out here ends your turn too" in " ".join(P.lead_wake_text().split())
+    text = " ".join(P.lead_wake_text().split())
+    assert "otherwise end your turn, and AEW wakes you" in text and "whatever the line above" not in text
+    assert f"    - {K.wake_line(K.TIMED_OUT, pushed=True)}" in P.lead_wake_text().splitlines()
+    assert K.wake_line(K.TIMED_OUT) not in P.lead_wake_text()
     step = K.trigger_step([K.OUT_OF_SCOPE], "R-1", [], then=K.wake_step(["R-1"], after_a_start=False))
     assert step.count("Tell the operator") == 1 and "what you started" not in step
 

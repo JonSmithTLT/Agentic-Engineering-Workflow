@@ -53,7 +53,7 @@ def lead_env(p) -> dict[str, str]:
 
 
 def err(p, *args: str) -> dict[str, Any]:
-    res = p.aew(*args, "--expect-rev", str(p.rev()), env=lead_env(p))
+    res = p.aew(*p.lead_args(*args), env=lead_env(p))
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -67,11 +67,18 @@ def seed(p, wid: str, gates: list[str]) -> None:
         s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="a parent written before ITEMS 55"))
 
 
-def resolve(p, subject: str, replacement: str | None, *, rev: int | None = None,
+def resolve(p, subject: str, replacement: str | None, *, binding: str | None = None,
             rationale: str = "the targeted check is that standard, as a configured check") -> dict[str, Any]:
-    arguments = {"expect_rev": p.rev() if rev is None else rev, "subject": subject, "choice": "replace_gate",
+    arguments = {"subject": subject, "choice": "replace_gate",
                  "rationale": rationale, **({"replacement": replacement} if replacement is not None else {})}
-    return R.run_tool(Engine.discover(p.root), CTX, "resolve", arguments, token=p.token)
+    engine = Engine.discover(p.root)
+    if binding is None:
+        shown = next((item["approval_subjects"].get(replacement) for item in engine.gate_items()
+                      if item["id"] == subject), None)
+        # A test of an invalid gate or replacement still supplies input of the right shape.
+        binding = shown["digest"] if shown else "0" * 64
+    arguments["approval_digest"] = binding
+    return R.run_tool(engine, CTX, "resolve", arguments, token=p.token)
 
 
 def refusal(out: dict[str, Any]) -> dict[str, Any]:
@@ -159,7 +166,7 @@ def test_doctor_resume_and_status_name_a_stuck_parent_its_owner_and_the_route(tm
     assert any(a.startswith(f"{story}: mandatory gate `{PROSE}` can never be satisfied") and item in a
                for a in p.ok("resume", "--json")["next_actions"])
     [decision] = status_items(p)
-    assert decision["arguments"] == {"expect_rev": p.rev(), "subject": item, "choice": "replace_gate"}
+    assert decision["arguments"] == {"subject": item, "choice": "replace_gate"}
     assert decision["tool"] == "resolve" and decision["availability"] == "AVAILABLE" and decision["default"] == "NONE"
     [preview] = status_previews(p)
     assert (preview["id"], preview["stuck_units"], preview["replaceable"]) == (item, [child], True)
@@ -235,12 +242,12 @@ def test_each_refusal_of_the_replacement_names_its_condition_and_changes_nothing
         (gate_ops.item_id(story, "review_security"), "check:unit", None, "NOT_FOUND", "is not a mandatory gate of"),
         # replacing with a gate the unit already has would drop one
         (stuck, "review_r1", None, "OPERATOR_AUTHORIZATION_REQUIRED", "without a replacement"),
-        # a stale revision
-        (stuck, "check:unit", 0, "STALE_REVISION", "expected control revision 0"),
+        # a decision shown for a different subject
+        (stuck, "check:unit", "0" * 64, "CHANGED_SINCE_READ", "changed"),
     ]
-    for subject, replacement, rev, code, says in cases:
+    for subject, replacement, binding, code, says in cases:
         before = load_control(p.root)
-        out = resolve(p, subject, replacement, rev=rev)
+        out = resolve(p, subject, replacement, binding=binding)
         error = refusal(out) if out.get("stopped") else out["error"]
         assert error["code"] == code and says in (error["message"] + str(error.get("violations"))), (code, error)
         assert load_control(p.root)["revision"] == before["revision"]
@@ -277,6 +284,60 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     out = R.run_tool(Engine.discover(p.root), CTX, "resolve", args, token=p.token)
     assert out["ok"] and out["result"]["mandatory_gates"] == ["check:unit"], out
     assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]
+    assert_control_invariants(p)
+
+
+def test_a_promotion_never_carries_a_stuck_gate_and_names_the_item_to_settle_first(tmp_path):
+    """Register E87, #658's review m1: a carry writes mandatory gates, so it meets ``work create``'s rule. A promotion
+    that would carry a gate no route could then replace is refused, changing nothing, naming the item on the ancestor
+    that holds it and that item's route. Following the route, the promotion carries the replacement."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective", parent=epic)
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    seed(p, story, [PROSE])
+    promote = ("work", "promote", child, "--to", "story", "--title", "Wider", "--reason", "scope grew")
+    before = p.rev()
+    out = err(p, *promote)
+    assert out["code"] == "OBLIGATIONS_DROPPED" and out["details"]["reason"] == "carried_gate_unsatisfiable", out
+    [stuck] = out["details"]["stuck"]
+    item = gate_ops.item_id(story, PROSE)
+    assert (stuck["gate"], stuck["from"], stuck["via"], stuck["item"]) == (PROSE, story, story, item)
+    assert "choice `replace_gate`" in stuck["route"] and f"settle `{item}` first" in out["message"]
+    assert p.rev() == before and "obligation_carry" not in load_control(p.root)
+    no_command_findings(out["message"])
+    assert resolve(p, item, "check:unit")["ok"]
+    carrier = p.lead(*promote)["promoted_to"]
+    assert [e["mandatory_gates"] for e in load_control(p.root)["work"][carrier]["carried_obligations"]] == [
+        ["check:unit"]]
+    assert_control_invariants(p)
+
+
+def test_a_carried_gate_that_became_stuck_names_its_holder_and_the_operators_remedy(tmp_path):
+    """A carried gate can still become stuck when the catalogue changes after the carry (planted here). Its item names
+    the unit that holds it; this route, which edits only a parent's own gate, is refused for it as the operator's
+    decision with its reason code and origin, naming what the operator restores, changing nothing."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective", parent=epic, extra=("--mandatory-gate", "check:unit"))
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    carrier = p.lead("work", "promote", child, "--to", "story", "--title", "Wider", "--reason", "scope grew")[
+        "promoted_to"]
+    engine = Engine.discover(p.root)
+    with engine.store.session() as s:
+        s.state["work"][carrier]["carried_obligations"][0]["mandatory_gates"] = [PROSE]
+        s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="the catalogue changed after the carry"))
+    item = gate_ops.item_id(carrier, PROSE)
+    found = doctor(p)
+    assert found["status"] == "FAIL" and f"{carrier} sets mandatory gate `{PROSE}` (stuck: {child})" in found["detail"]
+    assert f"{carrier} holds `{PROSE}` because a promotion carried it from {story}" in found["detail"]
+    preview = {i["id"]: i for i in status_previews(p)}[item]
+    assert (preview["stuck_units"], preview["replaceable"]) == ([child], False)
+    before = p.rev()
+    error = refusal(resolve(p, item, "check:unit"))
+    assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["reason"] == "carried_gate", error
+    assert error["details"]["carried_from"] == [story] and "The operator restores" in error["message"]
+    assert p.rev() == before
     assert_control_invariants(p)
 
 
@@ -380,8 +441,7 @@ def test_the_open_item_and_the_replacement_judge_condition_2_alike(tmp_path):
 
 def test_a_gate_no_unit_type_can_satisfy_is_replaced_by_following_doctors_remedy_as_printed(tmp_path):
     """The standing rule "follow the message's own advice" (ITEMS 56): doctor's remedy names the item, the choice and a
-    shell form that takes the arguments as JSON on standard input. Run as printed, with the revision from `aew status`
-    as it says, the route accepts the replacement."""
+    shell form that takes the arguments as JSON on standard input. The displayed replacement's digest binds the call."""
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective")
     child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
@@ -391,9 +451,9 @@ def test_a_gate_no_unit_type_can_satisfy_is_replaced_by_following_doctors_remedy
     assert f"settle `{item}`" in detail and f"choice `{gate_ops.CHOICE}`" in detail, detail
     [(command, fenced)] = [(c, f) for c, f in P.commands(detail) if "lead tool resolve" in c]
     P.parse(command, fenced=fenced)
-    arguments = {"subject": item, "choice": gate_ops.CHOICE, "replacement": "check:unit",
-                 "rationale": "the targeted check is that standard, as a configured check",
-                 "expect_rev": p.ok("status", "--json")["revision"]}
+    [decision] = [d for d in status_items(p) if d["arguments"]["subject"] == item]
+    arguments = {**decision["approval_options"]["check:unit"],
+                 "rationale": "the targeted check is that standard, as a configured check"}
     head, _body = P.split(command, fenced)
     res = p.aew(*shlex.split(head)[1:], input=json.dumps(arguments), env=lead_env(p))
     assert res.returncode == 0, res.stderr or res.stdout
@@ -441,7 +501,9 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     [preview] = status_previews(p)  # what it would make stale, before it is committed (addendum 3)
     [stale] = preview["stale_invocations"]
     assert (stale["invocation"], stale["work_id"]) == (live[0], running)
-    out = resolve(p, item, "check:unit")
+    approved = preview["approval_digests"]["check:unit"]
+    before_revision = p.rev()
+    out = resolve(p, item, "check:unit", binding=approved)
     assert out["ok"], out
     result = out["result"]
     assert result["stale_invocations"] == [stale] and result["mandatory_gates"] == ["check:unit"]
@@ -455,7 +517,8 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     correction = yaml.safe_load((p.root / ".aew" / pointer["path"]).read_text(encoding="utf-8"))
     assert (correction["work_unit"], correction["replaced"], correction["with"]) == (story, PROSE, "check:unit")
     assert correction["reason"] == "the targeted check is that standard, as a configured check"
-    assert correction["by"]["kind"] == "lead" and correction["expected_revision"] + 1 == correction["rev"]
+    assert correction["by"]["kind"] == "lead" and before_revision + 1 == correction["rev"]
+    assert correction["approval_ref"] == f"{item}@record:{approved}" and "expected_revision" not in correction
     assert correction["stale_invocations"] == [stale] and policy["mandatory_gates"] == ["check:unit"]
     assert record.read_bytes() == record_bytes and state["work"][story]["record_sha256"] == record_sha
 
@@ -471,7 +534,7 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
 
     # addendum 3: the running child is re-dispatched, and its new pack shows the new gate and the correction
     inv = live[0]
-    p.ok("invoke", "cancel", inv, "--reason", stale["fields"]["reason"], "--expect-rev", str(p.rev()), env=lead_env(p))
+    p.ok("invoke", "cancel", inv, "--reason", stale["fields"]["reason"], env=lead_env(p))
     card = state["invocations"][inv]["card"]["id"]
     fresh = p.lead("invoke", "create", running, "--card", card)["invocation"]
     shown = p.aew("context", "show", fresh)

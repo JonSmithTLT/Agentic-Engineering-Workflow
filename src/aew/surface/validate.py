@@ -46,11 +46,35 @@ def check_call(name: Any, arguments: Any, profile: str, switches: frozenset[str]
             violations=[f"{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}" for e in errors[:20]])
     if t.name == "steering":
         _check_steering(arguments)
-    if t.name == "explain":
-        _check_explain(arguments)
+    if t.name == "work_show":
+        _check_work_show(arguments)
     if t.name == "resolve":
         _check_resolve(arguments)
+    if t.name == "map":
+        _check_map(arguments)
     return t
+
+
+def map_arguments(read: str) -> tuple[str, ...]:
+    """The arguments the `map` tool's ``read`` takes: its bridge row's, and for `show` the Ticket whose scope it reads
+    (register F15.8, PR A2; ``contract.MAP_OPERATIONS`` owns the rows)."""
+    row = tuple(contract.MAP_OPERATIONS[contract.MAP_PREFIX + read])
+    return (*row, *contract.MAP_SHOW_EXTRA) if read == "show" else row
+
+
+def _check_map(arguments: dict[str, Any]) -> None:
+    """Each read takes only its own arguments, `search` needs its text, and `work_id` goes with `scope: ticket`, as
+    the CLI's `--work` goes with `--scope ticket` (kept out of the advertised schema, as the other tools' are)."""
+    read = arguments["read"]
+    stray = sorted(arguments.keys() - {"read", *map_arguments(read)})
+    violations = [f"{key}: not taken by read {read}" for key in stray]
+    if read == "search" and "text" not in arguments:
+        violations.append("text: required for read search")
+    if read == "show" and ("work_id" in arguments) != (arguments.get("scope") == "ticket"):
+        violations.append("work_id: required with scope ticket, and taken only with it")
+    if violations:
+        raise AdapterInputError("INVALID_ARGUMENTS", "map: show takes section, or scope ticket with work_id; search "
+                                                     "takes text, with kind and limit", violations=violations)
 
 
 def _check_resolve(arguments: dict[str, Any]) -> None:
@@ -71,13 +95,18 @@ def _check_resolve(arguments: dict[str, Any]) -> None:
                "replacement: blank" if given else "replacement: required for choice replace_gate")
         raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the replace_gate choice names the gate that replaces "
                                                      "the stuck one, and only it", violations=[why])
+    choice = arguments["choice"]
+    if (choice == "continue" or choice in contract.DISPOSITION_CHOICES + contract.GATE_CHOICES) and (
+            "approval_digest" not in arguments):
+        raise AdapterInputError("INVALID_ARGUMENTS", "resolve: bind the subject shown before deciding",
+                                violations=[f"approval_digest: required for choice {choice}"])
 
 
 def _check_steering(arguments: dict[str, Any]) -> None:
     """The arguments each `steering` action needs and allows (plan v3 §2.6; frozen decision 8): a mismatch is an input
     error, never a partial request."""
     required, allowed = contract.STEERING_ARGUMENTS[arguments["action"]]
-    given = set(arguments) - {"expect_rev", "action"}
+    given = set(arguments) - {"action"}
     missing = [a for a in required if a not in arguments]
     extra = sorted(given - set(allowed))
     if missing or extra:
@@ -87,37 +116,48 @@ def _check_steering(arguments: dict[str, Any]) -> None:
                         *(f"{a}: not taken by {arguments['action']}" for a in extra)])
 
 
+def _check_work_show(arguments: dict[str, Any]) -> None:
+    if arguments.get("explain"):
+        _check_explain(arguments)
+        return
+    extra = sorted(arguments.keys() - {"work_id", "explain"})
+    if "work_id" not in arguments or extra:
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: inspect a work_id, or set explain to true",
+                                violations=[*([] if "work_id" in arguments else ["work_id: required"]),
+                                            *(f"{key}: requires explain" for key in extra)])
+
+
 def _check_explain(arguments: dict[str, Any]) -> None:
-    """`explain` names a unit, an invocation or a stage; a stage's `arguments` match that stage's own schema, its
-    `expect_rev` aside, and a stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
+    """`work_show` with `explain` names a unit, invocation or stage; `arguments` match the stage's schema, and a
+    stage takes none of the dispatch's arguments nor a second, different unit (M4-E E4; kept
     out of the advertised schema, plan v3 §2.6). A mismatch is an input error."""
     if not {"work_id", "invocation", "stage"} & set(arguments):
-        raise AdapterInputError("INVALID_ARGUMENTS", "explain: name a work_id, an invocation or a stage",
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: name a work_id, an invocation or a stage",
                                 violations=["<arguments>: one of work_id, invocation or stage is required"])
     if "stage" not in arguments:
         if "arguments" in arguments:
-            raise AdapterInputError("INVALID_ARGUMENTS", "explain: arguments are a stage's, and need its stage",
+            raise AdapterInputError("INVALID_ARGUMENTS", "work_show: arguments are a stage's, and need its stage",
                                     violations=["arguments: given without stage"])
         return
     dispatch_only = sorted(set(arguments) & {"entrypoint", "role", "card", "scope", "invocation"})
     if dispatch_only:  # they ask about a dispatch; a stage's steps ask nothing of them (PR #170 review, finding 5)
-        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: a stage takes no {', '.join(dispatch_only)}",
+        raise AdapterInputError("INVALID_ARGUMENTS", f"work_show: a stage takes no {', '.join(dispatch_only)}",
                                 violations=[f"{a}: not taken with stage" for a in dispatch_only])
     inner = (arguments.get("arguments") or {}).get("work_id")
     if "work_id" in arguments and inner is not None and inner != arguments["work_id"]:
-        raise AdapterInputError("INVALID_ARGUMENTS", "explain: work_id and arguments.work_id name different units",
+        raise AdapterInputError("INVALID_ARGUMENTS", "work_show: work_id and arguments.work_id name different units",
                                 violations=["arguments/work_id: differs from work_id"])
     t = contract.tool(arguments["stage"])
     if t is None or t.kind not in (contract.STAGE, contract.DECISION) or not t.progression:
-        raise AdapterInputError("INVALID_ARGUMENTS", f"explain: {arguments['stage']!r} is not a stage",
+        raise AdapterInputError("INVALID_ARGUMENTS", f"work_show: {arguments['stage']!r} is not a stage",
                                 violations=["stage: not a stage of the catalog"],
                                 stages=[x.name for x in contract.TOOLS.values() if x.progression])
-    given = {**(arguments.get("arguments") or {}), "expect_rev": 0}
+    given = dict(arguments.get("arguments") or {})
     if "work_id" in arguments:
         given.setdefault("work_id", arguments["work_id"])
     errors = sorted(_validator(t.name).iter_errors(given), key=lambda e: list(e.absolute_path))
     if errors:
         raise AdapterInputError(
-            "INVALID_ARGUMENTS", f"explain: the arguments do not match {t.name}'s schema",
+            "INVALID_ARGUMENTS", f"work_show: the arguments do not match {t.name}'s schema",
             violations=[f"arguments/{'/'.join(map(str, e.absolute_path)) or '<arguments>'}: {e.message}"
                         for e in errors[:20]])

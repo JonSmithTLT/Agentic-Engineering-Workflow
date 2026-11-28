@@ -41,7 +41,7 @@ from aew.engine import hierarchy as H
 from aew.engine.dispatch import Blocker, GuardRegistration, checked
 from aew.engine.guards import require
 from aew.errors import IllegalTransition, NotFound, OperatorAuthorizationRequired, UsageError, ValidationFailed
-from aew.harness.contract import EXPECT_REV
+from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.schemas import validate
 from aew.util import safe_dump_yaml, sha256_bytes, utc_now
@@ -78,16 +78,44 @@ def parse_item(subject: str) -> tuple[str, str] | None:
 def remedy(owner: str, gate: str) -> str:
     """How the item is settled: the typed call, and its form from a shell (no shell sees the arguments)."""
     return (f"settle `{item_id(owner, gate)}` with the typed `resolve` tool: choice `{CHOICE}`, the gate that carries "
-            "its standard as `replacement`, a `rationale` and `expect_rev` (from `aew status`); from a shell, "
-            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. `aew status` lists "
-            "the live invocations it would make stale")
+            "its standard as `replacement`, a `rationale` and the shown `approval_digest`; from a shell, "
+            "`aew lead tool resolve --arguments -` with those arguments as JSON on standard input. The typed `status` "
+            "tool shows each replacement's approval digest and the live invocations it would make stale")
+
+
+def own_gates(state: dict[str, Any], owner: str) -> list[str]:
+    """``owner``'s own mandatory gates, the only ones this route edits."""
+    return list((state["work"][owner].get("policy") or {}).get("mandatory_gates") or [])
+
+
+def carried_from(state: dict[str, Any], owner: str, gate: str) -> list[str]:
+    """The origins of ``gate`` where ``owner`` holds it only because a promotion carried it there (register E87)."""
+    if gate in own_gates(state, owner):
+        return []
+    return sorted({origin for origin, policy in H.imposed(state, owner)
+                   if gate in (policy.get("mandatory_gates") or [])})
 
 
 def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) -> bool:
-    """Condition 2, as the open item and the replacement both judge it (addendum 5): ``owner``'s gate binds unit types
-    under it, and none of them can satisfy it."""
+    """Condition 2, as the open item and the replacement both judge it (addendum 5): ``owner``'s own gate binds unit
+    types under it, and none of them can satisfy it. A gate a promotion carried onto ``owner`` is not its own: the
+    record it came from is another unit's, so changing it is the operator's decision (register E87)."""
     kind = state["work"][owner]["kind"]
-    return bool(G.stranded_by(gate, kind, catalogue)) and not G.satisfiable_by(gate, kind, catalogue)
+    return (gate in own_gates(state, owner) and bool(G.stranded_by(gate, kind, catalogue))
+            and not G.satisfiable_by(gate, kind, catalogue))
+
+
+CARRIED_GATE = "carried_gate"  # the replacement's refusal of a carried gate (details["reason"]; #658's review, m2)
+
+
+def carried_decision(state: dict[str, Any], owner: str, gate: str) -> str:
+    """Why a carried gate is not this route's, and what settles it: it is ``owner``'s only by a promotion (register
+    E87), which never carries a gate already stuck, so it became stuck when the catalogue changed. The operator
+    restores what satisfied it; a gate written in prose has no such remedy (ADR-0007, amendment of 2026-11-27)."""
+    return (f"{owner} holds `{gate}` because a promotion carried it from {', '.join(carried_from(state, owner, gate))} "
+            "(carried_obligations), so changing it is the operator's decision: this route replaces only a parent's "
+            "own gate. The operator restores what satisfied it (the check, defined and configured in "
+            "policy/checks.yaml and adopted, or the role card)")
 
 
 def _listed(types: tuple[str, ...]) -> str:
@@ -107,13 +135,17 @@ def route(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) 
     F1; addendum 5)."""
     if replaceable(state, owner, gate, catalogue):
         return remedy(owner, gate)
+    if carried_from(state, owner, gate):
+        return carried_decision(state, owner, gate)
     return operators_decision(owner, gate, state["work"][owner]["kind"], catalogue)
 
 
 def owners(state: dict[str, Any], work_id: str, gate: str) -> list[str]:
-    """The ancestors of ``work_id`` that set ``gate`` as a mandatory gate, nearest first."""
-    return [a for a in H.ancestors(state, work_id)
-            if gate in ((state["work"][a].get("policy") or {}).get("mandatory_gates") or [])]
+    """The ancestors of ``work_id`` that hold ``gate`` as a mandatory gate, nearest first: their own, or carried onto
+    one by a promotion (register E87)."""
+    found = [holder for holder, _, policy in H.ancestor_obligations(state, work_id)
+             if gate in (policy.get("mandatory_gates") or [])]
+    return list(dict.fromkeys(found))
 
 
 def stuck(state: dict[str, Any], work_id: str, catalogue: G.Catalogue) -> list[dict[str, Any]]:
@@ -137,24 +169,41 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
     under = set(H.descendants(state, work_id))
     why = f"{work_id}'s mandatory gate `{gate}` was replaced on the record, so this invocation's context pack changed"
     return [{"invocation": inv_id, "work_id": inv["work_unit"], "role": inv.get("role"),
-             "commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
+             **redispatch_entry(state, inv_id, inv, why)}
             for inv_id, inv in sorted(state["invocations"].items())
             if inv.get("status") == "active" and inv.get("work_unit") in under]
+
+
+def redispatch_entry(state: dict[str, Any], inv_id: str, inv: dict[str, Any], why: str) -> dict[str, Any]:
+    """``redispatch_commands`` with what they read: ``fields`` for each `--fields -` (the cancellation's reason), and,
+    for a plan assessor, the ``arguments`` its typed dispatch reads on stdin (#586 review, m1). The typed route
+    takes no card: an assessor of another card is dispatched again by the operator,
+    at their own terminal (``operator``)."""
+    entry: dict[str, Any] = {"commands": redispatch_commands(state, inv_id, inv), "fields": {"reason": why}}
+    if inv.get("scope") == E.ASSESSMENT_SCOPE:
+        entry["arguments"] = E.assessor_call(inv["work_unit"], why)[1]
+        card = (inv.get("card") or {}).get("id")
+        if card != E.ASSESSOR_CARD:
+            entry["operator"] = (f"the typed route dispatches the built-in {E.ASSESSOR_CARD}; to dispatch {card} "
+                                 f"again, the operator runs `aew plan assess {inv['work_unit']} --card {card} "
+                                 "--launch` at their own terminal instead")
+    return entry
 
 
 def redispatch_commands(state: dict[str, Any], inv_id: str, inv: dict[str, Any]) -> list[str]:
     """The commands that re-dispatch an active invocation whose context pack changed, complete and parser-valid: a
     non-mutating executor's attempt is superseded; any other invocation is cancelled and dispatched again with its card
     (addendum 3; the scope add's result names them the same way, register E126)."""
-    rev = EXPECT_REV
     wid = inv["work_unit"]
     unit = state["work"][wid]
     if unit["kind"] == "ticket" and not unit.get("mutating") and inv.get("scope") == "observation":
-        return [f"aew work redispatch {wid} --launch {rev} --fields -"]
+        return [f"aew work redispatch {wid} --launch --fields -"]
     card = (inv.get("card") or {}).get("id")
+    if inv.get("scope") == E.ASSESSMENT_SCOPE:  # a plan assessor: the Lead's typed dispatch, its arguments on stdin
+        return [f"aew invoke cancel {inv_id} --fields -", E.assessor_call(wid, "")[0]]
     pick = f"--card {card}" if card else f"--role {inv['role']}"
     scope = " --scope integration" if inv.get("scope") == "integration" else ""
-    return [f"aew invoke cancel {inv_id} {rev} --fields -", f"aew invoke create {wid} {pick}{scope} --launch {rev}"]
+    return [f"aew invoke cancel {inv_id} --fields -", f"aew invoke create {wid} {pick}{scope} --launch"]
 
 
 def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, Any]]:
@@ -296,7 +345,11 @@ class GateRepair:
             unit = self.units.unit(state, owner)
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{owner} is {unit['state']}; a finished unit keeps its gates")
-            gates = list((unit.get("policy") or {}).get("mandatory_gates") or [])
+            gates = own_gates(state, owner)
+            if carried_from(state, owner, gate):
+                raise OperatorAuthorizationRequired(carried_decision(state, owner, gate), reason=CARRIED_GATE,
+                                                    work_id=owner, gate=gate,
+                                                    carried_from=carried_from(state, owner, gate))
             if gate not in gates:
                 set_by = owners(state, owner, gate)
                 raise NotFound(f"`{gate}` is not a mandatory gate of {owner}"
@@ -331,15 +384,14 @@ class GateRepair:
 
         return checked(check)
 
-    def gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
+    def gate_replace(self, *, token: str, subject: str, replacement: str | None,
                      rationale: str, binding: str | None = None) -> dict[str, Any]:
         args: dict[str, Any] = {"subject": subject, "replacement": replacement, "rationale": rationale}
-        with self.k.lead_txn(token, expect_rev, OP, reason=rationale) as ctx:
+        with self.k.lead_txn(token, OP, reason=rationale) as ctx:
             require(self.replace_query(ctx.state, None, args))
-            if binding is not None:
-                current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
-                                if item["id"] == subject), None)
-                approval.compare(OP, subject, binding, current["digest"] if current else None)
+            current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
+                            if item["id"] == subject), None)
+            approval.compare(OP, subject, binding, current["digest"] if current else None)
             found = args["found"]
             owner = found["work_id"]
             unit = ctx.state["work"][owner]
@@ -348,7 +400,7 @@ class GateRepair:
             rev = ctx.session.revision + 1
             record = {"schema": SCHEMA, "id": gc, "work_unit": owner, "replaced": found["gate"], "with": replacement,
                       "reason": rationale.strip()[:MAX_TEXT], "by": dict(ctx.actor),
-                      "generation": ctx.state["lead"]["generation"], "expected_revision": expect_rev, "rev": rev,
+                      "generation": ctx.state["lead"]["generation"], "rev": rev,
                       "at": utc_now(), "stale_invocations": found["stale_invocations"]}
             if binding is not None:
                 record["approval_ref"] = f"{subject}@record:{binding}"

@@ -1,7 +1,7 @@
 schema: aew/role/v1
 role: security_reviewer
 display_name: Security Reviewer
-version: 1
+version: 2
 extends: reviewer
 specialty: security
 purpose: Specialist security review of changes crossing auth, crypto, secrets or attacker-controlled parsing (WC §10.3).
@@ -12,6 +12,7 @@ responsibilities:
   - assess key/nonce/IV handling, credential/token handling, zeroization and input validation
   - treat security-sensitive-code detection as a trigger, not proof of security
 skills: [security-review]
+optional_skills: [agent-security-review, security-control-validation]
 required_capabilities: [exact_code_search]
 optional_capabilities: [security_sensitive_code_detection, static_analysis]
 outputs: [review]

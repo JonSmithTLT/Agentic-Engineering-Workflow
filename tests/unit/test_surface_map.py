@@ -137,7 +137,7 @@ tool:ticket_draft|tool:ticket_prepare|tool:ticket_request_review|tool:ticket_req
 tool:ticket_start|tool:work_show
 """.replace("\n", "|").strip("|").split("|"))
 FROZEN_DIGEST = "1b32b35999eb5a75aeda9ec3723275afa2d6f439de42469d864ab19914ce5d81"
-GRADUATED: frozenset[str] = frozenset()  # entries that left the baseline (their disposition decided and honoured)
+GRADUATED: frozenset[str] = frozenset({"tool:explain"})  # E157 folded it into work_show.
 BASELINE = FROZEN - GRADUATED
 
 # The A1 slice plan's dispositions (reviewed CLEAR, §2.1 item 1): the rows that carry `planned`, and the proposed tools
@@ -246,7 +246,7 @@ def ideal_path_options() -> dict[str, list[str]]:
 
 def worker_commands() -> set[str]:
     """The commands a worker runs through its run's custody bridge (bridge.OPERATIONS: `check.run` is `check run`)."""
-    return {op.replace(".", " ") for op in bridge.OPERATIONS | bridge.MESSAGE_OPERATIONS}
+    return {op.replace(".", " ") for op in bridge.OPERATIONS | bridge.MESSAGE_OPERATIONS | bridge.MAP_OPERATIONS}
 
 
 def dests(name: str) -> set[str]:
@@ -254,15 +254,21 @@ def dests(name: str) -> set[str]:
 
 
 def revision_dests(name: str) -> set[str]:
-    """The expected-revision arguments (`expect_rev`, `expect_map_rev`, ...): each is a compare-and-set."""
-    return {d for d in dests(name) if re.fullmatch(r"expect_\w*rev", d)}
+    """The map domain's independent compare-and-set."""
+    return dests(name) & {"expect_map_rev"}
+
+
+def binding_dests(name: str) -> set[str]:
+    """The scoped observations this command accepts from its previous result."""
+    return dests(name) & {"prior_value", "approval_digest"} | ({"candidate"} if name == "integrate publish" else set())
 
 
 def floor(name: str, kind: str) -> set[str]:
     """The refusal codes a command's or tool's own arguments imply."""
     if kind == "tool":
         t = _tools()[name]
-        codes = {"STALE_REVISION"} if "expect_rev" in t.input_schema.get("properties", {}) else set()
+        bindings = {"prior_value", "approval_digest", "prepared_candidate"}
+        codes = {"CHANGED_SINCE_READ"} if bindings & t.input_schema.get("properties", {}).keys() else set()
         return codes | ({"PERMISSION_DENIED", "STALE_AUTHORITY"} if t.mutates else set())
     p, ds = live_commands()[name], dests(name)
     codes = {"USAGE"} if "--fields" in p._option_string_actions else set()  # expanded by the client, refused there
@@ -270,6 +276,8 @@ def floor(name: str, kind: str) -> set[str]:
         codes |= {"USAGE", "PERMISSION_DENIED", "STALE_AUTHORITY"}  # no credential; not the Lead; superseded
     if revision_dests(name):
         codes.add("STALE_REVISION")
+    if binding_dests(name):
+        codes.add("CHANGED_SINCE_READ")
     if "invocation_token" in ds:
         codes.add("USAGE")
     return codes
@@ -496,10 +504,10 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
                 out.append(f"tool `{name}`: mutates {e.get('mutates')!r} contradicts contract.Tool.mutates")
             continue
         flags = set((e.get("mutates") or {}).get("with") or []) if m == "with" else set()
-        for dest in sorted(revision_dests(name)):
+        for dest in sorted(revision_dests(name) | binding_dests(name)):
             flag = "--" + dest.replace("_", "-")
             if m != "yes" and flag not in flags:
-                out.append(f"`aew {name}` takes {flag} (a compare-and-set): its mutates must be yes, or name {flag}")
+                out.append(f"`aew {name}` takes {flag} (a scoped binding): its mutates must be yes, or name {flag}")
         credential = dests(name) & {"token", "invocation_token"}
         if credential and m not in ("yes", "with") and not e.get("mutates_exempt"):
             out.append(f"`aew {name}` takes a credential ({sorted(credential)[0]}): its mutates must be yes or with, "
@@ -508,7 +516,7 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
             out.append(f"`aew {name}` is operator-only: its mutates must be yes or with, or give `mutates_exempt` "
                        "with the reason")
         p = e.get("primitive")
-        if p and m == "no":
+        if p and p != "none" and m == "no":
             out.append(f"`aew {name}` runs primitive {p!r} but is declared `mutates: no`")
     return out
 
@@ -734,13 +742,47 @@ def home_runs(reg: dict[str, Any], home: str) -> tuple[str, set[str]] | None:
     return (PROPOSED, set(proposal.get("expands_to") or [])) if proposal else None
 
 
+LATER = "later"  # the one `lands` key that names no register row
+CLOSED_ROW = "E131"  # a row the register closed (2026-11-11), for the planted case: a closed row never reopens
+
+
+@cache
+def register_rows() -> tuple[frozenset[str], frozenset[str]]:
+    """The register's rows (docs/implementation/future-work.yaml), read through its own tool: (open, every)."""
+    spec = importlib.util.spec_from_file_location("register_for_surface_map", ROOT / "tools" / "register.py")
+    assert spec is not None and spec.loader is not None
+    register = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(register)
+    data = register.load()
+
+    def ids(**which: Any) -> frozenset[str]:  # `Gate` (a §1 gate) and None are ids of no row
+        return frozenset(r["id"] for r in register.rows(data, **which) if r["id"] and register.ID_RE.fullmatch(r["id"]))
+
+    return ids(), ids(open_only=False)
+
+
+def lands_problems(reg: dict[str, Any]) -> list[str]:
+    """The lands guard (register E233; the designer's ruling of 2026-11-08): every key of the vocabulary's `lands` is
+    an open register row, or `later`. A slice name of a plan nobody builds, and a row that has closed, are both a
+    place nothing will land: the row moves to the row that took the work over, or to `later`. Every `lands` a planned
+    row, a proposal or an `uncovered` states is one of these keys (``planned_problems``, ``check_planned_coverage``),
+    so each of them names a live row or `later` too."""
+    live, every = register_rows()
+    return [f"the vocabulary's `lands` key {key!r} is "
+            + ("a closed register row" if key in every else "no register row")
+            + f": name the open row that owns the work, or `{LATER}`"
+            for key in (reg.get("vocabulary") or {}).get("lands") or {} if key != LATER and key not in live]
+
+
 def planned_problems(reg: dict[str, Any]) -> list[str]:
     """The planned rows' and the proposals' shape (part of `fields`): a planned row is exactly an undecided command,
-    with a planned disposition, homes that resolve, a primitive that names it, a landing slice and a reason; a typed
-    plan names its primitive and other plans home nothing; every proposal is some planned row's home."""
+    with a planned disposition, homes that resolve, a primitive that names it, a landing row and a reason; a typed
+    plan names its primitive and other plans home nothing; every proposal is some planned row's home. The landing
+    rows themselves are live (``lands_problems``)."""
     lands = set((reg.get("vocabulary") or {}).get("lands") or {})
-    out = [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
-           if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
+    out = lands_problems(reg)
+    out += [f"`aew {e['name']}` is undecided: give its `planned` (the A1 slice plan §2.1)" for kind, e in entries(reg)
+            if kind == "cli" and e.get("lead_disposition") == UNDECIDED and not isinstance(e.get("planned"), dict)]
     homed: set[str] = set()
     for name, e, plan in planned_rows(reg):
         it = f"`aew {name}`'s plan"
@@ -1331,6 +1373,7 @@ class Sample:
     ticket: str
     invocation: str
     invocation_token: str
+    report: str
 
 
 def _git(root: Path, *args: str) -> str:
@@ -1386,13 +1429,10 @@ def build_sample(base: Path) -> Sample:
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "initial")
     assert run_cli(root, ["init"])[0] == 0
-    code, out, err = run_cli(root, ["--print-credential", "lead", "acquire", "--expect-rev", "0", "--session-label",
+    code, out, err = run_cli(root, ["--print-credential", "lead", "acquire", "--session-label",
                                     "probe"])
     assert code == 0, err
     token = json.loads(out)["token"]
-
-    def rev() -> str:
-        return str(json.loads(run_cli(root, ["lead", "show"])[1])["revision"])
 
     policy = root / ".aew" / "policy" / "execution.yaml"
     data = util.load_yaml(policy.read_text(encoding="utf-8")) or {}
@@ -1400,23 +1440,38 @@ def build_sample(base: Path) -> Sample:
     data["recall"] = {"raw_history_search": "explicit"}
     policy.write_text(util.dump_yaml(data), encoding="utf-8", newline="\n")
     # The operator's adoption, with the terminal channel substituted in process (as tests/conftest.py's as_operator).
-    Engine.discover(root).manifest_adopt(token=token, expect_rev=int(rev()), reason="the probe's sample",
-                                         authorization={"authorized_by": "operator-tty"})
+    engine = Engine.discover(root)
+    engine.manifest_adopt(token=token, reason="the probe's sample",
+                          authorization={"authorized_by": "operator-tty"}, binding=engine.manifest_approval())
     (base / "plan.md").write_text("Change the README.\n", encoding="utf-8")
+    (base / "objective.md").write_text("The probe's Ticket.\n", encoding="utf-8")  # a body, for `record body` (E170)
     invocation_token = ""
-    for argv in (["work", "create", "ticket", "--title", "probe", "--class", "2", "--scope", "src/**"],
+    for argv in (["work", "create", "ticket", "--title", "probe", "--class", "2", "--scope", "src/**", "--body-file",
+                  str(base / "objective.md")],
                  ["plan", "propose", "T-0001", "--file", str(base / "plan.md"), "--assurance", "none"],
                  ["plan", "accept", "T-0001", "--revision", "1"],
+                 # A decision with a body, for `record body D-0003` (E170's second slice): a dependency change records
+                 # what it added. Made before the assignment, while T-0001 is READY.
+                 ["work", "create", "ticket", "--title", "probe's second", "--class", "2", "--scope", "src/**"],
+                 ["work", "depend", "T-0002", "--add", "T-0001", "--reason", "the probe's decision with a body"],
                  ["work", "assign", "T-0001"]):
-        code, out, err = run_cli(root, ["--print-credential", *argv, "--expect-rev", rev()],
+        if argv[:2] == ["plan", "accept"]:
+            [plan] = engine.status("T-0001")["work_unit"]["plans"]
+            argv.extend(["--approval-digest", plan["sha256"]])
+        code, out, err = run_cli(root, ["--print-credential", *argv],
                                  env={"AEW_LEAD_TOKEN": token})
         assert code == 0, (argv, err)
+        if argv[:2] == ["work", "depend"]:
+            assert json.loads(out)["decision"] == "D-0003", "the probe of `record body` names D-0003"
+        if argv[:2] == ["plan", "accept"]:  # and D-0002, a decision without a body: its fields are printed
+            assert json.loads(out)["decision"] == "D-0002", "the probe of `record body` names D-0002"
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"
     engine = Engine.discover(root)
-    engine.message_record_lead(token=token, expect_rev=engine.store.read()["revision"], to="INV-0001",
+    engine.message_record_lead(token=token, to="INV-0001",
                                 body="The probe's worker reads its own coordination thread.")
-    s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token)
+    report = engine.report_write(token=token, title="Sample report", body="Report text")
+    s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token, report["id"])
     # Settle it: the first read after a commit deletes the spent redo records of the commits before it
     # (ControlStore._recover); that housekeeping belongs to the setup's commits, not to the first surface probed.
     for _ in range(3):
@@ -1461,7 +1516,7 @@ def probes(e: dict[str, Any]) -> list[list[str]]:
 
 def fill(argv: list[str], s: Sample) -> list[str]:
     values = {"{token}": s.token, "{ticket}": s.ticket, "{invocation}": s.invocation,
-              "{invocation_token}": s.invocation_token}
+              "{invocation_token}": s.invocation_token, "{report}": s.report}
     out = []
     for a in argv:
         for k, v in values.items():
@@ -1583,7 +1638,7 @@ def lead_kept_out(name: str, e: dict[str, Any]) -> str | None:
     never the label. Until A4 takes `aew` off the Lead's PATH, closing the shell door is what honours the rest."""
     ds = dests(name)
     if "token" in ds:
-        return "it takes the Lead credential: lead_broker classifies it (LEAD_REACHABLE or OPERATOR_ONLY)"
+        return "it takes the Lead credential: lead_broker classifies it (LEAD_REACHABLE, OPERATOR_ONLY or TYPED_ONLY)"
     if operator_only(name):
         return "lead_broker.OPERATOR_ONLY refuses it in a Lead session"
     if frozenset(name.split()) in transports() & set(lead_broker.NOT_RELAYED):
@@ -1698,7 +1753,8 @@ def lead_session_env() -> dict[str, str]:
 
 
 # Codes that mean "not here": the only refusals that can prove a keep-out (PR 215 fourth review, finding 2).
-KEEP_OUT_CODES = ("PERMISSION_DENIED", "OPERATOR_AUTHORIZATION_REQUIRED")
+OUTAGE_KEEP_OUT = "authentication_unqualified"
+KEEP_OUT_CODES = ("PERMISSION_DENIED", "OPERATOR_AUTHORIZATION_REQUIRED", OUTAGE_KEEP_OUT)
 
 # The keep-out claims the test cannot prove by running them, each with its reason (`keep_out_unproved`). Empty, and
 # pinned so: an entry may only leave it (KEEP_OUT_GRADUATED).
@@ -1748,6 +1804,14 @@ def _refusal_text(err: str) -> tuple[str, str] | None:
         return None
 
 
+def _outage_refusal(stdout: str) -> tuple[str, str] | None:
+    try:
+        problem = json.loads(stdout)
+        return str(problem["code"]), str(problem["title"])
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def check_keep_out(reg: dict[str, Any]) -> list[str]:
     """Every claim that the Lead is kept out is proved by behaviour, differentially (PR 215 third and fourth reviews):
     run in a real Lead session's environment against the sample, the command is refused with a "not here" code and
@@ -1774,21 +1838,25 @@ def check_keep_out(reg: dict[str, Any]) -> list[str]:
         s = sample()
         before = snapshot(s)
         env = lead_session_env()
-        code, _, err = run_cli(s.root, fill(argv, s), env=env, stdin="")
-        in_session = _refusal_text(err)
+        code, stdout, err = run_cli(s.root, fill(argv, s), env=env, stdin="")
+        d01 = expected == OUTAGE_KEEP_OUT
+        in_session = _outage_refusal(stdout) if d01 else _refusal_text(err)
         marked = session_marker(err)
-        if code != 0 and marked != set(env):
+        if not d01 and code != 0 and marked != set(env):
             out.append(f"`aew {name}`: its refusal in a Lead session does not say the session caused it: its details "
                        f"carry reason {LEAD_SESSION_REASON!r} and variables naming exactly the session's {sorted(env)} "
                        f"(got {marked})")
         after = snapshot(s)
-        if code == 0 or _refusal(err) != expected:
+        refusal_code = in_session[0] if in_session else None
+        if code == 0 or refusal_code != expected:
             out.append(f"`aew {name}` claims the Lead is kept out, but in a Lead session's environment it "
-                       f"{'ran (exit 0)' if code == 0 else f'answered {_refusal(err) or code!r}'}, not {expected}")
+                       f"{'ran (exit 0)' if code == 0 else f'answered {refusal_code or code!r}'}, not {expected}")
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         if changed:
             out.append(f"`aew {name}` in a Lead session's environment changed {changed}")
-        bare_code, _, bare_err = run_cli(s.root, fill(argv, s), stdin="")
+        bare_code, bare_out, bare_err = run_cli(s.root, fill(argv, s), stdin="")
+        if d01 and (bare_code != 0 or _outage_refusal(bare_out) is not None):
+            out.append(f"`aew {name}`: the outage probe did not answer successfully outside the Lead session")
         if bare_code != 0 and session_marker(bare_err) is not None:
             out.append(f"`aew {name}`: outside a Lead session it is still refused as if in one")
         if bare_code != 0 and _refusal_text(bare_err) == in_session:
@@ -2031,6 +2099,29 @@ def test_the_baseline_only_shrinks():
     assert proposal_pin_problems(load()) == []
 
 
+def test_every_lands_key_names_a_live_register_row_or_later(monkeypatch):
+    """The lands guard (register E233): nothing in the map lands on a plan nobody builds or a row that has closed.
+    Every stated `lands` is a key of the vocabulary, and every key is an open register row or `later`. Ablated: the
+    register, read through its own tool, loses the row, and the guard names the key."""
+    reg = load()
+    keys = set(reg["vocabulary"]["lands"])
+    stated = ({plan["lands"] for _, _, plan in planned_rows(reg)}
+              | {plan["uncovered"]["lands"] for _, _, plan in planned_rows(reg) if "uncovered" in plan}
+              | {p["lands"] for section in ("proposed_tools", "proposed_choices") for p in reg[section]})
+    assert stated <= keys and LATER in keys
+    assert lands_problems(reg) == []
+    live, every = register_rows()
+    assert keys - {LATER} <= live <= every and CLOSED_ROW in every - live
+    row = sorted(keys - {LATER})[0]
+    monkeypatch.setattr(sys.modules[__name__], "register_rows", lambda: (live - {row}, every))
+    assert lands_problems(reg) == [f"the vocabulary's `lands` key {row!r} is a closed register row: name the open row "
+                                   f"that owns the work, or `{LATER}`"]
+    monkeypatch.setattr(sys.modules[__name__], "register_rows", lambda: (live - {row}, every - {row}))
+    assert lands_problems(reg) == [f"the vocabulary's `lands` key {row!r} is no register row: name the open row that "
+                                   f"owns the work, or `{LATER}`"]
+    assert any(row in f for f in check_fields(reg)), "the `fields` check carries the guard"
+
+
 def test_the_registry_is_versioned_and_states_its_vocabulary():
     reg = load()
     assert reg["schema"] == "aew/surface-map/v1" and isinstance(reg["version"], int) and reg["version"] >= 1
@@ -2053,7 +2144,8 @@ def test_the_walk_and_the_ideal_path_are_the_live_ones():
     assert len(rows) == 13 and rows["init"] == ["init"] and resolve(["init"]) == "init"
     assert rows["configure"] == ["init"]  # its options are `ideal_path_options`'s: they're no words of the command
     assert ideal_path_options() == {"init": ["--check-command", "--model", "--provider"]}
-    assert worker_commands() == {"whoami", "check run", "submit", "message reply", "message read", "message wait"}
+    assert worker_commands() == {"whoami", "check run", "submit", "message reply", "message read", "message wait",
+                                 "map show", "map search"}
 
 
 # Each enforced check fails, naming the item, on the drift it exists to catch.
@@ -2083,7 +2175,9 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("registered", _drop("tool", "ticket_start"), "tool `ticket_start` exists but is not registered"),
     ("registered", _drop("tool", "message_send"), "tool `message_send` exists but is not registered"),
     ("mutates", lambda r: _entry(r, "message_send", "tool").update(mutates="no"), "tool `message_send`: mutates"),
-    ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "F9-A"}),
+    ("mutates", lambda r: _entry(r, "read").update(primitive="message.send"),
+     "`aew read` runs primitive 'message.send' but is declared `mutates: no`"),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "E175"}),
      "proposed tool `message_send` is built now"),
     ("live", lambda r: r["commands"].append({"name": "work teleport"}), "`aew work teleport` is registered but no"),
     ("live", lambda r: r["tools"].append({"name": "ticket_fly"}), "tool `ticket_fly` is registered but no longer"),
@@ -2116,7 +2210,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("home", lambda r: _new(r, "work list"), "new `aew work list` is homed diagnostic: give `diagnostic_just"),
     ("home", lambda r: _new(r, "work list", diagnostic_justification="handy"), "new `aew work list` is homed diag"),
     ("mutates", lambda r: _entry(r, "ticket_start", "tool").update(mutates="no"), "tool `ticket_start`: mutates"),
-    ("mutates", lambda r: _entry(r, "plan accept").update(mutates="no"), "`aew plan accept` takes --expect-rev"),
+    ("mutates", lambda r: _entry(r, "plan accept").update(mutates="no"), "`aew plan accept` takes --approval-digest"),
     ("mutates", lambda r: _entry(r, "map select-architecture").update(mutates="no"),
      "`aew map select-architecture` takes --expect-map-rev"),
     ("mutates", lambda r: _entry(r, "harness stop").update(mutates="no"), "`aew harness stop` takes a credential"),
@@ -2170,7 +2264,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "proposed `aew preflight`: V-01's path names no proposed command"),
     ("codes", lambda r: _entry(r, "init")["refusals"].append("SEAT_HELD"), "SEAT_HELD is not a code in aew.errors"),
     ("refusal_floor", lambda r: _entry(r, "plan accept").update(refusals=["USAGE"]),
-     "`aew plan accept`: its arguments imply refusals ['PERMISSION_DENIED', 'STALE_AUTHORITY', 'STALE_REVISION']"),
+     "`aew plan accept`: its arguments imply refusals ['CHANGED_SINCE_READ', 'PERMISSION_DENIED', 'STALE_AUTHORITY']"),
     ("refusal_floor", lambda r: _entry(r, "map select-architecture")["refusals"].remove("STALE_REVISION"),
      "`aew map select-architecture`: its arguments imply refusals ['STALE_REVISION']"),
     ("refusal_floor", lambda r: _entry(r, "ticket_start", "tool").update(refusals=[]), "tool `ticket_start`: its"),
@@ -2191,13 +2285,21 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("fields", lambda r: _entry(r, "work staff")["planned"].update(lands="someday"),
      "`aew work staff`'s plan: lands 'someday' is not in the vocabulary"),
     ("fields", lambda r: _entry(r, "work staff")["planned"].pop("reason"), "`aew work staff`'s plan gives no reason"),
-    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "A2"}),
+    # The lands guard (register E233): a dead plan's slice name, and a row that has closed, are no place to land.
+    ("fields", lambda r: r["vocabulary"]["lands"].update({"A2": "the dead plan's slice"}),
+     "the vocabulary's `lands` key 'A2' is no register row"),
+    ("fields", lambda r: r["vocabulary"]["lands"].update({CLOSED_ROW: "a row that closed"}),
+     f"the vocabulary's `lands` key '{CLOSED_ROW}' is a closed register row"),
+    # A §1 gate's id in the register's rows is `Gate`: an id of no row (#606 quick check, N3).
+    ("fields", lambda r: r["vocabulary"]["lands"].update({"Gate": "a gate, not a row"}),
+     "the vocabulary's `lands` key 'Gate' is no register row"),
+    ("fields", lambda r: r["proposed_tools"].append({"name": "ticket_fly", "expands_to": [], "lands": "E233"}),
      "proposed_tools `ticket_fly` homes no planned row"),
     ("fields", lambda r: r["proposed_choices"].append({"name": "teleport", "pairs": {}, "lands": "A9"}),
      "proposed_choices `teleport`: lands 'A9' is not in the vocabulary"),
-    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "A2"}),
+    ("home_built", lambda r: r["proposed_choices"].append({"name": "continue", "pairs": {}, "lands": "E233"}),
      "proposed choice `continue` is built now"),
-    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "A2"}),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "ticket_start", "expands_to": [], "lands": "E233"}),
      "proposed tool `ticket_start` is built now"),
     # The A1-0 review's F1: a typed plan accounts for every use of its command (`planned_coverage`).
     ("planned_coverage", lambda r: _entry(r, "work transition")["planned"].pop("options"),

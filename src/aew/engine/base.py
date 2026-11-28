@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from aew import process_kind
-from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.authority import CUSTODY_PUBLISH, OPERATOR_OPS, require_custodian, require_lead
+from aew.engine.hierarchy import CARRY_KEY
 from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
 from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
@@ -21,11 +22,11 @@ from aew.errors import (
     IllegalTransition,
     IntegrityError,
     MigrationRequired,
+    PermissionDenied,
     ProjectNotFound,
-    StaleRevision,
     WorkspaceNotAuthority,
 )
-from aew.harness.contract import EXPECT_REV, MANIFEST_ADOPT
+from aew.harness.contract import MANIFEST_ADOPT
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -42,7 +43,8 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS)
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS,
+                CARRY_KEY)
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -145,10 +147,15 @@ class TxnContext:
     replayed: dict[str, Any] | None = None
     request_ref: tuple[str, str] | None = None
     request_metadata: dict[str, Any] = field(default_factory=dict)
+    post_report_message_pending: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def state(self) -> dict[str, Any]:
         return self.session.state
+
+    def result_advisories(self) -> dict[str, Any]:
+        pending = self.post_report_message_pending
+        return {"post_report_message_pending": pending} if pending else {}
 
 
 class Kernel:
@@ -420,7 +427,6 @@ class Kernel:
     def lead_txn(
         self,
         token: str,
-        expect_rev: int | None,
         op: str,
         *,
         reason: str | None = None,
@@ -428,30 +434,18 @@ class Kernel:
         _adopting_manifest: bool = False,
         request: ControlRequest | None = None,
     ) -> Iterator[TxnContext]:
-        """A control transition: current Lead credential + expected revision, atomic commit.
-
-        Authority is checked before the revision so a superseded Lead is told it
-        is superseded (STALE_AUTHORITY) rather than merely out of date.
-        """
+        """Check current Lead authority and commit a guarded control transition under the lock."""
         try:
             with self.store.session() as s:
                 actor = require_lead(s.state, token, allow_pending=allow_pending, archived=self.archived_credential)
-                if expect_rev is None:
-                    raise StaleRevision("control mutations must state the expected revision (--expect-rev)",
-                                        current=s.revision)
-                if expect_rev != s.revision:
-                    raise StaleRevision(
-                        f"expected control revision {expect_rev}, current is {s.revision}",
-                        expected=expect_rev, current=s.revision,
-                    )
                 if s.state.get("schema") != V2 and (
                     request is not None or (op not in V1_OPS and not self.legacy_v1_writes)
                 ):
                     raise MigrationRequired(
-                        "this project's control state is v1: migrate it first (the operator runs `aew migrate "
-                        f"{EXPECT_REV}` at their own terminal); until then the Lead can change the seat and cancel "
+                        "this project's control state is v1: migrate it first (the operator runs `aew migrate` "
+                        "at their own terminal); until then the Lead can change the seat and cancel "
                         "invocations, and the operator can adopt the manifest",
-                        schema=s.state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
+                        schema=s.state.get("schema"), next_action="aew migrate")
                 if not _adopting_manifest:
                     self.check_manifest_pin(s.state)
                 # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.
@@ -471,7 +465,7 @@ class Kernel:
                                          ctx.request_metadata)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
-                             expect_rev=expect_rev, state=ctx.commit_state)
+                             state=ctx.commit_state)
                 finally:
                     self._txn_pins = _NOT_IN_TXN
                 for effect in ctx.after_commit:  # best effort, like observation pruning: the commit stands regardless
@@ -494,7 +488,8 @@ class Kernel:
         the current Lead generation, and ``op`` is in the closed family), then the manifest and policy pins and every
         finalizer, as a Lead transaction. There is no expected revision: a custody commit is mechanical, and each one
         re-verifies what it relies on (the validation's transaction 2 does, the routing does). No Lead token is held or
-        used. A publication under custody needs the operator's envelope and the §17 predicate (E6b): it is refused."""
+        used. A publication under custody needs the operator's envelope and the §17 predicate, and none exists (E6b
+        lapsed on 2026-11-06): it is refused."""
         with self.store.session() as s:
             if op == CUSTODY_PUBLISH:
                 raise IllegalTransition("a custodian publishes only under the operator's publication envelope and the "
@@ -511,7 +506,50 @@ class Kernel:
                 yield ctx
                 self.finalizers.run(ctx)
                 s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
-                                    events=ctx.events), expect_rev=s.revision, state=ctx.commit_state)
+                                    events=ctx.events), state=ctx.commit_state)
+            finally:
+                self._txn_pins = _NOT_IN_TXN
+            for effect in ctx.after_commit:  # best effort, as in a Lead transaction
+                try:
+                    effect()
+                except (AEWError, OSError):
+                    pass
+
+    @contextmanager
+    def operator_txn(self, authorization: dict[str, str] | None, op: str, *, reason: str | None = None,
+                     _adopting_manifest: bool = False) -> Iterator[TxnContext]:
+        """A control transition the operator makes at their own terminal, with no Lead credential (register E331): the
+        adoption of the settings (``manifest.adopt``) and an authority decision recorded as theirs. Its actor is the
+        operator alone (``kind: operator``, ``authorized_by: operator-tty``), never a Lead, and the Lead seat is not
+        touched: a running Lead keeps it, and its next step bound to policy that moved meets STALE_POLICY (the stage
+        journal's finalizer, as after any adoption). Admission is the operator's confirmation, typed or confirmed at
+        their own terminal (``operator.require_operator_attribution``), in place of the Lead's credential; the pins,
+        the v1 rule and every finalizer are a Lead transaction's."""
+        from aew.operator import require_operator_attribution
+
+        if op not in OPERATOR_OPS:  # a closed family, as custody's (review of #641, point 4)
+            raise PermissionDenied(f"`{op}` is not one of the operator's own decisions at their terminal "
+                                   f"({', '.join(sorted(OPERATOR_OPS))}): it needs the Lead credential",
+                                   reason="not_operator_op", op=op)
+        require_operator_attribution(True, authorization, f"`{op}` without a Lead credential")
+        assert authorization is not None  # narrowed by the check above
+        actor = {"kind": "operator", "authorized_by": authorization["authorized_by"],
+                 **({"confirmation": authorization["confirmation"]} if "confirmation" in authorization else {})}
+        with self.store.session() as s:
+            if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                raise MigrationRequired(
+                    "this project's control state is v1: migrate it first (the operator runs `aew migrate` at their "
+                    "own terminal); until then the operator can adopt the manifest", schema=s.state.get("schema"),
+                    next_action="aew migrate")
+            if not _adopting_manifest:
+                self.check_manifest_pin(s.state)
+            self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
+            try:
+                ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                yield ctx
+                self.finalizers.run(ctx)
+                s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason, refs=ctx.refs,
+                                    events=ctx.events), state=ctx.commit_state)
             finally:
                 self._txn_pins = _NOT_IN_TXN
             for effect in ctx.after_commit:  # best effort, as in a Lead transaction

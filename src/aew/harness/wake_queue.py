@@ -26,8 +26,8 @@ module owns everything about that except the post itself, which is a harness's (
 - **`quiet` is the backstop.** A live run with no wake for ``quiet_s`` wakes the Lead, and the digest shows whether it
   still moves. A wake of any kind for that run restarts its clock.
 - **The steering loop's stop, `loop_waiting`** (A-58 ``CL-R07``). A stop the loop recorded (``loop.json``: anything
-  but idle, and until E7c anything but ``CONFIRMATION_UNAVAILABLE``: ``steering_loop.HELD_UNTIL_E7C``) waits on the
-  Lead's judgment, and belongs to no run, so it rides in the wake's own ``loop`` slot beside ``runs``. It **still
+  but idle, and but the Lead's own step, ``CONFIRMATION_UNAVAILABLE``: ``steering_loop.LEADS_OWN_STEP``) waits on
+  the Lead's judgment, and belongs to no run, so it rides in the wake's own ``loop`` slot beside ``runs``. It **still
   holds** while ``loop.json`` shows the same occurrence of the stop for the current Lead generation. A Lead call does
   not clear it: only ``status`` and the steering view show the loop's stop, so a stop that arose during the Lead's
   turn would otherwise be lost after its next call (review of E228's PR, M1). It is **told once** per occurrence,
@@ -58,7 +58,7 @@ from typing import Any, NamedTuple, Protocol
 from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog
-from aew.util import atomic_write
+from aew.util import atomic_write, unlink_with_retry
 
 WAKES_REL = "local/lead-wakes.json"
 SERVING_REL = "local/lead-wakes.serving"  # the generation whose broker posts wakes (the Lead's fallback reads it)
@@ -152,8 +152,8 @@ def clear_serving(aew_root: Path, generation: int) -> None:
         marked = serving(aew_root)
     except PermissionError:
         return  # an unreadable mark could belong to a newer broker
-    if marked == generation:
-        (Path(aew_root) / SERVING_REL).unlink(missing_ok=True)
+    if marked == generation:  # a reader holding the mark refuses a removal on Windows: wait it out, as a replace does
+        unlink_with_retry(Path(aew_root) / SERVING_REL)
 
 
 def serving(aew_root: Path) -> int | None:
@@ -531,15 +531,15 @@ class WakeQueue:
     def _loop_stop(self, state: Mapping[str, Any]) -> dict[str, Any] | None:
         """The steering loop's recorded stop, when the current Lead generation's loop is stopped (A-58 ``CL-R07``):
         its code, subject, message and occurrence key. An idle loop, another generation's record, or none, is None; so
-        is a stop held from the Lead's wake until M4-E E7c lifts the hold (``steering_loop.HELD_UNTIL_E7C``)."""
+        is the Lead's own step, which nothing but the Lead acts on (``steering_loop.LEADS_OWN_STEP``)."""
         from aew.engine import steering as S
-        from aew.harness.steering_loop import HELD_UNTIL_E7C
+        from aew.harness.steering_loop import LEADS_OWN_STEP
 
         generation = (state.get("lead") or {}).get("generation")
         loop = S.loop_state(self.aew_root, generation=generation) if generation is not None else None
         stop = (loop or {}).get("stop")
         if (not loop or loop.get("status") != "stopped" or not stop or not stop.get("condition")
-                or not stop.get("occurrence") or stop.get("code") in HELD_UNTIL_E7C):
+                or not stop.get("occurrence") or stop.get("code") in LEADS_OWN_STEP):
             return None
         return {"code": stop.get("code"), "subject": stop.get("subject"), "message": stop.get("message"),
                 "key": f"{generation}:{stop['condition']}:{stop['occurrence']}"}

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from evidence_files import LANE_REPORT_SCHEMA
 
 
 def _atomic_write(path: Path, data: str | bytes) -> None:
@@ -41,7 +42,7 @@ VERTICAL_PATH = "tests/acceptance/test_vertical_path.py"
 # lane's collection the same way, collected only by `--lane discovery` or when named on the command line.
 DISCOVERY_DIR = "tests/discovery/"
 LANE_KEY = pytest.StashKey[str]()
-REPORT_SCHEMA = "aew/lane-report/v1"
+REPORT_SCHEMA = LANE_REPORT_SCHEMA  # owned by evidence_files, which the evidence check reads without pytest
 DURATIONS_SCHEMA = "aew/test-durations/v1"
 # `aew` processes each test started through the test helper (`conftest.run_aew`), by node id: the cost record's
 # "CLI calls per test" (CI redesign P4, register E43). Counted in the process that runs the test, carried to the

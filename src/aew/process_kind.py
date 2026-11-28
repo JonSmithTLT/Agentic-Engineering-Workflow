@@ -34,6 +34,8 @@ NON_WRITER = "non_writer"
 ENTRY_POINTS: dict[str, tuple[str, str]] = {
     "aew": (STORE_WRITER, "the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine "
             "commands take the control lock"),
+    "aew read": (NON_WRITER, "the operator's outage reader uses the committed store without a lock, recovery "
+                 "or a running service"),
     "aew dashboard serve": (NON_WRITER, "the dashboard server, long-running and read-only: it reads the store "
                             "lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, "
                             "never the control lock"),
@@ -44,7 +46,8 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
                              "Lead-authenticated commands go through the Lead broker, which holds the credential and "
                              "the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` "
                              "is masked) and `.aew` is read-only there; and the reads that broker relays to the host "
-                             "for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing"),
+                             "for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing but "
+                             "`history search`'s catch-up of the derived history index"),
     "aew lead mcp": (NON_WRITER, "the Lead's MCP transport: it constructs no engine and forwards every call to the "
                      "Lead broker, which holds the credential"),
     "aew.harness.supervisor": (STORE_WRITER, "a run's supervisor: holds the run's credential and commits through the "
@@ -90,8 +93,6 @@ def declared_as(entry_point: str) -> Iterator[None]:
 
 def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
     """Which of the CLI's entry points ``aew argv`` is, in ``env``."""
-    if env.get(AGENT_ENDPOINT_ENV):
-        return "aew (worker run)"
     words: list[str] = []
     contained = bool(env.get(LEAD_CONTAINED_ENV))
     value = False
@@ -102,8 +103,15 @@ def cli_entry_point(argv: list[str], env: Mapping[str, str]) -> str:
             value = True
         elif not arg.startswith("-"):
             words.append(arg)
+    if words[:1] == ["read"]:
+        return "aew read"
+    if env.get(AGENT_ENDPOINT_ENV):
+        return "aew (worker run)"
     named: dict[tuple[str, ...], str] = {("lead", "mcp"): "aew lead mcp", ("dashboard", "serve"): "aew dashboard serve"}
     return named.get(tuple(words[:2]), "aew (contained Lead)" if contained else "aew")
+
+
+OUTAGE_READER = cli_entry_point(["read"], {})
 
 
 def declared() -> str | None:

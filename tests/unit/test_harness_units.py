@@ -114,6 +114,82 @@ def test_bridge_never_unpickles(server, tmp_path):
     assert not planted.exists() and not calls
 
 
+@pytest.fixture
+def accepting():
+    """A bridge whose handler accepts every operation, and the sizes of the text each request carried."""
+    got: list[tuple[str, int]] = []
+    srv = bridge.BridgeServer(lambda op, args: got.append((op, len(args.get("text", "")))) or {"ok": op})
+    srv.start()
+    yield srv, got
+    srv.close()
+
+
+def submission(size: int) -> dict[str, str]:
+    """A ``submit`` whose request is exactly ``size`` bytes as the client sends it."""
+    args = {"kind": "review", "text": ""}
+    args["text"] = "x" * (size - len(bridge.request_bytes("submit", args)))
+    assert len(bridge.request_bytes("submit", args)) == size
+    return args
+
+
+def test_a_request_over_the_bridges_limit_is_refused_saying_so_never_as_a_closed_bridge(accepting):
+    """Register E241: the server reads at most ``MAX_REQUEST`` and drops a longer request's connection unanswered,
+    which the client reported as ``StaleAuthority`` (the bridge closed, the outcome unconfirmed): false on both
+    counts. The client refuses it before sending, on every route, and the bridge serves the next request."""
+    srv, got = accepting
+    at_the_limit = submission(bridge.MAX_REQUEST)
+    assert bridge.call("submit", at_the_limit, endpoint=srv.address, key=srv.key_hex) == {"ok": "submit"}
+    with pytest.raises(errors.UsageError, match="nothing was sent") as refused:
+        bridge.call("submit", submission(bridge.MAX_REQUEST + 1), endpoint=srv.address, key=srv.key_hex)
+    assert refused.value.details == {"op": "submit", "size": bridge.MAX_REQUEST + 1, "limit": bridge.MAX_REQUEST,
+                                     "reason": bridge.REQUEST_TOO_LARGE}
+    assert str(bridge.MAX_REQUEST) in refused.value.message and "shorten" in refused.value.message
+    assert bridge.call("whoami", {}, endpoint=srv.address, key=srv.key_hex) == {"ok": "whoami"}  # still open
+    assert got == [("submit", len(at_the_limit["text"])), ("whoami", 0)] and not srv.closed
+
+
+def test_a_workers_oversized_submission_is_refused_saying_so_through_its_own_route(accepting, tmp_path, monkeypatch):
+    """The worker's route (``aew submit`` inside a harness run): non-ASCII text counts as JSON sends it, so a
+    file under the limit in bytes can be over it as a request."""
+    from aew.cli.main import build_parser
+
+    srv, got = accepting
+    monkeypatch.setenv(bridge.ENV_ENDPOINT, srv.address)
+    monkeypatch.setenv(bridge.ENV_KEY, srv.key_hex)
+    monkeypatch.delenv("AEW_INVOCATION_TOKEN", raising=False)
+    big = tmp_path / "report.md"
+    big.write_bytes(("\u00e9" * (bridge.MAX_REQUEST // 6 + 1)).encode())  # 6 bytes as JSON, 2 in the file
+    assert big.stat().st_size < bridge.MAX_REQUEST
+    parsed = build_parser().parse_args(["submit", "--kind", "review", "--file", str(big)])
+    with pytest.raises(errors.UsageError, match="nothing was sent") as refused:
+        parsed.handler(parsed)
+    assert refused.value.details["reason"] == bridge.REQUEST_TOO_LARGE and got == []
+    big.write_bytes(b"small")
+    assert parsed.handler(parsed) == {"ok": "submit"} and got == [("submit", 5)]
+
+
+def test_a_typed_tools_oversized_call_is_the_callers_invalid_arguments_never_an_unreachable_broker(accepting,
+                                                                                                    monkeypatch):
+    """The typed route (``lead.tool``, #610's review, M1): its client reported every ``UsageError`` of the bridge as
+    ``BROKER_UNREACHABLE``, which dropped the reason, the size and the limit, with the broker reachable."""
+    from aew.surface import client
+    from aew.surface.errors import AdapterInputError
+
+    srv, got = accepting
+    monkeypatch.setenv(client.ENV_ENDPOINT, srv.address)
+    monkeypatch.setenv(client.ENV_KEY, srv.key_hex)
+    with pytest.raises(AdapterInputError) as refused:
+        client.forward("ticket.note", {"text": "x" * (bridge.MAX_REQUEST + 1)}, ingress="mcp", profile="lead")
+    assert refused.value.code == "INVALID_ARGUMENTS" and "nothing was sent" in refused.value.message
+    details = refused.value.details
+    assert details["reason"] == bridge.REQUEST_TOO_LARGE and details["limit"] == bridge.MAX_REQUEST
+    assert details["size"] > bridge.MAX_REQUEST and got == []
+    monkeypatch.delenv(client.ENV_ENDPOINT)  # no bridge at all is still the unreachable broker
+    with pytest.raises(AdapterInputError) as unreachable:
+        client.forward("ticket.note", {"text": "x"}, ingress="mcp", profile="lead")
+    assert unreachable.value.code == "BROKER_UNREACHABLE" and unreachable.value.details == {"cause": "USAGE"}
+
+
 def test_a_closed_bridge_is_stale_authority(server):
     srv, _ = server
     srv.close()
@@ -238,14 +314,14 @@ def _parse(*argv):
 
 
 @pytest.mark.parametrize("argv, refused", [
-    (("lead", "acquire", "--expect-rev", "0"), True),
-    (("lead", "takeover", "--expect-rev", "0", "--reason", "x"), True),
-    (("lead", "release", "--expect-rev", "0"), True),
-    (("lead", "handoff", "offer", "--expect-rev", "0"), True),
-    (("lead", "handoff", "accept", "--offer", "o", "--expect-rev", "0"), True),
-    (("lead", "handoff", "cancel", "--expect-rev", "0"), False),
-    (("plan", "accept", "T-1", "--revision", "1", "--expect-rev", "0"), False),
-    (("work", "assign", "T-1", "--expect-rev", "0"), False),
+    (("lead", "acquire", ), True),
+    (("lead", "takeover", "--reason", "x"), True),
+    (("lead", "release", ), True),
+    (("lead", "handoff", "offer", ), True),
+    (("lead", "handoff", "accept", "--offer", "o", ), True),
+    (("lead", "handoff", "cancel", ), False),
+    (("plan", "accept", "T-1", "--revision", "1", ), False),
+    (("work", "assign", "T-1", ), False),
     (("lead", "show"), False),
 ])
 def test_credential_emitting_commands_are_recognized(argv, refused):
@@ -259,12 +335,12 @@ def test_only_uncredentialed_lead_commands_route_to_a_lead_session(monkeypatch):
 
     monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
     monkeypatch.delenv(lead_broker.ENV_ENDPOINT, raising=False)
-    lead_cmd = _parse("checkpoint", "--next", "x", "--expect-rev", "3")
+    lead_cmd = _parse("checkpoint", "--next", "x")
     assert not lead_broker.routes(lead_cmd)  # no session
     monkeypatch.setenv(lead_broker.ENV_ENDPOINT, "ep")
     assert lead_broker.routes(lead_cmd)
     assert not lead_broker.routes(_parse("status"))  # read-only: runs locally
-    held = _parse("checkpoint", "--expect-rev", "3")
+    held = _parse("checkpoint")
     held.token = "t"  # a credential of its own, as the broker sets one
     assert not lead_broker.routes(held)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "t")

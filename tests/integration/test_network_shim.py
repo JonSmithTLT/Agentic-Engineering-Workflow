@@ -7,6 +7,7 @@ controlling terminal or starts nothing. The shim inside a network namespace of t
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import socket
@@ -18,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from aew.harness.containment import netns, shim
+from aew.harness.containment import netns, relay, shim
 
 pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the shim's socket files are AF_UNIX: "
                                 "Linux, where contained runs have a network of their own")
@@ -109,6 +110,39 @@ def test_a_leg_that_cannot_be_set_up_stops_the_harness_from_starting(tmp_path):
         _, err = proc.communicate(timeout=TIMEOUT)
     assert proc.returncode == shim.EXIT_SETUP and not marker.exists()
     assert "a leg could not be set up, so the harness was not started" in err
+
+
+# The harness calls each out-leg's port with a request and prints, one JSON line each, what it got back.
+CALLER = textwrap.dedent("""
+    import json, socket, sys
+    for port in sys.argv[1:]:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=10) as out:
+            out.sendall(b"POST /v1/responses HTTP/1.1\\r\\nContent-Length: 2\\r\\n\\r\\n{}")
+            got, error = b"", None
+            try:
+                while chunk := out.recv(4096):
+                    got += chunk
+            except OSError as exc:
+                error = type(exc).__name__
+        print(json.dumps({"got": got.decode("latin-1"), "error": error}), flush=True)
+""")
+
+
+def test_a_relay_leg_whose_relay_is_gone_answers_its_fixed_502_and_any_other_leg_closes_as_before(tmp_path):
+    """Nothing takes the relay leg's connection (the relay has gone as its run ends): the harness gets the relay's own
+    fixed 502, which names the cause, instead of a bare reset. A leg with no such answer (the egress proxy's) is
+    closed as before."""
+    relay_port, egress_port = free_port(), free_port()
+    spec = netns.shim_spec(str(tmp_path), server=None, relay_sock=netns.RELAY, egress_sock=netns.EGRESS)
+    spec["out"][0]["port"], spec["out"][1]["port"] = relay_port, egress_port  # free here, on the host's loopback
+    proc = run_shim(spec, [sys.executable, "-I", "-c", CALLER, str(relay_port), str(egress_port)])
+    out, err = proc.communicate(timeout=TIMEOUT)
+    assert proc.returncode == 0, err
+    to_relay, to_egress = (json.loads(line) for line in out.splitlines())
+    assert to_relay["error"] is None and to_relay["got"] == relay.unreachable_answer()
+    assert to_relay["got"].startswith("HTTP/1.1 502 Bad Gateway\r\n")
+    assert f"X-AEW-Refusal: {relay.RELAY_UNREACHABLE}\r\n" in to_relay["got"]
+    assert to_egress["got"] == ""
 
 
 def wait_for(path: Path, text: str) -> str:

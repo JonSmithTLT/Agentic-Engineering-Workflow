@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
-from aew.engine import approval, gate_ops, transitions, usage_ops
+from aew.engine import approval, gate_ops, operator_decisions, pinned_copies, transitions, usage_ops
 from aew.engine import steering as steering_mod
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
@@ -37,19 +37,20 @@ from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
 from aew.engine.history_ops import HistoryCommands
 from aew.engine.integration_ops import Integration
-from aew.engine.lead_ops import Lead
+from aew.engine.lead_ops import Lead, seat_doctor
 from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue, entry_of
 from aew.engine.readiness import readiness_checks
-from aew.engine.resume_ops import Resume
+from aew.engine.reports import Reports
+from aew.engine.resume_ops import Resume, WorkerNeeded
 from aew.engine.role_ops import Roles
 from aew.engine.scope_ops import ScopeCorrections
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
 from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
-from aew.engine.steering import OperatorPrincipal, Steering
+from aew.engine.steering import OperatorPrincipal, Steering, check_stage_admission
 from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
 from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
@@ -57,6 +58,7 @@ from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
 from aew.errors import AEWError, IllegalTransition, IntegrityError, NotFound, PermissionDenied, UsageError
 from aew.harness import contract as K
+from aew.harness.delivery import DEFAULT_WHEN
 from aew.history import manifest as history_manifest
 from aew.knowledge import discovery
 from aew.knowledge.manifest import (
@@ -117,6 +119,8 @@ class ProjectAdmin:
         text = render_manifest(manifest)
         ctx.session.write(MANIFEST, text, immutable=False)
         ctx.state["manifest_sha256"] = sha256_text(text)
+        # The new pin's bytes, for the diff the operator's next adoption shows (register E331).
+        ctx.after_commit.append(lambda: pinned_copies.keep(self.k.aew_root, text.encode("utf-8")))
 
     def authority_candidate(self, candidate_id: str) -> dict[str, Any]:
         return self._candidate_subject(self._candidate(self._fresh_manifest(), candidate_id))
@@ -137,16 +141,34 @@ class ProjectAdmin:
         digest = approval.digest(candidate)
         return {"path": path, "kind": "file, missing", "digest": digest, "ref": f"{path}@record:{digest}"}
 
-    def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str,
+    def _check_decider(self, token: str | None, decided_by: str, authorization: dict[str, str] | None) -> None:
+        """An authority decision runs as the Lead's transaction, with its credential, or with none as the operator's own
+        at their terminal (register E331), which only an operator decision can be."""
+        if decided_by not in {"lead", "operator"}:
+            raise UsageError("an authority decision must name lead or operator as the decider")
+        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
+        if token is None and decided_by != "operator":
+            raise UsageError("a decision recorded as the Lead's needs the Lead credential; the operator's own decision "
+                             "(`--decided-by operator`, the default) needs none", reason="lead_credential_required")
+
+    @staticmethod
+    def _decider(ctx: TxnContext, token: str | None, decided_by: str,
+                 authorization: dict[str, str] | None) -> dict[str, Any]:
+        """Who decided, as the record says: the operator's own decision names no Lead actor (register E331)."""
+        if token is None:
+            return {"kind": "operator", **(authorization or {})}
+        return dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead", recorded_by_lead=True,
+                    **(authorization or {}))
+
+    def authority_accept(self, *, token: str | None = None, candidate_id: str, klass: str,
                          decided_by: str, reason: str | None = None,
                          authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
         if klass not in AUTHORITY_CLASSES:
             raise UsageError(f"class must be one of {AUTHORITY_CLASSES}")
-        if decided_by not in {"lead", "operator"}:
-            raise UsageError("an authority decision must name lead or operator as the decider")
-        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
-        with self.k.lead_txn(token, expect_rev, "authority.accept", reason=reason) as ctx:
+        self._check_decider(token, decided_by, authorization)
+        with (self.k.lead_txn(token, "authority.accept", reason=reason) if token is not None
+              else self.k.operator_txn(authorization, "authority.accept", reason=reason)) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
@@ -155,13 +177,11 @@ class ProjectAdmin:
             if path.endswith("/") and not (self.k.repo_root / path).is_dir():
                 raise IllegalTransition(f"authority candidate {path} is no longer a directory", path=path)
             ref = path
-            if binding is not None:
-                subject = self._candidate_subject(candidate)
-                approval.compare("authority.accept", path, binding,
-                                 subject["digest"] if subject["kind"] != "file, missing" else None)
-                ref = subject["ref"]
-            by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
-                      recorded_by_lead=True, **(authorization or {}))
+            subject = self._candidate_subject(candidate)
+            approval.compare("authority.accept", path, binding,
+                             subject["digest"] if subject["kind"] != "file, missing" else None)
+            ref = subject["ref"]
+            by = self._decider(ctx, token, decided_by, authorization)
             decision = self.k.new_decision(
                 ctx, "authority_acceptance",
                 f"Accepted {candidate['path']} as {klass} authority",
@@ -174,25 +194,22 @@ class ProjectAdmin:
             ctx.summary = f"authority accepted: {candidate['path']} ({klass})"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
-    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str, decided_by: str,
+    def authority_reject(self, *, token: str | None = None, candidate_id: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
-        if decided_by not in {"lead", "operator"}:
-            raise UsageError("an authority decision must name lead or operator as the decider")
-        require_operator_attribution(decided_by == "operator", authorization, "an authority decision")
-        with self.k.lead_txn(token, expect_rev, "authority.reject", reason=reason) as ctx:
+        self._check_decider(token, decided_by, authorization)
+        with (self.k.lead_txn(token, "authority.reject", reason=reason) if token is not None
+              else self.k.operator_txn(authorization, "authority.reject", reason=reason)) as ctx:
             manifest = self._fresh_manifest()
             candidate = self._candidate(manifest, candidate_id)
             if candidate["status"] != "proposed":
                 raise IllegalTransition(f"{candidate_id} is already {candidate['status']}")
             path = candidate["path"]
             ref = path
-            if binding is not None:
-                subject = self._candidate_subject(candidate)
-                approval.compare("authority.reject", path, binding, subject["digest"])
-                ref = subject["ref"]
-            by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
-                      recorded_by_lead=True, **(authorization or {}))
+            subject = self._candidate_subject(candidate)
+            approval.compare("authority.reject", path, binding, subject["digest"])
+            ref = subject["ref"]
+            by = self._decider(ctx, token, decided_by, authorization)
             decision = self.k.new_decision(ctx, "authority_rejection",
                                          f"Rejected {path} as project authority", reason=reason,
                                          decided_by=by, evidence_refs=[ref])
@@ -203,8 +220,20 @@ class ProjectAdmin:
 
     def manifest_approval(self) -> dict[str, str | None]:
         """The paths and byte SHAs the operator is about to approve."""
-        _, current, changed, first_pin = self._manifest_subject(self.k.store.current())
-        return current if first_pin else {rel: current.get(rel) for rel in changed}
+        return {rel: f["now"] for rel, f in self.manifest_offer()["files"].items()}
+
+    def manifest_offer(self) -> dict[str, Any]:
+        """What an adoption would pin now, from one read of the committed state: each file it would pin, with its pin in
+        force (``pinned``: None for a policy file never pinned, or one pinned absent) and its digest now (``now``:
+        None for an absent file); every pin in force (``pins``); and whether this is the first pin of the policy
+        files. The operator's terminal
+        adoption shows each file's diff between the two and binds ``now`` (register E331)."""
+        state = self.k.store.current()
+        _, current, changed, first_pin = self._manifest_subject(state)
+        pins = {**(state.get(POLICY_PINS) or {}), MANIFEST: state["manifest_sha256"]}
+        rels = sorted(current) if first_pin else changed
+        return {"first_pin": first_pin, "pins": pins,
+                "files": {rel: {"pinned": pins.get(rel), "now": current.get(rel)} for rel in rels}}
 
     def _manifest_subject(
         self, state: dict[str, Any], binding: dict[str, str | None] | None = None,
@@ -225,32 +254,36 @@ class ProjectAdmin:
         changed = ([MANIFEST] if current[MANIFEST] != state["manifest_sha256"] else []) + drift
         return manifest, current, changed, previous is None
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
+    def manifest_adopt(self, *, token: str | None = None, reason: str, authorization: dict[str, str] | None = None,
                        only: list[str] | None = None,
                        binding: dict[str, str | None] | None = None) -> dict[str, Any]:
         """Accept a reviewed manual edit of project.yaml or of the policy files it names by re-pinning them (recorded
         decision). A project whose policy files were never pinned has them pinned here. The operator's decision, always
         confirmed at their own terminal: whoever can edit the policy must not also approve the edit, and a Lead holding
         the raw credential is refused like a Lead session (PR #118 review, finding 1). ``only`` is the switch offer's:
-        the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen."""
+        the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen. With no
+        ``token`` it is the operator's own transaction (register E331): no Lead credential, no Lead actor on the
+        record, and the seat left to its holder; with one, the Lead transaction the switch offer still runs."""
         require_operator_attribution(True, authorization, "adopting an edit of project.yaml or the policy files")
-        # Credential and revision are checked by lead_txn before any state-dependent answer.
-        with self.k.lead_txn(token, expect_rev, "manifest.adopt", reason=reason, _adopting_manifest=True) as ctx:
+        # Current Lead authority is checked before any state-dependent answer.
+        txn = (self.k.lead_txn(token, "manifest.adopt", reason=reason, _adopting_manifest=True) if token is not None
+               else self.k.operator_txn(authorization, "manifest.adopt", reason=reason, _adopting_manifest=True))
+        with txn as ctx:
+            binding = approval.require_binding("manifest.adopt", "project policy", "approval subject", binding)
             manifest, current, changed, first_pin = self._manifest_subject(ctx.state, binding)
             manifest_sha = current[MANIFEST]
             pins = {rel: sha for rel, sha in current.items() if rel != MANIFEST}
-            if binding is not None:
-                required = current.keys() if first_pin else set(changed)
-                for rel in sorted(required | binding.keys()):
-                    expected = binding.get(rel)
-                    actual = current.get(rel)
-                    if rel not in binding or rel not in required:
-                        approval.refuse_change(
-                            "manifest.adopt", rel, "adoption set", expected, actual,
-                            next_step="Read the changed files again and decide anew.",
-                        )
-                    if rel not in current:
-                        approval.compare("manifest.adopt", rel, expected, actual)
+            required = current.keys() if first_pin else set(changed)
+            for rel in sorted(required | binding.keys()):
+                expected = binding.get(rel)
+                actual = current.get(rel)
+                if rel not in binding or rel not in required:
+                    approval.refuse_change(
+                        "manifest.adopt", rel, "adoption set", expected, actual,
+                        next_step="Read the changed files again and decide anew.",
+                    )
+                if rel not in current:
+                    approval.compare("manifest.adopt", rel, expected, actual)
             if not changed and not first_pin:
                 raise IllegalTransition("project.yaml and the policy files match their pins; nothing to adopt")
             if only is not None and (first_pin or set(changed) != set(only)):
@@ -261,12 +294,13 @@ class ProjectAdmin:
             title = f"Adopted {what} at the switch offer" if only is not None \
                 else f"Adopted a reviewed manual edit of {what}"
             decision = self.k.new_decision(ctx, "manifest_adoption", title,
-                                         reason=reason, decided_by=dict(ctx.actor, kind="operator",
-                                                                        recorded_by_lead=True, **(authorization or {})),
+                                         reason=reason, decided_by=self._decider(ctx, token, "operator", authorization),
                                          evidence_refs=[f"{rel}@{sha if sha is not None else 'missing'}"
                                                         for rel, sha in sorted((binding or {}).items())])
             ctx.state["manifest_sha256"] = manifest_sha
             ctx.state[POLICY_PINS] = pins
+            # The adopted bytes, for the diff the next adoption shows (register E331): kept only if still those bytes.
+            ctx.after_commit.append(lambda: pinned_copies.keep_files(self.k.aew_root, current))
             policy = self.k._execution_policy(manifest, pins)[0]
             # An adopted steering default takes effect here only if it is not a raise (M4-E plan v3 §2.1, N1).
             self.steering.on_adopt(ctx, policy)
@@ -529,6 +563,9 @@ class ProjectAdmin:
         lead = state["lead"]
         add("lead", "PASS" if lead["status"] == "active" else "WARN",
             f"{lead['status']} (generation {lead['generation']})")
+        seat_row = seat_doctor(lead)  # register E384: a seat held by a session that is gone names it and the fix
+        if seat_row is not None:
+            add("lead-seat", *seat_row)
         try:
             configured = self.steering.policy_default() is not None
         except Exception:  # noqa: BLE001 (an unreadable policy is reported above)
@@ -572,7 +609,7 @@ class Engine:
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
         self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, guards=guards,
-                                    archive=archive)
+                                    archive=archive, coordination=coordination)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
         self._scope = scope = ScopeCorrections(k, units=units, gates=gates, assurance=assurance,
@@ -610,8 +647,10 @@ class Engine:
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
         self._usage = UsageReads(k, archive=archive)  # the ledger's read surfaces (F25 R9)
+        self._reports = Reports(k)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
-                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds)
+                                       lead=lead, views=views, harness=harness, history=history, kinds=kinds,
+                                       coordination=coordination)
         self._steering = steering = Steering(k)
         self._configuration = Configuration(k)  # the configuration read projection (F46.1)
         self._project = ProjectAdmin(k, roles=roles, steering=steering, archive=archive, coordination=coordination)
@@ -620,7 +659,8 @@ class Engine:
         # Dispositions and the anomaly record (M4-E E5b; plan v3 §2.4).
         self._dispositions = dispositions = Dispositions(k, gates=gates, archive=archive, views=views)
         self._stages = stages = StageIntents(
-            k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"])
+            k, archive=archive, obligations=lambda state, wid: gates.gate_context(state, wid)["obligations"],
+            automation_guard=check_stage_admission, run_evidence=invocations.run_evidence_binding)
         # The seams, in their documented order (tests/unit/test_engine_composition.py pins them).
         hooks.before.append(integration.before_state_change)
         hooks.after.extend([invocations.on_state_change, integration.on_state_change])
@@ -638,6 +678,7 @@ class Engine:
         self._guard_queries = queries = GuardQueries(dispatch.decide)
         queries.register("work.transition", units.transition_query)
         queries.register("review.ingest", evidence.review_ingest_query)
+        queries.register("evidence.ingest", nm.evidence_ingest_query)
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
         queries.register("work.gate_replace", gate_repair.replace_query)
@@ -763,8 +804,10 @@ class Engine:
         rel = (manifest.get("policy") or {}).get("execution") or X.REL_PATH
         raw = raws.get(rel)
         policy = X.parse(raw, source=f"{AEW_DIR}/{rel}") if raw is not None else None
+        Coordination.register_at_init(state, policy)
         files.update(steering_mod.seed_at_init(state, policy, policy_digests_of(manifest, raws, aew_root)))
         ControlStore(aew_root).create(state, files)
+        pinned_copies.keep_files(aew_root, {MANIFEST: state["manifest_sha256"], **state[POLICY_PINS]})  # register E331
         return cls(repo_root, aew_root)
 
     # ------------------------------------------------------------------ delegation (one owner per operation)
@@ -791,10 +834,10 @@ class Engine:
     def workspaces_root(self) -> Path:
         return self._k.workspaces_root()
 
-    def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str,
+    def authority_accept(self, *, token: str | None = None, candidate_id: str, klass: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
-        return self._project.authority_accept(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
+        return self._project.authority_accept(token=token, candidate_id=candidate_id,
                                               klass=klass, decided_by=decided_by, reason=reason,
                                               authorization=authorization, binding=binding)
 
@@ -804,10 +847,10 @@ class Engine:
     def authority_list(self) -> dict[str, Any]:
         return self._project.authority_list()
 
-    def authority_reject(self, *, token: str, expect_rev: int, candidate_id: str, decided_by: str,
+    def authority_reject(self, *, token: str | None = None, candidate_id: str, decided_by: str,
                          reason: str | None = None, authorization: dict[str, str] | None = None,
                          binding: str | None = None) -> dict[str, Any]:
-        return self._project.authority_reject(token=token, expect_rev=expect_rev, candidate_id=candidate_id,
+        return self._project.authority_reject(token=token, candidate_id=candidate_id,
                                               decided_by=decided_by, reason=reason, authorization=authorization,
                                               binding=binding)
 
@@ -820,13 +863,20 @@ class Engine:
         return self._evidence.check_run(invocation_token=invocation_token, check_id=check_id, env=env, layout=layout,
                                         trees=trees, ending=ending, label=label)
 
-    def checkpoint(self, *, token: str, expect_rev: int, note: str = "", next_action: str | None = None) -> dict[str,
+    def checkpoint(self, *, token: str, note: str = "", next_action: str | None = None) -> dict[str,
                    Any]:
-        return self._resume.checkpoint(token=token, expect_rev=expect_rev, note=note, next_action=next_action)
+        return self._resume.checkpoint(token=token, note=note, next_action=next_action)
 
-    def classify_parent_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
+    def report_write(self, *, token: str, title: str, body: str,
+                     session_id: str | None = None) -> dict[str, Any]:
+        return self._reports.write(token=token, title=title, body=body, session_id=session_id)
+
+    def report_show(self, report_id: str) -> dict[str, str]:
+        return self._reports.show(report_id)
+
+    def classify_parent_verification(self, *, token: str, work_id: str, classification: str,
                                      reason: str, binding: str | None = None) -> dict[str, Any]:
-        return self._hierarchy.classify_parent_verification(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._hierarchy.classify_parent_verification(token=token, work_id=work_id,
                                                             classification=classification, reason=reason,
                                                             binding=binding)
 
@@ -849,8 +899,8 @@ class Engine:
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.evidence_gate_context(state, work_id)
 
-    def evidence_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        return self._nm.evidence_ingest(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id)
+    def evidence_ingest(self, *, token: str, work_id: str, evidence_id: str) -> dict[str, Any]:
+        return self._nm.evidence_ingest(token=token, work_id=work_id, evidence_id=evidence_id)
 
     def execution_policy(self) -> tuple[dict[str, Any] | None, str | None]:
         return self._k.execution_policy()
@@ -991,10 +1041,10 @@ class Engine:
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         return self._harness.harness_interrupt(token=token, run=run)
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+    def harness_launch(self, *, token: str, invocation: str, replace: bool = False,
                        request_id: str | None = None,
                        prior_value: str | None = None) -> dict[str, Any]:
-        return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace,
+        return self._harness.harness_launch(token=token, invocation=invocation, replace=replace,
                                             request_id=request_id, prior_value=prior_value)
 
     def wakes_reach_lead(self) -> bool:
@@ -1003,8 +1053,26 @@ class Engine:
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
-    def harness_send(self, *, token: str, run: str, text: str, when: str = "next-step") -> dict[str, Any]:
-        return self._harness.harness_send(token=token, run=run, text=text, when=when)
+    def worker_needed(self, state: dict[str, Any], work_id: str) -> WorkerNeeded | None:
+        """The fresh worker a mutating Ticket's state waits on, with its dispatch command, or None
+        (``Resume.worker_needed``; register E233)."""
+        unit = state["work"].get(work_id)
+        if unit is None or unit["kind"] != "ticket" or not unit.get("mutating"):
+            return None
+        return self._resume.worker_needed(state, work_id, unit)
+
+    def launch_refusal(self, state: dict[str, Any], work_id: str, role: str) -> AEWError | None:
+        """Why a `--launch` dispatch of ``role`` for ``work_id`` would be refused at its launch now, or None
+        (``Invocations.launch_refusal``)."""
+        return self._invocations.launch_refusal(state, work_id, role)
+
+    def harness_unlaunched(self, state: dict[str, Any], work_id: str) -> list[str]:
+        """The active invocations of ``work_id`` no harness was ever launched for (``Harness.unlaunched``)."""
+        return self._harness.unlaunched(state, work_id)
+
+    def harness_send(self, *, token: str, run: str, text: str, when: str = DEFAULT_WHEN,
+                     idempotency_id: str | None = None) -> dict[str, Any]:
+        return self._harness.harness_send(token=token, run=run, text=text, when=when, idempotency_id=idempotency_id)
 
     def harness_status(self, invocation: str | None = None) -> dict[str, Any]:
         out = self._harness.harness_status(invocation)
@@ -1020,28 +1088,28 @@ class Engine:
         return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead,
                                           message_after=message_after, record_return=record_return)
 
-    def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def ingest_evidence_unit_report(self, *, token: str, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
-        return self._evidence.ingest_evidence_unit_report(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._evidence.ingest_evidence_unit_report(token=token, work_id=work_id,
                                                           evidence_id=evidence_id, kind=kind)
 
     def input_status(self, state: dict[str, Any], work_id: str) -> list[dict[str, Any]]:
         return self._inputs.input_status(state, work_id)
 
-    def integrate_prepare(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        return self._integration.integrate_prepare(token=token, expect_rev=expect_rev, work_id=work_id)
+    def integrate_prepare(self, *, token: str, work_id: str) -> dict[str, Any]:
+        return self._integration.integrate_prepare(token=token, work_id=work_id)
 
-    def integrate_publish(self, *, token: str, expect_rev: int, work_id: str,
+    def integrate_publish(self, *, token: str, work_id: str,
                           candidate: str | None = None) -> dict[str, Any]:
-        return self._integration.integrate_publish(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._integration.integrate_publish(token=token, work_id=work_id,
                                                    candidate=candidate)
 
-    def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:
-        return self._integration.integrate_reconcile(token=token, expect_rev=expect_rev, work_id=work_id)
+    def integrate_reconcile(self, *, token: str, work_id: str) -> dict[str, Any]:
+        return self._integration.integrate_reconcile(token=token, work_id=work_id)
 
-    def integrate_validate(self, *, token: str, expect_rev: int, work_id: str, wait: bool = False,
+    def integrate_validate(self, *, token: str, work_id: str, wait: bool = False,
                            diagnostic: bool = False) -> dict[str, Any]:
-        return self._validation.integrate_validate(token=token, expect_rev=expect_rev, work_id=work_id, wait=wait,
+        return self._validation.integrate_validate(token=token, work_id=work_id, wait=wait,
                                                    diagnostic=diagnostic)
 
     def custody_run(self, custodian: str, credential: str, *, poll_s: float | None = None,
@@ -1063,43 +1131,49 @@ class Engine:
     def integrate_breaker_status(self) -> dict[str, Any]:
         return self._validation.breaker_status()
 
-    def integrate_breaker_reset(self, *, token: str, expect_rev: int, reason: str,
+    def integrate_breaker_reset(self, *, token: str, reason: str,
                                 authorization: dict[str, str], binding: str | None = None) -> dict[str, Any]:
-        return self._validation.breaker_reset(token=token, expect_rev=expect_rev, reason=reason,
+        return self._validation.breaker_reset(token=token, reason=reason,
                                               authorization=authorization, binding=binding)
 
-    def integrate_defer(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def integrate_defer(self, *, token: str, work_id: str, reason: str,
                         prior_value: str | None = None) -> dict[str, Any]:
-        return self._integration.integrate_defer(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+        return self._integration.integrate_defer(token=token, work_id=work_id, reason=reason,
                                                  prior_value=prior_value)
 
-    def integrate_requeue(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def integrate_requeue(self, *, token: str, work_id: str, reason: str,
                           prior_value: str | None = None) -> dict[str, Any]:
-        return self._integration.integrate_requeue(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+        return self._integration.integrate_requeue(token=token, work_id=work_id, reason=reason,
                                                    prior_value=prior_value)
 
-    def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
+    def integrate_reorder(self, *, token: str, work_id: str, before: str | None,
                           reason: str) -> dict[str, Any]:
-        return self._integration.integrate_reorder(token=token, expect_rev=expect_rev, work_id=work_id, before=before,
+        return self._integration.integrate_reorder(token=token, work_id=work_id, before=before,
                                                    reason=reason)
 
     def invocation_whoami(self, *, invocation_token: str) -> dict[str, Any]:
         return self._harness.invocation_whoami(invocation_token=invocation_token)
 
-    def invoke_cancel(self, *, token: str, expect_rev: int, invocation: str, reason: str) -> dict[str, Any]:
-        return self._evidence.invoke_cancel(token=token, expect_rev=expect_rev, invocation=invocation, reason=reason)
+    def map_read_basis(self, *, invocation_token: str) -> dict[str, Any]:
+        return self._harness.map_read_basis(invocation_token=invocation_token)
 
-    def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
+    def work_scope_paths(self, work_id: str) -> list[str]:
+        return self._harness.work_scope_paths(work_id)
+
+    def invoke_cancel(self, *, token: str, invocation: str, reason: str) -> dict[str, Any]:
+        return self._evidence.invoke_cancel(token=token, invocation=invocation, reason=reason)
+
+    def invoke_create(self, *, token: str, work_id: str, role: str | None = None,
                       card: str | None = None, scope: str = "ticket", execution_profile: dict[str, Any] | None = None,
                       launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
-        return self._evidence.invoke_create(token=token, expect_rev=expect_rev, work_id=work_id, role=role, card=card,
+        return self._evidence.invoke_create(token=token, work_id=work_id, role=role, card=card,
                                             scope=scope, execution_profile=execution_profile, launch=launch,
                                             request_id=request_id)
 
-    def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None, card: str | None,
+    def invoke_evidence_unit(self, *, token: str, work_id: str, role: str | None, card: str | None,
                              scope: str, execution_profile: dict[str, Any] | None = None,
                              launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
-        return self._evidence.invoke_evidence_unit(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
+        return self._evidence.invoke_evidence_unit(token=token, work_id=work_id, role=role,
                                                    card=card, scope=scope, execution_profile=execution_profile,
                                                    launch=launch, request_id=request_id)
 
@@ -1109,26 +1183,27 @@ class Engine:
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         return self._harness.launch_dispatched(result)
 
-    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None,
+    def lead_acquire(self, *, session_label: str | None = None,
                      kind: str = "lead_acquire") -> dict[str, Any]:
-        return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label, kind=kind)
+        return self._lead.lead_acquire(session_label=session_label, kind=kind)
 
-    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False) -> str:
-        return self._resume.lead_guide(stages, messaging=messaging)
+    def lead_guide_document(self, stages: Sequence[Any], *, messaging: bool = False, uses: Sequence[Any] = (),
+                            plan_assessment: str | None = None) -> Any:
+        return self._resume.lead_guide_document(stages, messaging=messaging, uses=uses, plan_assessment=plan_assessment)
 
-    def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
-        return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)
+    def lead_handoff_accept(self, *, offer: str, session_label: str | None = None) -> dict[str, Any]:
+        return self._lead.lead_handoff_accept(offer=offer, session_label=session_label)
 
-    def lead_handoff_cancel(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        return self._lead.lead_handoff_cancel(token=token, expect_rev=expect_rev)
+    def lead_handoff_cancel(self, *, token: str) -> dict[str, Any]:
+        return self._lead.lead_handoff_cancel(token=token)
 
-    def lead_handoff_offer(self, *, token: str, expect_rev: int, note: str = "",
+    def lead_handoff_offer(self, *, token: str, note: str = "",
                            carry_invocations: list[str] | None = None) -> dict[str, Any]:
-        return self._lead.lead_handoff_offer(token=token, expect_rev=expect_rev, note=note,
+        return self._lead.lead_handoff_offer(token=token, note=note,
                                              carry_invocations=carry_invocations)
 
-    def lead_release(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        return self._lead.lead_release(token=token, expect_rev=expect_rev)
+    def lead_release(self, *, token: str) -> dict[str, Any]:
+        return self._lead.lead_release(token=token)
 
     def lead_resume(self, *, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_resume(session_label=session_label)
@@ -1136,12 +1211,12 @@ class Engine:
     def lead_show(self) -> dict[str, Any]:
         return self._lead.lead_show()
 
-    def lead_takeover(self, *, expect_rev: int, reason: str, session_label: str | None = None) -> dict[str, Any]:
-        return self._lead.lead_takeover(expect_rev=expect_rev, reason=reason, session_label=session_label)
+    def lead_takeover(self, *, reason: str, session_label: str | None = None) -> dict[str, Any]:
+        return self._lead.lead_takeover(reason=reason, session_label=session_label)
 
-    def lead_txn(self, token: str, expect_rev: int | None, op: str, *, reason: str | None = None,
+    def lead_txn(self, token: str, op: str, *, reason: str | None = None,
                  allow_pending: bool = False, _adopting_manifest: bool = False) -> AbstractContextManager[TxnContext]:
-        return self._k.lead_txn(token, expect_rev, op, reason=reason, allow_pending=allow_pending,
+        return self._k.lead_txn(token, op, reason=reason, allow_pending=allow_pending,
                                 _adopting_manifest=_adopting_manifest)
 
     @property
@@ -1151,10 +1226,13 @@ class Engine:
     def manifest_approval(self) -> dict[str, str | None]:
         return self._project.manifest_approval()
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
+    def manifest_offer(self) -> dict[str, Any]:
+        return self._project.manifest_offer()
+
+    def manifest_adopt(self, *, token: str | None = None, reason: str, authorization: dict[str, str] | None = None,
                        only: list[str] | None = None,
                        binding: dict[str, str | None] | None = None) -> dict[str, Any]:
-        return self._project.manifest_adopt(token=token, expect_rev=expect_rev, reason=reason,
+        return self._project.manifest_adopt(token=token, reason=reason,
                                             authorization=authorization, only=only, binding=binding)
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
@@ -1163,12 +1241,13 @@ class Engine:
     def policy_pin_drift(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str] | None:
         return self._k.policy_pin_drift(state, manifest)
 
-    def message_record_lead(self, *, token: str, expect_rev: int | None, to: str, body: str, kind: str | None = None,
+    def message_record_lead(self, *, token: str, to: str, body: str, kind: str | None = None,
                             in_reply_to: str | None = None, refs: list[str] | None = None,
-                            idempotency_id: str | None = None, channel: str = "cli") -> dict[str, Any]:
-        return self._coordination.message_record_lead(token=token, expect_rev=expect_rev, to=to, body=body, kind=kind,
+                            idempotency_id: str | None = None, channel: str = "cli",
+                            when: str = DEFAULT_WHEN) -> dict[str, Any]:
+        return self._coordination.message_record_lead(token=token, to=to, body=body, kind=kind,
                                                       in_reply_to=in_reply_to, refs=refs,
-                                                      idempotency_id=idempotency_id, channel=channel)
+                                                      idempotency_id=idempotency_id, channel=channel, when=when)
 
     def message_record_worker(self, *, invocation_token: str, in_reply_to: str | None, body: str,
                               kind: str | None = None, refs: list[str] | None = None,
@@ -1206,11 +1285,28 @@ class Engine:
     def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
         self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
 
+    def message_next_post(self, *, credential: str, run: str, permit: Callable[[], bool],
+                          blocked: set[str] | None = None) -> dict[str, Any]:
+        return self._coordination.message_next_post(credential=credential, run=run, permit=permit, blocked=blocked)
+
+    def message_confirm_delivery(self, *, credential: str, run: str, ids: list[str],
+                                 via: str, transport_ref: str) -> None:
+        self._coordination.message_confirm_delivery(credential=credential, run=run, ids=ids, via=via,
+                                                    transport_ref=transport_ref)
+
+    def message_final_check(self, *, credential: str, run: str, admitted: dict[str, str],
+                            lock_timeout: float | None = None) -> None:
+        self._coordination.message_final_check(credential=credential, run=run, admitted=admitted,
+                                               lock_timeout=lock_timeout)
+
     def message_list(self, work_id: str) -> dict[str, Any]:
         return self._coordination.message_list(work_id)
 
     def message_unseen(self, *, token: str | None = None) -> dict[str, Any]:
         return self._coordination.message_unseen(token=token)
+
+    def message_lost(self) -> dict[str, Any]:
+        return self._coordination.message_lost(self._k.store.read_committed())
 
     def message_mark_shown(self, *, token: str, messages: list[str]) -> dict[str, Any]:
         return self._coordination.message_mark_shown(token=token, messages=messages)
@@ -1232,32 +1328,38 @@ class Engine:
                                     evidence_refs=evidence_refs, resulting_transition=resulting_transition,
                                     reason=reason, decided_by=decided_by, body=body)
 
-    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int,
+    def plan_accept(self, *, token: str, work_id: str, revision: int,
                     binding: str | None = None) -> dict[str, Any]:
-        return self._work.plan_accept(token=token, expect_rev=expect_rev, work_id=work_id, revision=revision,
+        return self._work.plan_accept(token=token, work_id=work_id, revision=revision,
                                       binding=binding)
 
-    def plan_adopt(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
+    def plan_adopt(self, *, token: str, work_id: str, evidence_id: str, source: str,
                    reason: str | None = None, review: list[str] | None = None, verify: list[str] | None = None,
                    no_assurance: bool = False) -> dict[str, Any]:
-        return self._nm.plan_adopt(token=token, expect_rev=expect_rev, work_id=work_id, evidence_id=evidence_id,
+        return self._nm.plan_adopt(token=token, work_id=work_id, evidence_id=evidence_id,
                                    source=source, reason=reason, review=review, verify=verify,
                                    no_assurance=no_assurance)
+
+    def plan_assess(self, *, token: str, work_id: str, card: str | None = None,
+                    execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                    reason: str | None = None) -> dict[str, Any]:
+        return self._nm.plan_assess(token=token, work_id=work_id, card=card,
+                                    execution_profile=execution_profile, launch=launch, reason=reason)
 
     def plan_binding_problem(self, state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
         return self._units.plan_binding_problem(state, work_id)
 
-    def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str, reason: str | None = None,
+    def plan_propose(self, *, token: str, work_id: str, body: str, reason: str | None = None,
                      affected_paths: list[str] | None = None, review: list[str] | None = None,
                      verify: list[str] | None = None, no_assurance: bool = False,
                      request_id: str | None = None) -> dict[str, Any]:
-        return self._work.plan_propose(token=token, expect_rev=expect_rev, work_id=work_id, body=body, reason=reason,
+        return self._work.plan_propose(token=token, work_id=work_id, body=body, reason=reason,
                                        affected_paths=affected_paths, review=review, verify=verify,
                                        no_assurance=no_assurance, request_id=request_id)
 
-    def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def plan_reconfirm(self, *, token: str, work_id: str, reason: str,
                        binding: str | None = None) -> dict[str, Any]:
-        return self._nm.plan_reconfirm(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+        return self._nm.plan_reconfirm(token=token, work_id=work_id, reason=reason,
                                        binding=binding)
 
     def policy(self, name: str) -> dict[str, Any]:
@@ -1286,8 +1388,8 @@ class Engine:
         view = self.message_attention()
         return out | {"coordination": view} if view is not None else out
 
-    def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
-        return self._evidence.review_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
+    def review_ingest(self, *, token: str, work_id: str, evidence_id: str) -> dict[str, Any]:
+        return self._evidence.review_ingest(token=token, work_id=work_id,
                                             evidence_id=evidence_id)
 
     def role_list(self) -> dict[str, Any]:
@@ -1332,14 +1434,14 @@ class Engine:
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
 
-    def steering_lower(self, *, token: str, expect_rev: int, mode: str, rationale: str = "",
+    def steering_lower(self, *, token: str, mode: str, rationale: str = "",
                        prior_value: str | None = None) -> dict[str, Any]:
-        return self._steering.lower(token=token, expect_rev=expect_rev, mode=mode, rationale=rationale,
+        return self._steering.lower(token=token, mode=mode, rationale=rationale,
                                     prior_value=prior_value)
 
-    def steering_request(self, *, token: str, expect_rev: int, kind: str, rationale: str, mode: str | None = None,
+    def steering_request(self, *, token: str, kind: str, rationale: str, mode: str | None = None,
                          action_ref: str | None = None) -> dict[str, Any]:
-        return self._steering.request(token=token, expect_rev=expect_rev, kind=kind, rationale=rationale, mode=mode,
+        return self._steering.request(token=token, kind=kind, rationale=rationale, mode=mode,
                                       action_ref=action_ref)
 
     def steering_raise_preview(self, mode: str) -> dict[str, Any]:
@@ -1350,6 +1452,15 @@ class Engine:
         """The operator endpoint's commit of a raise; ``principal`` only the endpoint constructs (A1 §1.1)."""
         return self._steering.raise_mode(principal, mode=mode, generation=generation, legality_digest=legality_digest)
 
+    def operator_confirmation_preview(self, decision: str, work_id: str,
+                                      revision: int | None = None) -> dict[str, Any]:
+        """What the operator's confirmation of a plan acceptance or a publish would bind, before they are asked."""
+        return operator_decisions.preview(self._k, decision, work_id, revision)
+
+    def operator_confirm(self, principal: OperatorPrincipal, bound: dict[str, Any]) -> dict[str, Any]:
+        """The operator endpoint's record of that confirmation; ``principal`` only the endpoint constructs."""
+        return operator_decisions.confirm(self._k, principal, bound)
+
     def steering_view(self) -> dict[str, Any]:
         return self._steering.view(self._k.store.current())
 
@@ -1359,28 +1470,28 @@ class Engine:
         """The legality and operational digests in force (A3), which a stage binds and rechecks."""
         return self._k.policy_digests()
 
-    def stage_open(self, *, token: str, expect_rev: int, tool: str, contract_digest: str, arguments: dict[str, Any],
+    def stage_open(self, *, token: str, tool: str, contract_digest: str, arguments: dict[str, Any],
                    judgment_inputs: list[str], base_class: str, effective_class: str, plan: list[dict[str, Any]],
                    subject: str | None, ingress: str, auto_run: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._stages.open(token=token, expect_rev=expect_rev, tool=tool, contract_digest=contract_digest,
+        return self._stages.open(token=token, tool=tool, contract_digest=contract_digest,
                                  arguments=arguments, judgment_inputs=judgment_inputs, base_class=base_class,
                                  effective_class=effective_class, plan=plan, subject=subject, ingress=ingress,
                                  auto_run=auto_run)
 
-    def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-                   reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
-        return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
-                                 code=code, message=message, reason=reason, await_resolution=await_resolution)
+    def stage_stop(self, *, token: str, intent: str, n: int, boundary: str, code: str, message: str,
+                   reason: str | None = None) -> dict[str, Any]:
+        return self._stages.stop(token=token, intent=intent, n=n, boundary=boundary,
+                                 code=code, message=message, reason=reason)
 
-    def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
-        return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)
+    def stage_close(self, *, token: str, intent: str) -> dict[str, Any]:
+        return self._stages.close(token=token, intent=intent)
 
-    def stage_abandon(self, *, token: str, expect_rev: int, intent: str, rationale: str) -> dict[str, Any]:
-        return self._stages.abandon(token=token, expect_rev=expect_rev, intent=intent, rationale=rationale)
+    def stage_abandon(self, *, token: str, intent: str, rationale: str) -> dict[str, Any]:
+        return self._stages.abandon(token=token, intent=intent, rationale=rationale)
 
-    def stage_continue(self, *, token: str, expect_rev: int, intent: str, contract_digest: str | None,
+    def stage_continue(self, *, token: str, intent: str, contract_digest: str | None,
                        plan: list[dict[str, Any]] | None, rationale: str, binding: str | None = None) -> dict[str, Any]:
-        return self._stages.continue_(token=token, expect_rev=expect_rev, intent=intent,
+        return self._stages.continue_(token=token, intent=intent,
                                       contract_digest=contract_digest, plan=plan, rationale=rationale, binding=binding)
 
     def stage_recheck(self, intent: str, *, contract_digest: str | None,
@@ -1394,10 +1505,10 @@ class Engine:
     def disposition_approval(self, subject: str, *, state: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._dispositions.approval_subject(self._k.store.current() if state is None else state, subject)
 
-    def work_dispose(self, *, token: str, expect_rev: int, subject: str, choice: str, rationale: str,
+    def work_dispose(self, *, token: str, subject: str, choice: str, rationale: str,
                      follow_up: str | None = None, binding: str | None = None) -> dict[str, Any]:
         """The Lead's disposition of a finding or claim policy marks ``requires_disposition``, or of an anomaly."""
-        return self._dispositions.dispose(token=token, expect_rev=expect_rev, subject=subject, choice=choice,
+        return self._dispositions.dispose(token=token, subject=subject, choice=choice,
                                           rationale=rationale, follow_up=follow_up, binding=binding)
 
     def disposition(self, ref: str) -> dict[str, Any]:
@@ -1447,8 +1558,12 @@ class Engine:
     def stage_intent(self, intent: str) -> dict[str, Any]:
         return self._stages.read(self._k.store.current(), intent)
 
-    def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
-        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)
+    def submit(self, *, invocation_token: str, kind: str, text: str,
+               admitted: dict[str, str] | None = None,
+               continued: tuple[str, list[str]] | None = None) -> dict[str, Any]:
+        """Only the supervisor supplies observed live and continuation admissions."""
+        return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text,
+                                     admitted=admitted, continued=continued)
 
     # ---------------------------------------------------------------- history (ADR-0011)
 
@@ -1460,6 +1575,9 @@ class Engine:
 
     def history_show(self, record_id: str) -> dict[str, Any]:
         return self._history.history_show(record_id)
+
+    def record_body(self, record_id: str, *, plan: int | None = None) -> dict[str, Any]:
+        return self._history.record_body(record_id, plan=plan)
 
     def history_log(self, *, since: int, kinds: list[str] | None = None, follow: bool = False, timeout: float = 30.0,
                     limit: int = 500) -> dict[str, Any]:
@@ -1533,13 +1651,13 @@ class Engine:
     def history_links(self, record_id: str, *, depth: int = 1) -> dict[str, Any]:
         return self._history.history_links(record_id, depth=depth)
 
-    def history_load(self, *, token: str, expect_rev: int, record_id: str, into: str, reason: str) -> dict[str, Any]:
-        return self._history.history_load(token=token, expect_rev=expect_rev, record_id=record_id, into=into,
+    def history_load(self, *, token: str, record_id: str, into: str, reason: str) -> dict[str, Any]:
+        return self._history.history_load(token=token, record_id=record_id, into=into,
                                           reason=reason)
 
     def history_audit(self, *, full: bool = False, token: str | None = None,
-                      expect_rev: int | None = None) -> dict[str, Any]:
-        return self._history.history_audit(full=full, token=token, expect_rev=expect_rev)
+                      ) -> dict[str, Any]:
+        return self._history.history_audit(full=full, token=token)
 
     def history_reindex(self) -> dict[str, Any]:
         return self._history.history_reindex()
@@ -1552,8 +1670,9 @@ class Engine:
 
     def history_search_committed(self, state: dict[str, Any], terms: list[str], *, kinds: list[str] | None = None,
                                  since: str | None = None, until: str | None = None, limit: int = 10,
-                                 deadline: float, budget_s: float, budget_docs: int, candidates: int,
-                                 enabled: bool, fts5: bool,
+                                 enabled: bool, fts5: bool, deadline: float | None = None,
+                                 budget_s: float | None = None, budget_docs: int | None = None,
+                                 candidates: int | None = None,
                                  fence_token: Callable[[list[str]], str] | None = None,
                                  clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
@@ -1565,8 +1684,8 @@ class Engine:
                                                       enabled=enabled, fts5=fts5, fence_token=fence_token,
                                                       clock=clock)
 
-    def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
-        return self._migration.migrate(token=token, expect_rev=expect_rev)
+    def migrate(self, *, token: str) -> dict[str, Any]:
+        return self._migration.migrate(token=token)
 
     # ---------------------------------------------------------------- read collaborators (the dashboard, F20.2)
     # The dashboard projects committed state through the same collaborators every command reads with; it never
@@ -1583,8 +1702,9 @@ class Engine:
     def audit_status(self, state: dict[str, Any], *, policy: dict[str, Any] | None = None) -> dict[str, Any] | None:
         return self._history.audit_status(state, policy=policy)
 
-    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None) -> list[str]:
-        return self._views.contradictions(state, manifest)
+    def contradictions(self, state: dict[str, Any], manifest: dict[str, Any] | None = None, *,
+                       pinned_failures: list[str] | None = None) -> list[str]:
+        return self._views.contradictions(state, manifest, pinned_failures=pinned_failures)
 
     def next_actions(self, state: dict[str, Any]) -> list[str]:
         return self._resume.next_actions(state)
@@ -1594,48 +1714,48 @@ class Engine:
         run's supervisor): presenting it again is stale authority, never an unknown credential."""
         return self._archive.archived_credential(state, token_id)
 
-    def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
+    def verify_classify(self, *, token: str, work_id: str, classification: str,
                         reason: str, binding: str | None = None) -> dict[str, Any]:
-        return self._evidence.verify_classify(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._evidence.verify_classify(token=token, work_id=work_id,
                                               classification=classification, reason=reason, binding=binding)
 
-    def verify_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
+    def verify_ingest(self, *, token: str, work_id: str, evidence_id: str,
                       scope: str | None = None) -> dict[str, Any]:
         """``scope``: the primitive's (``ticket``: `verify.ingest`, ``integration``: `verify.ingest.integration`), whose
         query must pass; None (the CLI): the report's own scope decides."""
-        return self._evidence.verify_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._evidence.verify_ingest(token=token, work_id=work_id,
                                             evidence_id=evidence_id, scope=scope)
 
-    def waive(self, *, token: str, expect_rev: int, work_id: str, reason: str, gate: str | None = None,
+    def waive(self, *, token: str, work_id: str, reason: str, gate: str | None = None,
               finding: str | None = None, binding: str | None = None) -> dict[str, Any]:
-        return self._evidence.waive(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, gate=gate,
+        return self._evidence.waive(token=token, work_id=work_id, reason=reason, gate=gate,
                                     finding=finding, binding=binding)
 
-    def work_accept(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+    def work_accept(self, *, token: str, work_id: str, reason: str | None = None,
                     binding: str | None = None) -> dict[str, Any]:
-        return self._nm.work_accept(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, binding=binding)
+        return self._nm.work_accept(token=token, work_id=work_id, reason=reason, binding=binding)
 
-    def work_acknowledge_input(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str, source: str,
+    def work_acknowledge_input(self, *, token: str, work_id: str, evidence_id: str, source: str,
                                reason: str, binding: str | None = None) -> dict[str, Any]:
-        return self._nm.work_acknowledge_input(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._nm.work_acknowledge_input(token=token, work_id=work_id,
                                                evidence_id=evidence_id, source=source, reason=reason, binding=binding)
 
-    def work_assign(self, *, token: str, expect_rev: int, work_id: str, execution_profile: dict[str, Any] | None = None,
+    def work_assign(self, *, token: str, work_id: str, execution_profile: dict[str, Any] | None = None,
                     launch: bool = False) -> dict[str, Any]:
-        return self._assignment.work_assign(token=token, expect_rev=expect_rev, work_id=work_id,
+        return self._assignment.work_assign(token=token, work_id=work_id,
                                             execution_profile=execution_profile, launch=launch)
 
-    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+    def work_cancel(self, *, token: str, work_id: str, reason: str,
                     binding: str | None = None) -> dict[str, Any]:
-        return self._hierarchy.work_cancel(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+        return self._hierarchy.work_cancel(token=token, work_id=work_id, reason=reason,
                                            binding=binding)
 
-    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+    def work_close(self, *, token: str, work_id: str, reason: str | None = None,
                    binding: str | None = None) -> dict[str, Any]:
-        return self._hierarchy.work_close(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason,
+        return self._hierarchy.work_close(token=token, work_id=work_id, reason=reason,
                                           binding=binding)
 
-    def work_create(self, *, token: str, expect_rev: int, kind: str, title: str, risk_class: int,
+    def work_create(self, *, token: str, kind: str, title: str, risk_class: int,
                     mutating: bool | None = None, parent: str | None = None, depends_on: list[str] | None = None,
                     scope_paths: list[str] | None = None, goal_backwards: list[str] | None = None,
                     contract: list[str] | None = None, mandatory_gates: list[str] | None = None,
@@ -1644,74 +1764,76 @@ class Engine:
                     promoted_from: str | None = None, acceptance_checks: list[str] | None = None,
                     acceptance_inputs: list[str] | None = None,
                     class0_assertions: list[str] | None = None, priority: str | None = None,
-                    priority_reason: str | None = None, request_id: str | None = None) -> dict[str, Any]:
-        return self._work.work_create(token=token, expect_rev=expect_rev, kind=kind, title=title, risk_class=risk_class,
+                    priority_reason: str | None = None, review_ref: str | None = None,
+                    request_id: str | None = None) -> dict[str, Any]:
+        return self._work.work_create(token=token, kind=kind, title=title, risk_class=risk_class,
                                       mutating=mutating, parent=parent, depends_on=depends_on, scope_paths=scope_paths,
                                       goal_backwards=goal_backwards, contract=contract, mandatory_gates=mandatory_gates,
                                       min_descendant_class=min_descendant_class, rationale=rationale,
                                       external_refs=external_refs, body=body, card=card, promoted_from=promoted_from,
                                       acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
                                       class0_assertions=class0_assertions, priority=priority,
-                                      priority_reason=priority_reason, request_id=request_id)
+                                      priority_reason=priority_reason, review_ref=review_ref,
+                                      request_id=request_id)
 
-    def work_depend(self, *, token: str, expect_rev: int, work_id: str, add: list[str] | None = None,
+    def work_depend(self, *, token: str, work_id: str, add: list[str] | None = None,
                     remove: list[str] | None = None, reason: str) -> dict[str, Any]:
-        return self._hierarchy.work_depend(token=token, expect_rev=expect_rev, work_id=work_id, add=add, remove=remove,
+        return self._hierarchy.work_depend(token=token, work_id=work_id, add=add, remove=remove,
                                            reason=reason)
 
-    def work_dispatch(self, *, token: str, expect_rev: int, work_id: str, card: str | None = None,
+    def work_dispatch(self, *, token: str, work_id: str, card: str | None = None,
                       execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
-        return self._nm.work_dispatch(token=token, expect_rev=expect_rev, work_id=work_id, card=card,
+        return self._nm.work_dispatch(token=token, work_id=work_id, card=card,
                                       execution_profile=execution_profile, launch=launch)
 
     def work_list(self, *, state_filter: str | None = None) -> dict[str, Any]:
         return self._work.work_list(state_filter=state_filter)
 
-    def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None, reason: str,
+    def work_move(self, *, token: str, work_id: str, parent: str | None, reason: str,
                   prior_value: str | None = None) -> dict[str,
                   Any]:
-        return self._hierarchy.work_move(token=token, expect_rev=expect_rev, work_id=work_id, parent=parent,
+        return self._hierarchy.work_move(token=token, work_id=work_id, parent=parent,
                                          reason=reason, prior_value=prior_value)
 
-    def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
+    def work_promote(self, *, token: str, work_id: str, to: str, title: str, reason: str,
                      risk_class: int | None = None, request_id: str | None = None,
                      prior_value: str | None = None) -> dict[str, Any]:
-        return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
+        return self._hierarchy.work_promote(token=token, work_id=work_id, to=to, title=title,
                                             reason=reason, risk_class=risk_class, request_id=request_id,
                                             prior_value=prior_value)
 
-    def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
+    def work_gate_replace(self, *, token: str, subject: str, replacement: str | None,
                           rationale: str, binding: str | None = None) -> dict[str, Any]:
         """Replace a parent's mandatory gate that can never be satisfied, on the record (ITEMS 55, option (b)): the
         `resolve` tool's `replace_gate`."""
-        return self._gate_repair.gate_replace(token=token, expect_rev=expect_rev, subject=subject,
+        return self._gate_repair.gate_replace(token=token, subject=subject,
                                               replacement=replacement, rationale=rationale, binding=binding)
 
-    def work_scope_add(self, *, token: str, expect_rev: int, subject: str, rationale: str,
+    def work_scope_add(self, *, token: str, subject: str, rationale: str,
                        signed: bool = False) -> dict[str, Any]:
         """Add one exact test path to one Ticket's scope, on the record (register E126): the `resolve` tool's
         `add_scope`, or `add_scope_signed` with a sign-off cited in the rationale."""
-        return self._scope.scope_add(token=token, expect_rev=expect_rev, subject=subject, rationale=rationale,
+        return self._scope.scope_add(token=token, subject=subject, rationale=rationale,
                                      signed=signed)
 
     def gate_items(self, subject: str | None = None, *, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The open stuck-gate items (ITEMS 55): resume, status and doctor name them; `resolve` settles them."""
         return self._gate_repair.gate_items(self._k.store.current() if state is None else state, subject)
 
-    def work_reclassify(self, *, token: str, expect_rev: int, work_id: str, risk_class: int,
+    def work_reclassify(self, *, token: str, work_id: str, risk_class: int,
                         reason: str) -> dict[str, Any]:
-        return self._work.work_reclassify(token=token, expect_rev=expect_rev, work_id=work_id, risk_class=risk_class,
+        return self._work.work_reclassify(token=token, work_id=work_id, risk_class=risk_class,
                                           reason=reason)
 
-    def work_reconcile(self, *, token: str, expect_rev: int, work_id: str, to: str, reason: str,
+    def work_reconcile(self, *, token: str, work_id: str, to: str, reason: str,
                        inspection: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._nm.work_reconcile(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason,
+        return self._nm.work_reconcile(token=token, work_id=work_id, to=to, reason=reason,
                                        inspection=inspection)
 
-    def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str, card: str | None = None,
+    def work_redispatch(self, *, token: str, work_id: str, reason: str, card: str | None = None,
                         execution_profile: dict[str, Any] | None = None, launch: bool = False,
                         request_id: str | None = None) -> dict[str, Any]:
-        return self._nm.work_redispatch(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, card=card,
+        return self._nm.work_redispatch(token=token, work_id=work_id, reason=reason, card=card,
                                         execution_profile=execution_profile, launch=launch, request_id=request_id)
 
     def work_roles(self, work_id: str) -> dict[str, Any]:
@@ -1735,20 +1857,20 @@ class Engine:
     def work_show(self, work_id: str) -> dict[str, Any]:
         return self._work.work_show(work_id)
 
-    def work_staff(self, *, token: str, expect_rev: int, work_id: str, execute: list[str] | None = None,
+    def work_staff(self, *, token: str, work_id: str, execute: list[str] | None = None,
                    review: list[str] | None = None, verify: list[str] | None = None, forbid: list[str] | None = None,
                    remove: list[str] | None = None, selected_by: str = "lead", pin: bool = False,
                    reason: str | None = None, authorization: dict[str, str] | None = None,
                    prior_value: str | None = None) -> dict[str, Any]:
-        return self._roles.work_staff(token=token, expect_rev=expect_rev, work_id=work_id, execute=execute,
+        return self._roles.work_staff(token=token, work_id=work_id, execute=execute,
                                       review=review, verify=verify, forbid=forbid, remove=remove,
                                       selected_by=selected_by, pin=pin, reason=reason, authorization=authorization,
                                       prior_value=prior_value)
 
-    def work_transition(self, *, token: str, expect_rev: int, work_id: str, to: str,
+    def work_transition(self, *, token: str, work_id: str, to: str,
                         reason: str | None = None,
                         prior_value: str | None = None) -> dict[str, Any]:
-        return self._work.work_transition(token=token, expect_rev=expect_rev, work_id=work_id, to=to, reason=reason,
+        return self._work.work_transition(token=token, work_id=work_id, to=to, reason=reason,
                                           prior_value=prior_value)
 
     def work_tree(self, root: str | None = None) -> dict[str, Any]:

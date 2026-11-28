@@ -75,7 +75,7 @@ Deterministic fault points are named code locations, not timings. That is why th
   - `test_nothing_outside_the_unit_lane_reaches_a_unit_module`: no `.py` outside `tests/unit` (conftest, helpers, every heavy test, `src`, `tools`, `eval` except the archived `eval/reviews`) imports a unit module or the spec pin at any depth, generates such an import in a string, names a file under `tests/unit` or the directory itself (in a string other than a docstring, or a path expression ending in `"unit"`), loads one through `importlib`, `__import__` or `runpy`, or puts the directory on `sys.path`. The lane classifier `lanes.lane_of` may name the directory.
   - `test_every_repository_file_read_outside_the_core_lanes_is_full_tier`: every repository file a non-core reader names classifies `full`. A literal with a `/`, a path expression of two or more parts or rooted at the repository (`ROOT`, `parents[n]`, `Path(__file__)`), and a glob name a file or a directory and cover everything below it; a non-literal tail covers everything below its literal prefix; root-level Markdown is matched. A bare one-word string (`"docs"`) is not a reference, and neither is a wildcard string no glob reads.
 - **`assurance` recomputes the tier** from the same merge commit, with the label read live (one retry), and fails if the tier the jobs ran under is narrower: a `full-ci` label added during the run, or a label that could not be read; each has its own message, and both say Re-run all jobs. It requires every collected test of the tier's lanes, by the lane each lane report records for every collected test, and refuses a reduced tier on any event but a pull request. The full tier also checks the Linux coverage baseline.
-- **A pin-only change reuses the lanes it would repeat (operator, 2026-11-08: "yes stack them, and build the pin-only shortcut").** When a pull request into `main` has a new head that differs from an earlier head of it only in `tests/platform-skips.yaml`, through single-parent commits, and that head's run for this pull request had every job but `assurance` succeed with `assurance`'s only complaint about skips, `core` and `lanes` don't run. It doesn't fire if `main`'s pins have changed since that run, since those reports can't then match this merge's pins, or if the pull request touches CI's own code (`tier.CI_CODE`), whose tests are in `core`. `static` checks the pin file's content at the new head, since no lane does (`check_assurance.manifest_problems`). `assurance` judges that run's reports in full against the new head's pins, and works the decision out again itself, and the run's summary names the run reused. `tools/ci/pin_shortcut.py` lists every condition, and any doubt is the normal tier. A failure in a run the next push cancelled, at the nearer head, is passed over. The heads are compared, not the merge commits, so `main`'s source may have moved between them: that's the exposure a pull request has today if its run went green while `main` moved, and `main`'s push run is behind both. `main`'s push run, the nightly and a `full-ci` run stay in full.
+- **A pin-only change reuses the lanes it would repeat (operator, 2026-11-08: "yes stack them, and build the pin-only shortcut").** When a pull request into `main` has a new head that differs from an earlier head of it only in `tests/platform-skips.yaml`, through single-parent commits, and that head's run for this pull request had every job but `assurance` succeed with `assurance`'s only complaint about skips, `core` and `lanes` don't run. It doesn't fire if `main`'s pins have changed since that run, since those reports can't then match this merge's pins, if `main` has changed what coverage measures since that run (`pin_shortcut.measured_paths`, from `[tool.coverage.run]`), since `assurance` reads that run's coverage against this merge's source and its line numbers would land on other statements (#592), or if the pull request touches CI's own code (`tier.CI_CODE`), whose tests are in `core`. `static` checks the pin file's content at the new head, since no lane does (`check_assurance.manifest_problems`). `assurance` judges that run's reports in full against the new head's pins, and works the decision out again itself, and the run's summary names the run reused. `tools/ci/pin_shortcut.py` lists every condition, and any doubt is the normal tier. A failure in a run the next push cancelled, at the nearer head, is passed over. The heads are compared, not the merge commits, so `main` may have moved between them outside the measured source: that's the exposure a pull request has today if its run went green while `main` moved, and `main`'s push run is behind both. What `main` changed outside the measured source can still fail the reused run falsely, never pass it: a raised `tests/coverage-baseline.json` whose tests that run lacks, or the D2 ratchet judging its discovery findings against this merge's `tests/helpers/discovery/allowed.yaml` and `modes.py`; `full-ci` gets past that. `main`'s push run, the nightly and a `full-ci` run stay in full.
 - **Pre-merge assurance for the reduced tiers (operator, 2026-10-06).** A pre-merge full `merge_group` gate would be preferred, but GitHub does not provide merge queues for personal-account repositories, and AEW stays on the operator's personal account by prior decision. So the reduced tiers are backed by `main`'s always-full push run. This is an explicit reduction in pre-merge assurance for docs and web changes, accepted for throughput. A red `main` after a reduced-tier merge is triaged as a classification defect: correct `tier.py` and pin the case in `tests/unit/test_ci_tools.py`. If the repository moves to an organization, full merge-group assurance replaces this control; `ci.yml` keeps the `merge_group` trigger, and `merge_group` is always `full`, so no CI change is needed.
 - **Every merge to `main` gets its own full push run (operator, 2026-10-25, ST-30).** This replaces the rule of 2026-10-07, under which push runs on `main` shared one concurrency group and GitHub kept only the newest *pending* run, so a merge that landed close behind another lost its run to the next one's. Each push run on `main` now has a concurrency group of its own commit, so none is cancelled or replaced, and a red run is triaged against the one merge it verifies. The cost is more queueing when merges land close together. A pull request keeps one group, and its newer push cancels its older run. **Exact-SHA validation** is still required wherever evidence, a freeze or a release binds to a specific commit (a tagged release, a frozen specification, the commit an M4-H run or other preregistered evaluation names): it is that commit's own push run, or a `workflow_dispatch` on a tag for it, recorded with the evidence.
 - **The merge gate is the `assurance` job.** It fails unless, per OS and from the lane reports:
@@ -143,6 +143,18 @@ The `static` job runs on Linux, independent of the test lanes, and `assurance` r
 | **Pyright** (standard mode) | Types, using the hints the code already has | `src/`, checked twice: as Linux and as Windows, so each platform's branches are checked where they run. Platform branches use `sys.platform == "win32"` directly, which Pyright narrows (an alias such as `IS_WINDOWS` it cannot) |
 | **pip-audit** | Known vulnerabilities (PyPI advisories and OSV) in every installed distribution: the runtime dependencies, the test extras, the lint tools and the `eval` extra (numpy, which only the M4-H analysis on the evaluator imports) | The exact installed set (`pip freeze --exclude-editable`, so AEW itself is left out), audited with `--strict`: any distribution that cannot be audited fails the job |
 
+- **The register rows a pull request names (2026-11-26).** On a pull request, `static` runs `python tools/register.py
+  cited --base <base sha> --event "$GITHUB_EVENT_PATH"`: an open register row that the pull request's title, or the
+  lead of one of its own commits' subjects, names must at its head be closed, or carry a note the change adds with a
+  fixed marker: `**What remains**` for a row it leaves open, or `**Cited, not implemented**` for one it only cites
+  (`python tools/register.py note <id>`). That note is the recorded escape; no flag or label skips it, and a note
+  that only says "built", or an edit of the row's cells, does not pass (the operator, 2026-11-26, on rows left open
+  after their work merged; the review of #598). It reads the commits, not the checkout, and leaves out merges and a
+  review's finding labels (`F1`, `N4`). It cannot see a row filed after its work merged, work that never names its
+  row, or a title edited after the last push; its limits are in `tools/register.py`, *Rows a change names*. Its
+  expected effect: replayed over the last 100 merged pull requests, it flags 36, mostly slice pull requests on rows
+  that stay open, which would each have needed a `**What remains**` note. Locally:
+  `python tools/register.py cited --base origin/main --title "<the title>"`.
 - **The generated reference's counts.** `static` also runs `python tools/reference.py counts` and puts the counts in the run's summary: reported, never gating (`continue-on-error`). The reference's index is not committed (operator, 2026-11-05), so this is where each pull request's counts are measured; the fast lane's `check` gates the pages.
 - **A finding is fixed, not suppressed.** A `# noqa` is allowed only for a reviewed false positive and names the rule and the reason on that line or the one above (for example the history index's SQL, whose clauses are fixed strings with bound values).
 - **What the first run found and fixed:** the OpenCode client sent the server password to whatever address the server announced, now refused unless it is `http://127.0.0.1:<port>` (S310); several values that could be `None` reaching code that cannot take one (a guardrail check on a workspace without a base commit, a dependency to a unit that vanished, a role slot with no default card, a worktree sync entry with no target); closures binding loop variables late (B023).
@@ -214,6 +226,7 @@ Platform-specific tests use `skipif` with a reason naming the platform semantics
 
   The harness's `Project.lead()` still reads the revision through a `lead show` subprocess where post-crash recovery by a fresh CLI process is the property. A setup helper moves to the in-process driver only under the design's constraints: the driver's isolation invariant, proven by its own tests, and one semantic-equivalence oracle showing the helper builds the same starting state both ways. The default stays subprocess.
 - **Every test gets its own repository and project** (`make_git_repo`, `sample_project`). Under P3 a starting state may come from a snapshot: an immutable template built once per worker from a declared, checked snapshot-safe (quiescent and relocatable) state, with each test working in its own independent copy, and never where building the repository is the property under test. Until E42 builds it, every test builds its own. (The earlier figure of setup at ~7 % of runtime is out of date: the redesign measured 57 % in the slowest scenario files, 84 % in the queue tests.)
+- **Duplication is kept to what is required or beneficial** (the operator, 2026-11-24; register E363). Isolation a test needs (its own repository where it mutates one), parallel shards and independence that proves something stay. Any other expensive setup a test module reads but never changes (a parsed source tree, a rendered document, a loaded schema) is built once per process through one owner, `tests/helpers/shared_setup.py` (`once`), or a session-scoped fixture, and is read-only to its consumers. **The module heap guard enforces it** (`tests/helpers/module_heap.py`): a test module that keeps more than its budget of allocated memory blocks (`module_heap.BUDGET_BLOCKS`, whose comment gives the figure and its reason; the module's docstring gives the measure's limits) fails, at import in every session and lane (its collection errors, naming it), and after its tests in a serial session (the session fails at its end, naming it). Shared setup and session fixtures are never charged to the module that asked first.
 
 ## 7. Caching
 
@@ -319,6 +332,7 @@ AEW_LIVE_OPENCODE_MODEL=<provider/model> python -m pytest --live tests/live -n 4
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
 AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # unscripted: also AEW_LIVE_PROVIDER_KEY_ENV (costs money)
 AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
+AEW_LIVE_LEAD_SKILLS_MODEL=<provider/model> AEW_LIVE_PROVIDER_KEY_ENV=<VARIABLE> AEW_LIVE_RESULTS=lead-skills.jsonl \n  python -m pytest --live tests/live/test_lead_skills_live.py -p no:xdist -q   # the Lead's skills (E161): the listing needs no model; the model test costs money
 ```
 
 The paid dogfood (M3 step 9) is not a test lane. It is an evaluation with its own driver, fixtures, hidden tests and pre-registered rubric in `eval/m3/dogfood/` (see its README), reported in `m3-dogfood-report.md`.
@@ -347,6 +361,8 @@ Seeds and budgets are controlled by these environment knobs; the defaults are th
 | `walk-extended` | 3 blocks × 6 rotating seeds per OS for both walks, 150 steps, fault rate 0.15 (hierarchy walk: 250 steps, fault rate 0.12) | More adversarial sequences and crashes |
 | `race-repeat` | Serial lane ×10, then 200 racing writes per writer | Heavier race and kill repetition |
 | `crash-extended` | 2000 randomized store crash iterations, seed = run number | Larger randomized crash counts |
+
+`race-repeat`'s and `crash-extended`'s sessions run in one process with no shard, so the shard sizer does not size them. Their `--test-timeout`, `--session-deadline` and job deadline are pinned to fit the recorded time of the tests they run (`tests/durations.json`), with a cold start and a margin, and so that a hang anywhere in a pass fails by name before its session ends (`tests/unit/test_repetition_fit.py`, register E75). When the pin fails, first find which tests grew against the record. For a test that got slower, find why: a slower test is a regression to find, not a budget to raise. Raise the budget to what the pin prints only for growth that new tests bring. The pin sees tests' time only, not collection time.
 
 **Code scanning** (`.github/workflows/codeql.yml`) runs CodeQL for Python, GitHub Actions and JavaScript/TypeScript (the dashboard, since F20.1) on pull requests, on pushes to `main` and weekly. It is not part of `assurance`. It replaces GitHub's default setup so that `eval/` can be excluded (`.github/codeql/codeql-config.yml`): those are research and evaluation scripts the operator runs by hand, whose path and command findings are their intended use (PR #5 triage).
 
@@ -400,7 +416,40 @@ where one is available. A canceled job with a failed phase in its partial report
 supersessions retain their job IDs and do not count as failed test runs. A verified run-wide cancellation also
 covers sibling jobs with no annotation of their own, such as the matrix jobs GitHub creates unrendered after the job
 that defines their matrix was cancelled, both in the completed run and in assurance, which reads its run before it
-concludes.
+concludes. A pull request's `ci` run cancelled before any of its jobs existed has no check run, so no annotation names
+its group: the completed-run record derives the group from the run and names the successor from run history alone
+(`cancel_evidence.superseded_before_any_job`), under the same rule, exactly one other run of that group created within
+the cancelled run's life. It then reads "Superseded before any job was recorded" and counts no gap; with no such run,
+or more than one, or a run of any other workflow or event, the `[cancel-reason]` gap stays. It is an inference from
+run history, made for a first attempt only (a re-run keeps the first attempt's creation time), and a run of the same
+second counts only with a higher id.
+
+A lane cancelled while its sessions are still starting has no worker in a test to observe and no running test to name.
+The lane supervisor at the signal, on either platform, or the cancellation collection, then records
+`runner-resources-before-tests.txt`, but only from positive observations: no watchdog header or running name, and each
+session either still starting, or finished after a graceful interrupt, with every worker's receipt short of
+execution and the lane report showing no test ran. A session is still starting when the lifecycle receipt of each of
+its processes that run tests, read from its live writer, stands before its first test: an xdist session's registered
+workers, or a serial session's controller, which runs its tests itself and keeps the same receipt under its own name
+(`session_deadline.PhaseReceipt`; since 2026-11-26, after the serial lane of PR #608's run 45782924831 was cancelled
+2.4 s into its pytest step and typed as a test interrupted). No session registered at all is recorded too: that
+reading of an absence holds while every lane command passes `--session-deadline` with its hang directory the lane
+root or one level under it, which `test_every_lane_command_keeps_its_sessions_where_the_collection_looks` pins. The
+evidence check types
+such a lane `before tests` and accepts the record as its death evidence only while every session, worker (by pid and
+start), lifecycle receipt, autopsy and lane-report result in the bundle bears it out, and a session with no worker
+roster that had not finished lists its controller on the same terms; anything else is a `[before-tests]` defect. The
+proof's two start-up controls each cancel a lane that holds its collection, one in its xdist workers (`start`) and
+one in a serial session's controller (`start-serial`), and require that typing with no defect; its `verify` job
+ablates the rule on each `normal` plant. Two states are still never recorded, so their gap stays a defect: a
+controller that has registered its session and not yet begun its collection has no receipt (nor has an xdist session
+before its worker roster, which cannot be told from it), and a serial controller once it has entered its first test's
+protocol, which owes its watchdog header, its observation and its running name like any worker in a test.
+The record says that no test had started, not that the start-up was healthy: a session stuck in its collection (an
+import that hangs) and cancelled before its deadline is typed `before tests` with no defect and no stack, a serial one
+as an xdist one. What shows it is each listed process's `collecting_s` in the record, the seconds since its
+`collecting` stamp when its receipt was read: at the signal in the supervisor's record, at the later collection in the
+cancellation collection's.
 
 The completed-run workflow reads the default branch's recorder and binds the record to the canceled attempt, even
 when its own assurance job never started. A canceled attempt with no recorded jobs keeps a run-level entry. The
@@ -414,3 +463,19 @@ Use `python tools/ci/evidence_scorecard.py --runs 30` for the red jobs in recent
 `python tools/ci/evidence_scorecard.py --jobs 12345 12346` for specific job IDs. The scorecard reports the death
 kind, A1 failure evidence, A2 death evidence, missing rules and artifact links. It uses the same evidence checker
 as assurance and excludes the proof workflow.
+
+**A live worker's interruption stack.** A worker that a cancellation observes alive inside a test's protocol owes a
+stack taken at that interruption (the Linux supervisor's pre-signal warning, or the cancellation collection) that
+holds a frame of its test function; without one the check reports `[live-stack]`. A worker outside its test's call has
+no such frame to give, so its typed outcome stands in for it, only for the same worker, test and collection instant,
+and only with a retained stack of the same interruption whose frames classify the same
+(`evidence_files.STACK_NOT_OWED`, `evidence_problems.outside_call`): setup, teardown or between tests at the
+cancellation collection (#561), and setup or teardown at the Linux warning. The second reverses #573's rule that none
+of the warning's outcomes excuses a stack: asked whether a Linux worker caught in setup or teardown at the cancel
+signal should be accepted as Windows already accepts it, the operator answered "Yes" (2026-11-26). Nothing else of the
+warning's is accepted: a dump inside the call without the test's frame, a worker that changed tests or exited during
+the attach, and a failed attach all still owe the stack. The defect names the typed outcome, for example
+`interrupted-2470.txt: live worker lacks its interruption stack (warning outcome: straddled a test change)`, so a
+sighting needs no artifact download. The proof's Linux cancel plant spends its odd cases' seconds in a fixture's
+setup, so its supersede control can catch a worker there; `verify_evidence.observe_cancel` accepts for it exactly
+what the check accepts and prints how many workers it caught outside their call.
